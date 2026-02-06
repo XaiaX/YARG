@@ -151,7 +151,7 @@ namespace YARG.Audio.BASS
             if (!result)
             {
                 var error = Bass.LastError;
-                YargLogger.LogFormatError("Failed to set default output device: {0}!", error);
+                YargLogger.LogFormatError("BASS Initialization Failure: Failed to set default output device: {0}", error);
 
 #if UNITY_STANDALONE_LINUX
                 // Driver seems to be what we get when ALSA isn't available
@@ -161,6 +161,7 @@ namespace YARG.Audio.BASS
                     ToastManager.ToastError("Failed to initialize audio device. Make sure you have pipewire-alsa or equivalent installed.");
                 }
 #endif
+                return;
             }
 
             var info = Bass.Info;
