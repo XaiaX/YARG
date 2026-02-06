@@ -106,7 +106,8 @@ namespace YARG.Menu.ProfileList
             }
         }
 
-        private static string GetUniqueProfileName(string profileName)
+        // TODO: Since we're using this outside of ProfileListMenu, we should probably find a better home for it
+        public static string GetUniqueProfileName(string profileName)
         {
             var existingNames = PlayerContainer.Profiles.Select(p => p.Name);
 
