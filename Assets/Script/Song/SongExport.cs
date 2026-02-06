@@ -106,7 +106,7 @@ namespace YARG.Song
                 {
                     if (song.HasInstrument(inst))
                     {
-                        return Math.Max(0, song[inst].Intensity);
+                        return Math.Max((sbyte) 0, song[inst].Intensity);
                     }
                     return -1;
                 }
