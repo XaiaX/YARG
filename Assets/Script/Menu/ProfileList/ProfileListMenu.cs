@@ -106,11 +106,31 @@ namespace YARG.Menu.ProfileList
             }
         }
 
+        private static string GetUniqueProfileName(string profileName)
+        {
+            var existingNames = PlayerContainer.Profiles.Select(p => p.Name);
+
+            if (!existingNames.Contains(profileName))
+            {
+                return profileName;
+            }
+
+            int count = 1;
+            string newName;
+            do
+            {
+                newName = $"{profileName} {count}";
+                count++;
+            } while (existingNames.Contains(newName));
+
+            return newName;
+        }
+
         public void AddProfile()
         {
             PlayerContainer.AddProfile(new YargProfile
             {
-                Name = "New Profile",
+                Name = GetUniqueProfileName("New Profile"),
                 NoteSpeed = 5,
                 HighwayLength = 1,
                 GameMode = GameMode.FiveFretGuitar
@@ -123,7 +143,7 @@ namespace YARG.Menu.ProfileList
         {
             PlayerContainer.AddProfile(new YargProfile
             {
-                Name = "Bot",
+                Name = GetUniqueProfileName("Bot"),
                 NoteSpeed = 5,
                 HighwayLength = 1,
                 GameMode = GameMode.FiveFretGuitar,
