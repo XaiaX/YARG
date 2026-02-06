@@ -146,7 +146,22 @@ namespace YARG.Audio.BASS
             }
 #endif
 
-            SetOutputDevice("Default");
+            var result = SetOutputDevice("Default");
+
+            if (!result)
+            {
+                var error = Bass.LastError;
+                YargLogger.LogFormatError("Failed to set default output device: {0}!", error);
+
+#if UNITY_STANDALONE_LINUX
+                // Driver seems to be what we get when ALSA isn't available
+                if (error == Errors.Driver)
+                {
+                    YargLogger.LogError("Failed to set default output device. This is likely due to a missing ALSA plugin. Install pipewire-alsa or equivalent.");
+                    ToastManager.ToastError("Failed to initialize audio device. Make sure you have pipewire-alsa or equivalent installed.");
+                }
+#endif
+            }
 
             var info = Bass.Info;
             PlaybackLatency = info.Latency + Bass.DeviceBufferLength + devPeriod;
@@ -161,14 +176,14 @@ namespace YARG.Audio.BASS
             YargLogger.LogFormatInfo("Current Device: {0}", Bass.GetDeviceInfo(Bass.CurrentDevice).Name);
         }
 
-        protected override void SetOutputDevice(string name)
+        protected override bool SetOutputDevice(string name)
         {
             int currentDevice = Bass.CurrentDevice;
 
             OutputDevice? device = GetOutputDevice(name);
             if (device is not BassOutputDevice bassDevice || bassDevice.DeviceId == currentDevice)
             {
-                return;
+                return false;
             }
 
             YargLogger.LogFormatInfo("Changing BASS Device to: {0}", bassDevice.DisplayName);
@@ -185,6 +200,8 @@ namespace YARG.Audio.BASS
             LoadDrumSfx(); // TODO: move drum sfx loading/disposal to song start/end respectively IF there are any drum players
             LoadVox();
             LoadMetronome();
+
+            return true;
         }
 
 #nullable enable
