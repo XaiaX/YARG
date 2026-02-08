@@ -49,6 +49,7 @@ namespace YARG.Gameplay.Visuals
         private bool                       _allowTextureRecreation = true;
         private bool                       _needsInitialization    = true;
         private bool                       _needsCameraReset;
+        private float                      _horizontalOffsetPx;
 
         private readonly float[]           _curveFactors       = new float[MAX_MATRICES];
         private readonly float[]           _zeroFadePositions  = new float[MAX_MATRICES];
@@ -72,6 +73,7 @@ namespace YARG.Gameplay.Visuals
             _gameManager = FindAnyObjectByType<GameManager>();
             _renderCamera = GetComponent<Camera>();
             _fadeCalcPass ??= new FadePass(this);
+            _horizontalOffsetPx = 0f;
 
             RecreateHighwayOutputTexture();
             Shader.SetGlobalInteger(YargHighwaysNumberID, 0);
@@ -278,6 +280,22 @@ namespace YARG.Gameplay.Visuals
             AddPlayerParams(trackPlayer.transform.position, trackPlayer.TrackCamera, trackPlayer.Player.CameraPreset.CurveFactor, trackPlayer.ZeroFadePosition, trackPlayer.FadeSize, trackPlayer.Player.CameraPreset.Rotation);
         }
 
+        public void SetHorizontalOffsetPx(float horizontalOffsetPx)
+        {
+            if (_cameras.Count != 1)
+            {
+                return;
+            }
+
+            if (Mathf.Approximately(_horizontalOffsetPx, horizontalOffsetPx))
+            {
+                return;
+            }
+
+            _horizontalOffsetPx = horizontalOffsetPx;
+            UpdateCameraProjectionMatrices();
+        }
+
         private void ResetHighwayAlphaTexture()
         {
             if (_highwaysAlphaTexture != null)
@@ -381,8 +399,11 @@ namespace YARG.Gameplay.Visuals
                 var camera = _cameras[i];
                 _camViewMatrices[i] = camera.worldToCameraMatrix;
                 _camInvViewMatrices[i] = camera.cameraToWorldMatrix;
+
+                float safeScreenWidth = Mathf.Max(Screen.width, 0.001f);
+                float horizontalOffsetNdc = _horizontalOffsetPx / safeScreenWidth * 2f;
                 var projMatrix = GetModifiedProjectionMatrix(camera.projectionMatrix,
-                    i, _cameras.Count, _laneScales[i]);
+                    i, _cameras.Count, _laneScales[i], horizontalOffsetNdc);
                 _camProjMatrices[i] = GL.GetGPUProjectionMatrix(projMatrix, SystemInfo.graphicsUVStartsAtTop);
                 Shader.SetGlobalMatrixArray(YargHighwayCamProjMatricesID, _camProjMatrices);
             }
@@ -395,7 +416,9 @@ namespace YARG.Gameplay.Visuals
         /// <param name="index">The index of the highway [0, N-1]</param>
         /// <param name="highwayCount">Total number of highways (N)</param>
         /// <param name="highwayScale">Scale of each highway in NDC (e.g. 1.0 means full size)</param>
-        public static Matrix4x4 GetPostProjectionMatrix(int index, int highwayCount, float highwayScale)
+        /// <param name="horizontalOffsetNdc">Additional x-offset in NDC units.</param>
+        public static Matrix4x4 GetPostProjectionMatrix(int index, int highwayCount, float highwayScale,
+            float horizontalOffsetNdc = 0f)
         {
             if (highwayCount < 1)
                 return Matrix4x4.identity;
@@ -404,7 +427,7 @@ namespace YARG.Gameplay.Visuals
             float laneWidth = 2.0f / highwayCount; // NDC horizontal span is [-1, 1] → 2.0
             float centerX = -1.0f + laneWidth * (index + 0.5f);
             float offsetX = centerX + GetMultiplayerXOffset(index, highwayCount,
-                -1f * SettingsManager.Settings.HighwayTiltMultiplier.Value / highwayCount);
+                -1f * SettingsManager.Settings.HighwayTiltMultiplier.Value / highwayCount) + horizontalOffsetNdc;
             float offsetY = -1.0f + highwayScale; // Offset down if scaled vertically
 
             // This matrix modifies the output of clip space before perspective divide
@@ -422,9 +445,10 @@ namespace YARG.Gameplay.Visuals
         /// <summary>
         /// Generates the modified projection matrix (postProj * camProj).
         /// </summary>
-        public static Matrix4x4 GetModifiedProjectionMatrix(Matrix4x4 camProj, int index, int highwayCount, float highwayScale)
+        public static Matrix4x4 GetModifiedProjectionMatrix(Matrix4x4 camProj, int index, int highwayCount,
+            float highwayScale, float horizontalOffsetNdc = 0f)
         {
-            Matrix4x4 postProj = GetPostProjectionMatrix(index, highwayCount, highwayScale);
+            Matrix4x4 postProj = GetPostProjectionMatrix(index, highwayCount, highwayScale, horizontalOffsetNdc);
             return postProj * camProj; // HLSL-style: mul(postProj, proj)
         }
 
@@ -555,71 +579,79 @@ namespace YARG.Gameplay.Visuals
             );
 
             var viewportPosition = WorldToViewport(worldPositionAtPercent, trackIndex);
-            if (float.IsNaN(viewportPosition.x) || float.IsNaN(viewportPosition.y))
+            if (viewportPosition.HasNaN())
             {
                 return null;
             }
 
-            float screenX = viewportPosition.x * Screen.width;
-            float screenY = (1.0f - viewportPosition.y) * Screen.height;
-
-            return new Vector2(screenX, screenY);
+            return ViewportToScreen(viewportPosition);
         }
 
         /// <summary>
-        /// Calculates the width and height of the visible track in screen space (pixels).
-        /// This considers the top of the track to be the zero fade position.
+        /// Calculates an axis-aligned screen-space bounds rectangle for the visible track.
+        /// This uses the same top and bottom world-space points as <see cref="GetTrackScreenSize"/>.
         /// </summary>
-        /// <param name="cameraIndex">The index of the camera to use for the calculation.</param>
-        /// <param name="camRotation">Optional camera rotation (X-axis) to apply during calculation.
-        /// If null, uses the camera's current rotation.
-        /// This is useful for knowing the screen size of the raised track ahead of time</param>
-        /// <returns>A Vector2 containing the lane width (x) and height (y) in screen pixels or Vector2.zero if the camera index is invalid.</returns>
-        private Vector2 GetTrackScreenSize(int cameraIndex, float? camRotation = null)
+        /// <param name="cameraIndex">The index of the highway camera to use.</param>
+        /// <param name="camRotation">Optional camera rotation (X-axis) to apply during calculation.</param>
+        /// <returns>A bounds rect in screen pixels, or null if unavailable.</returns>
+        public Rect? GetTrackBoundsScreenSpace(int cameraIndex, float? camRotation = null)
         {
             if (cameraIndex < 0 || cameraIndex >= _cameras.Count)
             {
                 YargLogger.LogFormatError("Invalid camera index: {0}", cameraIndex);
-                return Vector2.zero;
+                return null;
             }
 
             var camera = _cameras[cameraIndex];
             var trackPosition = _highwayPositions[cameraIndex];
             var originalRotation = camera.transform.localRotation;
 
-            // Apply custom rotation for the calculation if needed (e.g. for raised highway position)
             if (camRotation.HasValue)
             {
                 camera.transform.localRotation = Quaternion.Euler(new Vector3().WithX(camRotation.Value));
                 _camViewMatrices[cameraIndex] = camera.worldToCameraMatrix;
             }
 
-            // Get the world space positions of the track corners assuming the screen bottom is the widest part of the track
-            float halfWidth = TrackPlayer.TRACK_WIDTH / 2f;
-            var trackBottom = FindTrackBottom(camera, trackPosition);
-            var trackTop = _zeroFadePositions[cameraIndex];
+            try
+            {
+                float halfWidth = TrackPlayer.TRACK_WIDTH / 2f;
+                var trackBottom = FindTrackBottom(camera, trackPosition);
+                var trackTop = _zeroFadePositions[cameraIndex];
 
-            // World space
-            Vector3 bottomLeft = new Vector3(trackPosition.x - halfWidth, trackPosition.y, trackBottom);
-            Vector3 bottomRight = new Vector3(trackPosition.x + halfWidth, trackPosition.y, trackBottom);
-            Vector3 topLeft = new Vector3(trackPosition.x - halfWidth, trackPosition.y, trackTop);
+                // World space corners for the visible track segment
+                Vector3 bottomLeft = new Vector3(trackPosition.x - halfWidth, trackPosition.y, trackBottom);
+                Vector3 bottomRight = new Vector3(trackPosition.x + halfWidth, trackPosition.y, trackBottom);
+                Vector3 topLeft = new Vector3(trackPosition.x - halfWidth, trackPosition.y, trackTop);
+                Vector3 topRight = new Vector3(trackPosition.x + halfWidth, trackPosition.y, trackTop);
 
-            // Viewport space
-            Vector2 viewportBottomLeft = WorldToViewport(bottomLeft, cameraIndex);
-            Vector2 viewportBottomRight = WorldToViewport(bottomRight, cameraIndex);
-            Vector2 viewportTopLeft = WorldToViewport(topLeft, cameraIndex);
-            float viewportWidth = Mathf.Abs(viewportBottomRight.x - viewportBottomLeft.x);
-            float viewportHeight = Mathf.Abs(viewportTopLeft.y - viewportBottomLeft.y);
+                // Viewport space
+                Vector2 viewportBottomLeft = WorldToViewport(bottomLeft, cameraIndex);
+                Vector2 viewportBottomRight = WorldToViewport(bottomRight, cameraIndex);
+                Vector2 viewportTopLeft = WorldToViewport(topLeft, cameraIndex);
+                Vector2 viewportTopRight = WorldToViewport(topRight, cameraIndex);
 
-            // Screen space
-            float widthPixels = viewportWidth * Screen.width;
-            float heightPixels = viewportHeight * Screen.height;
+                if (viewportBottomLeft.HasNaN() ||
+                    viewportBottomRight.HasNaN() ||
+                    viewportTopLeft.HasNaN() ||
+                    viewportTopRight.HasNaN())
+                {
+                    return null;
+                }
 
-            // Restore the original camera rotation
-            camera.transform.localRotation = originalRotation;
-            _camViewMatrices[cameraIndex] = camera.worldToCameraMatrix;
+                // Screen space (same Y conversion as GetTrackPositionScreenSpace)
+                Vector2 screenBottomLeft = ViewportToScreen(viewportBottomLeft);
+                Vector2 screenBottomRight = ViewportToScreen(viewportBottomRight);
+                Vector2 screenTopLeft = ViewportToScreen(viewportTopLeft);
+                Vector2 screenTopRight = ViewportToScreen(viewportTopRight);
 
-            return new Vector2(widthPixels, heightPixels);
+                return GetBoundsRect(screenBottomLeft, screenBottomRight, screenTopLeft, screenTopRight);
+            }
+            finally
+            {
+                //Reset camera rotation to original position
+                camera.transform.localRotation = originalRotation;
+                _camViewMatrices[cameraIndex] = camera.worldToCameraMatrix;
+            }
         }
 
         // Find the actual bottom z value of the track by raycasting from the bottom center of the screen.
@@ -635,6 +667,50 @@ namespace YARG.Gameplay.Visuals
             }
             var bottomIntersection = bottomRay.GetPoint(enter);
             return bottomIntersection.z;
+        }
+
+        /// <summary>
+        /// Calculates the width and height of the visible track in screen space (pixels).
+        /// This considers the top of the track to be the zero fade position.
+        /// </summary>
+        /// <param name="cameraIndex">The index of the camera to use for the calculation.</param>
+        /// <param name="camRotation">Optional camera rotation (X-axis) to apply during calculation.
+        /// If null, uses the camera's current rotation.
+        /// This is useful for knowing the screen size of the raised track ahead of time</param>
+        /// <returns>A Vector2 containing the lane width (x) and height (y) in screen pixels or Vector2.zero if the camera index is invalid.</returns>
+        public Vector2 GetTrackScreenSize(int cameraIndex, float? camRotation = null)
+        {
+            return GetTrackBoundsScreenSpace(cameraIndex, camRotation)?.size ?? Vector2.zero;
+        }
+
+        private static Vector2 ViewportToScreen(Vector2 viewportPosition)
+        {
+            return new Vector2(viewportPosition.x * Screen.width, (1f - viewportPosition.y) * Screen.height);
+        }
+
+        /// <summary>
+        /// Builds a rect that bounds the 4 points
+        /// </summary>
+        private static Rect GetBoundsRect(Vector2 bottomLeft, Vector2 bottomRight, Vector2 topLeft, Vector2 topRight)
+        {
+            var min = Vector2.Min(
+                Vector2.Min(bottomLeft, bottomRight),
+                Vector2.Min(topLeft, topRight)
+                );
+            var max = Vector2.Max(
+                Vector2.Max(bottomLeft, bottomRight),
+                Vector2.Max(topLeft, topRight)
+                );
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+
+    }
+
+    internal static class HighwayCameraRenderingVector2Extensions
+    {
+        public static bool HasNaN(this Vector2 point)
+        {
+            return float.IsNaN(point.x) || float.IsNaN(point.y);
         }
     }
 }
