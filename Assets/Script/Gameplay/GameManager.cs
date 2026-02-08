@@ -252,6 +252,11 @@ namespace YARG.Gameplay
             // Pause/unpause
             if (Keyboard.current.escapeKey.wasPressedThisFrame)
             {
+                if (_draggableHud.EditMode)
+                {
+                    SetEditHUD(false);
+                }
+
                 if ((!IsPractice || PracticeManager.HasSelectedSection) &&
                     !DialogManager.Instance.IsDialogShowing &&
                     !PlayerHasFailed)
@@ -756,6 +761,11 @@ namespace YARG.Gameplay
             {
                 // Pause
                 case MenuAction.Start:
+                    if (_draggableHud.EditMode)
+                    {
+                        SetEditHUD(false);
+                    }
+
                     if ((!IsPractice || PracticeManager.HasSelectedSection) && !DialogManager.Instance.IsDialogShowing && !PlayerHasFailed)
                     {
                         SetPaused(!_songRunner.Paused);
