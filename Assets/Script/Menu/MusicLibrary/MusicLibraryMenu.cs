@@ -708,7 +708,7 @@ namespace YARG.Menu.MusicLibrary
             StemSettings.ApplySettings = true;
         }
 
-        private void Back()
+        public void Back()
         {
             if (_searchField.IsSearching)
             {
