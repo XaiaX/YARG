@@ -45,10 +45,6 @@ namespace YARG.Menu.MusicLibrary
         [SerializeField]
         private Image _charterBackground;
         [SerializeField]
-        private Image _bandDifficultyBar;
-        [SerializeField]
-        private TextMeshProUGUI _bandDifficultyLabel;
-        [SerializeField]
         private TextMeshProUGUI _songRatingLabel;
         [SerializeField]
         private HelpBarButton _playButton;
@@ -234,7 +230,7 @@ namespace YARG.Menu.MusicLibrary
             _year.text = songEntry.ParsedYear;
             _songRatingLabel.text = songEntry.SongRating switch
             {
-                SongRating.Unspecified => "?",
+                SongRating.Unspecified => "NR",
                 SongRating.Family_Friendly => "FF",
                 SongRating.Supervision_Recommended => "SR",
                 SongRating.Mature => "MC",
@@ -363,7 +359,12 @@ namespace YARG.Menu.MusicLibrary
             }
 
             _difficultyRings[3].SetInfo("keys", Instrument.Keys, entry[Instrument.Keys]);
-            _difficultyRings[4].SetInfo("vocals", Instrument.Vocals, entry[Instrument.Vocals]);
+            _difficultyRings[4].SetInfo(entry.VocalsCount switch
+            {
+                >= 3 => "harmVocals",
+                2    => "twoVocals",
+                _    => "vocals",
+            }, Instrument.Vocals, entry[Instrument.Vocals]);
 
             // Protar or Co-op
             if (entry.HasInstrument(Instrument.ProGuitar_17Fret) || entry.HasInstrument(Instrument.ProGuitar_22Fret))
@@ -401,32 +402,7 @@ namespace YARG.Menu.MusicLibrary
 
             _difficultyRings[7].SetInfo("eliteDrums", Instrument.EliteDrums, entry[Instrument.EliteDrums]);
             _difficultyRings[8].SetInfo("realKeys", Instrument.ProKeys, entry[Instrument.ProKeys]);
-            _difficultyRings[9].SetInfo(
-                entry.VocalsCount switch
-                {
-                    >= 3 => "harmVocals",
-                    _    => "twoVocals"
-                },
-                Instrument.Harmony,
-                entry[Instrument.Harmony]
-            );
-
-            var intensity = entry[Instrument.Band].Intensity;
-            _bandDifficultyLabel.text = intensity == -1 ? "-" : intensity.ToString();
-            _bandDifficultyBar.fillAmount = intensity < 0 ? 5 : Math.Clamp((float) intensity / 5, 0, 1);
-
-            if (intensity == -1)
-            {
-                _bandDifficultyBar.color = _bandDifficultyGray;
-            }
-            else if (intensity >= 6)
-            {
-                _bandDifficultyBar.color = _bandDifficultyRed;
-            }
-            else
-            {
-                _bandDifficultyBar.color = _bandDifficultyBlue;
-            }
+            _difficultyRings[9].SetInfo("band", Instrument.Band, entry[Instrument.Band]);
         }
 
         public void PrimaryButtonClick()
