@@ -43,8 +43,6 @@ namespace YARG.Menu.MusicLibrary
         [SerializeField]
         private Image _sourceBackground;
         [SerializeField]
-        private Image _charterBackground;
-        [SerializeField]
         private TextMeshProUGUI _songRatingLabel;
         [SerializeField]
         private HelpBarButton _playButton;
@@ -194,7 +192,6 @@ namespace YARG.Menu.MusicLibrary
             _album.text = string.Empty;
 
             _sourceBackground.enabled = false;
-            _charterBackground.enabled = false;
 
             _difficultiesDisplay.SetActive(false);
             _playButton.DisableButton();
@@ -258,8 +255,6 @@ namespace YARG.Menu.MusicLibrary
 
             if (icon is not null)
             {
-                _charterBackground.enabled = true;
-                _charterBackground.sprite = icon;
                 _sourceBackground.enabled = true;
                 _sourceBackground.sprite = icon;
             }
