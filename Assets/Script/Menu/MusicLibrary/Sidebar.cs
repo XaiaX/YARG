@@ -416,7 +416,7 @@ namespace YARG.Menu.MusicLibrary
                 1f,
                 _ => _musicLibraryMenu.ExecuteGreenHoldAction()
             ));
-            _playButton.SetDefaultButtonState(HelpBarButton.ButtonState.PRESS);
+            _playButton.SetDefaultButtonState(HelpBarButton.ButtonState.HOVER);
 
             if (_musicLibraryMenu.CurrentSelection is not SongViewType)
             {
