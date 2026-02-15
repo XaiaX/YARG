@@ -1,18 +1,17 @@
-﻿using TMPro;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using YARG.Core.Input;
 using YARG.Menu.Data;
 using YARG.Menu.Navigation;
-using static YARG.Menu.Persistent.ButtonHoldHelper.HoldResult;
 
 namespace YARG.Menu.Persistent
 {
     public class HelpBarButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler
     {
         // Delay before showing hold fill so short taps do not flash the bar.
-        private const float DELAY_FILL_SECONDS = 0.05f;
+        private const float DELAY_FILL_SECONDS = 0.25f;
 
         [SerializeField]
         private Image _buttonImage;
@@ -31,6 +30,8 @@ namespace YARG.Menu.Persistent
         [SerializeField]
         private TextMeshProUGUI _buttonText;
 
+        private HoldTracker _holdTracker;
+
         private NavigationScheme.Entry? _entry;
 
         private Color _buttonBackgroundColor;
@@ -42,14 +43,14 @@ namespace YARG.Menu.Persistent
         private readonly Color _maskableClear = new(0f, 0f, 0f, 0.01f);
         private readonly Color _coolGrey = new(123 / 255f, 127 / 255f, 154 / 255f, 1f);
 
-        private ButtonHoldHelper _buttonHoldHelper;
-
         private bool _clickable = true;
         private bool _isPointerOver;
+        private bool _isPointerHolding;
+        private ButtonState _defaultState = ButtonState.NONE;
 
         private ButtonState _currentState = ButtonState.NONE;
 
-        private enum ButtonState
+        public enum ButtonState
         {
             NONE,
             HOVER,
@@ -62,9 +63,20 @@ namespace YARG.Menu.Persistent
         {
             _clickable = clickable;
             _entry = entry;
-            _buttonHoldHelper = entry.HasHoldHandler
-                ? new ButtonHoldHelper(entry.HoldSeconds)
-                : null;
+
+            if (entry.HasHoldHandler)
+            {
+                _holdTracker ??= new HoldTracker(0f);
+                _holdTracker.ClearEvents();
+                _holdTracker.Configure(entry.HoldSeconds, DELAY_FILL_SECONDS);
+                _holdTracker.OnHoldProgress += HandleHoldProgress;
+                _holdTracker.OnClick += HandleClick;
+                _holdTracker.OnHoldComplete += HandleHoldComplete;
+                _holdTracker.OnHoldCancelled += HandleHoldCancelled;
+            }
+
+            _isPointerHolding = false;
+            _defaultState = ButtonState.NONE;
 
             var icons = MenuData.NavigationIcons;
             _buttonBackgroundColor = icons.GetColor(entry.Action);
@@ -89,7 +101,7 @@ namespace YARG.Menu.Persistent
             // Set sprite and fill color, then apply idle state
             _buttonImage.sprite = icons.GetIcon(entry.Action);
             _buttonHoldFill.color = _buttonFillColor;
-            ApplyState(ButtonState.NONE);
+            ApplyState(_defaultState);
         }
 
         public void OnPointerEnter(PointerEventData eventData)
@@ -111,7 +123,7 @@ namespace YARG.Menu.Persistent
                 return;
             }
 
-            ApplyState(ButtonState.NONE);
+            ApplyState(_defaultState);
         }
 
         public void OnPointerDown(PointerEventData eventData)
@@ -121,10 +133,11 @@ namespace YARG.Menu.Persistent
                 return;
             }
 
-            if (_buttonHoldHelper != null)
+            if (_entry?.HasHoldHandler == true)
             {
+                _isPointerHolding = true;
+                _holdTracker.StartHolding();
                 ApplyState(ButtonState.HOLD);
-                _buttonHoldHelper.StartHolding();
             }
             else
             {
@@ -140,14 +153,15 @@ namespace YARG.Menu.Persistent
                 return;
             }
 
-            _buttonHoldFill.fillAmount = 0f;
-            ApplyState(_isPointerOver ? ButtonState.HOVER : ButtonState.NONE);
-
-            var result = _buttonHoldHelper?.StopHolding();
-            if (result == CLICK)
+            if (_isPointerHolding)
             {
-                _entry?.Invoke();
+                _holdTracker.StopHolding();
+                _isPointerHolding = false;
             }
+
+            _buttonHoldFill.fillAmount = 0f;
+            ApplyState(_isPointerOver ? ButtonState.HOVER : _defaultState);
+            _entry?.InvokeHoldOffHandler();
         }
 
         public void DisableButton()
@@ -159,7 +173,36 @@ namespace YARG.Menu.Persistent
         public void EnableButton()
         {
             _clickable = true;
-            ApplyState(ButtonState.NONE);
+            ApplyState(_defaultState);
+        }
+
+        public void SetDefaultButtonState(ButtonState state)
+        {
+            _defaultState = state;
+            ApplyState(_defaultState);
+        }
+
+        private void HandleHoldProgress(float visualProgress)
+        {
+            UpdateButtonFillAmount(visualProgress);
+        }
+
+        private void HandleClick()
+        {
+            _entry?.Invoke();
+        }
+
+        private void HandleHoldComplete()
+        {
+            _isPointerHolding = false;
+            _entry?.InvokeHoldHandler();
+            _buttonHoldFill.fillAmount = 0f;
+            ApplyState(_isPointerOver ? ButtonState.HOVER : _defaultState);
+        }
+
+        private void HandleHoldCancelled()
+        {
+            // Visual reset happens in OnPointerUp
         }
 
         private void ApplyState(ButtonState state)
@@ -208,19 +251,20 @@ namespace YARG.Menu.Persistent
 
         private void Update()
         {
-            if (_buttonHoldHelper == null)
+            if (_entry?.HasHoldHandler != true)
             {
                 return;
             }
 
-            if (!HandlePointerHold())
+            _holdTracker?.Tick();
+
+            if (!_isPointerHolding)
             {
                 HandleControllerHold();
             }
         }
 
-
-        // Controller hold.  This only handles visuals, the actual hold action is
+        // Controller hold, not pointer hold.  This only handles visuals, the actual hold action is
         // triggered by the Navigator when the hold is complete
         private void HandleControllerHold()
         {
@@ -229,55 +273,18 @@ namespace YARG.Menu.Persistent
                 : -1f;
             if (rawHoldProgress >= 0f)
             {
-                var visualHoldProgress = GetVisualHoldProgress(rawHoldProgress);
-                UpdateButtonFillAmount(visualHoldProgress);
+                if (_currentState != ButtonState.HOLD)
+                {
+                    ApplyState(ButtonState.HOLD);
+                }
+                var visualProgress = _holdTracker.GetVisualHoldProgress(rawHoldProgress);
+                UpdateButtonFillAmount(visualProgress);
             }
-            else if (_buttonHoldFill.fillAmount > 0f)
+            else if (_buttonHoldFill.fillAmount > 0f || _currentState == ButtonState.HOLD)
             {
                 _buttonHoldFill.fillAmount = 0f;
-                ApplyState(_isPointerOver ? ButtonState.HOVER : ButtonState.NONE);
+                ApplyState(_isPointerOver ? ButtonState.HOVER : _defaultState);
             }
-        }
-
-        private bool HandlePointerHold()
-        {
-            if (_buttonHoldHelper is not { IsHolding: true })
-            {
-                return false;
-            }
-
-            var rawHoldProgress = _buttonHoldHelper.HoldProgress;
-            var visualHoldProgress = GetVisualHoldProgress(rawHoldProgress);
-            UpdateButtonFillAmount(visualHoldProgress);
-
-            var isHoldComplete = rawHoldProgress >= 1f;
-            if (isHoldComplete)
-            {
-                DoHoldAction();
-            }
-            return true;
-        }
-
-        /// <summary>
-        /// Remaps the progress to include a delay, so that the visual fill progress doesn't flash on click
-        /// </summary>
-        private float GetVisualHoldProgress(float rawProgress)
-        {
-            var holdSeconds = _entry?.HoldSeconds ?? 0f;
-            if (holdSeconds <= 0f)
-            {
-                return rawProgress;
-            }
-
-            var delayProgress = Mathf.Clamp01(DELAY_FILL_SECONDS / holdSeconds);
-            var adjustedRange = 1f - delayProgress;
-            if (rawProgress <= delayProgress)
-            {
-                // Don't show visuals during the delay period
-                return 0f;
-            }
-
-            return Mathf.Clamp01((rawProgress - delayProgress) / (adjustedRange + Mathf.Epsilon));
         }
 
         private void UpdateButtonFillAmount(float amount)
@@ -287,14 +294,6 @@ namespace YARG.Menu.Persistent
             {
                 ApplyState(ButtonState.HOLD);
             }
-        }
-
-        private void DoHoldAction()
-        {
-            _buttonHoldHelper?.StopHolding();
-            _entry?.InvokeHoldHandler();
-            _buttonHoldFill.fillAmount = 0f;
-            ApplyState(_isPointerOver ? ButtonState.HOVER : ButtonState.NONE);
         }
     }
 }
