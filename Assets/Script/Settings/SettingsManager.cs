@@ -75,6 +75,7 @@ namespace YARG.Settings
                 new HeaderMetadata("ScanningOptions"),
                 nameof(Settings.AllowDuplicateSongs),
                 nameof(Settings.UseFullDirectoryForPlaylists),
+                nameof(Settings.StandardizeGenres),
                 new HeaderMetadata("MusicLibrary"),
                 nameof(Settings.ShowFavoriteButton),
                 nameof(Settings.DifficultyRings),
