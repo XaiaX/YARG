@@ -1392,10 +1392,15 @@
                 "PauseName": "Video Calibration (ms)",
                 "Description": "Video calibration in milliseconds. Use the calibrator to automatically calibrate. This accounts for delays between the game's processing and the actual frame being displayed."
             },
-            "AutoCalibration": {
-                "Name": "Auto Calibration",
-                "PauseName": "Auto Calibration",
+            "AutoCalibrateAudio": {
+                "Name": "Auto Calibrate Audio",
+                "PauseName": "Auto Calibrate Audio",
                 "Description": "Automatically adjusts calibration during gameplay based on your input timing."
+            },
+            "AutoCalibrateVideo": {
+                "Name": "Auto Calibrate Video",
+                "PauseName": "Auto Calibrate Video",
+                "Description": "Placeholder setting. Currently has no effect."
             },
             "VocalMonitoring": {
                 "Name": "Vocal Monitoring Volume",
