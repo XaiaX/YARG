@@ -259,11 +259,6 @@ namespace YARG.Venue.Characters
                 return;
             }
 
-            if (!_wasVisible)
-            {
-                YargLogger.LogWarning($"Character {name} became visible");
-            }
-
             _wasVisible = true;
         }
 
@@ -280,8 +275,6 @@ namespace YARG.Venue.Characters
             }
 
             _wasVisible = false;
-
-            YargLogger.LogWarning($"Character {name} became invisible");
 
             if (!_hasBounds)
             {
