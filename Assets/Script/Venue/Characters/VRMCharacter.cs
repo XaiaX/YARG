@@ -4,8 +4,10 @@ using DG.Tweening;
 using UnityEngine;
 using UniVRM10;
 using YARG.Core.Chart;
+using YARG.Core.Logging;
 using LipsyncType = YARG.Core.Chart.LipsyncEvent.LipsyncType;
 using YARG.Gameplay;
+using YARG.Venue.VenueCamera;
 
 namespace YARG.Venue.Characters
 {
@@ -34,10 +36,32 @@ namespace YARG.Venue.Characters
         private ExpressionKey _lipsyncKey;
         private bool          _hasVrmInstance;
 
+        private Vector3 _initialPosition;
+
+        // For checking visibility
+        private MeshRenderer _visibilityRenderer;
+        private MeshFilter   _visibilityFilter;
+        private Bounds       _visibilityBounds;
+        private bool         _hasBounds;
+
+        private bool _wasVisible;
+
+        private static Mesh     _unitCubeMesh;
+        private static Material _invisibleMaterial;
+
         private bool HasLipsyncEvents => _lipsyncEvents != null && _lipsyncEvents.Count > 0;
+
+        private CameraManager _cameraManager;
 
         public override void Initialize(CharacterManager characterManager)
         {
+            _initialPosition = transform.position;
+
+            // Find camera manager
+            _cameraManager = FindFirstObjectByType<CameraManager>();
+
+            SetupBoundsCheck();
+
             _lipsyncKey = GetExpressionKey(_expressionKey);
             _characterManager = characterManager;
             VrmInstance = GetComponent<Vrm10Instance>();
@@ -59,6 +83,16 @@ namespace YARG.Venue.Characters
         {
             ProcessLipsync(_characterManager.SongTime);
             base.Update();
+        }
+
+        private void LateUpdate()
+        {
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
+            UpdateBounds();
         }
 
         private void ProcessLipsync(double time)
@@ -130,6 +164,151 @@ namespace YARG.Venue.Characters
             }
 
             _expression.SetWeight(key, 0f);
+        }
+
+        private void SetupBoundsCheck()
+        {
+            if (_visibilityRenderer != null)
+            {
+                return;
+            }
+
+            SetupBoundsCheckResources();
+
+            var boundsObject = new GameObject("Bounds Checker");
+            boundsObject.transform.SetParent(transform, false);
+            boundsObject.AddComponent<VisibilityForwarder>().Initialize(this);
+            boundsObject.layer = LayerMask.NameToLayer("Venue");
+
+            _visibilityRenderer = boundsObject.AddComponent<MeshRenderer>();
+            _visibilityFilter = boundsObject.AddComponent<MeshFilter>();
+
+            _visibilityFilter.sharedMesh = _unitCubeMesh;
+            _visibilityRenderer.sharedMaterial = _invisibleMaterial;
+            _visibilityRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _visibilityRenderer.receiveShadows = false;
+            _visibilityRenderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            _visibilityRenderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+            _visibilityRenderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+
+            _visibilityRenderer.transform.localPosition = Vector3.zero;
+            _visibilityRenderer.transform.localRotation = Quaternion.identity;
+            _visibilityRenderer.transform.localScale = Vector3.one;
+
+            _wasVisible = false;
+            _hasBounds = false;
+            _visibilityBounds = default;
+        }
+
+        private static void SetupBoundsCheckResources()
+        {
+            if (_unitCubeMesh == null)
+            {
+                var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                _unitCubeMesh = tmp.GetComponent<MeshFilter>().mesh;
+                Destroy(tmp);
+            }
+
+            if (_invisibleMaterial == null)
+            {
+                _invisibleMaterial = new Material(Shader.Find("Shader Graphs/LitFadeTransparent")) { color = Color.clear };
+            }
+        }
+
+        private void UpdateBounds()
+        {
+            var renderers = GetComponentsInChildren<Renderer>(false);
+
+            bool hasAny = false;
+            Bounds worldBounds = default;
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var r = renderers[i];
+                if (r == null || r == _visibilityRenderer)
+                {
+                    continue;
+                }
+
+                if (!hasAny)
+                {
+                    worldBounds = r.bounds;
+                    hasAny = true;
+                }
+                else
+                {
+                    worldBounds.Encapsulate(r.bounds);
+                }
+            }
+
+            _hasBounds = hasAny;
+            _visibilityBounds = worldBounds;
+
+            if (hasAny)
+            {
+                _visibilityRenderer.transform.position = worldBounds.center;
+                _visibilityRenderer.transform.rotation = Quaternion.identity;
+                _visibilityRenderer.transform.localScale = worldBounds.size;
+            }
+        }
+
+        private void OnBecameVisible()
+        {
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
+            if (!_wasVisible)
+            {
+                YargLogger.LogWarning($"Character {name} became visible");
+            }
+
+            _wasVisible = true;
+        }
+
+        private void OnBecameInvisible()
+        {
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
+            if (!_wasVisible)
+            {
+                return;
+            }
+
+            _wasVisible = false;
+
+            YargLogger.LogWarning($"Character {name} became invisible");
+
+            if (!_hasBounds)
+            {
+                return;
+            }
+
+            var cam = _cameraManager?.CurrentCamera;
+            if (cam == null)
+            {
+                return;
+            }
+
+            Vector3 destination = new Vector3(_initialPosition.x, transform.position.y, _initialPosition.z);
+
+            if (WouldBeVisible(cam, _visibilityBounds))
+            {
+                return;
+            }
+
+            // Reset X and Z pos to their initial values
+            transform.position = destination;
+        }
+
+        private static bool WouldBeVisible(Camera cam, Bounds bounds)
+        {
+            var planes = GeometryUtility.CalculateFrustumPlanes(cam);
+            return GeometryUtility.TestPlanesAABB(planes, bounds);
         }
 
         private static bool IsMouthShape(LipsyncType type)
@@ -223,6 +402,26 @@ namespace YARG.Venue.Characters
             key = default;
 
             return false;
+        }
+
+        private sealed class VisibilityForwarder : MonoBehaviour
+        {
+            private VRMCharacter _owner;
+
+            public void Initialize(VRMCharacter owner)
+            {
+                _owner = owner;
+            }
+
+            private void OnBecameVisible()
+            {
+                _owner?.OnBecameVisible();
+            }
+
+            private void OnBecameInvisible()
+            {
+                _owner?.OnBecameInvisible();
+            }
         }
     }
 }
