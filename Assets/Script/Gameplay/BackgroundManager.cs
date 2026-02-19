@@ -532,12 +532,7 @@ namespace YARG.Gameplay
 
             // Lastly, make sure the new character and all its children are in the Venue layer
             var layerIndex = LayerMask.NameToLayer("Venue");
-            character.gameObject.layer = layerIndex;
-            var children = character.GetComponentsInChildren<Transform>();
-            foreach (var child in children)
-            {
-                child.gameObject.layer = layerIndex;
-            }
+            SetLayer(newCharacter, layerIndex);
         }
 
         private async UniTask<AssetBundle> LoadMetalShaders(AssetBundle bundle, GameObject bg)
@@ -687,6 +682,15 @@ namespace YARG.Gameplay
                         cinemachine.LookAt = newObject.transform;
                     }
                 }
+            }
+        }
+
+        private void SetLayer(GameObject go, int layer)
+        {
+            go.layer = layer;
+            foreach (Transform child in go.transform)
+            {
+                SetLayer(child.gameObject, layer);
             }
         }
 
