@@ -34,6 +34,8 @@ namespace YARG.Venue.Characters
         private ExpressionKey _lipsyncKey;
         private bool          _hasVrmInstance;
 
+        private bool HasLipsyncEvents => _lipsyncEvents != null && _lipsyncEvents.Count > 0;
+
         public override void Initialize(CharacterManager characterManager)
         {
             _lipsyncKey = GetExpressionKey(_expressionKey);
@@ -100,7 +102,8 @@ namespace YARG.Venue.Characters
         public override void OnNote<T>(Note<T> note)
         {
             // If _useFullLipsync is set, we don't use the default expression or the note-based trigger
-            if (!_hasVrmInstance || _useFullLipsync)
+            // ...unless the chart doesn't have lipsync events
+            if (!_hasVrmInstance || (_useFullLipsync && HasLipsyncEvents))
             {
                 return;
             }

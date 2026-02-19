@@ -30,6 +30,7 @@ namespace YARG.Venue.Characters
             Keys,
         }
 
+        [Tooltip("This only needs to be set if you are building the character into a venue.\n\nIt is handled automatically for .yargchar exports.")]
         [SerializeField]
         protected CharacterManager _characterManager;
 
@@ -119,6 +120,7 @@ namespace YARG.Venue.Characters
 
         public virtual void Initialize(CharacterManager characterManager)
         {
+            _characterManager = characterManager;
             _animator = GetComponent<Animator>();
             _animatorController = _animator.runtimeAnimatorController;
 

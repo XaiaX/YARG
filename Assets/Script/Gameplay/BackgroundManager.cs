@@ -167,55 +167,7 @@ namespace YARG.Gameplay
             switch (_type)
             {
                 case BackgroundType.Yarground:
-                    var bundle = AssetBundle.LoadFromStream(result.Stream);
-                    AssetBundle shaderBundle = null;
-
-                    _venueOutput.gameObject.SetActive(true);
-                    // KEEP THIS PATH LOWERCASE
-                    // Breaks things for other platforms, because Unity
-                    var bg = (GameObject) await bundle.LoadAssetAsync<GameObject>(
-                        BundleBackgroundManager.BACKGROUND_PREFAB_PATH.ToLowerInvariant());
-                    var renderers = bg.GetComponentsInChildren<Renderer>(true);
-
-                    // Load Metal shaders, if necessary
-                    shaderBundle = await LoadMetalShaders(bundle, bg);
-
-                    // Hookup song-specific textures
-                    var textureManager = GetComponent<TextureManager>();
-                    // Load SongBackground here to determine if textures need to be replaced
-                    var songBackground = GameManager.Song.LoadBackground();
-                    foreach (var renderer in renderers)
-                    {
-                        foreach (var material in renderer.sharedMaterials)
-                        {
-                            textureManager.ProcessMaterial(material, songBackground?.Type);
-                        }
-                    }
-
-                    var bgInstance = Instantiate(bg);
-                    var bundleBackgroundManager = bgInstance.GetComponent<BundleBackgroundManager>();
-                    bundleBackgroundManager.Bundle = bundle;
-                    bundleBackgroundManager.ShaderBundle = shaderBundle;
-                    bundleBackgroundManager.SetupVenueCamera(bgInstance);
-                    bundleBackgroundManager.LimitVenueLights(bgInstance);
-
-                    // Destroy the default camera (venue has its own)
-                    Destroy(_videoPlayer.targetCamera.gameObject);
-
-                    if (textureManager.VideoTexFound())
-                    {
-                        SetUpVideoTexture(songBackground);
-                    }
-
-                    LoadCustomCharacter(bgInstance);
-
-                    // Initialize CharacterManager, if it exists
-                    var characterManager = bgInstance.GetComponentInChildren<CharacterManager>();
-                    if (characterManager != null)
-                    {
-                        characterManager.Initialize();
-                    }
-
+                    LoadYarground(result);
                     break;
                 case BackgroundType.Video:
                     LoadVideoBackground(result);
@@ -225,6 +177,58 @@ namespace YARG.Gameplay
                     _backgroundImage.uvRect = new Rect(0f, 0f, 1f, -1f);
                     _backgroundImage.gameObject.SetActive(true);
                     break;
+            }
+        }
+
+        private async UniTaskVoid LoadYarground(BackgroundResult result)
+        {
+            var bundle = AssetBundle.LoadFromStream(result.Stream);
+            AssetBundle shaderBundle = null;
+
+            _venueOutput.gameObject.SetActive(true);
+            // KEEP THIS PATH LOWERCASE
+            // Breaks things for other platforms, because Unity
+            var bg = (GameObject) await bundle.LoadAssetAsync<GameObject>(
+                BundleBackgroundManager.BACKGROUND_PREFAB_PATH.ToLowerInvariant());
+            var renderers = bg.GetComponentsInChildren<Renderer>(true);
+
+            // Load Metal shaders, if necessary
+            shaderBundle = await LoadMetalShaders(bundle, bg);
+
+            // Hookup song-specific textures
+            var textureManager = GetComponent<TextureManager>();
+            // Load SongBackground here to determine if textures need to be replaced
+            var songBackground = GameManager.Song.LoadBackground();
+            foreach (var renderer in renderers)
+            {
+                foreach (var material in renderer.sharedMaterials)
+                {
+                    textureManager.ProcessMaterial(material, songBackground?.Type);
+                }
+            }
+
+            var bgInstance = Instantiate(bg);
+            var bundleBackgroundManager = bgInstance.GetComponent<BundleBackgroundManager>();
+            bundleBackgroundManager.Bundle = bundle;
+            bundleBackgroundManager.ShaderBundle = shaderBundle;
+            bundleBackgroundManager.SetupVenueCamera(bgInstance);
+            bundleBackgroundManager.LimitVenueLights(bgInstance);
+
+            // Destroy the default camera (venue has its own)
+            Destroy(_videoPlayer.targetCamera.gameObject);
+
+            if (textureManager.VideoTexFound())
+            {
+                SetUpVideoTexture(songBackground);
+            }
+
+            LoadCustomCharacter(bgInstance);
+
+            // Initialize CharacterManager, if it exists
+            var characterManager = bgInstance.GetComponentInChildren<CharacterManager>();
+            if (characterManager != null)
+            {
+                characterManager.Initialize();
             }
         }
 
