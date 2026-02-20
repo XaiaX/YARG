@@ -133,10 +133,9 @@ namespace YARG.Settings.Metadata
         {
             CharacterFile = path;
 
-            // Destroy old character preview if it exists
+            // If the world instance doesn't exist, just skip
             if (_worldInstance == null)
             {
-                YargLogger.LogError("Can't replace character in a preview world that doesn't exist!");
                 return;
             }
 
