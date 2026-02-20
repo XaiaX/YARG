@@ -1,4 +1,5 @@
-﻿using TMPro;
+﻿using Cysharp.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
@@ -64,6 +65,12 @@ namespace YARG.Menu.ScoreScreen
         private TextMeshProUGUI _bandBonusScore;
         [SerializeField]
         private TextMeshProUGUI _averageOffset;
+
+        [SerializeField]
+        private RectTransform _advancedStatsRect;
+        [SerializeField]
+        private RectTransform _basicStatsRect;
+
 
         private ScoreCardColorizer _colorizer;
 
@@ -138,7 +145,13 @@ namespace YARG.Menu.ScoreScreen
             _notesMissed.text = WrapWithColor(Stats.NotesMissed);
             _starpowerPhrases.text = $"{WrapWithColor(Stats.StarPowerPhrasesHit)} / {Stats.TotalStarPowerPhrases}";
             _bandBonusScore.text = WrapWithColor(Stats.BandBonusScore.ToString("N0"));
-            _averageOffset.text = WrapWithColor(Mathf.RoundToInt((float)(Stats.GetAverageOffset() * 1000.0)).ToString() + " ms");
+
+            //Average offset
+            int offsetMs = Mathf.RoundToInt((float)(Stats.GetAverageOffset() * 1000.0));
+            using var offsetText = ZString.CreateStringBuilder();
+            offsetText.Append(WrapWithColor(offsetMs));
+            offsetText.Append(" ms");
+            _averageOffset.text = offsetText.ToString();
 
             // Set background icon
             _instrumentIcon.sprite = Addressables
@@ -183,6 +196,18 @@ namespace YARG.Menu.ScoreScreen
         {
             _statsRect.MoveVerticalInUnits(delta);
         }
+
+        protected void ScrollStatsToTop()
+        {
+            _statsRect.verticalNormalizedPosition = 1f;
+        }
+
+        public void SetAdvancedStatsShown(bool showAdvanced)
+        {
+            _advancedStatsRect.gameObject.SetActive(showAdvanced);
+            _basicStatsRect.gameObject.SetActive(!showAdvanced);
+            ScrollStatsToTop();
+        }
     }
 
     public interface IScoreCard<out T> where T : BaseStats
@@ -190,5 +215,6 @@ namespace YARG.Menu.ScoreScreen
         YargPlayer Player { get; }
         void ScrollStats(float delta);
         void SetCardContents();
+        void SetAdvancedStatsShown(bool showAdvanced);
     }
 }
