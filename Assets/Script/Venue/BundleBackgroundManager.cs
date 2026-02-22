@@ -85,7 +85,10 @@ namespace YARG.Venue
             {
                 foreach (var bundle in ShaderBundles)
                 {
-                    bundle.Unload(true);
+                    if (bundle != null)
+                    {
+                        bundle.Unload(true);
+                    }
                 }
 
                 ShaderBundles.Clear();
@@ -95,7 +98,10 @@ namespace YARG.Venue
             {
                 foreach (var bundle in CharacterBundles)
                 {
-                    bundle.Unload(true);
+                    if (bundle != null)
+                    {
+                        bundle.Unload(true);
+                    }
                 }
 
                 CharacterBundles.Clear();

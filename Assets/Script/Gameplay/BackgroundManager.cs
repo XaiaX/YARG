@@ -719,11 +719,6 @@ namespace YARG.Gameplay
                 VIDEO_PATH = null;
             }
 
-            if (_characterBundle != null)
-            {
-                _characterBundle.Unload(true);
-                _characterBundle = null;
-            }
 #if UNITY_EDITOR
             if (_usingEditorVenue)
             {
