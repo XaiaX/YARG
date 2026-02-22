@@ -188,6 +188,8 @@ namespace YARG.Settings.Metadata
                 return;
             }
 
+            shaderBundle = await LoadMetalShaders(bundle, _characterPrefab);
+
             if (_previewWorld == null)
             {
                 _previewWorld = Addressables
@@ -199,7 +201,6 @@ namespace YARG.Settings.Metadata
                 _previewScriptInstance = go.GetComponent<CharacterPreview>();
                 _worldInstance = go;
 
-                shaderBundle = await LoadMetalShaders(bundle, _characterPrefab);
                 _characterInstance = _previewScriptInstance.Initialize(_characterPrefab);
             }
             else
