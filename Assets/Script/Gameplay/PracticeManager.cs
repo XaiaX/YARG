@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using UnityEngine;
 using YARG.Core.Chart;
 using YARG.Core.Input;
@@ -106,6 +107,32 @@ namespace YARG.Gameplay
         public void DisplayPracticeMenu()
         {
             GameManager.Pause(showMenu: false);
+
+            if (GlobalVariables.State.SavedInputTime.HasValue)
+            {
+                double endTime = GlobalVariables.State.SavedInputTime.Value;
+                double startTime = Math.Max(0.0, endTime - 10.0);
+
+                var sections = _chart.Sections;
+                if (startTime < endTime && sections.Count > 0)
+                {
+                    // Fall back to sections[0] when startTime or endTime precedes the first
+                    // section — some charts have an unsectioned intro before the first marker.
+                    var startSection = sections[0].Time <= startTime
+                        ? sections.Last(s => s.Time <= startTime)
+                        : sections[0];
+                    var endSection = sections[0].Time <= endTime
+                        ? sections.Last(s => s.Time <= endTime)
+                        : sections[0];
+                    SetPracticeSection(startSection, endSection);
+                    SetAPosition(startTime);
+                    SetBPosition(endTime);
+                    GameManager.SetSongTime(TimeStart, SettingsManager.Settings.PracticeRestartDelay.Value);
+                    _pauseMenu.PushMenu(PauseMenuManager.Menu.PracticePause);
+                    return;
+                }
+            }
+
             _pauseMenu.PushMenu(PauseMenuManager.Menu.SelectSections);
         }
 
