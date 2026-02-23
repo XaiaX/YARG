@@ -12,6 +12,7 @@ namespace YARG.Gameplay
     public class PracticeManager : GameplayBehaviour
     {
         private const double SECTION_RESTART_DELAY = 2;
+        private const double PRACTICE_ENTRY_LOOKBACK = 10; // seconds
 
         [Header("References")]
         [SerializeField]
@@ -108,26 +109,22 @@ namespace YARG.Gameplay
         {
             GameManager.Pause(showMenu: false);
 
-            if (GlobalVariables.State.SavedInputTime.HasValue)
+            var savedInputTime = GlobalVariables.State.SavedInputTime;
+            if (savedInputTime.HasValue)
             {
-                double endTime = GlobalVariables.State.SavedInputTime.Value;
-                double startTime = Math.Max(0.0, endTime - 10.0);
+                double endTime = savedInputTime.Value;
+                double startTime = Math.Max(0.0, endTime - PRACTICE_ENTRY_LOOKBACK);
 
                 var sections = _chart.Sections;
                 if (startTime < endTime && sections.Count > 0)
                 {
-                    // Fall back to sections[0] when startTime or endTime precedes the first
-                    // section — some charts have an unsectioned intro before the first marker.
-                    var startSection = sections[0].Time <= startTime
-                        ? sections.Last(s => s.Time <= startTime)
-                        : sections[0];
-                    var endSection = sections[0].Time <= endTime
-                        ? sections.Last(s => s.Time <= endTime)
-                        : sections[0];
+                    var startSection = FindSectionAtTime(startTime);
+                    var endSection = FindSectionAtTime(endTime);
                     SetPracticeSection(startSection, endSection);
                     SetAPosition(startTime);
                     SetBPosition(endTime);
-                    GameManager.SetSongTime(TimeStart, SettingsManager.Settings.PracticeRestartDelay.Value);
+                    double restartDelay = SettingsManager.Settings.PracticeRestartDelay.Value;
+                    GameManager.SetSongTime(TimeStart, restartDelay);
                     _pauseMenu.PushMenu(PauseMenuManager.Menu.PracticePause);
                     return;
                 }
@@ -259,6 +256,16 @@ namespace YARG.Gameplay
         private Section[] GetSectionsInPractice(uint start, uint end)
         {
             return _chart.Sections.Where(s => s.Tick >= start && s.TickEnd <= end).ToArray();
+        }
+        
+        private Section FindSectionAtTime(double time)
+        {
+            var sections = _chart.Sections;
+            // Fall back to sections[0] when time precedes the first section —
+            // some charts have an unsectioned intro before the first marker.
+            return sections[0].Time <= time
+                ? sections.Last(s => s.Time <= time)
+                : sections[0];
         }
     }
 }
