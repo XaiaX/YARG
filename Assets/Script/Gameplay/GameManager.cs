@@ -56,7 +56,7 @@ namespace YARG.Gameplay
         private DraggableHudManager _draggableHud;
 
         [SerializeField]
-        private GameObject _lyricBar;
+        private LyricBar _lyricBar;
 
         [SerializeField]
         private FailMeter _failMeter;
@@ -325,6 +325,10 @@ namespace YARG.Gameplay
             BackgroundManager.SetTime(_songRunner.SongTime + Song.SongOffsetSeconds);
             VenueCameraManager?.ResetTime(time);
             VenueCharacterManager?.ResetTime(time);
+            if (_lyricBar.gameObject.activeSelf)
+            {
+                _lyricBar.SetSongTime(time);
+            }
         }
 
         public void SetSongSpeed(float speed)

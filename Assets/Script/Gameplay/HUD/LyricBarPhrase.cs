@@ -78,18 +78,24 @@ namespace YARG.Gameplay.HUD
             // so when the first phrase is enqueued, we can't use it
             if (_currentPhrase == null)
             {
+                if (_phraseQueue.Count == 0)
+                {
+                    gameObject.SetActive(false);
+                    return;
+                }
+
                 _currentPhrase = _phraseQueue.Dequeue();
             }
             else
             {
+                if (_phraseQueue.Count == 0)
+                {
+                    gameObject.SetActive(false);
+                    return;
+                }
+
                 while (_currentPhrase.ExitTransition.TimeEnd < GameManager.VisualTime)
                 {
-                    if (_phraseQueue.Count == 0)
-                    {
-                        gameObject.SetActive(false);
-                        return;
-                    }
-
                     _currentPhrase = _phraseQueue.Dequeue();
                 }
             }
@@ -169,6 +175,11 @@ namespace YARG.Gameplay.HUD
 
         private void Update()
         {
+            if (_currentPhrase == null)
+            {
+                return;
+            }
+
             var time = GameManager.VisualTime;
             if (GameManager.VisualTime >= _currentPhrase.ExitTransition.TimeEnd)
             {
@@ -234,6 +245,31 @@ namespace YARG.Gameplay.HUD
             }
 
             _lyricText.SetText(_builder);
+        }
+
+        // Since it isn't super obvious, the way this works is that when song time changes, LyricBar calls Reset()
+        // to clear the queues and reset the lyric index, rebuilds everything from scratch, then calls SetSongTime
+        // to put things where they need to be without actually running all the tweens
+
+        public void Reset()
+        {
+            // Clear queues and reset index
+            _phraseQueue.Clear();
+            _currentPhrase = null;
+            _currentLyricIndex = 0;
+        }
+
+        public void SetSongTime(double time)
+        {
+            for (int i = 0; i < _phraseQueue.Count; i++)
+            {
+                if (_phraseQueue.TryPeek(out var phrase) && phrase.Phrase.TimeEnd < time)
+                {
+                    _currentPhrase = _phraseQueue.Dequeue();
+                }
+            }
+
+            // MoveToNextPhrase();
         }
     }
 }

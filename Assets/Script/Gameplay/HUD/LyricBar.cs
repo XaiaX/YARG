@@ -28,19 +28,23 @@ namespace YARG.Gameplay.HUD
         [SerializeField]
         private CanvasGroup _canvas;
 
-        private readonly List<double> _fadeStartTimings = new();
-        private          int          _fadeIndex;
+        private readonly List<double>     _fadeStartTimings = new();
+        private          int              _fadeIndex;
+        private          LyricBarPhrase[] _lyricTextObjects;
+        private          SongChart        _songChart;
 
         private const int    PHRASE_OBJECT_COUNT       = 3;
         private const double PHRASE_DISTANCE_THRESHOLD = 2.0; // At least 2 * FADE_DURATION, to allow for fade in/out
         private const double MAX_TRANSITION_DURATION   = 0.3;
         private const double FADE_DURATION             = 0.5;
 
+        private bool ShouldEnable => !(GameManager.IsPractice || SettingsManager.Settings.LyricDisplay.Value == LyricDisplayMode.Disabled);
+
         protected override void GameplayAwake()
         {
             var lyricSetting = SettingsManager.Settings.LyricDisplay.Value;
 
-            if (GameManager.IsPractice || lyricSetting == LyricDisplayMode.Disabled)
+            if (!ShouldEnable)
             {
                 gameObject.SetActive(false);
                 return;
@@ -65,7 +69,8 @@ namespace YARG.Gameplay.HUD
 
         protected override void OnChartLoaded(SongChart chart)
         {
-            if (chart.Lyrics.Phrases.Count < 1)
+            _songChart = chart;
+            if (_songChart.Lyrics.Phrases.Count < 1)
             {
                 gameObject.SetActive(false);
                 return;
@@ -77,25 +82,41 @@ namespace YARG.Gameplay.HUD
                 return;
             }
 
-            var lyricTextObjects = new LyricBarPhrase[PHRASE_OBJECT_COUNT];
+            _lyricTextObjects = new LyricBarPhrase[PHRASE_OBJECT_COUNT];
             for (int i = 0; i < PHRASE_OBJECT_COUNT; i++)
             {
                 var phraseObject = Instantiate(_phrasePrefab, _canvas.transform);
-                lyricTextObjects[i] = phraseObject;
+                _lyricTextObjects[i] = phraseObject;
             }
 
-            var phrases = chart.Lyrics.Phrases;
+            BuildLyricQueue();
+        }
+
+        private void BuildLyricQueue(double time = 0)
+        {
+            var phrases = _songChart.Lyrics.Phrases;
             LyricBarPhrase.PhraseTransitionData previousPhraseTransitionData = null;
+            bool firstPhrase = true;
             for (int i = 0; i < phrases.Count; i++)
             {
                 var currentPhrase = phrases[i];
                 int textObjectIndex = i % PHRASE_OBJECT_COUNT;
+
+                if (currentPhrase.Time < time)
+                {
+                    continue;
+                }
+
                 var phraseData = new LyricBarPhrase.PhraseTransitionData
                 {
                     Phrase = currentPhrase,
                 };
-                if (i == 0)
+
+                // Can't use i == 0 since we may not be building from the start
+                if (firstPhrase)
                 {
+                    firstPhrase = false;
+
                     // First phrase fades in
                     double initialFadeInTime = currentPhrase.Time - FADE_DURATION;
                     phraseData.UpcomingTransition =
@@ -103,7 +124,7 @@ namespace YARG.Gameplay.HUD
                     phraseData.ActiveTransition =
                         new LyricBarPhrase.TransitionTiming(initialFadeInTime, initialFadeInTime);
                     previousPhraseTransitionData = phraseData;
-                    lyricTextObjects[textObjectIndex].EnqueuePhrase(phraseData);
+                    _lyricTextObjects[textObjectIndex].EnqueuePhrase(phraseData);
                     _fadeStartTimings.Add(initialFadeInTime);
                     continue;
                 }
@@ -160,7 +181,48 @@ namespace YARG.Gameplay.HUD
                 }
 
                 previousPhraseTransitionData = phraseData;
-                lyricTextObjects[textObjectIndex].EnqueuePhrase(phraseData);
+                _lyricTextObjects[textObjectIndex].EnqueuePhrase(phraseData);
+            }
+        }
+
+        public void SetSongTime(double time)
+        {
+            if (!ShouldEnable)
+            {
+                return;
+            }
+
+            // In case we are disabled already
+            enabled = true;
+
+            // Clear everything
+            foreach (var lyricTextObject in _lyricTextObjects)
+            {
+                lyricTextObject.Reset();
+            }
+
+            _fadeStartTimings.Clear();
+            _fadeIndex = 0;
+
+            // Rebuild lyric queue
+            BuildLyricQueue(time);
+
+            // Tell LyricBarPhrase about the new time
+            foreach (var lyricTextObject in _lyricTextObjects)
+            {
+                lyricTextObject.gameObject.SetActive(true);
+                lyricTextObject.SetSongTime(time);
+            }
+
+            // set the fade start index
+            while (_fadeStartTimings.Count > 0 && _fadeIndex < _fadeStartTimings.Count && _fadeStartTimings[_fadeIndex] < time + FADE_DURATION)
+            {
+                _fadeIndex++;
+            }
+
+            if (_fadeIndex > _fadeStartTimings.Count - 1)
+            {
+                enabled = false;
             }
         }
 
@@ -186,7 +248,7 @@ namespace YARG.Gameplay.HUD
                     return;
                 }
 
-                YargLogger.LogFormatDebug("Lyric bar fade {0} complete at time {1}, from {2} to {3} alpha", _fadeIndex,
+                YargLogger.LogFormatTrace("Lyric bar fade {0} complete at time {1}, from {2} to {3} alpha", _fadeIndex,
                     GameManager.VisualTime, startValue, targetValue);
                 _fadeIndex++;
             }

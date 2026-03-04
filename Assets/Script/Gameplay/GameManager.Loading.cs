@@ -457,7 +457,7 @@ namespace YARG.Gameplay
                                 : Chart.Harmony;
                             VocalTrack.Initialize(chart, player, Song.VocalScrollSpeedScalingFactor);
 
-                            _lyricBar.SetActive(false);
+                            _lyricBar.gameObject.SetActive(false);
                             vocalTrackInitialized = true;
                         }
 
