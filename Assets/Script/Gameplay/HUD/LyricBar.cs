@@ -38,7 +38,8 @@ namespace YARG.Gameplay.HUD
         private const double MAX_TRANSITION_DURATION   = 0.3;
         private const double FADE_DURATION             = 0.5;
 
-        private bool ShouldEnable => !(GameManager.IsPractice || SettingsManager.Settings.LyricDisplay.Value == LyricDisplayMode.Disabled);
+        private bool ShouldEnable =>
+            !(GameManager.IsPractice || SettingsManager.Settings.LyricDisplay.Value == LyricDisplayMode.Disabled);
 
         protected override void GameplayAwake()
         {
@@ -89,34 +90,25 @@ namespace YARG.Gameplay.HUD
                 _lyricTextObjects[i] = phraseObject;
             }
 
-            BuildLyricQueue();
+            BuildLyricTimings();
         }
 
-        private void BuildLyricQueue(double time = 0)
+        private void BuildLyricTimings()
         {
             var phrases = _songChart.Lyrics.Phrases;
             LyricBarPhrase.PhraseTransitionData previousPhraseTransitionData = null;
-            bool firstPhrase = true;
             for (int i = 0; i < phrases.Count; i++)
             {
                 var currentPhrase = phrases[i];
                 int textObjectIndex = i % PHRASE_OBJECT_COUNT;
-
-                if (currentPhrase.Time < time)
-                {
-                    continue;
-                }
 
                 var phraseData = new LyricBarPhrase.PhraseTransitionData
                 {
                     Phrase = currentPhrase,
                 };
 
-                // Can't use i == 0 since we may not be building from the start
-                if (firstPhrase)
+                if (i == 0)
                 {
-                    firstPhrase = false;
-
                     // First phrase fades in
                     double initialFadeInTime = currentPhrase.Time - FADE_DURATION;
                     phraseData.UpcomingTransition =
@@ -124,7 +116,7 @@ namespace YARG.Gameplay.HUD
                     phraseData.ActiveTransition =
                         new LyricBarPhrase.TransitionTiming(initialFadeInTime, initialFadeInTime);
                     previousPhraseTransitionData = phraseData;
-                    _lyricTextObjects[textObjectIndex].EnqueuePhrase(phraseData);
+                    _lyricTextObjects[textObjectIndex].AddPhrase(phraseData);
                     _fadeStartTimings.Add(initialFadeInTime);
                     continue;
                 }
@@ -181,7 +173,7 @@ namespace YARG.Gameplay.HUD
                 }
 
                 previousPhraseTransitionData = phraseData;
-                _lyricTextObjects[textObjectIndex].EnqueuePhrase(phraseData);
+                _lyricTextObjects[textObjectIndex].AddPhrase(phraseData);
             }
         }
 
@@ -195,17 +187,7 @@ namespace YARG.Gameplay.HUD
             // In case we are disabled already
             enabled = true;
 
-            // Clear everything
-            foreach (var lyricTextObject in _lyricTextObjects)
-            {
-                lyricTextObject.Reset();
-            }
-
-            _fadeStartTimings.Clear();
             _fadeIndex = 0;
-
-            // Rebuild lyric queue
-            BuildLyricQueue(time);
 
             // Tell LyricBarPhrase about the new time
             foreach (var lyricTextObject in _lyricTextObjects)
@@ -215,7 +197,8 @@ namespace YARG.Gameplay.HUD
             }
 
             // set the fade start index
-            while (_fadeStartTimings.Count > 0 && _fadeIndex < _fadeStartTimings.Count && _fadeStartTimings[_fadeIndex] < time + FADE_DURATION)
+            while (_fadeStartTimings.Count > 0 && _fadeIndex < _fadeStartTimings.Count &&
+                _fadeStartTimings[_fadeIndex] < time + FADE_DURATION)
             {
                 _fadeIndex++;
             }
@@ -223,35 +206,49 @@ namespace YARG.Gameplay.HUD
             if (_fadeIndex > _fadeStartTimings.Count - 1)
             {
                 enabled = false;
-            }
-        }
-
-        private void Update()
-        {
-            var fadeStartTime = _fadeStartTimings[_fadeIndex];
-            if (GameManager.VisualTime < fadeStartTime)
-            {
                 return;
             }
 
+            // We don't want to call SetAlpha when we are not in a fade in Update for performance,
+            // so call it once here to set the alpha to whatever it should be at the current time
+            SetAlpha(_fadeStartTimings[_fadeIndex]);
+        }
+
+        private void SetAlpha(double fadeStartTime)
+        {
             var startValue = _fadeIndex % 2 == 0 ? 0f : 1f;
             var targetValue = _fadeIndex % 2 == 0 ? 1f : 0f;
             var progress = Mathf.Clamp01((float) (1 - (fadeStartTime + FADE_DURATION - GameManager.VisualTime) /
                 FADE_DURATION));
             _canvas.alpha = DOVirtual.EasedValue(startValue, targetValue, progress, Ease.InOutSine);
-            if (GameManager.VisualTime >= fadeStartTime + FADE_DURATION)
-            {
-                if (_fadeIndex == _fadeStartTimings.Count - 1)
-                {
-                    // No more fades, lyric bar is done
-                    enabled = false;
-                    return;
-                }
+        }
 
-                YargLogger.LogFormatTrace("Lyric bar fade {0} complete at time {1}, from {2} to {3} alpha", _fadeIndex,
-                    GameManager.VisualTime, startValue, targetValue);
-                _fadeIndex++;
+        private void Update()
+        {
+            var fadeStartTime = _fadeStartTimings[_fadeIndex];
+
+            if (GameManager.VisualTime <= fadeStartTime)
+            {
+                return;
             }
+
+            SetAlpha(fadeStartTime);
+
+            if (GameManager.VisualTime < fadeStartTime + FADE_DURATION)
+            {
+                return;
+            }
+
+            YargLogger.LogFormatTrace("Lyric bar fade {0} complete at time {1}", _fadeIndex,
+                GameManager.VisualTime);
+            if (_fadeIndex == _fadeStartTimings.Count - 1)
+            {
+                // No more fades, lyric bar is done
+                enabled = false;
+                return;
+            }
+
+            _fadeIndex++;
         }
     }
 }
