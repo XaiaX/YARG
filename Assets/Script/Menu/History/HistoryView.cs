@@ -1,4 +1,5 @@
-﻿using TMPro;
+﻿using Cysharp.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using YARG.Menu.ListMenu;
@@ -10,8 +11,6 @@ namespace YARG.Menu.History
         [Space]
         [SerializeField]
         private GameObject _fullContainer;
-        [SerializeField]
-        private GameObject _categoryContainer;
 
         [Space]
         [SerializeField]
@@ -20,13 +19,6 @@ namespace YARG.Menu.History
         private TextMeshProUGUI _bandScore;
         [SerializeField]
         private StarView _starView;
-
-        private Button _button;
-
-        private void Awake()
-        {
-            _button = GetComponent<Button>();
-        }
 
         public void OnClick()
         {
@@ -37,11 +29,15 @@ namespace YARG.Menu.History
         {
             base.Show(selected, viewType);
 
-            // Show the correct container
-            _fullContainer.SetActive(viewType.UseFullContainer);
-            _categoryContainer.SetActive(!viewType.UseFullContainer);
-
-            _button.interactable = true;
+            // Adjust height based on what is displayed
+            if (viewType is CategoryViewType)
+            {
+                gameObject.GetComponent<RectTransform>().SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 70);
+            }
+            else
+            {
+                gameObject.GetComponent<RectTransform>().SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 105);
+            }
 
             var gameInfo = viewType.GetGameInfo();
 
@@ -50,24 +46,15 @@ namespace YARG.Menu.History
             {
                 _scoreContainer.SetActive(true);
 
-                _bandScore.text = gameInfo.Value.BandScore.ToString("N0");
+                using var builder = ZString.CreateStringBuilder();
+                builder.AppendFormat("<mspace=.5em>{0:N0}</mspace>", gameInfo.Value.BandScore);
+                _bandScore.text = builder.ToString();
                 _starView.SetStars(gameInfo.Value.BandStars);
             }
             else
             {
                 _scoreContainer.SetActive(false);
             }
-        }
-
-        public override void Hide()
-        {
-            base.Hide();
-
-            // Use the smaller container to make the "drifts" smaller
-            _fullContainer.SetActive(false);
-            _categoryContainer.SetActive(true);
-
-            _button.interactable = false;
         }
     }
 }
