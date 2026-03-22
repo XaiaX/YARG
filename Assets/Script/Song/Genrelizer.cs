@@ -8,7 +8,10 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Text;
+using Unity.Mathematics;
+using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.UIElements;
 using YARG.Core.Logging;
 using YARG.Core.Song;
 using YARG.Helpers;
@@ -29,12 +32,27 @@ namespace YARG.Song
             public SortString Subgenre { get; }
         }
 
-        public static void GenrelizeAll(SongCache cache)
+        public static void GenrelizeAll(SongCache cache, bool overgenrelize)
         {
             // If Genrelizer data has failed, fall back to parsing literally
             if (_mappings.Count == 0)
             {
                 DegenrelizeAll(cache);
+                return;
+            }
+
+            if (overgenrelize)
+            {
+                foreach (var list in cache.Entries)
+                {
+                    foreach (var songEntry in list.Value)
+                    {
+                        var mapping = _getGenresOrDefault(songEntry.Genre, songEntry.Subgenre, songEntry.Artist);
+                        songEntry.Genre = Overgenrelize(mapping.Genre);
+                        songEntry.Subgenre = SortString.Empty;
+                    }
+                }
+
                 return;
             }
 
@@ -58,6 +76,63 @@ namespace YARG.Song
                     (songEntry.Genre, songEntry.Subgenre) = (songEntry.RawGenre, songEntry.RawSubgenre);
                 }
             }
+        }
+
+        private static SortString Overgenrelize(SortString genre)
+        {
+            return genre.SortStr switch
+            {
+                ALTERNATIVE or
+                BLUES or
+                CLASSIC_ROCK or
+                ELECTRONIC_ROCK or
+                EMO or
+                GLAM or
+                GRUNGE or
+                HARD_ROCK or
+                INDIE_ROCK or
+                J_ROCK or
+                MATH_ROCK or
+                POP_PUNK or
+                POP_ROCK or
+                PROGRESSIVE or
+                PSYCHEDELIC or
+                PUNK or
+                ROCK or
+                ROCK_AND_ROLL or
+                SOUTHERN_ROCK or
+                SURF_ROCK => OVER_ROCK_APRIL_FOOLS,
+
+                AMBIENT_DRONE or
+                CHIPTUNE or
+                DANCE or
+                DNB_BREAKBEAT_JUNGLE or
+                DUBSTEP or
+                ELECTRONIC or
+                GLITCH or
+                HARDCORE_EDM or
+                HOUSE or
+                IDM or
+                NOISE or
+                SYNTHPOP_ELECTROPOP or
+                TECHNO or
+                TRANCE or
+                TRAP => OVER_EDM_APRIL_FOOLS,
+
+                DEATH_BLACK_METAL or
+                DJENT or
+                DOOM_METAL or
+                GRINDCORE or
+                GROOVE_METAL or
+                HEAVY_METAL or
+                MELODIC_POWER_METAL or
+                METALCORE or
+                NU_METAL or
+                POST_HARDCORE or
+                THRASH_SPEED_METAL => OVER_METAL_APRIL_FOOLS,
+
+                _ => OVER_OTHER_APRIL_FOOLS
+            };
         }
 
         private static string _getLocalizedGenre(string genre)
@@ -567,5 +642,12 @@ namespace YARG.Song
             var textInfo = new CultureInfo(Localization.LocalizationManager.CultureCode).TextInfo;
             return textInfo.ToTitleCase(subgenre.Trim());
         }
+    }
+
+    public enum GenrelizerMode
+    {
+        Off,
+        Genrelize,
+        Overgenrelize
     }
 }
