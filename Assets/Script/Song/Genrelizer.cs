@@ -83,25 +83,17 @@ namespace YARG.Song
             return genre.SortStr switch
             {
                 ALTERNATIVE or
-                BLUES or
-                CLASSIC_ROCK or
-                ELECTRONIC_ROCK or
-                EMO or
-                GLAM or
-                GRUNGE or
-                HARD_ROCK or
-                INDIE_ROCK or
-                J_ROCK or
-                MATH_ROCK or
-                POP_PUNK or
-                POP_ROCK or
-                PROGRESSIVE or
-                PSYCHEDELIC or
-                PUNK or
-                ROCK or
-                ROCK_AND_ROLL or
-                SOUTHERN_ROCK or
-                SURF_ROCK => OVER_ROCK_APRIL_FOOLS,
+                INDIE_ROCK => OVER_ALTERNATIVE,
+
+                COUNTRY or
+                FOLK or
+                SOUTHERN_ROCK => OVER_COUNTRY,
+
+                CHILDRENS_MUSIC or
+                CLASSICAL or
+                HOLIDAY or
+                ORCHESTRAL or
+                SOUNDTRACK => OVER_CLASSICAL_TRADITIONAL,
 
                 AMBIENT_DRONE or
                 CHIPTUNE or
@@ -113,11 +105,15 @@ namespace YARG.Song
                 HARDCORE_EDM or
                 HOUSE or
                 IDM or
-                NOISE or
-                SYNTHPOP_ELECTROPOP or
                 TECHNO or
-                TRANCE or
-                TRAP => OVER_EDM_APRIL_FOOLS,
+                TRANCE => OVER_DANCE_ELECTRONIC,
+
+                HIP_HOP_RAP or
+                TRAP => OVER_HIP_HOP,
+
+                BLUES or
+                FUSION or
+                JAZZ => OVER_JAZZ_BLUES,
 
                 DEATH_BLACK_METAL or
                 DJENT or
@@ -126,12 +122,46 @@ namespace YARG.Song
                 GROOVE_METAL or
                 HEAVY_METAL or
                 MELODIC_POWER_METAL or
+                THRASH_SPEED_METAL => OVER_METAL,
+
+                BALLAD or
+                J_POP or
+                K_POP or
+                NEW_WAVE or
+                POP or
+                SYNTHPOP_ELECTROPOP => OVER_POP,
+
+                EMO or
                 METALCORE or
                 NU_METAL or
+                POP_PUNK or
                 POST_HARDCORE or
-                THRASH_SPEED_METAL => OVER_METAL_APRIL_FOOLS,
+                PUNK => OVER_PUNK_SCENE_CORE,
 
-                _ => OVER_OTHER_APRIL_FOOLS
+                RNB_SOUL_FUNK or
+                DISCO => OVER_RNB_SOUL_FUNK,
+
+                CLASSIC_ROCK or
+                ELECTRONIC_ROCK or
+                GLAM or
+                GRUNGE or
+                HARD_ROCK or
+                INDUSTRIAL or
+                J_ROCK or
+                MATH_ROCK or
+                POP_ROCK or
+                PROGRESSIVE or
+                PSYCHEDELIC or
+                ROCK or
+                ROCK_AND_ROLL or
+                SKA or
+                SURF_ROCK => OVER_ROCK,
+
+                LATIN or
+                REGGAE or
+                WORLD => OVER_WORLD,
+
+                _ => OVER_OTHER
             };
         }
 

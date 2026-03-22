@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using YARG.Core.Song;
+using YARG.Localization;
 
 namespace YARG.Song
 {
@@ -92,10 +93,19 @@ namespace YARG.Song
         private const string URBAN = "urban";
 
         // Overgenrelizer
-        private static SortString OVER_ROCK_APRIL_FOOLS = new("Rock & Roll");
-        private static SortString OVER_METAL_APRIL_FOOLS = new("Screamo");
-        private static SortString OVER_EDM_APRIL_FOOLS = new("Dubstep");
-        private static SortString OVER_OTHER_APRIL_FOOLS = new("TikTok Music");
+        private static SortString OVER_ALTERNATIVE = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.Alternative"));
+        private static SortString OVER_COUNTRY = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.Country"));
+        private static SortString OVER_CLASSICAL_TRADITIONAL = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.ClassicalTraditional"));
+        private static SortString OVER_DANCE_ELECTRONIC = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.DanceElectronic"));
+        private static SortString OVER_HIP_HOP = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.HipHop"));
+        private static SortString OVER_JAZZ_BLUES = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.JazzBlues"));
+        private static SortString OVER_METAL = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.Metal"));
+        private static SortString OVER_POP = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.Pop"));
+        private static SortString OVER_PUNK_SCENE_CORE = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.PunkSceneCore"));
+        private static SortString OVER_RNB_SOUL_FUNK = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.RnbSoulFunk"));
+        private static SortString OVER_ROCK = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.Rock"));
+        private static SortString OVER_WORLD = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.World"));
+        private static SortString OVER_OTHER = new(Localize.Key("Menu.MusicLibrary.Genre.Broad.Other"));
 
 
         // Mapping from official genre name to localization key
