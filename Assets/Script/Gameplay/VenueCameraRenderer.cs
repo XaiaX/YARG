@@ -1,5 +1,3 @@
-using System;
-using System.Threading;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
@@ -29,8 +27,6 @@ namespace YARG.Gameplay
         private static RenderTexture _venueTexture;
         private static RenderTexture _trailsTexture;
 
-        private static CancellationTokenSource _cts;
-
         private static readonly int _trailsLengthId = Shader.PropertyToID("_YargTrailLength");
         private static readonly int _trailsTextureId = Shader.PropertyToID("_YargPrevFrame");
         private static readonly int _posterizeStepsId = Shader.PropertyToID("_YargPosterizeSteps");
@@ -47,6 +43,7 @@ namespace YARG.Gameplay
 
         public static float ActualFPS;
         public static float TargetFPS;
+        public static bool IsRendered { get; private set; }
 
         private int _fps;
         private int FPS
@@ -62,12 +59,9 @@ namespace YARG.Gameplay
 
         private int _venueLayerMask;
 
-        private bool _didRender;
-
         private int _frameCount;
         private float _elapsedTime;
         private static float _timeSinceLastRender;
-
         private bool _needsInitialization = true;
 
         private void Awake()
@@ -132,6 +126,7 @@ namespace YARG.Gameplay
 
             var descriptor = new RenderTextureDescriptor(outputWidth, outputHeight, RenderTextureFormat.DefaultHDR, 16, 0);
             _venueTexture = new RenderTexture(descriptor);
+            _venueTexture.Create();
             _venueOutput.texture = _venueTexture;
 
             descriptor.depthBufferBits = 0;
@@ -176,6 +171,7 @@ namespace YARG.Gameplay
             }
 
             _venueOutput = null;
+            IsRendered = false;
         }
 
         private void OnSceneUnloaded(Scene scene)
@@ -334,6 +330,11 @@ namespace YARG.Gameplay
                 request.destination = _venueTexture;
                 // Render camera and fill texture2D with its view
                 RenderPipeline.SubmitRenderRequest(_renderCamera, request);
+
+                if (!IsRendered)
+                {
+                    IsRendered = true;
+                }
             }
         }
 
