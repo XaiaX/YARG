@@ -1,7 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Rendering;
 using YARG.Core;
+using YARG.Core.Logging;
 using YARG.Gameplay.Player;
 using YARG.Helpers.Extensions;
 using YARG.Themes;
@@ -22,17 +24,29 @@ namespace YARG.Gameplay.Visuals
         private static readonly int _emissionEnabled = Shader.PropertyToID("_Emission");
         private static readonly int _emissionColor = Shader.PropertyToID("_EmissionColor");
 
+        private Shader       _shader;
+        private LocalKeyword _emissionEnableKeyword;
+        private LocalKeyword _emissionDisableKeyword;
+
         private static Dictionary<Instrument,float> _scaleByInstrument = new();
 
-        public static void DefineLaneScale(Instrument instrument, int subdivisions)
+        public static void DefineLaneScale(Instrument instrument, int subdivisions, bool rescaling = false)
         {
-            if (_scaleByInstrument.ContainsKey(instrument))
+            if (_scaleByInstrument.ContainsKey(instrument) && !rescaling)
             {
                 return;
             }
 
             float laneScaleX = TrackPlayer.TRACK_WIDTH / subdivisions;
-            _scaleByInstrument.Add(instrument, laneScaleX);
+
+            if (rescaling && _scaleByInstrument.ContainsKey(instrument))
+            {
+                _scaleByInstrument[instrument] = laneScaleX;
+            }
+            else
+            {
+                _scaleByInstrument.Add(instrument, laneScaleX);
+            }
         }
 
         [SerializeField]
@@ -80,6 +94,24 @@ namespace YARG.Gameplay.Visuals
             _xPosition = xPosition;
             _scale = _scaleByInstrument[instrument];
             _color = color;
+        }
+
+        public void SetEmissionColor(float normalizedTime)
+        {
+            // var strength = 1 - Mathf.Sin(Mathf.Pow(normalizedTime, 0.5f) * 1.6f);
+            // var strength = Mathf.Atan(normalizedTime * 8) * -0.69f + 1;
+            var strength = 1 - Mathf.Pow(normalizedTime, 0.2f);
+            var newColor = _color * strength;
+
+            _meshRenderer.materials[0].SetColor(_emissionColor, newColor);
+            _meshRenderer.materials[0].SetKeyword(_emissionDisableKeyword, false);
+            _meshRenderer.materials[0].SetKeyword(_emissionEnableKeyword, true);
+        }
+
+        public void ResetEmissionColor()
+        {
+            _meshRenderer.materials[0].SetKeyword(_emissionDisableKeyword, true);
+            _meshRenderer.materials[0].SetKeyword(_emissionEnableKeyword, false);
         }
 
         public void MultiplyScale(float scaleOffset)
@@ -193,6 +225,10 @@ namespace YARG.Gameplay.Visuals
                     // Set color
                     thisMaterial.color = _color;
                     thisMaterial.SetColor(_emissionColor, _color);
+
+                    _shader = thisMaterial.shader;
+                    _emissionEnableKeyword = new LocalKeyword(_shader, "_EMISSION_ENABLED");
+                    _emissionDisableKeyword = new LocalKeyword(_shader, "_EMISSION_DISABLED");
                 }
             }
         }
