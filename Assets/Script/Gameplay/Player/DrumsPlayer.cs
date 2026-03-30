@@ -493,6 +493,8 @@ namespace YARG.Gameplay.Player
         {
             base.OnCodaEnd(coda);
             CurrentCoda.OnLaneHit -= OnLaneHit;
+
+            _fretArray.SetBreMode(false);
         }
 
 

@@ -467,6 +467,8 @@ public override bool ShouldUpdateInputsOnResume => true;
         {
             base.OnCodaEnd(coda);
             CurrentCoda.OnLaneHit -= OnLaneHit;
+
+            _fretArray.SetBreMode(false);
         }
 
 

@@ -169,6 +169,9 @@ namespace YARG.Gameplay.HUD
             _codaEnding = false;
 
             endCallback?.Invoke();
+
+            // Reset in case there's another BRE
+            ForceReset();
         }
 
         private void StopCurrentCoroutine()

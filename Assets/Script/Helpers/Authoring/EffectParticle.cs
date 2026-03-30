@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 
 namespace YARG.Helpers.Authoring
 {
@@ -57,13 +58,22 @@ namespace YARG.Helpers.Authoring
             var shape = _particleSystem.shape;
             var rotation = _particleSystem.transform.rotation;
 
+            var burstList = new List<ParticleSystem.Burst>();
+            if (emitter.burstCount > 0)
+            {
+                for (int i = 0; i < emitter.burstCount; i++)
+                {
+                    burstList.Add(emitter.GetBurst(i));
+                }
+            }
+
             _normalSettings = new ParticleSettings
             {
                 Rotation = rotation,
                 StartSpeedMultiplier = main.startSpeedMultiplier,
                 SparkleStartLifetimeMultiplier = main.startLifetimeMultiplier,
                 MaxParticles = main.maxParticles,
-                Burst = emitter.GetBurst(0),
+                Burst = burstList,
                 ShapeType = shape.shapeType,
                 RandomDirectionAmount = shape.randomDirectionAmount,
                 OtherStartLifetimeMultiplier = main.startLifetimeMultiplier
@@ -147,7 +157,6 @@ namespace YARG.Helpers.Authoring
             var emitter = _particleSystem.emission;
             var shape = _particleSystem.shape;
 
-            // I don't particularly care for deciding which to mess with based on name
             if (breMode && _modifyInBre)
             {
                 if (emitter.burstCount > 0)
@@ -157,10 +166,13 @@ namespace YARG.Helpers.Authoring
                     main.startLifetimeMultiplier = _breSettings.SparkleStartLifetimeMultiplier;
                     main.maxParticles = _breSettings.MaxParticles;
 
-                    var burst = emitter.GetBurst(0);
-                    burst.minCount *= _breSettings.MinCountMultiplier;
-                    burst.maxCount *= _breSettings.MaxCountMultiplier;
-                    emitter.SetBurst(0, burst);
+                    for (int i = 0; i < emitter.burstCount; i++)
+                    {
+                        var burst = emitter.GetBurst(i);
+                        burst.minCount *= _breSettings.MinCountMultiplier;
+                        burst.maxCount *= _breSettings.MaxCountMultiplier;
+                        emitter.SetBurst(i, burst);
+                    }
                 }
                 else
                 {
@@ -169,16 +181,20 @@ namespace YARG.Helpers.Authoring
                     main.startLifetimeMultiplier = _breSettings.OtherStartLifetimeMultiplier;
                 }
             }
-            else
+            else if (_modifyInBre)
             {
                 _particleSystem.transform.rotation = _normalSettings.Rotation;
                 if (emitter.burstCount > 0)
                 {
                     _particleSystem.transform.rotation = _normalSettings.Rotation;
-                    emitter.SetBurst(0, _normalSettings.Burst);
                     main.startSpeedMultiplier = _normalSettings.StartSpeedMultiplier;
                     main.startLifetimeMultiplier = _normalSettings.SparkleStartLifetimeMultiplier;
                     main.maxParticles = _normalSettings.MaxParticles;
+
+                    for (int i = 0; i < emitter.burstCount; i++)
+                    {
+                        emitter.SetBurst(i, _normalSettings.Burst[i]);
+                    }
                 }
                 else
                 {
@@ -192,13 +208,13 @@ namespace YARG.Helpers.Authoring
         private struct ParticleSettings
         {
             // Sparkle and Shard settings
-            public Quaternion Rotation;
-            public float      StartSpeedMultiplier;
-            public float      SparkleStartLifetimeMultiplier;
-            public int        MaxParticles;
-            public short      MinCountMultiplier;
-            public short      MaxCountMultiplier;
-            public ParticleSystem.Burst Burst;
+            public Quaternion                 Rotation;
+            public float                      StartSpeedMultiplier;
+            public float                      SparkleStartLifetimeMultiplier;
+            public int                        MaxParticles;
+            public short                      MinCountMultiplier;
+            public short                      MaxCountMultiplier;
+            public List<ParticleSystem.Burst> Burst;
 
             // Other particle type settings
             public ParticleSystemShapeType ShapeType;

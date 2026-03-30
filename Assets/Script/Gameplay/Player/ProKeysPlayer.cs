@@ -601,7 +601,6 @@ namespace YARG.Gameplay.Player
             base.OnCodaStart(coda);
             CurrentCoda.OnLaneHit += OnLaneHit;
             CurrentCoda.SetLaneIndexes(GetLaneIndexes());
-            // _keysArray.SetBreMode(true);
         }
 
         protected override void OnCodaEnd(CodaSection coda)

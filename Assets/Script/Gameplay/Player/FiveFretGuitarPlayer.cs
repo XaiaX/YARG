@@ -475,6 +475,8 @@ namespace YARG.Gameplay.Player
         {
             base.OnCodaEnd(coda);
             CurrentCoda.OnLaneHit -= OnLaneHit;
+
+            _fretArray.SetBreMode(false);
         }
 
         protected override void OnNoteHit(int index, GuitarNote chordParent)
