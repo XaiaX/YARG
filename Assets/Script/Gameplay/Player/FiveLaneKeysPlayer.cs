@@ -419,6 +419,18 @@ public override bool ShouldUpdateInputsOnResume => true;
 
         protected override void InitializeSpawnedLane(LaneElement lane, int laneIndex)
         {
+            if (UsingOpenLane)
+            {
+                if (laneIndex == 0)
+                {
+                    laneIndex = 7;
+                }
+            }
+            else
+            {
+                laneIndex++;
+            }
+
             lane.SetAppearance(Player.Profile.CurrentInstrument,
                 laneIndex,
                 GetLanePositionOrCentered(laneIndex),
@@ -806,14 +818,26 @@ public override bool ShouldUpdateInputsOnResume => true;
 
         protected override Dictionary<int, int> GetLaneIndexes()
         {
+            if (UsingOpenLane)
+            {
+                return new Dictionary<int, int>
+                {
+                    { (int) FiveLaneKeysAction.GreenKey, 1 },
+                    { (int) FiveLaneKeysAction.RedKey, 2 },
+                    { (int) FiveLaneKeysAction.YellowKey, 3 },
+                    { (int) FiveLaneKeysAction.BlueKey, 4 },
+                    { (int) FiveLaneKeysAction.OrangeKey, 5 },
+                    { (int) FiveLaneKeysAction.OpenNote, 0 }
+                };
+            }
+
             return new Dictionary<int, int>
             {
                 { (int) FiveLaneKeysAction.GreenKey, 0 },
                 { (int) FiveLaneKeysAction.RedKey, 1 },
                 { (int) FiveLaneKeysAction.YellowKey, 2 },
                 { (int) FiveLaneKeysAction.BlueKey, 3 },
-                { (int) FiveLaneKeysAction.OrangeKey, 4 },
-                { (int) FiveLaneKeysAction.OpenNote, 5 }
+                { (int) FiveLaneKeysAction.OrangeKey, 4 }
             };
         }
     }
