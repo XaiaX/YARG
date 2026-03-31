@@ -21,12 +21,11 @@ namespace YARG.Gameplay.Visuals
         private const float OPEN_LANE_SCALE = 0.5f;
         private const float OPEN_LANE_START_TIME_OFFSET = 0.05f;
 
-        private static readonly int _emissionEnabled = Shader.PropertyToID("_Emission");
-        private static readonly int _emissionColor = Shader.PropertyToID("_EmissionColor");
+        private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
 
-        private Shader       _shader;
-        private LocalKeyword _emissionEnableKeyword;
-        private LocalKeyword _emissionDisableKeyword;
+        private const string EMISSION_ENABLED_KEYWORD = "_EMISSION_ENABLED";
+        private const string EMISSION_DISABLED_KEYWORD = "_EMISSION_DISABLED";
+        private const string EMISSION_COLORCORRECTION = "_EMISSION_ENABLED_WITH_COLOR_CORRECTION";
 
         private static Dictionary<Instrument,float> _scaleByInstrument = new();
 
@@ -59,14 +58,20 @@ namespace YARG.Gameplay.Visuals
         [SerializeField]
         private SkinnedMeshRenderer _meshRenderer;
 
+        [Space]
+        [SerializeField]
+        private int _innerMaterialIndex;
+
+
         public override double ElementTime => _startTime;
         [HideInInspector]
         public double EndTime;
 
         protected override float RemovePointOffset => _zLength;
 
-        private int _startIndex;
-        private int _endIndex = -1;
+        private Material _innerMaterial;
+        private int      _startIndex;
+        private int      _endIndex = -1;
 
         private double _startTime;
 
@@ -103,15 +108,17 @@ namespace YARG.Gameplay.Visuals
             var strength = 1 - Mathf.Pow(normalizedTime, 0.2f);
             var newColor = _color * strength;
 
-            _meshRenderer.materials[0].SetColor(_emissionColor, newColor);
-            _meshRenderer.materials[0].SetKeyword(_emissionDisableKeyword, false);
-            _meshRenderer.materials[0].SetKeyword(_emissionEnableKeyword, true);
+            _innerMaterial.SetColor(EmissionColor, newColor);
+            _innerMaterial.DisableKeyword(EMISSION_DISABLED_KEYWORD);
+            _innerMaterial.DisableKeyword(EMISSION_COLORCORRECTION);
+            _innerMaterial.EnableKeyword(EMISSION_ENABLED_KEYWORD);
         }
 
-        public void ResetEmissionColor()
+        public void ResetEmissionState()
         {
-            _meshRenderer.materials[0].SetKeyword(_emissionDisableKeyword, true);
-            _meshRenderer.materials[0].SetKeyword(_emissionEnableKeyword, false);
+            _innerMaterial.SetColor(EmissionColor, _color);
+            _innerMaterial.DisableKeyword(EMISSION_ENABLED_KEYWORD);
+            _innerMaterial.EnableKeyword(EMISSION_DISABLED_KEYWORD);
         }
 
         public void MultiplyScale(float scaleOffset)
@@ -210,28 +217,15 @@ namespace YARG.Gameplay.Visuals
         {
             RenderOpen();
             RenderScale();
-            ResetEmissionColor();
 
             // Set position
             // Prevent mesh overlap with adjacent lanes
             transform.localPosition = transform.localPosition.WithX(_xPosition + _xOffset);
 
-            // Initialize materials
-            for (int i = 0; i < _meshRenderer.materials.Length; i++)
-            {
-                var thisMaterial = _meshRenderer.materials[i];
-
-                if (i == 0)
-                {
-                    // Set color
-                    thisMaterial.color = _color;
-                    thisMaterial.SetColor(_emissionColor, _color);
-
-                    _shader = thisMaterial.shader;
-                    _emissionEnableKeyword = new LocalKeyword(_shader, "_EMISSION_ENABLED");
-                    _emissionDisableKeyword = new LocalKeyword(_shader, "_EMISSION_DISABLED");
-                }
-            }
+            // Initialize material
+            _innerMaterial = _meshRenderer.materials[_innerMaterialIndex];
+            _innerMaterial.color = _color;
+            ResetEmissionState();
         }
 
         protected override void UpdateElement()
