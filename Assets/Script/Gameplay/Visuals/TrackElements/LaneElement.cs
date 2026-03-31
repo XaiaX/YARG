@@ -210,6 +210,7 @@ namespace YARG.Gameplay.Visuals
         {
             RenderOpen();
             RenderScale();
+            ResetEmissionColor();
 
             // Set position
             // Prevent mesh overlap with adjacent lanes
