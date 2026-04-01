@@ -1,4 +1,4 @@
-using Cysharp.Threading.Tasks;
+﻿using Cysharp.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -161,9 +161,13 @@ namespace YARG.Song
                 await UniTask.NextFrame();
             }
 
-            if (SettingsManager.Settings.StandardizeGenres.Value && !GlobalVariables.OfflineMode)
+            if (SettingsManager.Settings.JokeGenrelizer.Value is GenrelizerMode.Genrelize && !GlobalVariables.OfflineMode)
             {
-                Genrelizer.GenrelizeAll(_songCache);
+                Genrelizer.GenrelizeAll(_songCache, false);
+            }
+            else if (SettingsManager.Settings.JokeGenrelizer.Value is GenrelizerMode.OvergenrelizeJoke && !GlobalVariables.OfflineMode)
+            {
+                Genrelizer.GenrelizeAll(_songCache, true);
             }
             else
             {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using YARG.Core.Song;
 
 namespace YARG.Song
 {
@@ -90,7 +91,11 @@ namespace YARG.Song
         private const string REGGAE_SKA_RAW = "reggaeska"; // As rendered in raw CONs
         private const string URBAN = "urban";
 
-        
+        // Overgenrelizer
+        private static SortString OVER_ROCK_APRIL_FOOLS = new("Rock & Roll");
+        private static SortString OVER_METAL_APRIL_FOOLS = new("Screamo");
+        private static SortString OVER_EDM_APRIL_FOOLS = new("Dubstep");
+        private static SortString OVER_OTHER_APRIL_FOOLS = new("TikTok Music");
 
 
         // Mapping from official genre name to localization key
