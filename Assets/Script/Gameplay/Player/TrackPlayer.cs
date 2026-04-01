@@ -361,7 +361,7 @@ namespace YARG.Gameplay.Player
         protected void ResetNoteCounters()
         {
             NoteIndex = 0;
-            TotalNotes = Notes.Sum(i => Engine.GetNumberOfNotes(i));
+            TotalNotes = Notes.Where(n => !n.IsBigRockEnding).Sum(i => Engine.GetNumberOfNotes(i));
         }
 
         public override void ResetPracticeSection()
