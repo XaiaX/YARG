@@ -1064,6 +1064,7 @@ namespace YARG.Gameplay.Player
         {
             CurrentCoda = coda;
             CurrentCoda.SetLaneIndexes(GetLaneIndexes());
+            SetStemMuteState(false);
             GameManager.StartCoda();
         }
 
