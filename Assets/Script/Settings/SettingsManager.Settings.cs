@@ -161,11 +161,11 @@ namespace YARG.Settings
                     DifficultyRingMode.Expanded,
                 };
 
-            public DropdownSetting<GenrelizerMode> JokeGenrelizer { get; } =
-                new(GenrelizerMode.OvergenrelizeJoke)
+            public DropdownSetting<GenrelizerMode> Genrelizer { get; } =
+                new(GenrelizerMode.Genrelize)
                 {
-                    GenrelizerMode.OvergenrelizeJoke,
                     GenrelizerMode.Genrelize,
+                    GenrelizerMode.Overgenrelize,
                     GenrelizerMode.Off,
                 };
 

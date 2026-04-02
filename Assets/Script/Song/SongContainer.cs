@@ -161,11 +161,11 @@ namespace YARG.Song
                 await UniTask.NextFrame();
             }
 
-            if (SettingsManager.Settings.JokeGenrelizer.Value is GenrelizerMode.Genrelize && !GlobalVariables.OfflineMode)
+            if (SettingsManager.Settings.Genrelizer.Value is GenrelizerMode.Genrelize && !GlobalVariables.OfflineMode)
             {
                 Genrelizer.GenrelizeAll(_songCache, false);
             }
-            else if (SettingsManager.Settings.JokeGenrelizer.Value is GenrelizerMode.OvergenrelizeJoke && !GlobalVariables.OfflineMode)
+            else if (SettingsManager.Settings.Genrelizer.Value is GenrelizerMode.Overgenrelize && !GlobalVariables.OfflineMode)
             {
                 Genrelizer.GenrelizeAll(_songCache, true);
             }
@@ -531,7 +531,7 @@ namespace YARG.Song
             _starsCacheValid = true;
             return _sortStars;
         }
-        
+
         private static SongCategory[] GetRandomSort()
         {
             var shuffled = new List<SongEntry>(_songs);
