@@ -564,11 +564,26 @@ namespace YARG.Gameplay.Player
         protected override Dictionary<int,int> GetLaneIndexes()
         {
             var laneIndexes = new Dictionary<int, int>();
-
-            var colorIndex = 1;
-            var laneIndex = 0;
-            var topKey = ColorStartKeys[colorIndex] - 1;
             var totalLanes = _breLaneParameters.Count;
+            var laneIndex = 0;
+
+            var baseColor = 0;
+            // Get the starting lane index
+            for (int color = 1; color < ColorStartKeys.Length; color++)
+            {
+                if (_currentIndex >= ColorStartKeys[color])
+                {
+                    baseColor++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            var colorIndex = baseColor + 1;
+            var topKey = ColorStartKeys[colorIndex];
+
             for (int i = 0; i < TOTAL_KEY_COUNT; i++)
             {
                 // Distribute out of range keys between the visible lanes
