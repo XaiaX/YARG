@@ -157,9 +157,13 @@ namespace YARG.Gameplay.Visuals
 
         public void PlayCodaHitAnimation(int index)
         {
-            // index = Mathf.Clamp(index, _frets.Keys.Min(), _frets.Keys.Max());
-            _frets[index].PlayHitAnimation();
-            _frets[index].PlayHitParticles();
+            if (!_frets.TryGetValue(index, out var fret))
+            {
+                return;
+            }
+
+            fret.PlayHitAnimation();
+            fret.PlayHitParticles();
         }
 
         public void PlayCymbalHitAnimation(int index)
