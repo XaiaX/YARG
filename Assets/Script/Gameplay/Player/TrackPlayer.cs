@@ -1065,12 +1065,11 @@ namespace YARG.Gameplay.Player
             CurrentCoda = coda;
             CurrentCoda.SetLaneIndexes(GetLaneIndexes());
             SetStemMuteState(false);
-            GameManager.StartCoda();
         }
 
         protected virtual void OnCodaEnd(CodaSection coda)
         {
-            GameManager.EndCoda(coda);
+
         }
 
         protected virtual void OnCountdownChange(double countdownLength, double endTime)
