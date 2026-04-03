@@ -6,12 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
-using System.Net;
-using System.Text;
-using Unity.Mathematics;
-using UnityEngine;
 using UnityEngine.Networking;
-using UnityEngine.UIElements;
 using YARG.Core.Logging;
 using YARG.Core.Song;
 using YARG.Helpers;
@@ -412,13 +407,13 @@ namespace YARG.Song
                 ZipFile.ExtractToDirectory(zipPath, GenresFolder);
 
                 // Delete the random folders
-                var ignoreFolder = System.IO.Path.Combine(repoDir, "ignore");
+                var ignoreFolder = Path.Combine(repoDir, "ignore");
                 if (Directory.Exists(ignoreFolder))
                 {
                     Directory.Delete(ignoreFolder, true);
                 }
 
-                var githubFolder = System.IO.Path.Combine(repoDir, ".github");
+                var githubFolder = Path.Combine(repoDir, ".github");
                 if (Directory.Exists(githubFolder))
                 {
                     Directory.Delete(githubFolder, true);
@@ -445,7 +440,9 @@ namespace YARG.Song
             }
         }
 
+        #nullable enable
         private static Mapping _getGenresOrDefault(string? rawGenre, string? rawSubgenre, string artist)
+        #nullable restore
         {
             if (string.IsNullOrEmpty(rawGenre))
             {

@@ -282,7 +282,7 @@ namespace YARG.Menu.Filters
                 if (_leftScrollRect != null)
                     _leftScrollRect.verticalNormalizedPosition = 1f;
             }
-            
+
             FocusLeft();
         }
 
@@ -431,7 +431,7 @@ namespace YARG.Menu.Filters
 
             if (_lastLeftIndex != null)
             {
-                _leftNavGroup.SelectAt(_lastLeftIndex, SelectionOrigin.Navigation);   
+                _leftNavGroup.SelectAt(_lastLeftIndex, SelectionOrigin.Navigation);
             }
             else
             {
@@ -1080,7 +1080,7 @@ namespace YARG.Menu.Filters
 
             return dict;
         }
-        
+
         // Toggle which length buckets to use by switching this flag.
         // - true  -> Legacy labels (Short/Medium/Long/Epic)
         // - false -> Range labels (0-2, 2-5, 5-10, 10-15, 15-20, 20+)
@@ -1135,15 +1135,18 @@ namespace YARG.Menu.Filters
                 };
             }
 
+            // Left for possible future use
+#pragma warning disable CS0162 // Unreachable code detected
             return lengthMilliseconds switch
             {
-                < 120000 => RangeLengthLabels[0],
-                < 300000 => RangeLengthLabels[1],
-                < 600000 => RangeLengthLabels[2],
-                < 900000 => RangeLengthLabels[3],
+                < 120000  => RangeLengthLabels[0],
+                < 300000  => RangeLengthLabels[1],
+                < 600000  => RangeLengthLabels[2],
+                < 900000  => RangeLengthLabels[3],
                 < 1200000 => RangeLengthLabels[4],
-                _ => RangeLengthLabels[5],
+                _         => RangeLengthLabels[5],
             };
+#pragma warning restore CS0162 // Unreachable code detected
         }
 #endregion
 
