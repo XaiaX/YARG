@@ -73,7 +73,7 @@
             "Charter": "Charter",
             "Genre": "Genre",
             "Name": "Song",
-            "Playlist": "Playlist",
+            "Folder": "Folder",
             "SongLength": "Duration",
             "Source": "Source",
 			"Subgenre": "Subgenre",
@@ -309,13 +309,14 @@
             },
             "PlayableSongs": "PLAYABLE SONGS",
             "RandomSong": "RANDOM SONG",
-            "Playlists": "PLAYLISTS",
+            "Playlists": "PLAYLIST MANAGER",
             "Favorites": "Favorites",
             "YourPlaylists": "YOUR PLAYLISTS",
             "Popup": {
                 "Header": {
                     "SortBy": "Sort By...",
-                    "GoTo": "Go To..."
+                    "GoTo": "Go To...",
+                    "SelectPlaylists": "Select Playlists"
                 },
                 "Item": {
                     "RandomSong": "Random Song",
@@ -327,8 +328,11 @@
                     "RemoveFromFavorites": "Remove From Favorites",
                     "AddToPlaylist": "Add To Playlist...",
                     "RemoveFromPlaylist": "Remove From Playlist",
+                    "RemoveFromSetlist": "Remove From Setlist",
                     "CreateNewPlaylist": "Create New...",
-                    "RemovePlaylist": "Remove Playlist",
+                    "RenamePlaylist": "Rename Playlist",
+                    "DeletePlaylist": "Delete Playlist",
+                    "DeleteSetlist": "Delete Setlist",
                     "ViewSongFolder": "View Song Folder",
                     "CopySongChecksum": "Copy Song Checksum",
                     "CollapseAll": "Collapse All",
@@ -506,6 +510,7 @@
         "Filters": {
             "OptionsHeader": "Options",
             "FiltersHeader": "Filters",
+            "ShowAnyOfHeader": "Show Any Of",
             "SortedBy": "Sorted By",
             "ShowRecommendations": "Show Recommendations",
             "ResetAllFilters": "(Hold) Reset All Filters",
@@ -513,6 +518,7 @@
             "DeselectAll": "Deselect All",
             "None": "None",
             "Selected": "{0} Selected",
+            "AnyOf": "Any of {0}",
             "All": "All",
             "SongCount": "{0} SONGS",
             "Genres": "Genres",
@@ -544,7 +550,8 @@
                 "Medium": "Medium (3-5 Min)",
                 "Long": "Long (5-7 Min)",
                 "Epic": "Epic (Over 7 Min)"
-            }
+            },
+            "Playlists": "Playlists"
         }
     },
     "Gameplay": {
