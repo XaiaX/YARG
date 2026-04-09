@@ -1,21 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using YARG.Core;
 using YARG.Core.Extensions;
-using YARG.Core.IO;
-using YARG.Core.Logging;
 using YARG.Core.Song;
 using YARG.Core.Utility;
+using YARG.Settings;
 using static YARG.Core.Song.SongEntrySorting;
 
 namespace YARG.Menu.MusicLibrary
 {
     public static class SongSorting
     {
+        private static bool DisallowedByRating(SongRating rating) => rating > SettingsManager.Settings.MaximumSongRating.Value;
+
         private readonly struct ArtistComparer : IComparer<SongEntry>
         {
             public static readonly ArtistComparer Instance = default;
@@ -172,6 +169,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     string name = entry.Name.Group switch
                     {
                         CharacterGroup.Empty or
@@ -197,6 +199,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var artist = entry.Artist;
                     if (!sorted.Artists.TryGetValue(artist, out var category))
                     {
@@ -215,6 +222,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var album = entry.Album;
                     if (!sorted.Albums.TryGetValue(album, out var category))
                     {
@@ -233,6 +245,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var genre = entry.Genre;
                     if (!sorted.Genres.TryGetValue(genre, out var category))
                     {
@@ -251,6 +268,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var subgenre = string.IsNullOrEmpty(entry.Subgenre) ? entry.Genre : entry.Subgenre;
 
                     if (!sorted.Subgenres.TryGetValue(subgenre, out var category))
@@ -270,6 +292,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     string year = entry.YearAsNumber != int.MaxValue ? entry.ParsedYear[..^1] + "0s" : entry.ParsedYear;
                     if (!sorted.Years.TryGetValue(year, out var category))
                     {
@@ -288,6 +315,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var charter = entry.Charter;
                     if (!sorted.Charters.TryGetValue(charter, out var category))
                     {
@@ -306,6 +338,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var playlist = entry.Playlist;
                     if (!sorted.Playlists.TryGetValue(playlist, out var category))
                     {
@@ -324,6 +361,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var source = entry.Source;
                     if (!sorted.Sources.TryGetValue(source, out var category))
                     {
@@ -342,6 +384,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     // constants represents upper milliseconds limit of each range
                     string range = entry.SongLengthMilliseconds switch
                     {
@@ -370,6 +417,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var dateAdded = entry.GetLastWriteTime().Date;
                     if (!sorted.DatesAdded.TryGetValue(dateAdded, out var category))
                     {
@@ -388,6 +440,11 @@ namespace YARG.Menu.MusicLibrary
             {
                 foreach (var entry in list.Value)
                 {
+                    if (DisallowedByRating(entry.SongRating))
+                    {
+                        continue;
+                    }
+
                     var artist = entry.Artist;
                     if (!sorted.ArtistAlbums.TryGetValue(artist, out var albums))
                     {
@@ -416,6 +473,11 @@ namespace YARG.Menu.MusicLibrary
                 {
                     foreach (var entry in list.Value)
                     {
+                        if (DisallowedByRating(entry.SongRating))
+                        {
+                            continue;
+                        }
+
                         var part = entry[instrument];
                         if (part.IsActive())
                         {

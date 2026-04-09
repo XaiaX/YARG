@@ -181,12 +181,6 @@ namespace YARG.Menu.Credits
                         continue;
                     }
 
-                    // Don't show credits if the song is hidden due to the rating filter
-                    if (song.SongRating < SettingsManager.Settings.MaximumSongRating.Value)
-                    {
-                        continue;
-                    }
-
                     // If the song has any of these properties, then add it to the credits
                     if (!string.IsNullOrEmpty(song.CreditWrittenBy) ||
                         !string.IsNullOrEmpty(song.CreditPerformedBy) ||

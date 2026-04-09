@@ -626,8 +626,6 @@ namespace YARG.Menu.MusicLibrary
 
         public void Refresh()
         {
-            FiltersMenu.Instance.SetDefaultFilters();
-
             SetRecommendedSongs();
             _searchField.Reset();
             UpdateSearch(true);
