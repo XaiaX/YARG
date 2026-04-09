@@ -5,6 +5,7 @@ using YARG.Core.Extensions;
 using YARG.Core.Song;
 using YARG.Core.Utility;
 using YARG.Settings;
+using YARG.Helpers.Extensions;
 using static YARG.Core.Song.SongEntrySorting;
 
 namespace YARG.Menu.MusicLibrary
@@ -188,7 +189,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, MetadataComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -211,7 +212,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, MetadataComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -234,7 +235,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, AlbumComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -257,7 +258,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, MetadataComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -281,7 +282,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, MetadataComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -304,7 +305,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, YearComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -327,7 +328,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, MetadataComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -350,7 +351,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, PlaylistComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -373,7 +374,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, MetadataComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -406,7 +407,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, LengthComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -429,7 +430,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, MetadataComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -458,7 +459,7 @@ namespace YARG.Menu.MusicLibrary
                     }
 
                     int index = category.BinarySearch(entry, AlbumComparer.Instance);
-                    category.Insert(~index, entry);
+                    category.SafeInsert(~index, entry);
                 }
             }
         }
@@ -495,7 +496,7 @@ namespace YARG.Menu.MusicLibrary
                             }
 
                             int index = category.BinarySearch(entry, new InstrumentComparer(instrument, part.Intensity));
-                            category.Insert(~index, entry);
+                            category.SafeInsert(~index, entry);
                         }
                     }
                 }
