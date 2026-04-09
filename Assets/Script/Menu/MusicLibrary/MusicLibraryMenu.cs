@@ -10,6 +10,7 @@ using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Song;
 using YARG.Localization;
+using YARG.Menu.Filters;
 using YARG.Menu.ListMenu;
 using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
@@ -557,7 +558,7 @@ namespace YARG.Menu.MusicLibrary
                     if (!allowdupes && song.IsDuplicate) continue;
 
                     StarAmount? starAmount;
-                    
+
                     if (includeSongs)
                     {
                         var songView = new SongViewType(this, song);
@@ -625,6 +626,8 @@ namespace YARG.Menu.MusicLibrary
 
         public void Refresh()
         {
+            FiltersMenu.Instance.SetDefaultFilters();
+
             SetRecommendedSongs();
             _searchField.Reset();
             UpdateSearch(true);
@@ -926,7 +929,7 @@ namespace YARG.Menu.MusicLibrary
             var offset = SelectedIndex - _sectionHeaderIndices[headerIndex];
             return (headerIndex, offset);
         }
-		
+
         public void RefreshAndReselect(bool selectTopOfList = false, bool preserveSelectedIndex = false)
         {
             int preservedIndex = SelectedIndex;
