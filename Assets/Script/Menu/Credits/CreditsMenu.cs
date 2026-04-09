@@ -11,6 +11,7 @@ using YARG.Core.Input;
 using YARG.Helpers;
 using YARG.Localization;
 using YARG.Menu.Navigation;
+using YARG.Settings;
 using YARG.Song;
 
 namespace YARG.Menu.Credits
@@ -176,6 +177,12 @@ namespace YARG.Menu.Credits
                 foreach (var song in SongContainer.Artists[artist])
                 {
                     if (song.Source.ToString() is not ("yarg" or "yargdlc" or "yarn"))
+                    {
+                        continue;
+                    }
+
+                    // Don't show credits if the song is hidden due to the rating filter
+                    if (song.SongRating < SettingsManager.Settings.MaximumSongRating.Value)
                     {
                         continue;
                     }
