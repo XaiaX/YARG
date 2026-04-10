@@ -85,7 +85,7 @@ namespace YARG.Gameplay.Visuals
 
             if (Player.Player.Profile.CurrentInstrument == Core.Instrument.ProDrums && Player.Player.Profile.SplitProTomsAndCymbals)
             {
-                if (NoteRef.Pad != 0)
+                if (NoteRef.Pad is not ((int) FourLaneDrumPad.Kick or (int) FourLaneDrumPad.Wildcard))
                 {
                     gameObject.transform.localScale = Vector3.Scale(transform.localScale, _splitScale);
                 }
