@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using YARG.Core.Audio;
 using YARG.Core.Input;
 using YARG.Core.Replays;
 using YARG.Core.Song;
@@ -199,6 +200,7 @@ namespace YARG.Menu.History
         protected override void OnDisable()
         {
             base.OnDisable();
+            StemSettings.ApplySettings = true; // Ensure that we are using user's mix settings when launching into a replay
             Navigator.Instance.PopScheme();
 
             _headerTabs.TabChanged -= OnTabChanged;

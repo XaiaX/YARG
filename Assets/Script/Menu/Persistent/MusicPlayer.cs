@@ -52,7 +52,7 @@ namespace YARG.Menu.Persistent
 
         private void OnDisable()
         {
-            StemSettings.ApplySettings = true; // reset to default value
+            StemSettings.ApplySettings = SettingsManager.Settings.ApplyVolumesInMusicLibrary.Value; // reset to default value
             lock (_lock)
             {
                 _mixer?.Dispose();
