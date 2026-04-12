@@ -137,6 +137,9 @@ namespace YARG.Menu.MusicLibrary
         {
             base.OnEnable();
 
+            // Hack to ensure that crowd samples are stopped no matter what
+            GlobalAudioHandler.StopAllSfxChannels();
+
             // Set navigation scheme
             SetNavigationScheme();
 
