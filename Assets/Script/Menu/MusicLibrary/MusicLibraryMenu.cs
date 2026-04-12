@@ -50,6 +50,8 @@ namespace YARG.Menu.MusicLibrary
         private const int RANDOM_SONG_ID = 0;
         private const int PLAYLIST_ID = 1;
         private const int BACK_ID = 2;
+        private const int RECOMMENDED_SONGS_ID = 3;
+        private const int CREATE_NEW_PLAYLIST_ID = 4;
 
         public static MusicLibraryMode LibraryMode;
 
@@ -335,8 +337,8 @@ namespace YARG.Menu.MusicLibrary
                             "Menu.MusicLibrary.AddHoldStartSet" :
                             "Menu.MusicLibrary.PlayHoldAddToSet",
                         OnGreenTap,
-                        GREEN_HOLD_SECONDS,
-                        OnGreenHold,
+                        holdSeconds: GREEN_HOLD_SECONDS,
+                        onHoldHandler: OnGreenHold,
                         hide: true
                     ),
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back", Back, hide: true),
@@ -346,7 +348,6 @@ namespace YARG.Menu.MusicLibrary
                 new NavigationScheme.Entry(MenuAction.Blue, "Menu.MusicLibrary.Filters", OpenFilters),
                 new NavigationScheme.Entry(MenuAction.Orange, "Menu.MusicLibrary.MoreOptions",
                     OnOrangeHit, OnOrangeRelease),
-                new NavigationScheme.Entry(MenuAction.Select, "Next Sort Category", NextSort, hide: true),
             }, false));
 
         }
@@ -447,18 +448,13 @@ namespace YARG.Menu.MusicLibrary
             if (!_searchField.IsSearching)
             {
                 list.Add(new ButtonViewType(
-                    Localize.Key("Menu.MusicLibrary.RandomSong"),
-                    "MusicLibraryIcons[Random]",
-                    SelectRandomSong,
-                    RANDOM_SONG_ID));
-
-                list.Add(new ButtonViewType(
                     Localize.Key("Menu.MusicLibrary.Playlists"),
                     "MusicLibraryIcons[Playlists]",
                     EnterPlaylistSelectFromLibrary,
-                    PLAYLIST_ID));
+                    PLAYLIST_ID,
+                    Localize.Key("Menu.MusicLibrary.PlaylistsHelp")));
 
-                _primaryHeaderIndex += 2;
+                _primaryHeaderIndex += 1;
 
                 if (SettingsManager.Settings.LibrarySort < SortAttribute.Instrument &&
                     SettingsManager.Settings.ShowRecommendedSongs.Value)
@@ -468,14 +464,16 @@ namespace YARG.Menu.MusicLibrary
                         string key = Localize.Key("Menu.MusicLibrary.RecommendedSongs",
                             _recommendedSongs.Length == 1 ? "Singular" : "Plural");
 
-                        list.Add(new CategoryViewType(key, _recommendedSongs.Length, _recommendedSongs,
+                        list.Add(new ButtonViewType(key, "MusicLibraryIcons[Recommended]",
                             () =>
                             {
                                 bool selectTopOfList = CurrentSelection is SongViewType songView &&
                                     _recommendedSongs.Contains(songView.SongEntry);
                                 bool preserveSelectedIndex = SelectedIndex != _recommendedHeaderIndex;
                                 RefreshAndReselect(selectTopOfList, preserveSelectedIndex);
-                            }
+                            },
+                            RECOMMENDED_SONGS_ID,
+                            Localize.Key("Menu.MusicLibrary.RecommendedSongsHelp")
                         ));
                         _recommendedHeaderIndex = list.Count - 1;
 

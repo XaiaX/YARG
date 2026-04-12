@@ -76,16 +76,9 @@ namespace YARG.Menu.MusicLibrary
         [SerializeField]
         private GameObject _difficultyRingPrefab;
 
-        [SerializeField]
-        private Canvas _difficultiesCanvas;
-
         public void SetDifficultiesVisible(bool visible)
         {
-            if (_difficultiesDisplay != null)
-                _difficultiesDisplay.SetActive(visible);
-
-            if (_difficultiesCanvas != null)
-                _difficultiesCanvas.enabled = visible;
+            _difficultiesDisplay.SetActive(visible);
         }
 
         private readonly List<DifficultyRing> _difficultyRings = new();
@@ -191,7 +184,7 @@ namespace YARG.Menu.MusicLibrary
         {
             SetText(_sourceContainer, _source, categoryViewType.SourceCountText);
             SetText(_charterContainer, _charter, categoryViewType.CharterCountText);
-            SetText(_genreContainer, _genre, categoryViewType.GenreCountText);
+            SetText(_genreContainer, _genre, categoryViewType.GenreCountText + ",");
             SetText(_genreContainer, _subgenre, categoryViewType.SubgenreCountText);
         }
 
@@ -199,7 +192,7 @@ namespace YARG.Menu.MusicLibrary
         {
             SetText(_sourceContainer, _source, sortHeaderViewType.SourceCountText);
             SetText(_charterContainer, _charter, sortHeaderViewType.CharterCountText);
-            SetText(_genreContainer, _genre, sortHeaderViewType.GenreCountText);
+            SetText(_genreContainer, _genre, sortHeaderViewType.GenreCountText + ",");
             SetText(_genreContainer, _subgenre, sortHeaderViewType.SubgenreCountText);
         }
 
@@ -243,11 +236,8 @@ namespace YARG.Menu.MusicLibrary
             SetWrappedText(_charterContainer, _charter, songEntry.Charter, ref _charterBaseFontSize);
 
             _genreContainer.SetActive(true); // Empty genres are rendered as "Unknown Genre", so this should always be active
-            _genre.text = songEntry.Genre + (songEntry.Subgenre == string.Empty ? "" : ",");
+            _genre.text = CurrentCulture.TextInfo.ToTitleCase(songEntry.Genre) + (songEntry.Subgenre == string.Empty ? "" : ",");
             _subgenre.text = songEntry.Subgenre;
-            // _source.text = SongSources.SourceToGameName(songEntry.Source);
-            // _charter.text = songEntry.Charter;
-            // _genre.text = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(songEntry.Genre);
 
             if (!string.IsNullOrEmpty(songEntry.YearSecondary))
             {
@@ -299,7 +289,7 @@ namespace YARG.Menu.MusicLibrary
             // _sidebarContents.gameObject.SetActive(true);
 
             _cancellationToken = new();
-            _albumCover.LoadAlbumCover(songEntry, _cancellationToken.Token, 0.025f);
+            _albumCover.LoadAlbumCover(songEntry, _cancellationToken.Token, 0.05f);
             _albumCoverSmall.LoadAlbumCover(songEntry, _cancellationToken.Token);
         }
 
@@ -436,6 +426,7 @@ namespace YARG.Menu.MusicLibrary
         {
             string key;
             bool enableButton;
+            Action<NavigationContext> holdHandler = null;
 
             if (_musicLibraryMenu.CurrentSelection is SortHeaderViewType sortHeader)
             {
@@ -444,6 +435,7 @@ namespace YARG.Menu.MusicLibrary
                     key = sortHeader.Collapsed
                         ? "Menu.MusicLibrary.ExpandHeaderHoldStartSet"
                         : "Menu.MusicLibrary.CollapseHeaderHoldStartSet";
+                    holdHandler = _ => _musicLibraryMenu.ExecuteGreenHoldAction();
                 }
                 else
                 {
@@ -460,14 +452,15 @@ namespace YARG.Menu.MusicLibrary
                     ? "Menu.MusicLibrary.AddHoldStartSet"
                     : "Menu.MusicLibrary.PlayHoldAddToSet";
                 enableButton = _musicLibraryMenu.CurrentSelection is SongViewType;
+                holdHandler = _ => _musicLibraryMenu.ExecuteGreenHoldAction();
             }
 
             _playButton.SetInfoFromSchemeEntry(new NavigationScheme.Entry(
                 MenuAction.Green,
                 key,
                 _ => _musicLibraryMenu.ExecuteGreenTapAction(),
-                1f,
-                _ => _musicLibraryMenu.ExecuteGreenHoldAction()
+                holdSeconds: 1f,
+                onHoldHandler: holdHandler
             ));
             _playButton.SetDefaultButtonState(HelpBarButton.ButtonState.HOVER);
 
