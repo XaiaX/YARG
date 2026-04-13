@@ -10,8 +10,7 @@ Shader "HighwaysAlphaMask"
 
             ZWrite Off
             Cull Off
-            Blend One One
-            BlendOp Max
+            Blend One Zero   // no blending, overwrite red channel
 
             HLSLPROGRAM
             #pragma vertex vert

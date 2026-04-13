@@ -34,13 +34,22 @@ namespace YARG.Gameplay.HUD
 
         protected override void GameplayAwake()
         {
+            _highwayCameraRendering.OnHighwaysTextureCreated += OnTextureCreated;
         }
 
-        public void CreateVocalTrackView(int highwayIndex)
+        private void OnTextureCreated(RenderTexture obj)
+        {
+            InitializeRenderTexture(_highwayCameraRendering.HighwaysOutputTexture);
+        }
+
+        public void CreateVocalTrackView()
         {
             _vocalImage.gameObject.SetActive(true);
-            GameManager.VocalTrack.InitializeCamera(_vocalImage);
-            _highwayCameraRendering.AddVocalTrack(GameManager.VocalTrack, highwayIndex);
+        }
+
+        private void InitializeRenderTexture(RenderTexture texture)
+        {
+            GameManager.VocalTrack.InitializeRenderTexture(_vocalImage, texture);
         }
 
         public VocalsPlayerHUD CreateVocalsPlayerHUD()
@@ -56,6 +65,7 @@ namespace YARG.Gameplay.HUD
 
         protected override void GameplayDestroy()
         {
+            _highwayCameraRendering.OnHighwaysTextureCreated -= OnTextureCreated;
         }
     }
 }

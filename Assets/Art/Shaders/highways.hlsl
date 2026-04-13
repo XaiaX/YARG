@@ -16,6 +16,15 @@ inline int WorldPosToIndex(float3 positionWS)
     return index;
 }
 
+// UV to highway index
+inline int UVToIndex(float2 uv)
+{
+    float laneWidth = 1.0 / _YargHighwaysN;
+    float index = uv.x / laneWidth;
+    index = clamp(index, 0, _YargHighwaysN - 1);
+    return index;
+}
+
 // Default transform
 inline float4 DefTransformWorldToHClip(float3 positionWS)
 {

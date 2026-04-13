@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Rendering;
 using YARG.Assets.Script.Helpers;
 using YARG.Core;
 using YARG.Core.Chart;
@@ -33,10 +32,10 @@ namespace YARG.Settings.Preview
 
             public Dictionary<int, int> HighwayOrdering;
             public int LaneCount;
-#nullable enable
+            #nullable enable
             public GameObject? FretPrefab;
             public GameObject? KickFretPrefab;
-#nullable restore
+            #nullable restore
 
             public FretColorProviderFunc FretColorProvider;
             public NoteColorProviderFunc NoteColorProvider;
@@ -287,12 +286,6 @@ namespace YARG.Settings.Preview
 
         private void Start()
         {
-            var cmd = new CommandBuffer();
-            cmd.SetRenderTarget(VenueCameraRenderer.VenueTexture);
-            cmd.ClearRenderTarget(true, true, Color.clear);
-            Graphics.ExecuteCommandBuffer(cmd);
-            cmd.Dispose();
-
             CurrentGameModeInfo = _gameModeInfos[SelectedGameMode];
             var theme = ThemePreset.Default;
 
@@ -344,8 +337,6 @@ namespace YARG.Settings.Preview
             var enginePreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.EnginePresets);
             var highwayPreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.HighwayPresets);
 
-            Shader.SetGlobalFloat(YARG.Gameplay.BackgroundManager.dimmerPropertyID, SettingsManager.Settings.SongBackgroundOpacity.Value);
-
             // Update camera presets
             _trackMaterial.Initialize(highwayPreset);
             _cameraPositioner.Initialize(cameraPreset);
@@ -355,7 +346,6 @@ namespace YARG.Settings.Preview
             highwayRenderer.UpdateCurveFactor(cameraPreset.CurveFactor, 0);
             highwayRenderer.UpdateFadeParams(0, 3f, cameraPreset.FadeLength);
             highwayRenderer.UpdateCameraProjectionMatrices();
-            highwayRenderer.ResetTextures();
 
             // Update hit window
             _hitWindow.HitWindow = CurrentGameModeInfo.HitWindowProvider(enginePreset).Create();
