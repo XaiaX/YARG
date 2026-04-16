@@ -96,14 +96,16 @@ namespace YARG.Assets.Script.Gameplay.Player
 
 public override bool ShouldUpdateInputsOnResume => true;
 
+        /// See <see cref="StarMultiplierThresholds"/>
         private static float[] GuitarStarMultiplierThresholds => new[]
         {
-            0.21f, 0.46f, 0.77f, 1.85f, 3.08f, 4.52f
+            0.06f, 0.12f, 0.2f, 0.47f, 0.78f, 1.15f
         };
 
+        /// See <see cref="StarMultiplierThresholds"/>
         private static float[] BassStarMultiplierThresholds => new[]
         {
-            0.21f, 0.50f, 0.90f, 2.77f, 4.62f, 6.78f
+            0.05f, 0.1f, 0.19f, 0.47f, 0.78f, 1.15f
         };
 
         public KeysEngineParameters EngineParams { get; private set; }
@@ -126,10 +128,8 @@ public override bool ShouldUpdateInputsOnResume => true;
         [SerializeField]
         private Pool _rangeIndicatorPool;
 
-        public override float[] StarMultiplierThresholds { get; protected set; } =
+        protected override float[] StarMultiplierThresholds { get; set; } =
             GuitarStarMultiplierThresholds;
-
-        public override int[] StarScoreThresholds { get; protected set; }
 
         public float WhammyFactor { get; private set; }
 
@@ -167,7 +167,7 @@ public override bool ShouldUpdateInputsOnResume => true;
             if (!Player.IsReplay)
             {
                 // Create the engine params from the engine preset
-                EngineParams = Player.EnginePreset.ProKeys.Create(StarMultiplierThresholds, isBass);
+                EngineParams = Player.EnginePreset.ProKeys.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds, isBass);
                 //EngineParams = EnginePreset.Precision.FiveFretGuitar.Create(StarMultiplierThresholds, isBass);
             }
             else
@@ -214,8 +214,6 @@ public override bool ShouldUpdateInputsOnResume => true;
         protected override void FinishInitialization()
         {
             base.FinishInitialization();
-
-            StarScoreThresholds = PopulateStarScoreThresholds(StarMultiplierThresholds, Engine.BaseScore);
 
             IndicatorStripes.Initialize(Player.EnginePreset.FiveFretGuitar);
 

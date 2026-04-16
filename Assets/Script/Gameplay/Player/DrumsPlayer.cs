@@ -114,12 +114,10 @@ namespace YARG.Gameplay.Player
 
         public override bool ShouldUpdateInputsOnResume => false;
 
-        public override float[] StarMultiplierThresholds { get; protected set; } =
+        protected override float[] StarMultiplierThresholds { get; set; } =
         {
-            0.21f, 0.46f, 0.77f, 1.85f, 3.08f, 4.29f
+            0.06f, 0.12f, 0.2f, 0.45f, 0.75f, 1.09f
         };
-
-        public override int[] StarScoreThresholds { get; protected set; }
 
         private int[] _drumSoundEffectRoundRobin = new int[8];
         private float _drumSoundEffectAccentThreshold;
@@ -157,7 +155,7 @@ namespace YARG.Gameplay.Player
             if (!Player.IsReplay)
             {
                 // Create the engine params from the engine preset
-                EngineParams = Player.EnginePreset.Drums.Create(StarMultiplierThresholds, mode);
+                EngineParams = Player.EnginePreset.Drums.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds, mode);
             }
             else
             {
@@ -206,8 +204,6 @@ namespace YARG.Gameplay.Player
 
         protected override void FinishInitialization()
         {
-            StarScoreThresholds = PopulateStarScoreThresholds(StarMultiplierThresholds, Engine.BaseScore);
-
             // Get the proper info for four/five lane
             IFretColorProvider colors = !_fiveLaneMode
                 ? Player.ColorProfile.FourLaneDrums

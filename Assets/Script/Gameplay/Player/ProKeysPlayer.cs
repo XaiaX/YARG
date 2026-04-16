@@ -59,12 +59,10 @@ namespace YARG.Gameplay.Player
         private const int SHIFT_INDICATOR_MEASURES_BEFORE = 4;
         private const int MAX_TOTAL_BRE_LANES = 4;
 
-        public override float[] StarMultiplierThresholds { get; protected set; } =
+        protected override float[] StarMultiplierThresholds { get; set; } =
         {
-            0.21f, 0.46f, 0.77f, 1.85f, 3.08f, 4.52f
+            0.06f, 0.12f, 0.2f, 0.47f, 0.78f, 1.15f
         };
-
-        public override int[] StarScoreThresholds { get; protected set; }
 
         public KeysEngineParameters EngineParams { get; private set; }
 
@@ -136,7 +134,7 @@ namespace YARG.Gameplay.Player
             if (!Player.IsReplay)
             {
                 // Create the engine params from the engine preset
-                EngineParams = Player.EnginePreset.ProKeys.Create(StarMultiplierThresholds, false);
+                EngineParams = Player.EnginePreset.ProKeys.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds, false);
             }
             else
             {
