@@ -246,6 +246,20 @@ namespace YARG.Gameplay.Player
             LaneElement.DefineLaneScale(Player.Profile.CurrentInstrument, _fiveLaneMode ? 5 : 4);
         }
 
+        public override void ResetPracticeSection()
+        {
+            base.ResetPracticeSection();
+            _fretArray.ResetAll();
+        }
+
+        protected override void ResetLastHitTimes()
+        {
+            foreach (var breLaneIndex in _highwayOrderingIndexToBreLaneIndex.Values)
+            {
+                _breLaneIndexToMostRecentTime[breLaneIndex] = 0;
+            }
+        }
+
         private void SetDrumFillEffects()
         {
             int checkpoint = 0;

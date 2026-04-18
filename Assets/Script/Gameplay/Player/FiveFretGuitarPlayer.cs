@@ -268,6 +268,14 @@ namespace YARG.Gameplay.Player
             ResetRangeShift(_practiceSectionStartTime);
         }
 
+        protected override void ResetLastHitTimes()
+        {
+            foreach (var fret in _lanePositions.Keys)
+            {
+                _fretToMostRecentTime[(FiveFretGuitarFret) fret] = 0;
+            }
+        }
+
         public override void SetReplayTime(double time)
         {
             ResetRangeShift(time);

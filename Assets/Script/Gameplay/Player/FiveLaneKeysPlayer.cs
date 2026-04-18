@@ -259,6 +259,14 @@ public override bool ShouldUpdateInputsOnResume => true;
             ResetRangeShift(_practiceSectionStartTime);
         }
 
+        protected override void ResetLastHitTimes()
+        {
+            foreach (var breLaneIndex in _highwayOrderingIndexToBreLaneIndex.Values)
+            {
+                _breLaneIndexToMostRecentTime[breLaneIndex] = 0;
+            }
+        }
+
         public override void SetReplayTime(double time)
         {
             ResetRangeShift(time);

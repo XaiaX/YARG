@@ -267,6 +267,14 @@ namespace YARG.Gameplay.Player
             }
         }
 
+        protected override void ResetLastHitTimes()
+        {
+            for (var i = 0; i < MAX_TOTAL_BRE_LANES; i++)
+            {
+                _breLaneIndexToMostRecentTime[i] = 0;
+            }
+        }
+
         protected override void OnNoteHit(int index, ProKeysNote note)
         {
             base.OnNoteHit(index, note);

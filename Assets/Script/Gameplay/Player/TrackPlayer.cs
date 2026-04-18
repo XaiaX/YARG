@@ -380,7 +380,14 @@ namespace YARG.Gameplay.Player
             CurrentCoda = null;
             _breIndex = 0;
 
+            ResetLastHitTimes();
+
             base.ResetPracticeSection();
+        }
+
+        protected virtual void ResetLastHitTimes()
+        {
+
         }
 
         public override void Rewind(double visualTime)
