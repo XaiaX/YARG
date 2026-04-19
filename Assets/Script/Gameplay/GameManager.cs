@@ -15,6 +15,7 @@ using YARG.Core.Replays.Analyzer;
 using YARG.Core.Song;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Player;
+using YARG.Gameplay.Visuals;
 using YARG.Input;
 using YARG.Integration;
 using YARG.Localization;
@@ -433,7 +434,7 @@ namespace YARG.Gameplay
 
         public bool PlayerHasFailed { get; set; } = false;
 
-        public async void Resume()
+        public async void Resume(double? rewindDuration = null)
         {
             // We don't rewind in practice mode or in replay, so we can skip all the BS
             if (IsPractice || IsReplay)
@@ -479,8 +480,8 @@ namespace YARG.Gameplay
                 currentPause.PauseLength = InputManager.InputUpdateTime - _pauseTime;
                 PauseInfo[^1] = currentPause;
 
-                // Don't allow rewinding past the rewind limit
-                var rewindSeconds = Math.Max(0, SongTime - _rewindLimit);
+                // Don't allow rewinding past the rewind limit, unless a duration was explicitly passed to the resume function
+                var rewindSeconds = Math.Max(0, rewindDuration ?? SongTime - _rewindLimit);
 
                 var canceled = await RewindAndResume(rewindSeconds);
 
@@ -892,6 +893,15 @@ namespace YARG.Gameplay
             if (!PlayerHasFailed)
             {
                 PlayerHasFailed = true;
+
+                if (_players.Count > 1)
+                {
+                    // For some reason you seem to need this many frames to pass before pause for every highway to lower?
+                    await UniTask.DelayFrame(_players.Count - 1);
+                }
+
+                // Pause gameplay immediately, but don't show the menu until the highways have lowered
+                _songRunner.Pause();
                 _mixer.FadeOut(SONG_END_DELAY);
                 await UniTask.Delay(TimeSpan.FromSeconds(SONG_END_DELAY));
                 GlobalAudioHandler.PlayVoxSample(VoxSample.FailSound);
@@ -899,6 +909,15 @@ namespace YARG.Gameplay
             }
         }
 
+        public void UnfailSong()
+        {
+            YargLogger.LogFormatDebug("Unfailing song at SongTime {0}", SongTime);
+            PlayerHasFailed = false;
+            _mixer.FadeIn(DEFAULT_VOLUME, SONG_START_DELAY);
+            InvalidateScores("Menu.Toast.ResumeAfterFailInvalidate");
+            // This is an arbitrary value, just want to give players enough time to adjust
+            Resume(SONG_START_DELAY + 1);
+        }
         // If we go from no fail to fail, we need to reinitialize the happiness state so we avoid
         // the possibility of an instant fail. Yes, this is cheeseable since toggling no fail resets happiness.
         private void OnNoFailModeChanged(NoFailMode mode)
