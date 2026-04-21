@@ -364,12 +364,10 @@ namespace YARG.Menu.MusicLibrary
             }
 
             _difficultyRings[3].SetInfo("keys", Instrument.Keys, entry[Instrument.Keys]);
-            _difficultyRings[4].SetInfo(entry.VocalsCount switch
-            {
-                >= 3 => "harmVocals",
-                2    => "twoVocals",
-                _    => "vocals",
-            }, Instrument.Vocals, entry[Instrument.Vocals]);
+
+            var vocalsPart = GetVocalsPartValues(entry);
+
+            _difficultyRings[4].SetInfo(vocalsPart.PartIcon, Instrument.Vocals, vocalsPart.PartValues);
 
             // Protar or Co-op
             if (entry.HasInstrument(Instrument.ProGuitar_17Fret) || entry.HasInstrument(Instrument.ProGuitar_22Fret))
@@ -408,6 +406,30 @@ namespace YARG.Menu.MusicLibrary
             _difficultyRings[7].SetInfo("eliteDrums", Instrument.EliteDrums, entry[Instrument.EliteDrums]);
             _difficultyRings[8].SetInfo("realKeys", Instrument.ProKeys, entry[Instrument.ProKeys]);
             _difficultyRings[9].SetInfo("band", Instrument.Band, entry[Instrument.Band]);
+            return;
+
+            static (string PartIcon, PartValues PartValues) GetVocalsPartValues(SongEntry songEntry)
+            {
+                PartValues vocalsPart;
+
+                if (!songEntry.HasInstrument(Instrument.Vocals) && songEntry.HasInstrument(Instrument.Harmony))
+                {
+                    vocalsPart = songEntry[Instrument.Harmony];
+                }
+                else
+                {
+                    vocalsPart = songEntry[Instrument.Vocals];
+                }
+
+                var partIcon = songEntry.VocalsCount switch
+                {
+                    >= 3 => "harmVocals",
+                    2    => "twoVocals",
+                    _    => "vocals",
+                };
+
+                return (partIcon, vocalsPart);
+            }
         }
 
         public void UpdatePlayButtonLabel(bool setListNotEmpty)
