@@ -37,11 +37,6 @@ namespace YARG.Integration
         private int _drumEndCheckIndex = -1;
         private int _keysEndCheckIndex = -1;
 
-        protected override void GameplayAwake()
-        {
-            MasterLightingController.SetBeatVisual(GameManager.BeatEventHandler.Visual);
-        }
-
         protected override void GameplayDestroy()
         {
             MasterLightingController.SetBeatVisual(null);
@@ -49,6 +44,7 @@ namespace YARG.Integration
 
         protected override void OnChartLoaded(SongChart chart)
         {
+            MasterLightingController.SetBeatVisual(GameManager.BeatEventHandler.Visual);
             MasterLightingController.CurrentLightingCue = null;
             MasterLightingController.CurrentFogState = MasterLightingController.FogState.Off;
             MasterLightingController.CurrentStrobeState = StageKitStrobeSpeed.Off;
