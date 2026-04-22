@@ -420,12 +420,17 @@ namespace YARG.Player
             int? profileCount = VerifyProfileFile(tempPath);
             if (profileCount is null || profileCount != _profiles.Count)
             {
-                YargLogger.LogFormatError("Failed to verify profiles file: {0} profiles were expected, but {1} were found", _profiles.Count, profileCount ?? -1);
+                YargLogger.LogFormatError("Failed to verify new profiles file: {0} profiles were expected, but {1} were found", _profiles.Count, profileCount ?? -1);
                 File.Delete(tempPath);
                 return 0;
             }
 
-            File.Replace(tempPath, ProfilesPath, null);
+            if (File.Exists(ProfilesPath))
+            {
+                File.Delete(ProfilesPath);
+            }
+
+            File.Move(tempPath, ProfilesPath);
 
             BindingsContainer.SaveBindings();
 
