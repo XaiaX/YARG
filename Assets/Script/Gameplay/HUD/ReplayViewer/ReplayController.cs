@@ -75,10 +75,6 @@ namespace YARG.Gameplay.HUD
             _notificationText = _notificationArea.GetComponentInChildren<TextMeshProUGUI>();
             _notificationArea.SetActive(false);
 
-            _pauses = GameManager.ReplayInfo.Pauses;
-            YargLogger.LogFormatDebug("Found {0} pauses", _pauses.Length);
-            _lastVisualTime = GameManager.VisualTime;
-
             // Listen for menu inputs
             Navigator.Instance.NavigationEvent += OnNavigationEvent;
         }
@@ -99,6 +95,10 @@ namespace YARG.Gameplay.HUD
 
         protected override void OnSongStarted()
         {
+            _pauses = GameManager.ReplayInfo.Pauses;
+            YargLogger.LogFormatDebug("Found {0} pauses", _pauses.Length);
+            _lastVisualTime = GameManager.VisualTime;
+
             // Set the playback speed to the replay speed
             if (_replay.Frames.Length > 0)
             {
