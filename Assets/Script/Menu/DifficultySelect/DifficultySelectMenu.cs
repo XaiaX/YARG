@@ -760,9 +760,9 @@ namespace YARG.Menu.DifficultySelect
             }
 
             // For PK, disallow beginner
-            if (instrument is Instrument.ProKeys)
+            if (instrument is Instrument.ProKeys && difficulty is Difficulty.Beginner)
             {
-                return difficulty is not Difficulty.Beginner;
+                return false;
             }
 
             // Otherwise, we can do this
