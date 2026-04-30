@@ -759,6 +759,12 @@ namespace YARG.Menu.DifficultySelect
                 return difficulty is not Difficulty.ExpertPlus;
             }
 
+            // For PK, disallow beginner
+            if (instrument is Instrument.ProKeys)
+            {
+                return difficulty is not Difficulty.Beginner;
+            }
+
             // Otherwise, we can do this
             return entry[instrument][difficulty] || instrument switch
             {
