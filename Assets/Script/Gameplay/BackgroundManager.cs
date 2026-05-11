@@ -546,6 +546,15 @@ namespace YARG.Gameplay
                     {
                         YargLogger.LogFormatError("Failed to load default animation controller for {0}", charType);
                     }
+
+                    // Read AnimatorParameters json and set _actionsPerAnimationCycle and _framesToFirstHit
+                    var parametersPath = Path.Combine("Assets/Resources", basePath, DEFAULT_ANIMATION_PARAMETERS_FILENAME);
+                    var props = JsonConvert.DeserializeObject<Dictionary<string, int>>(File.ReadAllText(parametersPath));
+                    if (props != null)
+                    {
+                        vrmCharacter.ActionsPerAnimationCycle = props["ActionsPerAnimationCycle"];
+                        vrmCharacter.FramesToFirstHit = props["FramesToFirstHit"];
+                    }
                 }
             }
 
