@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Cinemachine;
 using Cysharp.Threading.Tasks;
+using Newtonsoft.Json;
 using UniHumanoid;
 using UnityEngine;
 using UnityEngine.Animations;
@@ -33,7 +34,9 @@ namespace YARG.Gameplay
     public class BackgroundManager : GameplayBehaviour, IDisposable
     {
         // e.g. DefaultController.Vocals.Rock.controller
-        private const string DEFAULT_ANIMATION_CONTROLLER_PATH = "DefaultAnimations/DefaultController.{0}.{1}.controller";
+        private const string DEFAULT_ANIMATION_CONTROLLER_PATH     = "Animations/{0}/{1}/";
+        private const string DEFAULT_ANIMATION_CONTROLLER_FILENAME = "DefaultController";
+        private const string DEFAULT_ANIMATION_PARAMETERS_FILENAME = "AnimatorParameters.json";
 
         private string VIDEO_PATH;
 
@@ -523,18 +526,21 @@ namespace YARG.Gameplay
 
             // Check for an existing animation controller and use default if none is found
             var animator = character.GetComponent<Animator>();
-            if (animator != null)
+            var vrmCharacter = character.GetComponent<VRMCharacter>();
+            if (!vrmCharacter.UseCustomAnimations && animator != null)
             {
                 var controller = animator.runtimeAnimatorController;
-                if (controller == null)
+                if (controller == null || !vrmCharacter.UseCustomAnimations)
                 {
                     var genre = GetDefaultGenre(GameManager.Song.Genre);
                     var charType = character.GetComponent<VenueCharacter>().Type;
-                    var path = string.Format(DEFAULT_ANIMATION_CONTROLLER_PATH, charType.ToString(), genre);
-                    var newController = Resources.Load<RuntimeAnimatorController>(path);
+                    var basePath = string.Format(DEFAULT_ANIMATION_CONTROLLER_PATH, charType.ToString(), genre);
+                    var controllerPath = Path.Combine(basePath, DEFAULT_ANIMATION_CONTROLLER_FILENAME);
+                    var newController = Resources.Load<RuntimeAnimatorController>(controllerPath);
                     if (newController != null)
                     {
                         animator.runtimeAnimatorController = newController;
+                        animator.Rebind();
                     }
                     else
                     {
@@ -705,7 +711,7 @@ namespace YARG.Gameplay
         // TODO: Move this to Genrelizer or sth and implement
         public static string GetDefaultGenre(string realGenre)
         {
-            return "Generic";
+            return "Default";
         }
 
         public void Dispose()
