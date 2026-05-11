@@ -48,7 +48,7 @@ AnimatorStateTransition:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: 
+  m_Name:
   m_Conditions:
   - m_ConditionMode: 1
     m_ConditionEvent: Mellow
@@ -73,7 +73,7 @@ AnimatorStateTransition:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: 
+  m_Name:
   m_Conditions:
   - m_ConditionMode: 1
     m_ConditionEvent: Idle
@@ -112,12 +112,12 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 7400000, guid: 8cdca40ae2431d741b905bde219cffa7, type: 2}
-  m_Tag: 
-  m_SpeedParameter: 
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
+  m_Motion: {fileID: 7400000, guid: 38468b7aa5d84a5eb2b03139dedb4340, type: 2}
+  m_Tag:
+  m_SpeedParameter:
+  m_MirrorParameter:
+  m_CycleOffsetParameter:
+  m_TimeParameter:
 --- !u!1102 &-3764521651787455614
 AnimatorState:
   serializedVersion: 6
@@ -138,12 +138,12 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 7400000, guid: 864abf36bda90c741905a20361a7ad9e, type: 2}
-  m_Tag: 
+  m_Motion: {fileID: 7400000, guid: 2cfc3cd26c51487bbb296677fef8ab63, type: 2}
+  m_Tag:
   m_SpeedParameter: UnclampedSpeedAdjustment
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
+  m_MirrorParameter:
+  m_CycleOffsetParameter:
+  m_TimeParameter:
 --- !u!1107 &-3126664371527307005
 AnimatorStateMachine:
   serializedVersion: 6
@@ -186,19 +186,19 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 7400000, guid: 2092818885d1b1a419c184787f950f18, type: 2}
-  m_Tag: 
+  m_Motion: {fileID: 7400000, guid: 1ac4509b1fda48c99965cb80d7c44ec4, type: 2}
+  m_Tag:
   m_SpeedParameter: UnclampedSpeedAdjustment
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
+  m_MirrorParameter:
+  m_CycleOffsetParameter:
+  m_TimeParameter:
 --- !u!91 &9100000
 AnimatorController:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: VoxAnim
+  m_Name: DefaultController
   serializedVersion: 5
   m_AnimatorParameters:
   - m_Name: SpeedAdjustment
@@ -289,19 +289,19 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -623603649343465320, guid: 8783f237655cfc1439f4854ba4d8de25, type: 3}
-  m_Tag: 
+  m_Motion: {fileID: 7400000, guid: 91a7fdfbe7b603e47826d8ab2a17761e, type: 2}
+  m_Tag:
   m_SpeedParameter: SpeedAdjustment
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
+  m_MirrorParameter:
+  m_CycleOffsetParameter:
+  m_TimeParameter:
 --- !u!1101 &3287857209977405183
 AnimatorStateTransition:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: 
+  m_Name:
   m_Conditions:
   - m_ConditionMode: 1
     m_ConditionEvent: Playing
@@ -326,7 +326,7 @@ AnimatorStateTransition:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: 
+  m_Name:
   m_Conditions:
   - m_ConditionMode: 1
     m_ConditionEvent: Intense
@@ -351,7 +351,7 @@ AnimatorStateTransition:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: 
+  m_Name:
   m_Conditions: []
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: 5121404757883709855}
@@ -388,12 +388,12 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -623603649343465320, guid: 8783f237655cfc1439f4854ba4d8de25, type: 3}
-  m_Tag: 
+  m_Motion: {fileID: 7400000, guid: 91a7fdfbe7b603e47826d8ab2a17761e, type: 2}
+  m_Tag:
   m_SpeedParameter: SpeedAdjustment
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
+  m_MirrorParameter:
+  m_CycleOffsetParameter:
+  m_TimeParameter:
 --- !u!1102 &7869316396725171579
 AnimatorState:
   serializedVersion: 6
@@ -414,12 +414,12 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 7400000, guid: bdc78950f29566049bf2b30490964074, type: 2}
-  m_Tag: 
+  m_Motion: {fileID: 7400000, guid: 1a9c703206f249c7bbacc7b7931c8c97, type: 2}
+  m_Tag:
   m_SpeedParameter: SpeedAdjustment
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
+  m_MirrorParameter:
+  m_CycleOffsetParameter:
+  m_TimeParameter:
 --- !u!1102 &7916860337217978770
 AnimatorState:
   serializedVersion: 6
@@ -440,19 +440,19 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 7400000, guid: 0343068ca9962b941a79702ff341a289, type: 2}
-  m_Tag: 
+  m_Motion: {fileID: 7400000, guid: 2214c589d2ba49a7924e60d9bfa32725, type: 2}
+  m_Tag:
   m_SpeedParameter: UnclampedSpeedAdjustment
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
+  m_MirrorParameter:
+  m_CycleOffsetParameter:
+  m_TimeParameter:
 --- !u!1101 &8370302060650857576
 AnimatorStateTransition:
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: 
+  m_Name:
   m_Conditions:
   - m_ConditionMode: 1
     m_ConditionEvent: IdleRealtime
@@ -477,7 +477,7 @@ AnimatorStateTransition:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: 
+  m_Name:
   m_Conditions: []
   m_DstStateMachine: {fileID: 0}
   m_DstState: {fileID: 442504822337593755}
