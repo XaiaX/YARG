@@ -36,7 +36,7 @@ namespace YARG.Gameplay
         // e.g. DefaultController.Vocals.Rock.controller
         private const string DEFAULT_ANIMATION_CONTROLLER_PATH     = "Animations/{0}/{1}/";
         private const string DEFAULT_ANIMATION_CONTROLLER_FILENAME = "DefaultController";
-        private const string DEFAULT_ANIMATION_PARAMETERS_FILENAME = "AnimatorParameters.json";
+        private const string DEFAULT_ANIMATION_PARAMETERS_FILENAME = "AnimatorParameters";
 
         private string VIDEO_PATH;
 
@@ -548,12 +548,21 @@ namespace YARG.Gameplay
                     }
 
                     // Read AnimatorParameters json and set _actionsPerAnimationCycle and _framesToFirstHit
-                    var parametersPath = Path.Combine("Assets/Resources", basePath, DEFAULT_ANIMATION_PARAMETERS_FILENAME);
-                    var props = JsonConvert.DeserializeObject<Dictionary<string, int>>(File.ReadAllText(parametersPath));
-                    if (props != null)
+                    var parametersPath = Path.Combine(basePath, DEFAULT_ANIMATION_PARAMETERS_FILENAME);
+                    var jsonAsset = Resources.Load<TextAsset>(parametersPath);
+                    if (jsonAsset != null)
                     {
-                        vrmCharacter.ActionsPerAnimationCycle = props["ActionsPerAnimationCycle"];
-                        vrmCharacter.FramesToFirstHit = props["FramesToFirstHit"];
+                        var props =
+                            JsonConvert.DeserializeObject<Dictionary<string, int>>(jsonAsset.text);
+                        if (props != null)
+                        {
+                            vrmCharacter.ActionsPerAnimationCycle = props["ActionsPerAnimationCycle"];
+                            vrmCharacter.FramesToFirstHit = props["FramesToFirstHit"];
+                        }
+                    }
+                    else
+                    {
+                        YargLogger.LogFormatError("Failed to load default animation parameters for {0}", charType);
                     }
                 }
             }
