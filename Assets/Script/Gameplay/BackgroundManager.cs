@@ -541,6 +541,10 @@ namespace YARG.Gameplay
                     {
                         animator.runtimeAnimatorController = newController;
                         animator.Rebind();
+
+                        // We swapped controllers, so we need to clear the character's animation dicts
+                        vrmCharacter.AnimationStates.Clear();
+                        vrmCharacter.LayerStates.Clear();
                     }
                     else
                     {
