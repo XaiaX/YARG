@@ -524,6 +524,89 @@ namespace YARG.Gameplay
                 _bundleBackgroundManager.ShaderBundles.Add(shaderBundle);
             }
 
+            // Load default animation controller and parameters if necessary
+            LoadAnimationDefaults(character);
+
+            var newType = character.GetComponent<VenueCharacter>().Type;
+            // Find a character of the same type in venueRoot
+            GameObject existingCharacter = null;
+
+            var characters = venueRoot.GetComponentsInChildren<VenueCharacter>();
+            foreach (var c in characters)
+            {
+                if (c.Type == newType)
+                {
+                    existingCharacter = c.gameObject;
+                    break;
+                }
+            }
+
+            if (existingCharacter == null)
+            {
+                YargLogger.LogFormatError("Failed to find character of type {0} in venue root", newType);
+                return;
+            }
+
+            // Replace existingCharacter with the new character
+            var existingParent = existingCharacter.transform.parent;
+
+            var newCharacter = Instantiate(character, existingParent);
+            ReplaceReferences(venueRoot, existingCharacter, newCharacter);
+            existingCharacter.SetActive(false);
+            Destroy(existingCharacter);
+
+            AddMicrophoneToCharacter(newCharacter);
+
+            // Lastly, make sure the new character and all its children are in the Venue layer
+            var layerIndex = LayerMask.NameToLayer("Venue");
+            SetLayer(newCharacter, layerIndex);
+        }
+
+        private void AddMicrophoneToCharacter(GameObject character)
+        {
+            var vrmCharacter = character.GetComponent<VRMCharacter>();
+            if (vrmCharacter == null || vrmCharacter.Type != VenueCharacter.CharacterType.Vocals ||
+                vrmCharacter.UseCustomAnimations)
+            {
+                return;
+            }
+
+            var animator = vrmCharacter.GetComponent<Animator>();
+
+            if (animator == null)
+            {
+                return;
+            }
+
+            // TODO: Come up with a better means of doing this, because this is both cursed and barely adequate
+
+            // Make sure the animator has taken the character out of t-pose
+            animator.Update(0f);
+
+            // Needed to calculate position and rotation
+            var rightHand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            var rightLittleDistal = animator.GetBoneTransform(HumanBodyBones.RightLittleDistal);
+            var rightLittleIntermediate = animator.GetBoneTransform(HumanBodyBones.RightLittleIntermediate);
+            var rightLittleProximal = animator.GetBoneTransform(HumanBodyBones.RightLittleProximal);
+            var rightRingIntermediate = animator.GetBoneTransform(HumanBodyBones.RightRingIntermediate);
+            var rightMiddleIntermediate = animator.GetBoneTransform(HumanBodyBones.RightMiddleIntermediate);
+            var rightIndexDistal = animator.GetBoneTransform(HumanBodyBones.RightIndexDistal);
+            var rightIndexIntermediate = animator.GetBoneTransform(HumanBodyBones.RightIndexIntermediate);
+            var rightIndexProximal = animator.GetBoneTransform(HumanBodyBones.RightIndexProximal);
+            var rightThumbDistal = animator.GetBoneTransform(HumanBodyBones.RightThumbDistal);
+
+            // Parent microphone to right hand
+            var mic = Instantiate(Resources.Load<GameObject>("Animations/Vocals/Microphone"), rightHand);
+
+            var indexGripCenter = Vector3.Lerp(rightThumbDistal.position, rightIndexIntermediate.position, 0.25f);
+            var yuiIndexGripCenter = Vector3.Lerp(rightThumbDistal.position, rightIndexProximal.position, 0.25f);
+            var littleGripCenter = Vector3.Lerp(rightLittleDistal.position, rightLittleProximal.position, 0.5f);
+
+            mic.transform.position = yuiIndexGripCenter;
+        }
+
+        private void LoadAnimationDefaults(GameObject character)
+        {
             // Check for an existing animation controller and use default if none is found
             var animator = character.GetComponent<Animator>();
             var vrmCharacter = character.GetComponent<VRMCharacter>();
@@ -570,38 +653,6 @@ namespace YARG.Gameplay
                     }
                 }
             }
-
-            var newType = character.GetComponent<VenueCharacter>().Type;
-            // Find a character of the same type in venueRoot
-            GameObject existingCharacter = null;
-
-            var characters = venueRoot.GetComponentsInChildren<VenueCharacter>();
-            foreach (var c in characters)
-            {
-                if (c.Type == newType)
-                {
-                    existingCharacter = c.gameObject;
-                    break;
-                }
-            }
-
-            if (existingCharacter == null)
-            {
-                YargLogger.LogFormatError("Failed to find character of type {0} in venue root", newType);
-                return;
-            }
-
-            // Replace existingCharacter with the new character
-            var existingParent = existingCharacter.transform.parent;
-
-            var newCharacter = Instantiate(character, existingParent);
-            ReplaceReferences(venueRoot, existingCharacter, newCharacter);
-            existingCharacter.SetActive(false);
-            Destroy(existingCharacter);
-
-            // Lastly, make sure the new character and all its children are in the Venue layer
-            var layerIndex = LayerMask.NameToLayer("Venue");
-            SetLayer(newCharacter, layerIndex);
         }
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
