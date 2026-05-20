@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿// Pattern: Imperative Shell
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using YARG.Core;
