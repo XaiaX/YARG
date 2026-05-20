@@ -90,7 +90,9 @@ namespace YARG.Gameplay.Player
 
             // Get the notes from the specific harmony or solo part
 
-            var multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+            var multiTrack = Player.Profile.IsFreeVocals
+                ? chart.GetVocalsTrack(Instrument.Vocals)
+                : chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
 
             var track = multiTrack.Parts[0];
             player.Profile.ApplyVocalModifiers(track);
@@ -188,18 +190,20 @@ namespace YARG.Gameplay.Player
             // The hit window can just be taken from the params
             HitWindow = EngineParams.HitWindow;
 
-            var engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
-
-            // NOTE: This free-vocals routing path was not verified in the Unity Editor.
-            // The EngineManager.Register overload and Profile.IsFreeVocals helper are
-            // unit-tested in YARG.Core, but the integration through this Unity-side
-            // script has not been smoke-checked in the Editor.
+            VocalsEngine engine;
             if (Player.Profile.IsFreeVocals)
             {
+                // For Free vocals, create primary chart from first part using CloneAsInstrumentDifficulty helper
+                var primaryChart = _allParts[0].CloneAsInstrumentDifficulty();
+
+                engine = new YargFreeVocalsEngine(primaryChart, _allParts, SyncTrack, EngineParams, Player.Profile.IsBot);
+
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
             }
             else
             {
+                engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
+
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
             }
 
