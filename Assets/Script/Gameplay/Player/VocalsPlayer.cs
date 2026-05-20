@@ -24,6 +24,12 @@ namespace YARG.Gameplay.Player
 
         public override BaseEngine BaseEngine => Engine;
 
+        /// <summary>
+        /// Gets the current target harmony index for free vocals. Only valid when using a Free profile.
+        /// </summary>
+        public int CurrentTargetHarmonyIndex =>
+            Engine is YargFreeVocalsEngine freeEngine ? freeEngine.CurrentTargetHarmonyIndex : -1;
+
         [SerializeField]
         private GameObject _needleVisualContainer;
         [SerializeField]
@@ -63,6 +69,7 @@ namespace YARG.Gameplay.Player
         private const int NEEDLES_COUNT = 7;
 
         private SongChart _chart;
+        private IReadOnlyList<VocalsPart> _allParts;
 
         public void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
@@ -88,6 +95,9 @@ namespace YARG.Gameplay.Player
 
             var track = multiTrack.Parts[0];
             player.Profile.ApplyVocalModifiers(track);
+
+            // Store all parts for free vocals
+            _allParts = multiTrack.Parts;
 
             OriginalNoteTrack = track.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
@@ -460,20 +470,52 @@ namespace YARG.Gameplay.Player
                     float pitch;
                     float targetRotation = 0f;
 
-                    if (!_lastTargetNote.IsNonPitched)
+                    if (_lastTargetNote.IsNonPitched)
                     {
-                        // If the player is hitting, just set the needle position to the note
-                        pitch = lastNotePitch;
+                        // If the note is non-pitched, just use the singing position
+                        pitch = Engine.PitchSang + 12f;
+                    }
+                    else if (Player.Profile.IsFreeVocals)
+                    {
+                        // For Free vocals, use the engine's best-matching part's pitch
+                        var freeEngine = Engine as YargFreeVocalsEngine;
+                        if (freeEngine != null && CurrentTargetHarmonyIndex >= 0 && CurrentTargetHarmonyIndex < _allParts.Count)
+                        {
+                            var bestPart = _allParts[CurrentTargetHarmonyIndex];
+                            if (bestPart.NotePhrases.Count > 0)
+                            {
+                                var bestNote = bestPart.NotePhrases[0].PhraseParentNote.ChildNotes.FirstOrDefault();
+                                if (bestNote != null)
+                                {
+                                    pitch = bestNote.PitchAtSongTime(GameManager.SongTime);
+                                }
+                                else
+                                {
+                                    pitch = lastNotePitch;
+                                }
+                            }
+                            else
+                            {
+                                pitch = lastNotePitch;
+                            }
+                        }
+                        else
+                        {
+                            pitch = lastNotePitch;
+                        }
 
-                        // Rotate the needle a little bit depending on how off it is (unless it's non-pitched)
-                        // Get how off the player is
-                        (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, Engine.PitchSang);
+                        // Rotate the needle based on how off the player is from the closest part
+                        (float pitchDist, _) = GetPitchDistanceIgnoringOctave(pitch, Engine.PitchSang);
                         targetRotation = GetNeedleRotation(pitchDist);
                     }
                     else
                     {
-                        // If the note is non-pitched, just use the singing position
-                        pitch = Engine.PitchSang + 12f;
+                        // Regular vocals - lock to note pitch
+                        pitch = lastNotePitch;
+
+                        // Rotate the needle a little bit depending on how off it is
+                        (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, Engine.PitchSang);
+                        targetRotation = GetNeedleRotation(pitchDist);
                     }
 
                     // Transform!
@@ -507,6 +549,9 @@ namespace YARG.Gameplay.Player
                         // make the needle sit more in the middle
                         pitch += 12f;
                     }
+
+                    // For Free vocals, we could potentially adjust this further based on the target harmony
+                    // but for now we'll keep it simple and just track the input pitch
 
                     // Set the position of the needle
                     var z = GameManager.VocalTrack.GetPosForPitch(pitch);
