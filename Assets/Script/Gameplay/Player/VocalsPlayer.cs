@@ -84,7 +84,7 @@ namespace YARG.Gameplay.Player
 
             var multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
 
-            var track = multiTrack.Parts[Player.Profile.HarmonyIndex];
+            var track = multiTrack.Parts[0];
             player.Profile.ApplyVocalModifiers(track);
 
             OriginalNoteTrack = track.CloneAsInstrumentDifficulty();
@@ -134,6 +134,10 @@ namespace YARG.Gameplay.Player
                 if (Player.Profile.CurrentInstrument == Instrument.Vocals)
                 {
                     Engine.BuildCountdownsFromSelectedPart();
+                }
+                else if (Player.Profile.IsFreeVocals || CurrentInstrument == Instrument.Harmony)
+                {
+                    Engine.BuildCountdownsFromAllParts(multiTrack.Parts);
                 }
                 else
                 {
