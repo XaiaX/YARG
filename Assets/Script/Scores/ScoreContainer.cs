@@ -153,6 +153,11 @@ namespace YARG.Scores
 
                 SongContainer.InvalidateStarsCache();
                 YargLogger.LogInfo("Recorded score for song.");
+
+                // TODO: When online leaderboard submission is implemented, exclude Free Vocals profiles
+                // from the standard vocals leaderboard. Check each player's Profile.IsFreeVocals and
+                // skip submission with an INFO log: "Skipping leaderboard submission: Free vocals profile."
+                // See free-vocals AC6.1.
             }
             catch (Exception e)
             {
