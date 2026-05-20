@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -459,19 +460,17 @@ namespace YARG.Menu.DifficultySelect
                 UpdateForPlayer();
             });
 
-            // Add Free option if song has harmonies
-            if (_maxHarmonyIndex > 1)
+            // Add Free option (available on all vocal songs; degenerates to Solo gameplay
+            // automatically on Solo-only songs per AC1.2)
+            bool freeSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Vocals && CurrentPlayer.Profile.FreeHarmony;
+            CreateItem(LocalizeHeader("Free"), "", freeSelected, () =>
             {
-                bool freeSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Vocals && CurrentPlayer.Profile.FreeHarmony;
-                CreateItem(LocalizeHeader("Free"), "", freeSelected, () =>
-                {
-                    CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
-                    CurrentPlayer.Profile.FreeHarmony = true;
+                CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
+                CurrentPlayer.Profile.FreeHarmony = true;
 
-                    _menuState = State.Main;
-                    UpdateForPlayer();
-                });
-            }
+                _menuState = State.Main;
+                UpdateForPlayer();
+            });
 
             // Add HARM options
             for (int i = 1; i < _maxHarmonyIndex; i++)
