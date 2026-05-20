@@ -85,7 +85,8 @@ namespace YARG.Gameplay.Player
             // Needle materials have names starting from 1.
             var needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
             var materialPath = $"VocalNeedle/{needleIndex}";
-            _needleRenderer.material = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
+            var sharedMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
+            _needleRenderer.material = new Material(sharedMaterial);
 
             // Get the notes from the specific harmony or solo part
 
@@ -142,17 +143,9 @@ namespace YARG.Gameplay.Player
             if (vocalIndex == 0)
             {
                 if (Player.Profile.CurrentInstrument == Instrument.Vocals)
-                {
                     Engine.BuildCountdownsFromSelectedPart();
-                }
-                else if (Player.Profile.IsFreeVocals || CurrentInstrument == Instrument.Harmony)
-                {
-                    Engine.BuildCountdownsFromAllParts(multiTrack.Parts);
-                }
                 else
-                {
                     Engine.BuildCountdownsFromAllParts(multiTrack.Parts);
-                }
 
                 Engine.OnCountdownChange += (countdownLength, endTime) =>
                 {
@@ -475,32 +468,9 @@ namespace YARG.Gameplay.Player
                     }
                     else if (Player.Profile.IsFreeVocals)
                     {
-                        // For Free vocals, use the engine's best-matching part's pitch
-                        var freeEngine = Engine as YargFreeVocalsEngine;
-                        if (freeEngine != null && CurrentTargetHarmonyIndex >= 0 && CurrentTargetHarmonyIndex < _allParts.Count)
-                        {
-                            var bestPart = _allParts[CurrentTargetHarmonyIndex];
-                            if (bestPart.NotePhrases.Count > 0)
-                            {
-                                var bestNote = bestPart.NotePhrases[0].PhraseParentNote.ChildNotes.FirstOrDefault();
-                                if (bestNote != null)
-                                {
-                                    pitch = bestNote.PitchAtSongTime(GameManager.SongTime);
-                                }
-                                else
-                                {
-                                    pitch = lastNotePitch;
-                                }
-                            }
-                            else
-                            {
-                                pitch = lastNotePitch;
-                            }
-                        }
-                        else
-                        {
-                            pitch = lastNotePitch;
-                        }
+                        // For Free vocals, use _lastTargetNote which is already set via
+                        // OnTargetNoteChanged to the current best-matching note at song time.
+                        pitch = lastNotePitch;
 
                         // Rotate the needle based on how off the player is from the closest part
                         (float pitchDist, _) = GetPitchDistanceIgnoringOctave(pitch, Engine.PitchSang);
@@ -531,7 +501,7 @@ namespace YARG.Gameplay.Player
                     // Since the player is not hitting the note here, we need to offset it correctly.
                     // Get the pitch, and move to the correct octave.
                     float pitch = Engine.PitchSang;
-                    if (_lastTargetNote is not null && !_lastTargetNote.IsNonPitched)
+                    if (_lastTargetNote is not null && !_lastTargetNote.IsNonPitched && lastNotePitch >= 0f)
                     {
                         (_, int octaveShift) = GetPitchDistanceIgnoringOctave(lastNotePitch, pitch);
 
@@ -547,9 +517,6 @@ namespace YARG.Gameplay.Player
                         // make the needle sit more in the middle
                         pitch += 12f;
                     }
-
-                    // For Free vocals, we could potentially adjust this further based on the target harmony
-                    // but for now we'll keep it simple and just track the input pitch
 
                     // Set the position of the needle
                     var z = GameManager.VocalTrack.GetPosForPitch(pitch);
@@ -683,8 +650,8 @@ namespace YARG.Gameplay.Player
             // Get the target harmony index
             int targetIndex = freeEngine.CurrentTargetHarmonyIndex;
 
-            // Clamp to valid range
-            if (targetIndex < 0 || targetIndex >= VocalTrack.Colors.Length)
+            // Clamp to valid range (bounded by actual part count)
+            if (targetIndex < 0 || targetIndex >= _allParts.Count)
                 targetIndex = 0;
 
             // Set the needle color to the target harmony color
