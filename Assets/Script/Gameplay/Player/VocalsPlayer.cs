@@ -219,6 +219,7 @@ namespace YARG.Gameplay.Player
             engine.OnTargetNoteChanged += (note) =>
             {
                 _lastTargetNote = note;
+                UpdateNeedleMaterialColor();
             };
 
             engine.OnPhraseHit += (percent, fullPoints, isLastPhrase) =>
@@ -671,6 +672,26 @@ namespace YARG.Gameplay.Player
             }
 
             return (closest, octaveShift);
+        }
+
+        private void UpdateNeedleMaterialColor()
+        {
+            if (!Player.Profile.IsFreeVocals || _needleRenderer == null)
+                return;
+
+            var freeEngine = Engine as YargFreeVocalsEngine;
+            if (freeEngine == null)
+                return;
+
+            // Get the target harmony index
+            int targetIndex = freeEngine.CurrentTargetHarmonyIndex;
+
+            // Clamp to valid range
+            if (targetIndex < 0 || targetIndex >= VocalTrack.Colors.Length)
+                targetIndex = 0;
+
+            // Set the needle color to the target harmony color
+            _needleRenderer.material.color = VocalTrack.Colors[targetIndex];
         }
 
         public override (ReplayFrame Frame, ReplayStats Stats) ConstructReplayData()
