@@ -448,13 +448,41 @@ namespace YARG.Menu.DifficultySelect
 
         private void CreateHarmonyMenu()
         {
-            for (int i = 0; i < _maxHarmonyIndex; i++)
+            // Add Solo option
+            bool soloSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Vocals && !CurrentPlayer.Profile.FreeHarmony;
+            CreateItem(LocalizeHeader("Solo"), (CurrentPlayer.Profile.HarmonyIndex + 1).ToString(), soloSelected, () =>
+            {
+                CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
+                CurrentPlayer.Profile.FreeHarmony = false;
+
+                _menuState = State.Main;
+                UpdateForPlayer();
+            });
+
+            // Add Free option if song has harmonies
+            if (_maxHarmonyIndex > 1)
+            {
+                bool freeSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Vocals && CurrentPlayer.Profile.FreeHarmony;
+                CreateItem(LocalizeHeader("Free"), "", freeSelected, () =>
+                {
+                    CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
+                    CurrentPlayer.Profile.FreeHarmony = true;
+
+                    _menuState = State.Main;
+                    UpdateForPlayer();
+                });
+            }
+
+            // Add HARM options
+            for (int i = 1; i < _maxHarmonyIndex; i++)
             {
                 int capture = i;
-                bool selected = CurrentPlayer.Profile.HarmonyIndex == i;
-                CreateItem((i + 1).ToString(), selected, () =>
+                bool harmSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Harmony && CurrentPlayer.Profile.HarmonyIndex == (byte)(i - 1);
+                CreateItem($"HARM{i}", "", harmSelected, () =>
                 {
+                    CurrentPlayer.Profile.CurrentInstrument = Instrument.Harmony;
                     CurrentPlayer.Profile.HarmonyIndex = (byte) capture;
+                    CurrentPlayer.Profile.FreeHarmony = false;
 
                     _menuState = State.Main;
                     UpdateForPlayer();
