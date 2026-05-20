@@ -186,6 +186,10 @@ namespace YARG.Gameplay.Player
 
             var engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
 
+            // NOTE: This free-vocals routing path was not verified in the Unity Editor.
+            // The EngineManager.Register overload and Profile.IsFreeVocals helper are
+            // unit-tested in YARG.Core, but the integration through this Unity-side
+            // script has not been smoke-checked in the Editor.
             if (Player.Profile.IsFreeVocals)
             {
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
