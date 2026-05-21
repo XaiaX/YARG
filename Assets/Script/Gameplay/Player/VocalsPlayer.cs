@@ -237,7 +237,8 @@ namespace YARG.Gameplay.Player
             {
                 // For Free vocals, use the full multitrack (all HARM parts) but anchor to part 0
                 var multiTrack = _chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
-                engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot);
+                engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
+                    botPartIndex: Player.Profile.HarmonyIndex);
                 // Register using the free vocals overload
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
             }

@@ -269,8 +269,9 @@ namespace YARG.Menu.DifficultySelect
                     UpdateForPlayer();
                 });
 
-                // Harmony-locked players pick which HARM line they want
-                if (player.Profile.CurrentInstrument is Instrument.Harmony)
+                // Harmony-locked players and bot Free Harmony players pick which HARM line they want
+                if (player.Profile.CurrentInstrument is Instrument.Harmony
+                    || (player.Profile.IsBot && player.Profile.IsFreeVocals))
                 {
                     string harmonyDisplayText = $"HARM{player.Profile.HarmonyIndex + 1}";
 
@@ -478,9 +479,12 @@ namespace YARG.Menu.DifficultySelect
                 bool harmonySelected = profile.HarmonyIndex == (i - 1);
                 CreateItem($"HARM{i}", harmonySelected, () =>
                 {
-                    profile.CurrentInstrument = Instrument.Harmony;
+                    if (!profile.IsBot || !profile.FreeHarmony)
+                    {
+                        profile.CurrentInstrument = Instrument.Harmony;
+                        profile.FreeHarmony = false;
+                    }
                     profile.HarmonyIndex = (byte) (capture - 1);
-                    profile.FreeHarmony = false;
 
                     _menuState = State.Main;
                     UpdateForPlayer();
