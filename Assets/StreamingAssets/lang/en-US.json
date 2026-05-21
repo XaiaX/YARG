@@ -271,6 +271,7 @@
             "Done": "Done",
             "Solo": "Solo",
             "Free": "Free",
+            "FreeHarmony": "Free Harmony",
             "WarningPlayerNoInputDevice" : "This player has no input device assigned! Assign one from the Profiles menu.",
             "WarningVocalistNoMicrophone" : "This vocalist has no microphone assigned! Assign one from the Profiles menu."
         },

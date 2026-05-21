@@ -269,14 +269,10 @@ namespace YARG.Menu.DifficultySelect
                     UpdateForPlayer();
                 });
 
-                // Vocals and Harmony players must pick their harmony/solo mode
-                if (player.Profile.CurrentInstrument is Instrument.Vocals or Instrument.Harmony)
+                // Harmony-locked players pick which HARM line they want
+                if (player.Profile.CurrentInstrument is Instrument.Harmony)
                 {
-                    string harmonyDisplayText = player.Profile.FreeHarmony
-                        ? LocalizeHeader("Free")
-                        : (player.Profile.HarmonyIndex == 0
-                            ? LocalizeHeader("Solo")
-                            : $"HARM{player.Profile.HarmonyIndex}");
+                    string harmonyDisplayText = $"HARM{player.Profile.HarmonyIndex + 1}";
 
                     CreateItem(LocalizeHeader("Harmony"),
                         harmonyDisplayText,
@@ -374,11 +370,13 @@ namespace YARG.Menu.DifficultySelect
         {
             foreach (var instrument in _possibleInstruments)
             {
-                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
+                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument
+                    && !CurrentPlayer.Profile.FreeHarmony;
                 CreateItem(instrument.ToLocalizedName(), selected, () =>
                 {
                     var preferredInstrument = CurrentPlayer.Profile.PreferredInstrument;
                     CurrentPlayer.Profile.CurrentInstrument = instrument;
+                    CurrentPlayer.Profile.FreeHarmony = false;
 
                     // What we are doing here is resetting preferred instrument only if the current preferred instrument
                     // was an option for this chart. This ensures that preferred instrument does not change when the
@@ -387,6 +385,24 @@ namespace YARG.Menu.DifficultySelect
                     {
                         CurrentPlayer.Profile.PreferredInstrument = instrument;
                     }
+
+                    FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
+                    UpdatePossibleDifficulties();
+                    UpdatePossibleModifiers();
+
+                    _menuState = State.Main;
+                    UpdateForPlayer();
+                });
+            }
+
+            // Free Harmony: available when the song has multiple harmony parts
+            if (_possibleInstruments.Contains(Instrument.Vocals) && _maxHarmonyIndex > 1)
+            {
+                bool freeSelected = CurrentPlayer.Profile.FreeHarmony;
+                CreateItem(LocalizeHeader("FreeHarmony"), freeSelected, () =>
+                {
+                    CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
+                    CurrentPlayer.Profile.FreeHarmony = true;
 
                     FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
                     UpdatePossibleDifficulties();
@@ -456,49 +472,19 @@ namespace YARG.Menu.DifficultySelect
         {
             var profile = CurrentPlayer.Profile;
 
-            // Solo option
-            bool soloSelected = !profile.FreeHarmony && profile.HarmonyIndex == 0;
-            CreateItem(LocalizeHeader("Solo"), soloSelected, () =>
+            for (int i = 1; i <= _maxHarmonyIndex; i++)
             {
-                profile.CurrentInstrument = Instrument.Vocals;
-                profile.FreeHarmony = false;
-                profile.HarmonyIndex = 0;
-
-                _menuState = State.Main;
-                UpdateForPlayer();
-            });
-
-            // Free option
-            bool freeSelected = profile.FreeHarmony;
-            CreateItem(LocalizeHeader("Free"), freeSelected, () =>
-            {
-                profile.CurrentInstrument = Instrument.Vocals;
-                profile.FreeHarmony = true;
-
-                _menuState = State.Main;
-                UpdateForPlayer();
-            });
-
-            // Harmony options (HARM1, HARM2, HARM3)
-            // Only emit if the song has more than just Solo (i.e. has HARM tracks)
-            if (_maxHarmonyIndex > 1)
-            {
-                for (int i = 1; i <= _maxHarmonyIndex; i++)
+                int capture = i;
+                bool harmonySelected = profile.HarmonyIndex == (i - 1);
+                CreateItem($"HARM{i}", harmonySelected, () =>
                 {
-                    int capture = i;
-                    bool harmonySelected = !profile.FreeHarmony && profile.HarmonyIndex == (i - 1);
-                    // HARM entries use raw strings to match legacy behavior (not localized)
-                    string harmonyLabel = $"HARM{i}";
-                    CreateItem(harmonyLabel, harmonySelected, () =>
-                    {
-                        profile.CurrentInstrument = Instrument.Harmony;
-                        profile.HarmonyIndex = (byte) (capture - 1);
-                        profile.FreeHarmony = false;
+                    profile.CurrentInstrument = Instrument.Harmony;
+                    profile.HarmonyIndex = (byte) (capture - 1);
+                    profile.FreeHarmony = false;
 
-                        _menuState = State.Main;
-                        UpdateForPlayer();
-                    });
-                }
+                    _menuState = State.Main;
+                    UpdateForPlayer();
+                });
             }
         }
 
