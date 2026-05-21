@@ -464,9 +464,13 @@ namespace YARG.Gameplay
 
                             // Since all players have to select the same vocals
                             // type (solo/harmony) this works no problem.
-                            var chart = player.Profile.CurrentInstrument == Instrument.Vocals
+                            // For Free vocals, use Harmony chart to get all parts; otherwise use the selected instrument chart.
+                            // AC1.2: On Solo-only songs without HARM tracks, use Vocals chart even for Free (degenerate case)
+                            var chart = (player.Profile.CurrentInstrument == Instrument.Vocals && !player.Profile.IsFreeVocals)
                                 ? Chart.Vocals
-                                : Chart.Harmony;
+                                : (player.Profile.IsFreeVocals && Chart.Harmony.Parts.Count > 1)
+                                    ? Chart.Harmony
+                                    : Chart.Vocals;
                             VocalTrack.Initialize(chart, player, Song.VocalScrollSpeedScalingFactor);
 
                             _lyricBar.gameObject.SetActive(false);

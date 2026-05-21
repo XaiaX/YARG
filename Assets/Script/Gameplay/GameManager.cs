@@ -732,6 +732,7 @@ namespace YARG.Gameplay
                 ? StarAmountHelper.GetStarsFromInt(Mathf.FloorToInt(humanBandStars))
                 : StarAmount.None;
 
+            // TODO: exclude IsFreeVocals from leaderboard submission when submission lands (AC6.1)
             ScoreContainer.RecordScore(new GameRecord
             {
                 Date = DateTime.Now,

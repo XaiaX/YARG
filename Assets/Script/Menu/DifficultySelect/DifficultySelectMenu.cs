@@ -1,5 +1,4 @@
-﻿// Pattern: Imperative Shell
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -270,11 +269,17 @@ namespace YARG.Menu.DifficultySelect
                     UpdateForPlayer();
                 });
 
-                // Harmony players must pick their harmony index
-                if (player.Profile.CurrentInstrument == Instrument.Harmony)
+                // Vocals and Harmony players must pick their harmony/solo mode
+                if (player.Profile.CurrentInstrument is Instrument.Vocals or Instrument.Harmony)
                 {
+                    string harmonyDisplayText = player.Profile.FreeHarmony
+                        ? LocalizeHeader("Free")
+                        : (player.Profile.HarmonyIndex == 0
+                            ? LocalizeHeader("Solo")
+                            : $"HARM{player.Profile.HarmonyIndex}");
+
                     CreateItem(LocalizeHeader("Harmony"),
-                        (player.Profile.HarmonyIndex + 1).ToString(),
+                        harmonyDisplayText,
                         _lastMenuState == State.Harmony, () =>
                     {
                         _menuState = State.Harmony;
@@ -449,43 +454,51 @@ namespace YARG.Menu.DifficultySelect
 
         private void CreateHarmonyMenu()
         {
-            // Add Solo option
-            bool soloSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Vocals && !CurrentPlayer.Profile.FreeHarmony;
-            CreateItem(LocalizeHeader("Solo"), (CurrentPlayer.Profile.HarmonyIndex + 1).ToString(), soloSelected, () =>
+            var profile = CurrentPlayer.Profile;
+
+            // Solo option
+            bool soloSelected = !profile.FreeHarmony && profile.HarmonyIndex == 0;
+            CreateItem(LocalizeHeader("Solo"), soloSelected, () =>
             {
-                CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
-                CurrentPlayer.Profile.FreeHarmony = false;
+                profile.CurrentInstrument = Instrument.Vocals;
+                profile.FreeHarmony = false;
+                profile.HarmonyIndex = 0;
 
                 _menuState = State.Main;
                 UpdateForPlayer();
             });
 
-            // Add Free option (available on all vocal songs; degenerates to Solo gameplay
-            // automatically on Solo-only songs per AC1.2)
-            bool freeSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Vocals && CurrentPlayer.Profile.FreeHarmony;
-            CreateItem(LocalizeHeader("Free"), "", freeSelected, () =>
+            // Free option
+            bool freeSelected = profile.FreeHarmony;
+            CreateItem(LocalizeHeader("Free"), freeSelected, () =>
             {
-                CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
-                CurrentPlayer.Profile.FreeHarmony = true;
+                profile.CurrentInstrument = Instrument.Vocals;
+                profile.FreeHarmony = true;
 
                 _menuState = State.Main;
                 UpdateForPlayer();
             });
 
-            // Add HARM options
-            for (int i = 1; i < _maxHarmonyIndex; i++)
+            // Harmony options (HARM1, HARM2, HARM3)
+            // Only emit if the song has more than just Solo (i.e. has HARM tracks)
+            if (_maxHarmonyIndex > 1)
             {
-                int capture = i;
-                bool harmSelected = CurrentPlayer.Profile.CurrentInstrument == Instrument.Harmony && CurrentPlayer.Profile.HarmonyIndex == (byte)(i - 1);
-                CreateItem($"HARM{i}", "", harmSelected, () =>
+                for (int i = 1; i <= _maxHarmonyIndex; i++)
                 {
-                    CurrentPlayer.Profile.CurrentInstrument = Instrument.Harmony;
-                    CurrentPlayer.Profile.HarmonyIndex = (byte) capture;
-                    CurrentPlayer.Profile.FreeHarmony = false;
+                    int capture = i;
+                    bool harmonySelected = !profile.FreeHarmony && profile.HarmonyIndex == (i - 1);
+                    // HARM entries use raw strings to match legacy behavior (not localized)
+                    string harmonyLabel = $"HARM{i}";
+                    CreateItem(harmonyLabel, harmonySelected, () =>
+                    {
+                        profile.CurrentInstrument = Instrument.Harmony;
+                        profile.HarmonyIndex = (byte) (capture - 1);
+                        profile.FreeHarmony = false;
 
-                    _menuState = State.Main;
-                    UpdateForPlayer();
-                });
+                        _menuState = State.Main;
+                        UpdateForPlayer();
+                    });
+                }
             }
         }
 
