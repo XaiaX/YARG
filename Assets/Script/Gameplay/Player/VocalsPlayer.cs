@@ -86,9 +86,15 @@ namespace YARG.Gameplay.Player
             _needleMaterialInstance = new Material(baseMaterial);
             _needleRenderer.material = _needleMaterialInstance;
 
-            // Get the notes from the specific harmony or solo part
-
-            var multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+            // Get the notes from the specific harmony or solo part.
+            // For Free Vocals on songs that have a Harmony chart, source from Harmony so the
+            // bot's pitch values are in the same register as the visualized HARM lines
+            // (the global VocalTrack is initialized with Chart.Harmony in this case — see
+            // GameManager.Loading.cs). Otherwise the bot's needle is octave-offset from
+            // the rendered lines.
+            var multiTrack = (Player.Profile.IsFreeVocals && chart.Harmony.Parts.Count > 1)
+                ? chart.Harmony
+                : chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
 
             VocalsPart selectedPart;
 
@@ -240,11 +246,15 @@ namespace YARG.Gameplay.Player
                 Player.Profile.FreeHarmony, Player.Profile.IsFreeVocals, Player.Profile.HarmonyIndex);
             if (Player.Profile.IsFreeVocals)
             {
-                // For Free vocals, use the full multitrack (all HARM parts) but anchor to part 0
-                var multiTrack = _chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+                // Must match the chart-selection logic in Initialize above so the engine sees
+                // the same parts (and pitch register) as the visualization.
+                var multiTrack = (_chart.Harmony.Parts.Count > 1)
+                    ? _chart.Harmony
+                    : _chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
                 YargLogger.LogFormatInfo(
-                    "[FreeVocalsDiag]  -> creating YargFreeVocalsEngine: parts.Count={0} botPartIndex={1}",
-                    multiTrack.Parts.Count, Player.Profile.HarmonyIndex);
+                    "[FreeVocalsDiag]  -> creating YargFreeVocalsEngine: parts.Count={0} botPartIndex={1} chartSource={2}",
+                    multiTrack.Parts.Count, Player.Profile.HarmonyIndex,
+                    multiTrack.Parts.Count > 1 ? "Harmony" : "Vocals");
                 engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
                     botPartIndex: Player.Profile.HarmonyIndex);
                 // Register using the free vocals overload
