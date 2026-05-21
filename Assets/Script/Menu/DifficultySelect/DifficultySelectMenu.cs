@@ -10,6 +10,7 @@ using YARG.Core;
 using YARG.Core.Extensions;
 using YARG.Core.Game;
 using YARG.Core.Input;
+using YARG.Core.Logging;
 using YARG.Core.Song;
 using YARG.Core.Utility;
 using YARG.Helpers.Extensions;
@@ -397,6 +398,11 @@ namespace YARG.Menu.DifficultySelect
             }
 
             // Free Harmony: available when the song has multiple harmony parts
+            YargLogger.LogFormatInfo(
+                "[FreeVocalsDiag] CreateInstrumentMenu player='{0}' IsBot={1} GameMode={2} CurrentInstrument={3} possible=[{4}] maxHarm={5} freeHarmShown={6}",
+                CurrentPlayer.Profile.Name, CurrentPlayer.Profile.IsBot, CurrentPlayer.Profile.GameMode,
+                CurrentPlayer.Profile.CurrentInstrument, string.Join(",", _possibleInstruments), _maxHarmonyIndex,
+                _possibleInstruments.Contains(Instrument.Vocals) && _maxHarmonyIndex > 1);
             if (_possibleInstruments.Contains(Instrument.Vocals) && _maxHarmonyIndex > 1)
             {
                 bool freeSelected = CurrentPlayer.Profile.FreeHarmony;
@@ -404,6 +410,9 @@ namespace YARG.Menu.DifficultySelect
                 {
                     CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
                     CurrentPlayer.Profile.FreeHarmony = true;
+                    YargLogger.LogFormatInfo(
+                        "[FreeVocalsDiag] Free Harmony SELECTED for player='{0}' (IsBot={1} HarmonyIndex={2})",
+                        CurrentPlayer.Profile.Name, CurrentPlayer.Profile.IsBot, CurrentPlayer.Profile.HarmonyIndex);
 
                     FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
                     UpdatePossibleDifficulties();
