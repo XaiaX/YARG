@@ -8,7 +8,6 @@ using YARG.Core.Engine;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
 using YARG.Core.Input;
-using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Helpers;
@@ -240,7 +239,6 @@ namespace YARG.Gameplay.Player
             HitWindow = EngineParams.HitWindow;
 
             VocalsEngine engine;
-            YargLogger.LogInfo($"[FreeVocalsDiag] Player='{Player.Profile.Name}' IsBot={Player.Profile.IsBot} CurrentInstrument={Player.Profile.CurrentInstrument} FreeHarmony={Player.Profile.FreeHarmony} IsFreeVocals={Player.Profile.IsFreeVocals} HarmonyIndex={Player.Profile.HarmonyIndex}");
             if (Player.Profile.IsFreeVocals)
             {
                 // Must match the chart-selection logic in Initialize above so the engine sees
@@ -248,8 +246,6 @@ namespace YARG.Gameplay.Player
                 var multiTrack = (_chart.Harmony.Parts.Count > 1)
                     ? _chart.Harmony
                     : _chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
-                string chartSource = multiTrack.Parts.Count > 1 ? "Harmony" : "Vocals";
-                YargLogger.LogInfo($"[FreeVocalsDiag]  -> creating YargFreeVocalsEngine: parts.Count={multiTrack.Parts.Count} botPartIndex={Player.Profile.HarmonyIndex} chartSource={chartSource}");
                 engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
                     botPartIndex: Player.Profile.HarmonyIndex);
                 // Register using the free vocals overload
@@ -257,7 +253,6 @@ namespace YARG.Gameplay.Player
             }
             else
             {
-                YargLogger.LogInfo("[FreeVocalsDiag]  -> creating YargVocalsEngine (NOT free)");
                 // For Solo/Harmony, use single-part engine
                 engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
                 // Register using the indexed overload

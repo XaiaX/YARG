@@ -10,7 +10,6 @@ using YARG.Core;
 using YARG.Core.Extensions;
 using YARG.Core.Game;
 using YARG.Core.Input;
-using YARG.Core.Logging;
 using YARG.Core.Song;
 using YARG.Core.Utility;
 using YARG.Helpers.Extensions;
@@ -399,12 +398,9 @@ namespace YARG.Menu.DifficultySelect
 
             // Free Harmony: available whenever the song has multiple HARM parts and the
             // player is in the vocals family (Solo Vocals or Harmony in _possibleInstruments).
-            // Bohemian Rhapsody is multi-HARM with no Solo chart, so the old
-            // "Contains(Vocals)" gate hid Free Harmony on exactly the songs that need it most.
             bool freeHarmonyAvailable = _maxHarmonyIndex > 1
                 && (_possibleInstruments.Contains(Instrument.Vocals)
                     || _possibleInstruments.Contains(Instrument.Harmony));
-            YargLogger.LogInfo($"[FreeVocalsDiag] CreateInstrumentMenu player='{CurrentPlayer.Profile.Name}' IsBot={CurrentPlayer.Profile.IsBot} GameMode={CurrentPlayer.Profile.GameMode} CurrentInstrument={CurrentPlayer.Profile.CurrentInstrument} possible=[{string.Join(",", _possibleInstruments)}] maxHarm={_maxHarmonyIndex} freeHarmShown={freeHarmonyAvailable}");
             if (freeHarmonyAvailable)
             {
                 bool freeSelected = CurrentPlayer.Profile.FreeHarmony;
@@ -418,9 +414,6 @@ namespace YARG.Menu.DifficultySelect
                         ? Instrument.Vocals
                         : Instrument.Harmony;
                     CurrentPlayer.Profile.FreeHarmony = true;
-                    YargLogger.LogFormatInfo(
-                        "[FreeVocalsDiag] Free Harmony SELECTED for player='{0}' (IsBot={1} HarmonyIndex={2})",
-                        CurrentPlayer.Profile.Name, CurrentPlayer.Profile.IsBot, CurrentPlayer.Profile.HarmonyIndex);
 
                     FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
                     UpdatePossibleDifficulties();
