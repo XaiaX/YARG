@@ -397,18 +397,26 @@ namespace YARG.Menu.DifficultySelect
                 });
             }
 
-            // Free Harmony: available when the song has multiple harmony parts
-            YargLogger.LogFormatInfo(
-                "[FreeVocalsDiag] CreateInstrumentMenu player='{0}' IsBot={1} GameMode={2} CurrentInstrument={3} possible=[{4}] maxHarm={5} freeHarmShown={6}",
-                CurrentPlayer.Profile.Name, CurrentPlayer.Profile.IsBot, CurrentPlayer.Profile.GameMode,
-                CurrentPlayer.Profile.CurrentInstrument, string.Join(",", _possibleInstruments), _maxHarmonyIndex,
-                _possibleInstruments.Contains(Instrument.Vocals) && _maxHarmonyIndex > 1);
-            if (_possibleInstruments.Contains(Instrument.Vocals) && _maxHarmonyIndex > 1)
+            // Free Harmony: available whenever the song has multiple HARM parts and the
+            // player is in the vocals family (Solo Vocals or Harmony in _possibleInstruments).
+            // Bohemian Rhapsody is multi-HARM with no Solo chart, so the old
+            // "Contains(Vocals)" gate hid Free Harmony on exactly the songs that need it most.
+            bool freeHarmonyAvailable = _maxHarmonyIndex > 1
+                && (_possibleInstruments.Contains(Instrument.Vocals)
+                    || _possibleInstruments.Contains(Instrument.Harmony));
+            YargLogger.LogInfo($"[FreeVocalsDiag] CreateInstrumentMenu player='{CurrentPlayer.Profile.Name}' IsBot={CurrentPlayer.Profile.IsBot} GameMode={CurrentPlayer.Profile.GameMode} CurrentInstrument={CurrentPlayer.Profile.CurrentInstrument} possible=[{string.Join(",", _possibleInstruments)}] maxHarm={_maxHarmonyIndex} freeHarmShown={freeHarmonyAvailable}");
+            if (freeHarmonyAvailable)
             {
                 bool freeSelected = CurrentPlayer.Profile.FreeHarmony;
                 CreateItem(LocalizeHeader("FreeHarmony"), freeSelected, () =>
                 {
-                    CurrentPlayer.Profile.CurrentInstrument = Instrument.Vocals;
+                    // Pick a CurrentInstrument that's actually in _possibleInstruments —
+                    // otherwise ChangePlayer's reset-to-first logic will overwrite it.
+                    // The chart-selection in GameManager.Loading.cs uses IsFreeVocals, not
+                    // CurrentInstrument, so either works for visualization.
+                    CurrentPlayer.Profile.CurrentInstrument = _possibleInstruments.Contains(Instrument.Vocals)
+                        ? Instrument.Vocals
+                        : Instrument.Harmony;
                     CurrentPlayer.Profile.FreeHarmony = true;
                     YargLogger.LogFormatInfo(
                         "[FreeVocalsDiag] Free Harmony SELECTED for player='{0}' (IsBot={1} HarmonyIndex={2})",
