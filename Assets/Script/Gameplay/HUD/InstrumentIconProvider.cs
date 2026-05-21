@@ -62,9 +62,14 @@ namespace YARG.Gameplay.HUD
                 return Color.white;
             }
 
-            if (harmonyIndex >= VocalTrack.Colors.Length)
+            // Free Vocals engines register with sentinel HarmonyIndex = -1 (they aren't locked
+            // to a single HARM line). Fall back to a neutral color rather than indexing with -1.
+            if (harmonyIndex < 0 || harmonyIndex >= VocalTrack.Colors.Length)
             {
-                YargLogger.LogWarning("PlayerNameDisplay", $"Harmony index {harmonyIndex} is out of bounds.");
+                if (harmonyIndex >= VocalTrack.Colors.Length)
+                {
+                    YargLogger.LogWarning("PlayerNameDisplay", $"Harmony index {harmonyIndex} is out of bounds.");
+                }
                 return Color.white;
             }
 
