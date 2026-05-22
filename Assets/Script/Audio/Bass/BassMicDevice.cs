@@ -252,6 +252,19 @@ namespace YARG.Audio.BASS
         private int _timeAccumulated;
         private int _processedBufferLength;
 
+        public bool IsDeviceStillValid()
+        {
+            if (_recordHandle == null) return false;
+            try
+            {
+                return Bass.ChannelGetData(_recordHandle.Handle, IntPtr.Zero, 0) >= 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public override int Reset()
         {
             _frameQueue.Clear();

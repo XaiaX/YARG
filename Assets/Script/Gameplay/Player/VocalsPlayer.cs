@@ -8,13 +8,14 @@ using YARG.Core.Engine;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
 using YARG.Core.Input;
+using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Helpers;
 using YARG.Input;
 using YARG.Player;
 using YARG.Settings;
-using ManagedBass;
+
 
 namespace YARG.Gameplay.Player
 {
@@ -856,6 +857,12 @@ namespace YARG.Gameplay.Player
                     ctx.Stop();
                     _inputContexts.RemoveAt(i);
 
+                    // Clear the mic's pitch in the engine so it stops accumulating hits
+                    if (Engine is YargFreeVocalsEngine freeEngine)
+                    {
+                        freeEngine.SetMicPitch(i, -1f);
+                    }
+
                     // Remove the corresponding needle.
                     if (i < _micNeedles.Count)
                     {
@@ -876,27 +883,17 @@ namespace YARG.Gameplay.Player
             // All mics gone?
             if (_inputContexts.Count == 0)
             {
-                _hud.ShowNotification("No microphones connected");
+                YargLogger.LogWarning("All microphones disconnected during gameplay");
             }
         }
 
         private bool IsDeviceConnected(MicDevice device)
         {
-            // For BassMicDevice, we can check if the recording handle is still valid
             if (device is YARG.Audio.Bass.BassMicDevice bassMicDevice)
             {
-                // Try to get channel data to check if device is still accessible
-                try
-                {
-                    return Bass.ChannelGetData(bassMicDevice._recordHandle.Handle, IntPtr.Zero, 0) >= 0;
-                }
-                catch
-                {
-                    return false;
-                }
+                return bassMicDevice.IsDeviceStillValid();
             }
 
-            // For other device types, assume connected for now
             return true;
         }
 
