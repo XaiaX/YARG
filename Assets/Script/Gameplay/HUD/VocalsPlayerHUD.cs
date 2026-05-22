@@ -29,6 +29,12 @@ namespace YARG.Gameplay.HUD
         [SerializeField]
         private PlayerNameDisplay _playerNameDisplay;
 
+        [Header("Party Vocals")]
+        [SerializeField] private TextMeshProUGUI _harm1FillText;
+        [SerializeField] private TextMeshProUGUI _harm2FillText;
+        [SerializeField] private TextMeshProUGUI _harm3FillText;
+        [SerializeField] private GameObject _harmFillContainer;
+
         private float _comboMeterFillTarget;
 
         private Coroutine _hudCoroutine;
@@ -174,6 +180,51 @@ namespace YARG.Gameplay.HUD
         public void ShowNotification(TextNotificationType notificationType)
         {
             _textNotifications.ShowNotification(notificationType);
+        }
+
+        public void UpdateHarmFill(IReadOnlyList<double> meters)
+        {
+            if (_harmFillContainer == null) return;
+
+            _harmFillContainer.SetActive(true);
+            var texts = new[] { _harm1FillText, _harm2FillText, _harm3FillText };
+
+            for (int i = 0; i < texts.Length; i++)
+            {
+                if (texts[i] == null) continue;
+                if (i < meters.Count)
+                {
+                    texts[i].gameObject.SetActive(true);
+                    texts[i].text = $"HARM{i + 1} {(int)(meters[i] * 100)}%";
+                }
+                else
+                {
+                    texts[i].gameObject.SetActive(false);
+                }
+            }
+        }
+
+        public void HideHarmFill()
+        {
+            if (_harmFillContainer != null)
+                _harmFillContainer.SetActive(false);
+        }
+
+        public void ShowPartyVocalsGrade(PhraseGrade grade)
+        {
+            string text = grade switch
+            {
+                PhraseGrade.Awesome => "AWESOME!",
+                PhraseGrade.DoubleAwesome => "DOUBLE AWESOME!",
+                PhraseGrade.TripleAwesome => "TRIPLE AWESOME!",
+                _ => null,
+            };
+
+            if (text != null)
+            {
+                // Reuse the existing notification display
+                _textNotifications.ShowVocalPhraseResult(text, 0);
+            }
         }
     }
 }
