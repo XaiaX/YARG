@@ -715,26 +715,23 @@ namespace YARG.Gameplay.Player
             // Get the appropriate sing time
             var singTime = GameManager.InputTime;
 
-            // One-shot debug: log state during first active phrase for Party Vocals bots
-            if (!_needleDebugLogged && Player.Profile.IsFreeVocals && _micNeedles.Count > 0 && singTime > 1.0)
+            // One-shot debug: log state once the engine starts scoring (PhraseTicksHit > 0)
+            if (!_needleDebugLogged && Player.Profile.IsFreeVocals && _micNeedles.Count > 0
+                && Engine is YargFreeVocalsEngine fe && fe.PhraseTicksHit > 0)
             {
                 _needleDebugLogged = true;
                 bool inThreshold = IsInThreshold(singTime, _lastSingTime);
-                bool isFreeEngine = Engine is YargFreeVocalsEngine;
                 Debug.LogFormat("[PartyVocals Needle] singTime={0:F3} _lastSingTime={1} _lastHitTime={2} " +
-                    "inThreshold={3} shouldHide={4} micNeedles={5} isFreeEngine={6} " +
-                    "_lastTargetNote={7} engineType={8}",
+                    "inThreshold={3} shouldHide={4} micNeedles={5} _lastTargetNote={6} " +
+                    "phraseTicksHit={7} pitchSang={8:F1} hasSang={9}",
                     singTime, _lastSingTime, _lastHitTime,
-                    inThreshold, _shouldHideNeedle, _micNeedles.Count, isFreeEngine,
-                    _lastTargetNote != null, Engine?.GetType().Name);
-                if (isFreeEngine)
+                    inThreshold, _shouldHideNeedle, _micNeedles.Count,
+                    _lastTargetNote != null, fe.PhraseTicksHit,
+                    fe.PitchSang, fe.BaseStats.CommittedScore);
+                for (int i = 0; i < _micNeedles.Count; i++)
                 {
-                    var freeEngine = (YargFreeVocalsEngine)Engine;
-                    for (int i = 0; i < _micNeedles.Count; i++)
-                    {
-                        Debug.LogFormat("[PartyVocals Needle] mic {0} pitch={1:F1}",
-                            i, freeEngine.GetMicPitch(i));
-                    }
+                    Debug.LogFormat("[PartyVocals Needle] mic {0} pitch={1:F1}",
+                        i, fe.GetMicPitch(i));
                 }
             }
 
