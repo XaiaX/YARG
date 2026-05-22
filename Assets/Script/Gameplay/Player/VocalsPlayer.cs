@@ -468,10 +468,10 @@ namespace YARG.Gameplay.Player
                 {
                     for (int i = 0; i < _replayFrame.MicCount; i++)
                     {
-                        if (i < _replayMicIndex && i < _replayFrame.MicPitches?.Length)
+                        if (_replayFrame.MicPitches != null && i < _replayFrame.MicPitches.Length
+                            && _replayMicIndex < _replayFrame.MicPitches[i].Length)
                         {
-                            int idx = Mathf.Min(_replayMicIndex, _replayFrame.MicPitches[i].Length - 1);
-                            freeEngine.SetMicPitch(i, _replayFrame.MicPitches[i][idx]);
+                            freeEngine.SetMicPitch(i, _replayFrame.MicPitches[i][_replayMicIndex]);
                         }
                     }
                     _replayMicIndex++;
@@ -480,7 +480,7 @@ namespace YARG.Gameplay.Player
             }
 
             bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts.Count > 1
-                                && Engine is YargFreeVocalsEngine freeEngine2;
+                                && Engine is YargFreeVocalsEngine partyVocalsEngine;
 
             for (int i = 0; i < _inputContexts.Count; i++)
             {
