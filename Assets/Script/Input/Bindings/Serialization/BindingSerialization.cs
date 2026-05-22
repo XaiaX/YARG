@@ -37,10 +37,17 @@ namespace YARG.Input.Serialization
     public class SerializedProfileBindings
     {
         public List<SerializedInputDevice> Devices = new();
-        public SerializedMic? Microphone;
+        public List<SerializedMic> Microphones = new();
 
         public Dictionary<GameMode, SerializedBindingCollection> ModeMappings = new();
         public SerializedBindingCollection? MenuMappings;
+
+        /// <summary>
+        /// First-microphone accessor preserved for single-mic readers (Vocals, Harmony, Free profiles).
+        /// Returns null if no microphones are bound. Setter is intentionally not provided.
+        /// </summary>
+        [JsonIgnore]
+        public SerializedMic? Microphone => Microphones.Count > 0 ? Microphones[0] : null;
     }
 
     public class SerializedBindingCollection
@@ -129,7 +136,7 @@ namespace YARG.Input.Serialization
         {
             try
             {
-                var serialized = SerializeBindingsV2(bindings);
+                var serialized = SerializeBindingsV4(bindings);
                 string bindingsJson = JsonConvert.SerializeObject(serialized, Formatting.Indented);
                 File.WriteAllText(bindingsPath, bindingsJson);
             }
@@ -161,6 +168,8 @@ namespace YARG.Input.Serialization
                     0 => DeserializeBindingsV0(jObject),
                     1 => DeserializeBindingsV1(jObject),
                     2 => DeserializeBindingsV2(jObject),
+                    3 => DeserializeBindingsV3(jObject),
+                    4 => DeserializeBindingsV4(jObject),
                     _ => throw new NotImplementedException($"Unhandled bindings version {version}!")
                 };
 
@@ -171,6 +180,111 @@ namespace YARG.Input.Serialization
                 YargLogger.LogException(ex, "Error while loading bindings!");
                 return null;
             }
+        }
+
+        private static SerializedBindingsV4 SerializeBindingsV4(SerializedBindings serialized)
+        {
+            var serializedV4 = new SerializedBindingsV4();
+            foreach (var (id, bind) in serialized.Profiles)
+            {
+                serializedV4.Profiles[id] = new SerializedProfileBindingsV4(bind);
+            }
+            return serializedV4;
+        }
+
+        private static SerializedBindings? DeserializeBindingsV3(JObject obj)
+        {
+            var serialized = obj.ToObject<SerializedBindingsV3>();
+            if (serialized is null || serialized.Version != SerializedBindingsV3.VERSION)
+                return null;
+
+            return SerializedBindingsV3.MigrateToCurrent(serialized);
+        }
+
+        private static SerializedBindings? DeserializeBindingsV4(JObject obj)
+        {
+            var serialized = obj.ToObject<SerializedBindingsV4>();
+            if (serialized is null || serialized.Version != SerializedBindingsV4.VERSION)
+                return null;
+
+            return serialized.Deserialize();
+        }
+    }
+
+    // Version 4: Convert single Microphone to List<SerializedMic>
+    public class SerializedBindingsV4
+    {
+        public const int VERSION = 4;
+
+        public int Version = VERSION;
+        public Dictionary<Guid, SerializedProfileBindingsV4> Profiles = new();
+
+        [JsonConstructor]
+        public SerializedBindingsV4() { }
+
+        public SerializedBindingsV4(SerializedBindings serialized)
+        {
+            foreach (var (id, bind) in serialized.Profiles)
+            {
+                Profiles[id] = new SerializedProfileBindingsV4(bind);
+            }
+        }
+
+        public SerializedBindings Deserialize()
+        {
+            var deserialized = new SerializedBindings();
+            foreach (var (id, bind) in Profiles)
+            {
+                deserialized.Profiles[id] = bind.Deserialize();
+            }
+
+            return deserialized;
+        }
+    }
+
+    public class SerializedProfileBindingsV4
+    {
+        public List<SerializedInputDevice> Devices = new();
+        public List<SerializedMic> Microphones = new();
+
+        public Dictionary<GameMode, SerializedBindingCollection> ModeMappings = new();
+        public SerializedBindingCollection? MenuMappings;
+
+        [JsonConstructor]
+        public SerializedProfileBindingsV4() { }
+
+        public SerializedProfileBindingsV4(SerializedProfileBindings serialized)
+        {
+            Devices.AddRange(serialized.Devices);
+
+            Microphones.AddRange(serialized.Microphones);
+
+            foreach (var (gameMode, bindings) in serialized.ModeMappings)
+            {
+                ModeMappings[gameMode] = bindings;
+            }
+
+            if (serialized.MenuMappings is not null)
+                MenuMappings = serialized.MenuMappings;
+        }
+
+        public SerializedProfileBindings Deserialize()
+        {
+            var deserialized = new SerializedProfileBindings();
+
+            deserialized.Devices.AddRange(Devices);
+
+            deserialized.Microphones.AddRange(Microphones);
+
+            foreach (var (gameMode, bindings) in ModeMappings)
+            {
+                deserialized.ModeMappings[gameMode] = bindings;
+            }
+
+            if (MenuMappings is not null)
+                deserialized.MenuMappings = MenuMappings;
+
+            return deserialized;
         }
     }
 }
