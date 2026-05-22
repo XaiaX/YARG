@@ -1,10 +1,11 @@
-// pattern: Imperative Shell
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using YARG.Core;
-using YARG.Localization;
-using YARG.Menu.Navigation;
+using YARG.Core.Audio;
+using YARG.Core.Logging;
+using YARG.Menu.Data;
+using YARG.Menu.Persistent;
 
 namespace YARG.Menu.ProfileInfo
 {
@@ -22,10 +23,6 @@ namespace YARG.Menu.ProfileInfo
         private ProfileBindings _bindings;
         private YargProfile _profile;
 
-        // Event for when microphone list changes
-        public delegate void MicrophoneListChangedEvent();
-        public event MicrophoneListChangedEvent OnMicrophoneListChanged;
-
         public void Initialize(ProfileBindings bindings, YargProfile profile)
         {
             _bindings = bindings;
@@ -33,7 +30,6 @@ namespace YARG.Menu.ProfileInfo
 
             if (_profile.IsBot)
             {
-                // Hide the mic binding section entirely for bot profiles.
                 gameObject.SetActive(false);
                 return;
             }
@@ -44,92 +40,68 @@ namespace YARG.Menu.ProfileInfo
 
         private void RefreshList()
         {
-            // Clear existing slot UI
             foreach (Transform child in _micListContainer)
                 Destroy(child.gameObject);
 
-            // Create a slot for each bound mic
             for (int i = 0; i < _bindings.Microphones.Count; i++)
             {
                 var slot = Instantiate(_micSlotPrefab, _micListContainer);
                 var micSlotUI = slot.GetComponent<MicSlotUI>();
-
-                // Set device name, wire remove button
                 var micDevice = _bindings.Microphones[i];
-                micSlotUI.Setup(micDevice, () => RemoveMic(i));
+                int captureIndex = i;
+                micSlotUI.Setup(micDevice, () => RemoveMic(captureIndex));
             }
 
-            // Show/hide add button based on cap
             bool atCap = _bindings.Microphones.Count >= 7;
             _addButton.gameObject.SetActive(!atCap);
             if (_maxReachedLabel != null) _maxReachedLabel.SetActive(atCap);
-
-            // Notify listeners that the list changed
-            OnMicrophoneListChanged?.Invoke();
         }
 
         private void OnAddClicked()
         {
-            // Show device picker dialog with available mics not already bound
-            ShowMicrophonePicker();
-        }
+            var dialog = DialogManager.Instance.List();
 
-        private void ShowMicrophonePicker()
-        {
-            // Get available microphones
-            var availableDevices = Microphone.devices;
-            var boundDeviceNames = new HashSet<string>(_bindings.Microphones.Count);
+            var boundNames = new HashSet<string>();
             foreach (var mic in _bindings.Microphones)
-            {
-                boundDeviceNames.Add(mic.Name);
-            }
+                boundNames.Add(mic.DisplayName);
 
-            // Filter out already bound devices
-            var unboundDevices = new List<MicDevice>();
-            foreach (var deviceName in availableDevices)
+            bool anyAvailable = false;
+            foreach (var (id, name) in GlobalAudioHandler.GetAllInputDevices())
             {
-                if (!boundDeviceNames.Contains(deviceName))
+                if (boundNames.Contains(name)) continue;
+                anyAvailable = true;
+                int deviceId = id;
+                string deviceName = name;
+                dialog.AddListButton(deviceName, () =>
                 {
-                    // Create MicDevice instance
-                    var micDevice = new MicDevice(deviceName);
-                    unboundDevices.Add(micDevice);
-                }
+                    var device = GlobalAudioHandler.CreateInputDevice(deviceId, deviceName);
+                    if (device != null)
+                    {
+                        _bindings.AddMicrophone(device);
+                        RefreshList();
+                    }
+                });
             }
 
-            if (unboundDevices.Count == 0)
+            if (!anyAvailable)
             {
-                // Show message that no devices are available
-                ShowNotification(Localize.Key("Menu.ProfileInfo.NoAvailableMicrophones"));
+                DialogManager.Instance.ClearDialog();
+                YargLogger.LogWarning("No available microphones to add");
                 return;
             }
 
-            // Create simple picker UI
-            var pickerGO = new GameObject("MicrophonePicker");
-            pickerGO.transform.SetParent(transform.parent, false);
-
-            var picker = pickerGO.AddComponent<MicrophonePickerUI>();
-            picker.Initialize(unboundDevices, OnMicrophoneSelected, () => Destroy(pickerGO));
-        }
-
-        private void OnMicrophoneSelected(MicDevice selectedDevice)
-        {
-            // Add the microphone to the bindings
-            _bindings.AddMicrophone(selectedDevice);
-            RefreshList();
+            dialog.AddDialogButton("Menu.Common.Close", MenuData.Colors.CancelButton,
+                DialogManager.Instance.ClearDialog);
         }
 
         private void RemoveMic(int index)
         {
-            var micToRemove = _bindings.Microphones[index];
-            _bindings.RemoveMicrophone(micToRemove.Name);
-            RefreshList();
-        }
-
-        private void ShowNotification(string message)
-        {
-            // This would ideally use the game's notification system
-            // For now, log to console and consider implementing a toast notification
-            Debug.Log(message);
+            if (index >= 0 && index < _bindings.Microphones.Count)
+            {
+                var micToRemove = _bindings.Microphones[index];
+                _bindings.RemoveMicrophone(micToRemove);
+                RefreshList();
+            }
         }
     }
 }

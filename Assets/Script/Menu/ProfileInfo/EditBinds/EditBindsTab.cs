@@ -1,4 +1,3 @@
-// pattern: Imperative Shell
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -128,10 +127,20 @@ namespace YARG.Menu.ProfileInfo
                 }
             }
 
-            // Show microphone bindings for vocal profiles
-            if (_micBindGroup != null && (_currentPlayer.Profile.GameMode == GameMode.Vocals || _currentPlayer.Profile.GameMode == GameMode.Harmony))
+            // Show microphone bindings for vocal profiles, hide for others
+            if (_micBindGroup != null)
             {
-                _micBindGroup.Initialize(_currentPlayer.Bindings, _currentPlayer.Profile);
+                bool isVocal = _currentPlayer.Profile.GameMode == GameMode.Vocals
+                    || _currentPlayer.Profile.GameMode == GameMode.Harmony;
+                if (isVocal)
+                {
+                    _micBindGroup.gameObject.SetActive(true);
+                    _micBindGroup.Initialize(_currentPlayer.Bindings, _currentPlayer.Profile);
+                }
+                else
+                {
+                    _micBindGroup.gameObject.SetActive(false);
+                }
             }
         }
 
