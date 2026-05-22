@@ -66,8 +66,12 @@ namespace YARG.Gameplay.Player
 
         private const int NEEDLES_COUNT = 7;
 
-        // Replay input index for accessing mic pitch data
-        private int _replayInputIndex;
+        // Per-mic pitch recording buffer for Party Vocals replays
+        private List<float>[] _micPitchBuffers;
+
+        // Replay playback state for Party Vocals
+        private ReplayFrame _replayFrame;
+        private int _replayMicIndex;
 
         // Mic disconnect detection
         private float _lastDisconnectCheckTime;
@@ -201,6 +205,20 @@ namespace YARG.Gameplay.Player
                 }
                 // Preserve _inputContext as the first-element accessor for legacy single-mic code paths.
                 _inputContext = _inputContexts[0];
+
+                // Initialize per-mic pitch recording buffer for Party Vocals replays
+                if (_inputContexts.Count > 1)
+                {
+                    _micPitchBuffers = new List<float>[_inputContexts.Count];
+                    for (int i = 0; i < _inputContexts.Count; i++)
+                        _micPitchBuffers[i] = new List<float>();
+                }
+            }
+
+            // Store replay frame for Party Vocals playback
+            if (Player.IsReplay && GameManager.ReplayData != null)
+            {
+                _replayFrame = GameManager.ReplayData.Frames[player.ReplayIndex];
             }
 
             Engine = CreateEngine();
@@ -442,60 +460,51 @@ namespace YARG.Gameplay.Player
         {
             base.UpdateInputs(time);
 
-            if (_inputContexts is null) return;
-
-            bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts.Count > 1
-                                && Engine is YargFreeVocalsEngine freeEngine;
-
-            // Handle replay playback with per-mic pitch data
-            if (Player.IsReplay && GameManager.ReplayData != null && GameManager.ReplayInfo != null)
+            if (_inputContexts is null)
             {
-                // Find the current frame index based on the replay input index
-                int frameIndex = 0;
-                if (this is { ReplayInputs: { Count: > 0 } })
+                // During replay playback for Party Vocals, feed per-mic pitches from the replay frame.
+                if (Player.IsReplay && Engine is YargFreeVocalsEngine freeEngine
+                    && _replayFrame != null && _replayFrame.MicCount > 0)
                 {
-                    frameIndex = _replayInputIndex / (ReplayInputs.Count / GameManager.ReplayData.Frames.Length);
-                    frameIndex = Mathf.Min(frameIndex, GameManager.ReplayData.Frames.Length - 1);
-                }
-
-                var currentFrame = GameManager.ReplayData.Frames[frameIndex];
-
-                // If this is a Party Vocals replay with mic pitch data, feed it to the engine
-                if (currentFrame.MicCount > 0)
-                {
-                    for (int i = 0; i < currentFrame.MicCount; i++)
+                    for (int i = 0; i < _replayFrame.MicCount; i++)
                     {
-                        if (i < currentFrame.MicPitches?.Length && currentFrame.MicPitches[i].Length > 0)
+                        if (i < _replayMicIndex && i < _replayFrame.MicPitches?.Length)
                         {
-                            // Get the pitch for the current time index
-                            int timeIndex = _replayInputIndex % currentFrame.MicPitches[i].Length;
-                            float pitch = currentFrame.MicPitches[i][timeIndex];
-                            freeEngine.SetMicPitch(i, pitch);
+                            int idx = Mathf.Min(_replayMicIndex, _replayFrame.MicPitches[i].Length - 1);
+                            freeEngine.SetMicPitch(i, _replayFrame.MicPitches[i][idx]);
                         }
                     }
+                    _replayMicIndex++;
                 }
+                return;
             }
+
+            bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts.Count > 1
+                                && Engine is YargFreeVocalsEngine freeEngine2;
 
             for (int i = 0; i < _inputContexts.Count; i++)
             {
                 var ctx = _inputContexts[i];
                 foreach (var input in ctx.GetInputsFromMic())
                 {
-                    // For Party Vocals: route pitch inputs to per-mic engine state; route non-pitch
-                    // (Hit, StarPower) through the normal queue from any mic (single shared signal).
                     if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                     {
                         ((YargFreeVocalsEngine)Engine).SetMicPitch(i, input.Axis);
+
+                        // Record per-mic pitch for replay
+                        if (_micPitchBuffers != null && i < _micPitchBuffers.Length)
+                        {
+                            _micPitchBuffers[i].Add(input.Axis);
+                        }
                     }
                     else
                     {
-                        // Suppress percussion hits for Party Vocals profiles
                         if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Hit)
                         {
-                            continue; // Skip percussion hits for Party Vocals
+                            continue;
                         }
 
-                        var copy = input; // OnGameInput takes ref
+                        var copy = input;
                         OnGameInput(ref copy);
                     }
                 }
@@ -1003,32 +1012,13 @@ namespace YARG.Gameplay.Player
         {
             var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
 
-            // For Party Vocals profiles, collect per-mic pitch data
-            bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts?.Count > 1
-                                && Engine is YargFreeVocalsEngine;
-
-            if (isPartyVocals)
+            if (_micPitchBuffers != null)
             {
-                frame.MicCount = _inputContexts.Count;
-                frame.MicPitches = new float[_inputContexts.Count][];
-
-                // For each mic, collect the pitch values from ReplayInputs
-                // This assumes that ReplayInputs contains pitch data for each mic in order
-                // The actual implementation might need to adjust based on how pitch data is stored
-                for (int i = 0; i < _inputContexts.Count; i++)
+                frame.MicCount = _micPitchBuffers.Length;
+                frame.MicPitches = new float[_micPitchBuffers.Length][];
+                for (int i = 0; i < _micPitchBuffers.Length; i++)
                 {
-                    // Collect pitch values for this mic
-                    var micPitches = new List<float>();
-                    foreach (var input in ReplayInputs)
-                    {
-                        if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
-                        {
-                            // This assumes pitch inputs are ordered by mic index
-                            // You might need to adjust this based on how multi-mic pitch data is stored
-                            micPitches.Add(input.Axis);
-                        }
-                    }
-                    frame.MicPitches[i] = micPitches.ToArray();
+                    frame.MicPitches[i] = _micPitchBuffers[i].ToArray();
                 }
             }
 
