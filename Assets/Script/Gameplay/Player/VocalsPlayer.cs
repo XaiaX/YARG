@@ -145,9 +145,11 @@ namespace YARG.Gameplay.Player
                     var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
                     var materialInstance = new Material(baseMaterial);
 
-                    // Instantiate a copy of the needle GameObject.
-                    var needleObj = Instantiate(_needleTransform.gameObject, _needleVisualContainer.transform.parent);
-                    var renderer = needleObj.GetComponent<MeshRenderer>();
+                    // Clone the visual container so the cloned subtree includes the renderer
+                    // (which lives on a child object, not on _needleTransform itself).
+                    var needleObj = Instantiate(_needleVisualContainer, _needleVisualContainer.transform.parent);
+                    needleObj.SetActive(true);
+                    var renderer = needleObj.GetComponentInChildren<MeshRenderer>();
                     renderer.material = materialInstance;
 
                     _micNeedles.Add((renderer, needleObj.transform, materialInstance));

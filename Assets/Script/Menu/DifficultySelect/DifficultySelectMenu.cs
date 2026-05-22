@@ -269,9 +269,12 @@ namespace YARG.Menu.DifficultySelect
                     UpdateForPlayer();
                 });
 
-                // Harmony-locked players and bot Free Harmony players pick which HARM line they want
-                if (player.Profile.CurrentInstrument is Instrument.Harmony
-                    || (player.Profile.IsBot && player.Profile.IsFreeVocals))
+                // Harmony-locked players pick which HARM line they want. Free Vocals bots
+                // no longer need this picker: on multi-HARM songs they auto-distribute one
+                // synthetic vocalist per part (Party Vocals bot mode); on Solo-only songs
+                // there's only one line. The HARM index isn't used by Free Vocals at all
+                // anymore for bot configuration.
+                if (player.Profile.CurrentInstrument is Instrument.Harmony)
                 {
                     string harmonyDisplayText = $"HARM{player.Profile.HarmonyIndex + 1}";
 
