@@ -708,31 +708,18 @@ namespace YARG.Gameplay.Player
             return Mathf.Min(0.0f, pitchDist + deadZoneInSemitones);
         }
 
-        private bool _needleDebugLogged;
-
         private void UpdateSingNeedle()
         {
             // Get the appropriate sing time
             var singTime = GameManager.InputTime;
 
-            // One-shot debug: log state once the engine starts scoring (PhraseTicksHit > 0)
-            if (!_needleDebugLogged && Player.Profile.IsFreeVocals && _micNeedles.Count > 0
-                && Engine is YargFreeVocalsEngine fe && fe.PhraseTicksHit > 0)
+            // Multi-mic: single-mic positions the root transform to (0, 0, pitchZ),
+            // but multi-mic positions each needle individually. Reset root so needle
+            // offsets are relative to the correct origin (the root starts at (-5, 0.2, 0)
+            // in the prefab, which would push all cloned needles off-screen).
+            if (_micNeedles.Count > 0)
             {
-                _needleDebugLogged = true;
-                bool inThreshold = IsInThreshold(singTime, _lastSingTime);
-                Debug.LogFormat("[PartyVocals Needle] singTime={0:F3} _lastSingTime={1} _lastHitTime={2} " +
-                    "inThreshold={3} shouldHide={4} micNeedles={5} _lastTargetNote={6} " +
-                    "phraseTicksHit={7} pitchSang={8:F1} hasSang={9}",
-                    singTime, _lastSingTime, _lastHitTime,
-                    inThreshold, _shouldHideNeedle, _micNeedles.Count,
-                    _lastTargetNote != null, fe.PhraseTicksHit,
-                    fe.PitchSang, fe.BaseStats.CommittedScore);
-                for (int i = 0; i < _micNeedles.Count; i++)
-                {
-                    Debug.LogFormat("[PartyVocals Needle] mic {0} pitch={1:F1}",
-                        i, fe.GetMicPitch(i));
-                }
+                transform.localPosition = Vector3.zero;
             }
 
             // Get whether or not the player has sang within the time threshold.
