@@ -404,7 +404,14 @@ namespace YARG.Menu.DifficultySelect
             if (freeHarmonyAvailable)
             {
                 bool freeSelected = CurrentPlayer.Profile.FreeHarmony;
-                CreateItem(LocalizeHeader("FreeHarmony"), freeSelected, () =>
+                bool hasMultipleMics = CurrentPlayer.Bindings.Microphones.Count > 1;
+                bool isBotProfile = CurrentPlayer.Profile.IsBot;
+
+                string freeHarmonyLabel = !isBotProfile && hasMultipleMics
+                    ? Localize.Key("Menu.DifficultySelect.PartyVocals")  // "Party Vocals"
+                    : Localize.Key("Menu.DifficultySelect.FreeHarmony");  // "Free Harmony"
+
+                CreateItem(freeHarmonyLabel, freeSelected, () =>
                 {
                     // Pick a CurrentInstrument that's actually in _possibleInstruments —
                     // otherwise ChangePlayer's reset-to-first logic will overwrite it.

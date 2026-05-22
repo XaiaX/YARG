@@ -89,7 +89,9 @@ namespace YARG.Gameplay.Player
             _chart = chart;
 
             // Check if this is a Party Vocals profile
-            bool isPartyVocals = _inputContexts != null && _inputContexts.Count > 1;
+            // Bot guard: bot profiles with multiple mics are treated as single-mic
+            bool isPartyVocals = _inputContexts != null && _inputContexts.Count > 1
+                               && !player.Profile.IsBot;
 
             if (isPartyVocals)
             {
@@ -183,9 +185,13 @@ namespace YARG.Gameplay.Player
             // Create and start input contexts for microphones
             if (!Player.IsReplay && player.Bindings.Microphones.Count > 0)
             {
-                _inputContexts = new List<MicInputContext>(player.Bindings.Microphones.Count);
-                foreach (var mic in player.Bindings.Microphones)
+                // Bot guard: bot profiles can only have one microphone
+                int micCount = player.Profile.IsBot ? 1 : player.Bindings.Microphones.Count;
+
+                _inputContexts = new List<MicInputContext>(micCount);
+                for (int i = 0; i < micCount; i++)
                 {
+                    var mic = player.Bindings.Microphones[i];
                     var ctx = new MicInputContext(mic, GameManager);
                     ctx.Start();
                     _inputContexts.Add(ctx);
