@@ -38,6 +38,10 @@ namespace YARG.Menu.ProfileInfo
         [SerializeField]
         private IntegerBindGroup _integerGroupPrefab;
 
+        [Space]
+        [SerializeField]
+        private MicBindGroup _micBindGroup;
+
         private YargPlayer _currentPlayer;
 
         public GameMode SelectedGameMode { get; private set; }
@@ -121,6 +125,12 @@ namespace YARG.Menu.ProfileInfo
                         integerGroup.Init(this, _currentPlayer, integer);
                         break;
                 }
+            }
+
+            // Show microphone bindings for vocal profiles
+            if (_micBindGroup != null && (_currentPlayer.Profile.GameMode == GameMode.Vocals || _currentPlayer.Profile.GameMode == GameMode.Harmony))
+            {
+                _micBindGroup.Initialize(_currentPlayer.Bindings, _currentPlayer.Profile);
             }
         }
 

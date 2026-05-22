@@ -272,6 +272,7 @@
             "Solo": "Solo",
             "Free": "Free",
             "FreeHarmony": "Free Harmony",
+            "PartyVocals": "Party Vocals",
             "WarningPlayerNoInputDevice" : "This player has no input device assigned! Assign one from the Profiles menu.",
             "WarningVocalistNoMicrophone" : "This vocalist has no microphone assigned! Assign one from the Profiles menu."
         },
@@ -485,6 +486,15 @@
                 "TotalScore": "Total Score",
                 "TotalStarsEarned": "Total Stars Earned",
                 "FullCombos": "Full Combos"
+            },
+            "Microphones": {
+                "Title": "Microphones",
+                "AddButton": "Add Microphone",
+                "RemoveButton": "Remove",
+                "MaxReached": "Maximum of 7 microphones reached",
+                "NoAvailableMicrophones": "No available microphones to add",
+                "SelectMicrophone": "Select Microphone",
+                "SelectMicrophoneInstruction": "Choose a microphone to add"
             }
         },
         "ProfileList": {
