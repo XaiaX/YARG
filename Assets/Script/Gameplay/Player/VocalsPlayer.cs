@@ -49,6 +49,12 @@ namespace YARG.Gameplay.Player
         private MicInputContext _inputContext;
         private List<MicInputContext> _inputContexts;
 
+        // Total simulated "vocalists" for Party Vocals. For humans: matches the bound mic
+        // count. For Party Vocals bots: matches the song's HARM part count (one bot
+        // vocalist per HARM line). Used to size needles and the engine's per-mic buffers
+        // before _inputContexts is populated.
+        private int _partyVocalsMicCount = 1;
+
         // Multi-mic needles for Party Vocals
         private readonly List<(MeshRenderer renderer, Transform transform, Material material)> _micNeedles = new();
 
@@ -96,10 +102,32 @@ namespace YARG.Gameplay.Player
             // Save the chart
             _chart = chart;
 
-            // Check if this is a Party Vocals profile
-            // Bot guard: bot profiles with multiple mics are treated as single-mic
-            bool isPartyVocals = _inputContexts != null && _inputContexts.Count > 1
-                               && !player.Profile.IsBot;
+            // Resolve the vocal track first — we need parts.Count to compute the bot's
+            // simulated mic count (one bot "vocalist" per HARM part).
+            // For Free Vocals on songs that have a Harmony chart, source from Harmony so the
+            // bot's pitch values are in the same register as the visualized HARM lines
+            // (the global VocalTrack is initialized with Chart.Harmony in this case — see
+            // GameManager.Loading.cs).
+            var multiTrack = (Player.Profile.IsFreeVocals && chart.Harmony.Parts.Count > 1)
+                ? chart.Harmony
+                : chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+
+            // Compute Party Vocals mic count up front so needle creation and engine
+            // construction agree. Humans: real bound-mic count. Free Vocals bots: one
+            // synthetic vocalist per HARM part (so a 3-HARM song gets 3 bot needles).
+            if (Player.Profile.IsFreeVocals && player.Profile.IsBot)
+            {
+                _partyVocalsMicCount = Math.Max(1, multiTrack.Parts.Count);
+            }
+            else if (player.Bindings.Microphones.Count > 0)
+            {
+                _partyVocalsMicCount = player.Bindings.Microphones.Count;
+            }
+            else
+            {
+                _partyVocalsMicCount = 1;
+            }
+            bool isPartyVocals = _partyVocalsMicCount > 1;
 
             // Display index for HUD ShowPlayerName: party-vocals uses the lowest mic-color
             // index (the leader needle); single-mic uses the player slot's needle index.
@@ -110,7 +138,7 @@ namespace YARG.Gameplay.Player
                 _needleVisualContainer.SetActive(false);
 
                 // Create per-mic needles
-                for (int i = 0; i < _inputContexts.Count; i++)
+                for (int i = 0; i < _partyVocalsMicCount; i++)
                 {
                     var micNeedleIndex = (i % NEEDLES_COUNT) + 1;
                     var materialPath = $"VocalNeedle/{micNeedleIndex}";
@@ -133,16 +161,6 @@ namespace YARG.Gameplay.Player
                 _needleMaterialInstance = new Material(baseMaterial);
                 _needleRenderer.material = _needleMaterialInstance;
             }
-
-            // Get the notes from the specific harmony or solo part.
-            // For Free Vocals on songs that have a Harmony chart, source from Harmony so the
-            // bot's pitch values are in the same register as the visualized HARM lines
-            // (the global VocalTrack is initialized with Chart.Harmony in this case — see
-            // GameManager.Loading.cs). Otherwise the bot's needle is octave-offset from
-            // the rendered lines.
-            var multiTrack = (Player.Profile.IsFreeVocals && chart.Harmony.Parts.Count > 1)
-                ? chart.Harmony
-                : chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
 
             VocalsPart selectedPart;
 
@@ -192,11 +210,12 @@ namespace YARG.Gameplay.Player
 
             _hud.ShowPlayerName(player, needleIndex);
 
-            // Create and start input contexts for microphones
-            if (!Player.IsReplay && player.Bindings.Microphones.Count > 0)
+            // Create and start input contexts for microphones. Skip entirely for bots —
+            // bots have no real audio devices; the engine synthesizes their pitches
+            // internally via UpdateBot / UpdateBotMultiMic.
+            if (!Player.IsReplay && !player.Profile.IsBot && player.Bindings.Microphones.Count > 0)
             {
-                // Bot guard: bot profiles can only have one microphone
-                int micCount = player.Profile.IsBot ? 1 : player.Bindings.Microphones.Count;
+                int micCount = player.Bindings.Microphones.Count;
 
                 _inputContexts = new List<MicInputContext>(micCount);
                 for (int i = 0; i < micCount; i++)
@@ -350,6 +369,7 @@ namespace YARG.Gameplay.Player
                     ? _chart.Harmony
                     : _chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
                 engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
+                    micCount: _partyVocalsMicCount,
                     botPartIndex: Player.Profile.HarmonyIndex);
                 // Register using the free vocals overload
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
@@ -362,8 +382,8 @@ namespace YARG.Gameplay.Player
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
             }
 
-            // Subscribe to Party Vocals phrase events if applicable
-            if (Engine is YargFreeVocalsEngine freeEngine && _inputContexts?.Count > 1)
+            // Subscribe to Party Vocals phrase events for any multi-mic profile (human or bot).
+            if (Engine is YargFreeVocalsEngine freeEngine && _partyVocalsMicCount > 1)
             {
                 freeEngine.OnPartyVocalsPhrase += OnPartyVocalsPhrase;
             }
@@ -558,8 +578,8 @@ namespace YARG.Gameplay.Player
             _hud.UpdateInfo(fill, displayMultiplier,
                 (float) Engine.GetStarPowerBarAmount(), Engine.EngineStats.IsStarPowerActive);
 
-            // Update per-HARM fill for Party Vocals
-            if (Engine is YargFreeVocalsEngine freeEngine && _inputContexts?.Count > 1)
+            // Update per-HARM fill for Party Vocals (humans and bots).
+            if (Engine is YargFreeVocalsEngine freeEngine && _partyVocalsMicCount > 1)
             {
                 var meters = freeEngine.CanonicalMeters;
                 if (meters != null)
@@ -714,8 +734,9 @@ namespace YARG.Gameplay.Player
             {
                 if (_micNeedles.Count > 0)
                 {
-                    // Multi-mic update path
-                    for (int i = 0; i < _micNeedles.Count && i < _inputContexts.Count; i++)
+                    // Multi-mic update path. Iterate by needle count alone — bot Party Vocals
+                    // has no _inputContexts (engine synthesizes pitches), but still has needles.
+                    for (int i = 0; i < _micNeedles.Count; i++)
                     {
                         var (renderer, transform, material) = _micNeedles[i];
                         float micPitch;
@@ -824,8 +845,8 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Check if this is a Party Vocals profile
-            bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts?.Count > 1
+            // Check if this is a Party Vocals profile (humans or bots).
+            bool isPartyVocals = Player.Profile.IsFreeVocals && _partyVocalsMicCount > 1
                                 && Engine is YargFreeVocalsEngine;
 
             // For Party Vocals, don't hide HUD/needle during percussion phrases since percussion is ignored
