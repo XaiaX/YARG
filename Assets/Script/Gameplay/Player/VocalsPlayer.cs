@@ -385,7 +385,7 @@ namespace YARG.Gameplay.Player
             }
 
             // Subscribe to Party Vocals phrase events for any multi-mic profile (human or bot).
-            if (Engine is YargFreeVocalsEngine freeEngine && _partyVocalsMicCount > 1)
+            if (engine is YargFreeVocalsEngine freeEngine && _partyVocalsMicCount > 1)
             {
                 freeEngine.OnPartyVocalsPhrase += OnPartyVocalsPhrase;
             }
@@ -708,10 +708,36 @@ namespace YARG.Gameplay.Player
             return Mathf.Min(0.0f, pitchDist + deadZoneInSemitones);
         }
 
+        private bool _needleDebugLogged;
+
         private void UpdateSingNeedle()
         {
             // Get the appropriate sing time
             var singTime = GameManager.InputTime;
+
+            // One-shot debug: log state during first active phrase for Party Vocals bots
+            if (!_needleDebugLogged && Player.Profile.IsFreeVocals && _micNeedles.Count > 0 && singTime > 1.0)
+            {
+                _needleDebugLogged = true;
+                bool inThreshold = IsInThreshold(singTime, _lastSingTime);
+                bool isFreeEngine = Engine is YargFreeVocalsEngine;
+                YargLogger.LogFormatDebug(
+                    "[PartyVocals Needle] singTime={0:F3} _lastSingTime={1} _lastHitTime={2} " +
+                    "inThreshold={3} shouldHide={4} micNeedles={5} isFreeEngine={6} " +
+                    "_lastTargetNote={7} engineType={8}",
+                    singTime, _lastSingTime, _lastHitTime,
+                    inThreshold, _shouldHideNeedle, _micNeedles.Count, isFreeEngine,
+                    _lastTargetNote != null, Engine?.GetType().Name);
+                if (isFreeEngine)
+                {
+                    var freeEngine = (YargFreeVocalsEngine)Engine;
+                    for (int i = 0; i < _micNeedles.Count; i++)
+                    {
+                        YargLogger.LogFormatDebug("[PartyVocals Needle] mic {0} pitch={1:F1}",
+                            i, freeEngine.GetMicPitch(i));
+                    }
+                }
+            }
 
             // Get whether or not the player has sang within the time threshold.
             // We gotta use a threshold here because microphone inputs are passed every X seconds,
