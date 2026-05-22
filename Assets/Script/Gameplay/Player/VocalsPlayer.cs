@@ -1,4 +1,6 @@
-﻿using System.Linq;
+﻿// pattern: Mixed (unavoidable)
+// Reason: Requires Unity serialization, real-time gameplay updates, and complex UI interaction
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using YARG.Core;

@@ -1,3 +1,5 @@
+// pattern: Mixed (unavoidable)
+// Reason: Component requires Unity serialization and UI interaction which are inherently imperative
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;

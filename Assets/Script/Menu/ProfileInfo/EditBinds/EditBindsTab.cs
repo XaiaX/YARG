@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
