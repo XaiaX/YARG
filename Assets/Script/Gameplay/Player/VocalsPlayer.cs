@@ -687,11 +687,11 @@ namespace YARG.Gameplay.Player
             var lerp = Mathf.Lerp(transform.localPosition.z, z, Time.deltaTime * lerpRate);
             transform.localPosition = new Vector3(0f, 0f, lerp);
 
-            // Compose Y rotation (pitch deviation) with the mesh's natural 90° X orientation.
-            // In single-mic, the Y rotation is on the parent container and the 90° X is on the
-            // mesh child. Here the clone IS the mesh, so both must be combined.
-            var targetRot = Quaternion.Euler(0f, targetRotation + 90f, 0f) * Quaternion.Euler(90f, 0f, 0f);
-            transform.localRotation = Quaternion.Lerp(transform.localRotation,
+            // Single-mic splits rotation: Y on parent container (_needleTransform),
+            // 90° X on mesh child. The clone IS the mesh, so use Euler directly to
+            // avoid quaternion Lerp taking a bad path through perpendicular orientations.
+            var targetRot = Quaternion.Euler(90f, targetRotation + 90f, 0f);
+            transform.localRotation = Quaternion.Slerp(transform.localRotation,
                 targetRot, Time.deltaTime * NEEDLE_ROT_LERP);
 
             // Handle material color for Free Vocals
