@@ -723,10 +723,11 @@ namespace YARG.Gameplay.Player
                 bool isFreeEngine = Engine is YargFreeVocalsEngine;
                 YargLogger.LogFormatDebug(
                     "[PartyVocals Needle] singTime={0:F3} _lastSingTime={1} _lastHitTime={2} " +
-                    "inThreshold={3} shouldHide={4} micNeedles={5} isFreeEngine={6} " +
-                    "_lastTargetNote={7} engineType={8}",
+                    "inThreshold={3} shouldHide={4} micNeedles={5} isFreeEngine={6}",
                     singTime, _lastSingTime, _lastHitTime,
-                    inThreshold, _shouldHideNeedle, _micNeedles.Count, isFreeEngine,
+                    inThreshold, _shouldHideNeedle, _micNeedles.Count, isFreeEngine);
+                YargLogger.LogFormatDebug(
+                    "[PartyVocals Needle] _lastTargetNote={0} engineType={1}",
                     _lastTargetNote != null, Engine?.GetType().Name);
                 if (isFreeEngine)
                 {
