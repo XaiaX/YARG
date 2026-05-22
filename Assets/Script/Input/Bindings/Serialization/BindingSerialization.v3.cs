@@ -73,7 +73,7 @@ namespace YARG.Input.Serialization
                 // Convert single microphone to list
                 if (bind.Microphone is not null)
                 {
-                    migratedBind.Microphone = bind.Microphone.Deserialize();
+                    migratedBind.Microphones.Add(bind.Microphone.Deserialize());
                 }
 
                 foreach (var (gameMode, bindings) in bind.ModeMappings)
