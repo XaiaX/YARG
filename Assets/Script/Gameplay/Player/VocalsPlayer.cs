@@ -654,7 +654,9 @@ namespace YARG.Gameplay.Player
             return distPercent * NEEDLE_ROT_MAX;
         }
 
-        private void UpdateSingleNeedle(MeshRenderer renderer, Transform transform, Material material, float pitch, float lastNotePitch, bool isHitting, bool isNonPitched)
+        private void UpdateSingleNeedle(MeshRenderer renderer, Transform transform, Material material,
+            float pitch, float lastNotePitch, bool isHitting, bool isNonPitched,
+            float zOffset = 0f, int harmonyColorIndex = -1)
         {
             const float NEEDLE_POS_LERP = 30f;
             const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
@@ -681,20 +683,21 @@ namespace YARG.Gameplay.Player
             }
 
             // Transform!
-            float z = GameManager.VocalTrack.GetPosForPitch(pitch);
+            float z = GameManager.VocalTrack.GetPosForPitch(pitch) - zOffset;
             var lerp = Mathf.Lerp(transform.localPosition.z, z, Time.deltaTime * lerpRate);
             transform.localPosition = new Vector3(0f, 0f, lerp);
-            transform.rotation = Quaternion.Lerp(transform.rotation,
-                Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * NEEDLE_ROT_LERP);
+
+            // Compose Y rotation (pitch deviation) with the mesh's natural 90° X orientation.
+            // In single-mic, the Y rotation is on the parent container and the 90° X is on the
+            // mesh child. Here the clone IS the mesh, so both must be combined.
+            var targetRot = Quaternion.Euler(0f, targetRotation + 90f, 0f) * Quaternion.Euler(90f, 0f, 0f);
+            transform.localRotation = Quaternion.Lerp(transform.localRotation,
+                targetRot, Time.deltaTime * NEEDLE_ROT_LERP);
 
             // Handle material color for Free Vocals
-            if (material != null && Player.Profile.IsFreeVocals && Engine is YargFreeVocalsEngine freeEngine)
+            if (material != null && harmonyColorIndex >= 0 && harmonyColorIndex < VocalTrack.Colors.Length)
             {
-                int targetHarmonyIndex = freeEngine.CurrentTargetHarmonyIndex;
-                if (targetHarmonyIndex >= 0 && targetHarmonyIndex < VocalTrack.Colors.Length)
-                {
-                    material.color = VocalTrack.Colors[targetHarmonyIndex];
-                }
+                material.color = VocalTrack.Colors[harmonyColorIndex];
             }
         }
 
@@ -734,6 +737,9 @@ namespace YARG.Gameplay.Player
                     {
                         transform.gameObject.SetActive(false);
                     }
+
+                    // Reset Needle Container position so it doesn't stale at the last lead position
+                    _needleTransform.parent.localPosition = Vector3.zero;
                 }
                 else if (_needleVisualContainer.activeSelf)
                 {
@@ -745,6 +751,23 @@ namespace YARG.Gameplay.Player
             {
                 if (_micNeedles.Count > 0)
                 {
+                    // Compute the lead needle's pitch Z and move the Needle Container there
+                    // so particles follow the lead needle. Clones are children of Needle Model
+                    // Container (child of Needle Container), so their Z is compensated by the
+                    // container offset via the zOffset parameter.
+                    float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
+                    float leadPitchZ;
+                    if (Engine is YargFreeVocalsEngine freeEngine && _lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
+                    {
+                        leadPitchZ = GameManager.VocalTrack.GetPosForPitch(freeEngine.GetMicPitch(0));
+                    }
+                    else
+                    {
+                        leadPitchZ = GameManager.VocalTrack.GetPosForPitch(
+                            AnchorPitchToOctave(Engine.PitchSang, lastNotePitch));
+                    }
+                    _needleTransform.parent.localPosition = new Vector3(0f, 0f, leadPitchZ);
+
                     // Multi-mic update path. Iterate by needle count alone — bot Party Vocals
                     // has no _inputContexts (engine synthesizes pitches), but still has needles.
                     for (int i = 0; i < _micNeedles.Count; i++)
@@ -752,11 +775,10 @@ namespace YARG.Gameplay.Player
                         var (renderer, transform, material) = _micNeedles[i];
                         float micPitch;
                         bool isHitting = false;
-                        float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
 
-                        if (Engine is YargFreeVocalsEngine freeEngine && _lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
+                        if (Engine is YargFreeVocalsEngine freeEngine2 && _lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
                         {
-                            micPitch = freeEngine.GetMicPitch(i);
+                            micPitch = freeEngine2.GetMicPitch(i);
                             isHitting = true;
 
                             // Show particles if hitting (as long as we aren't rewinding)
@@ -772,7 +794,9 @@ namespace YARG.Gameplay.Player
                             micPitch = AnchorPitchToOctave(Engine.PitchSang, lastNotePitch);
                         }
 
-                        UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch, isHitting, _lastTargetNote?.IsNonPitched ?? false);
+                        UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch,
+                            isHitting, _lastTargetNote?.IsNonPitched ?? false,
+                            zOffset: leadPitchZ, harmonyColorIndex: i);
                     }
                 }
                 else
