@@ -62,7 +62,7 @@ namespace YARG.Menu.ProfileInfo
 
         private void OnAddClicked()
         {
-            var dialog = DialogManager.Instance.List();
+            var dialog = DialogManager.Instance.ShowList("Select Microphone");
 
             var boundNames = new HashSet<string>();
             foreach (var mic in _bindings.Microphones)

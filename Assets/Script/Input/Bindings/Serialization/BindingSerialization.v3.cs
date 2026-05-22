@@ -79,11 +79,11 @@ namespace YARG.Input.Serialization
 
                 foreach (var (gameMode, bindings) in bind.ModeMappings)
                 {
-                    migratedBind.ModeMappings[gameMode] = bindings.Deserialize();
+                    migratedBind.ModeMappings[gameMode] = bindings.Deserialize(bind);
                 }
 
                 if (bind.MenuMappings is not null)
-                    migratedBind.MenuMappings = bind.MenuMappings.Deserialize();
+                    migratedBind.MenuMappings = bind.MenuMappings.Deserialize(bind);
 
                 deserialized.Profiles[id] = migratedBind;
             }
@@ -121,10 +121,8 @@ namespace YARG.Input.Serialization
 
         public SerializedProfileBindings Deserialize()
         {
-            var deserialized = new SerializedProfileBindings()
-            {
-                Microphone = Microphone?.Deserialize(),
-            };
+            var deserialized = new SerializedProfileBindings();
+            if (Microphone is not null) deserialized.Microphones.Add(Microphone.Deserialize());
 
             deserialized.Devices.AddRange(Devices.Select((device) => device.Deserialize()));
 

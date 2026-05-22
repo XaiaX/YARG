@@ -101,6 +101,9 @@ namespace YARG.Gameplay.Player
             bool isPartyVocals = _inputContexts != null && _inputContexts.Count > 1
                                && !player.Profile.IsBot;
 
+            // Display index for HUD ShowPlayerName: party-vocals uses the lowest mic-color
+            // index (the leader needle); single-mic uses the player slot's needle index.
+            int needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
             if (isPartyVocals)
             {
                 // Hide the default single needle — we'll create per-mic needles instead.
@@ -109,8 +112,8 @@ namespace YARG.Gameplay.Player
                 // Create per-mic needles
                 for (int i = 0; i < _inputContexts.Count; i++)
                 {
-                    var needleIndex = (i % NEEDLES_COUNT) + 1;
-                    var materialPath = $"VocalNeedle/{needleIndex}";
+                    var micNeedleIndex = (i % NEEDLES_COUNT) + 1;
+                    var materialPath = $"VocalNeedle/{micNeedleIndex}";
                     var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
                     var materialInstance = new Material(baseMaterial);
 
@@ -125,7 +128,6 @@ namespace YARG.Gameplay.Player
             else
             {
                 // Existing single-needle path
-                var needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
                 var materialPath = $"VocalNeedle/{needleIndex}";
                 var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
                 _needleMaterialInstance = new Material(baseMaterial);
@@ -937,7 +939,7 @@ namespace YARG.Gameplay.Player
 
         private bool IsDeviceConnected(MicDevice device)
         {
-            if (device is YARG.Audio.Bass.BassMicDevice bassMicDevice)
+            if (device is YARG.Audio.BASS.BassMicDevice bassMicDevice)
             {
                 return bassMicDevice.IsDeviceStillValid();
             }

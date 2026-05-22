@@ -305,7 +305,7 @@ namespace YARG.Menu.ProfileList
                 devicesAvailable = true;
                 dialog.AddListButton(mic.DisplayName, () =>
                 {
-                    player.Bindings.RemoveMicrophone();
+                    player.Bindings.RemoveMicrophone(mic);
                     selectedDevice = true;
                 });
             }

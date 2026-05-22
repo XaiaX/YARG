@@ -48,10 +48,8 @@ namespace YARG.Input.Serialization
 
         public SerializedProfileBindings Deserialize()
         {
-            var converted = new SerializedProfileBindings()
-            {
-                Microphone = Microphone?.Deserialize(),
-            };
+            var converted = new SerializedProfileBindings();
+            if (Microphone is not null) converted.Microphones.Add(Microphone.Deserialize());
 
             converted.Devices.AddRange(Devices.Select((device) => device.Deserialize()));
 

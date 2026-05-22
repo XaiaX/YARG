@@ -130,8 +130,7 @@ namespace YARG.Menu.ProfileInfo
             // Show microphone bindings for vocal profiles, hide for others
             if (_micBindGroup != null)
             {
-                bool isVocal = _currentPlayer.Profile.GameMode == GameMode.Vocals
-                    || _currentPlayer.Profile.GameMode == GameMode.Harmony;
+                bool isVocal = _currentPlayer.Profile.GameMode == GameMode.Vocals;
                 if (isVocal)
                 {
                     _micBindGroup.gameObject.SetActive(true);
