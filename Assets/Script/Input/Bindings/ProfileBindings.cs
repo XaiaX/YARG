@@ -171,12 +171,15 @@ namespace YARG.Input
                     OnDeviceAdded(device);
             }
 
-            foreach (var unresolvedMic in _unresolvedMics)
+            // Iterate over a copy to avoid modification during iteration
+            foreach (var unresolvedMic in _unresolvedMics.ToList())
             {
                 var device = GlobalAudioHandler.GetInputDevice(unresolvedMic.Name);
                 if (device != null)
                 {
                     AddMicrophone(device);
+                    // Remove the original unresolved entry now that it's resolved
+                    _unresolvedMics.Remove(unresolvedMic);
                 }
             }
         }
