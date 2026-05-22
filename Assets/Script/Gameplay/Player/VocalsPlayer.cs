@@ -44,6 +44,7 @@ namespace YARG.Gameplay.Player
         private InstrumentDifficulty<VocalNote> OriginalNoteTrack { get; set; }
 
         private MicInputContext _inputContext;
+        private List<MicInputContext> _inputContexts;
 
         private VocalNote _lastTargetNote;
         private double?   _lastHitTime;
@@ -143,11 +144,18 @@ namespace YARG.Gameplay.Player
 
             _hud.ShowPlayerName(player, needleIndex);
 
-            // Create and start an input context for the mic
-            if (!Player.IsReplay && player.Bindings.Microphone != null)
+            // Create and start input contexts for microphones
+            if (!Player.IsReplay && player.Bindings.Microphones.Count > 0)
             {
-                _inputContext = new MicInputContext(player.Bindings.Microphone, GameManager);
-                _inputContext.Start();
+                _inputContexts = new List<MicInputContext>(player.Bindings.Microphones.Count);
+                foreach (var mic in player.Bindings.Microphones)
+                {
+                    var ctx = new MicInputContext(mic, GameManager);
+                    ctx.Start();
+                    _inputContexts.Add(ctx);
+                }
+                // Preserve _inputContext as the first-element accessor for legacy single-mic code paths.
+                _inputContext = _inputContexts[0];
             }
 
             Engine = CreateEngine();
@@ -185,6 +193,14 @@ namespace YARG.Gameplay.Player
 
         protected override void FinishDestruction()
         {
+            // Stop all input contexts
+            if (_inputContexts != null)
+            {
+                foreach (var ctx in _inputContexts)
+                {
+                    ctx.Stop();
+                }
+            }
             _inputContext?.Stop();
 
             // Unsubscribe from engine events and clean up material instance
@@ -347,17 +363,31 @@ namespace YARG.Gameplay.Player
 
         protected override void UpdateInputs(double time)
         {
-            // Push all inputs from mic
-            if (!Player.IsReplay && _inputContext != null)
+            base.UpdateInputs(time);
+
+            if (_inputContexts is null) return;
+
+            bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts.Count > 1
+                                && Engine is YargFreeVocalsEngine freeEngine;
+
+            for (int i = 0; i < _inputContexts.Count; i++)
             {
-                foreach (var input in _inputContext.GetInputsFromMic())
+                var ctx = _inputContexts[i];
+                foreach (var input in ctx.GetInputsFromMic())
                 {
-                    var i = input;
-                    OnGameInput(ref i);
+                    // For Party Vocals: route pitch inputs to per-mic engine state; route non-pitch
+                    // (Hit, StarPower) through the normal queue from any mic (single shared signal).
+                    if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Pitch)
+                    {
+                        ((YargFreeVocalsEngine)Engine).SetMicPitch(i, input.Axis);
+                    }
+                    else
+                    {
+                        var copy = input; // OnGameInput takes ref
+                        OnGameInput(ref copy);
+                    }
                 }
             }
-
-            base.UpdateInputs(time);
         }
 
         private bool IsInThreshold(double currentTime, double? lastTime)
