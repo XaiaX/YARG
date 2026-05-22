@@ -34,6 +34,7 @@ namespace YARG.Menu.ProfileInfo
                 return;
             }
 
+            _addButton.onClick.RemoveListener(OnAddClicked);
             _addButton.onClick.AddListener(OnAddClicked);
             RefreshList();
         }
