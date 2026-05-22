@@ -5,6 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using YARG.Core;
+using YARG.Core.Audio;
 using YARG.Core.Logging;
 
 #nullable enable
@@ -265,20 +266,4 @@ namespace YARG.Input.Serialization
         public bool ShouldSerializeParameters() => Parameters.Count > 0;
     }
 
-    public static partial class BindingSerialization
-    {
-        private static SerializedBindingsV3 SerializeBindingsV3(SerializedBindings serialized)
-        {
-            return new SerializedBindingsV3(serialized);
-        }
-
-        private static SerializedBindings? DeserializeBindingsV3(JObject obj)
-        {
-            var serialized = obj.ToObject<SerializedBindingsV3>();
-            if (serialized is null || serialized.Version != SerializedBindingsV3.VERSION)
-                return null;
-
-            return serialized.Deserialize();
-        }
-    }
 }

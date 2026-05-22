@@ -1,8 +1,10 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using DG.Tweening;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using YARG.Core.Engine.Vocals;
 using YARG.Core.Game;
 using YARG.Helpers.Extensions;
 using YARG.Helpers.UI;

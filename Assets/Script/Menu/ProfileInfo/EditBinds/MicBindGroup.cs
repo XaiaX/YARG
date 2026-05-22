@@ -3,7 +3,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Audio;
+using YARG.Core.Game;
 using YARG.Core.Logging;
+using YARG.Input;
 using YARG.Menu.Data;
 using YARG.Menu.Persistent;
 
