@@ -10050,7 +10050,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b73610cef194d83a0972b1a0ffd7a95, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _needleVisualContainer: {fileID: 9222097514682650237}
+  _needleVisualContainer: {fileID: 7534985770489955368}
   _needleRenderer: {fileID: 9222097514682650238}
   _needleTransform: {fileID: 2340206041119870917}
   _hittingParticleGroup: {fileID: 7086846618021614551}
