@@ -687,15 +687,18 @@ namespace YARG.Gameplay.Player
             var lerp = Mathf.Lerp(transform.localPosition.z, z, Time.deltaTime * lerpRate);
             transform.localPosition = new Vector3(0f, 0f, lerp);
 
-            // DIAGNOSTIC: snap rotation directly to rule out slerp convergence issues,
-            // and log the mesh child's localRotation to verify the prefab Euler(90,0,0)
-            // survived Instantiate.
-            transform.localRotation = Quaternion.Euler(0f, targetRotation + 90f, 0f);
+            // DIAGNOSTIC v2: set WORLD rotation (matching single-mic's _needleTransform.rotation =)
+            // and log full ancestor chain world rotations.
+            transform.rotation = Quaternion.Euler(0f, targetRotation + 90f, 0f);
             if (Time.frameCount % 60 == 0 && transform.childCount > 0)
             {
                 var meshChild = transform.GetChild(0);
-                YargLogger.LogFormatDebug("Party needle clone rot={0} mesh child rot={1} scale={2}",
-                    transform.localRotation.eulerAngles, meshChild.localRotation.eulerAngles, meshChild.localScale);
+                YargLogger.LogFormatDebug(
+                    "PartyNeedle clone world rot={0} local rot={1} | mesh world rot={2} world pos={3} | parent world rot={4} | root world rot={5}",
+                    transform.rotation.eulerAngles, transform.localRotation.eulerAngles,
+                    meshChild.rotation.eulerAngles, meshChild.position,
+                    transform.parent.rotation.eulerAngles,
+                    transform.root.rotation.eulerAngles);
             }
             _ = NEEDLE_ROT_LERP;
 
