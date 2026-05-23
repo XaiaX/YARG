@@ -789,7 +789,7 @@ namespace YARG.Gameplay.Player
                         if (Engine is YargFreeVocalsEngine freeEngine
                             && _lastTargetNote is not null
                             && IsInThreshold(singTime, _lastHitTime)
-                            && freeEngine.IsMicOnAssignedNote(i))
+                            && freeEngine.IsMicOnNote(i))
                         {
                             micPitch = freeEngine.GetMicPitch(i);
                             isHitting = true;
