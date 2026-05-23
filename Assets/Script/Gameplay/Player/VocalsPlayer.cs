@@ -129,6 +129,10 @@ namespace YARG.Gameplay.Player
             {
                 multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
             }
+            YargLogger.LogFormatInfo(
+                "[vocals-init] player={0} free={1} cur={2} harmonyParts={3} vocalsParts={4} picked={5} pickedParts={6}",
+                player.Profile.Name, Player.Profile.IsFreeVocals, Player.Profile.CurrentInstrument,
+                chart.Harmony.Parts.Count, chart.Vocals.Parts.Count, multiTrack.Instrument, multiTrack.Parts.Count);
 
             // Compute Party Vocals mic count up front so needle creation and engine
             // construction agree. Humans: real bound-mic count. Free Vocals bots: one
