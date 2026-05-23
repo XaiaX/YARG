@@ -123,16 +123,16 @@ namespace YARG.Gameplay.Player
             VocalsTrack multiTrack;
             if (Player.Profile.IsFreeVocals)
             {
-                multiTrack = chart.Harmony.Parts.Count > 0 ? chart.Harmony : chart.Vocals;
+                // Harmony track may have placeholder parts with no phrases (e.g. older
+                // solo-only songs like Creep load 3 empty HARM parts). Check for actual
+                // content, not just Parts.Count, so we fall back to Solo Vocals.
+                bool harmonyHasContent = chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
+                multiTrack = harmonyHasContent ? chart.Harmony : chart.Vocals;
             }
             else
             {
                 multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
             }
-            YargLogger.LogFormatInfo(
-                "[vocals-init] player={0} free={1} cur={2} harmonyParts={3} vocalsParts={4} picked={5} pickedParts={6}",
-                player.Profile.Name, Player.Profile.IsFreeVocals, Player.Profile.CurrentInstrument,
-                chart.Harmony.Parts.Count, chart.Vocals.Parts.Count, multiTrack.Instrument, multiTrack.Parts.Count);
 
             // Compute Party Vocals mic count up front so needle creation and engine
             // construction agree. Humans: real bound-mic count. Free Vocals bots: one
@@ -412,9 +412,8 @@ namespace YARG.Gameplay.Player
                 // Must match the chart-selection logic in Initialize above so the engine sees
                 // the same parts (and pitch register) as the visualization.
                 // Match the chart-selection in Initialize so engine and visuals agree.
-                var multiTrack = _chart.Harmony.Parts.Count > 0
-                    ? _chart.Harmony
-                    : _chart.Vocals;
+                bool harmonyHasContent = _chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
+                var multiTrack = harmonyHasContent ? _chart.Harmony : _chart.Vocals;
                 engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
                     micCount: _partyVocalsMicCount,
                     botPartIndex: Player.Profile.HarmonyIndex);

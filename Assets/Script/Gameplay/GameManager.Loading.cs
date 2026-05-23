@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using YARG.Core;
@@ -467,9 +468,12 @@ namespace YARG.Gameplay
                             // - Solo Vocals (non-Free) → Chart.Vocals
                             // - Anything else (Harmony-locked OR Free Vocals) → Chart.Harmony if it exists,
                             //   otherwise fall back to Chart.Vocals (Solo-only song degenerate case).
+                            // Older solo-only songs (e.g. Creep) load 3 empty HARM placeholder
+                            // parts. Check for actual phrases so we fall back to Solo Vocals.
+                            bool harmonyHasContent = Chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
                             var chart = (player.Profile.CurrentInstrument == Instrument.Vocals && !player.Profile.IsFreeVocals)
                                 ? Chart.Vocals
-                                : (Chart.Harmony.Parts.Count > 0 ? Chart.Harmony : Chart.Vocals);
+                                : (harmonyHasContent ? Chart.Harmony : Chart.Vocals);
                             VocalTrack.Initialize(chart, player, Song.VocalScrollSpeedScalingFactor);
 
                             _lyricBar.gameObject.SetActive(false);

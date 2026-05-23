@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Assertions;
@@ -280,10 +279,6 @@ namespace YARG.Gameplay.Player
         public void Initialize(VocalsTrack vocalsTrack, YargPlayer primaryPlayer, float? trackSpeed)
         {
             _originalVocalsTrack = vocalsTrack;
-            YargLogger.LogFormatInfo(
-                "[vocaltrack-init] instrument={0} parts={1} totalNotes={2}",
-                vocalsTrack.Instrument, vocalsTrack.Parts.Count,
-                vocalsTrack.Parts.Sum(p => p.NotePhrases.Sum(ph => ph.PhraseParentNote.ChildNotes.Count)));
 
             // Apply the modifiers of the primary player. All players should have the
             // same modifier(s) chosen.
