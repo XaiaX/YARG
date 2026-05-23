@@ -184,12 +184,13 @@ namespace YARG.Gameplay.HUD
             _textNotifications.ShowNotification(notificationType);
         }
 
-        public void UpdateHarmFill(IReadOnlyList<double> meters)
+        public void UpdateHarmFill(IReadOnlyList<double> meters, double awesomeThreshold)
         {
             if (_harmFillContainer == null) return;
 
             _harmFillContainer.SetActive(true);
             var texts = new[] { _harm1FillText, _harm2FillText, _harm3FillText };
+            double scale = awesomeThreshold > 0 ? 1.0 / awesomeThreshold : 1.0;
 
             for (int i = 0; i < texts.Length; i++)
             {
@@ -197,7 +198,8 @@ namespace YARG.Gameplay.HUD
                 if (i < meters.Count)
                 {
                     texts[i].gameObject.SetActive(true);
-                    texts[i].text = $"HARM{i + 1} {(int)(meters[i] * 100)}%";
+                    int pct = (int) System.Math.Min(100, meters[i] * scale * 100);
+                    texts[i].text = $"HARM{i + 1} {pct}%";
                 }
                 else
                 {
