@@ -687,12 +687,12 @@ namespace YARG.Gameplay.Player
             var lerp = Mathf.Lerp(transform.localPosition.z, z, Time.deltaTime * lerpRate);
             transform.localPosition = new Vector3(0f, 0f, lerp);
 
-            // Single-mic splits rotation: Y on parent container (_needleTransform),
-            // 90° X on mesh child. The clone IS the mesh, so use Euler directly to
-            // avoid quaternion Lerp taking a bad path through perpendicular orientations.
-            var targetRot = Quaternion.Euler(90f, targetRotation + 90f, 0f);
-            transform.localRotation = Quaternion.Slerp(transform.localRotation,
-                targetRot, Time.deltaTime * NEEDLE_ROT_LERP);
+            // DIAGNOSTIC: skip rotation entirely. Clone inherits Euler(90,0,0) from the
+            // Needle Model prefab. If needles now orient horizontally (just without the
+            // pitch-deviation tilt), the bug is in the rotation/scale interaction when
+            // we compress both rotations onto a single non-uniformly-scaled node.
+            _ = targetRotation;
+            _ = NEEDLE_ROT_LERP;
 
             // Handle material color for Free Vocals
             if (material != null && harmonyColorIndex >= 0 && harmonyColorIndex < VocalTrack.Colors.Length)
