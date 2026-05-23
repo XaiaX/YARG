@@ -115,9 +115,20 @@ namespace YARG.Gameplay.Player
             // bot's pitch values are in the same register as the visualized HARM lines
             // (the global VocalTrack is initialized with Chart.Harmony in this case — see
             // GameManager.Loading.cs).
-            var multiTrack = (Player.Profile.IsFreeVocals && chart.Harmony.Parts.Count > 1)
-                ? chart.Harmony
-                : chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+            // Free Vocals: prefer Harmony chart when present, fall back to Solo Vocals so
+            // solo-only songs (e.g. older charts without HARM parts) still play — they
+            // degenerate to single-HARM rendering. Mirrors GameManager.Loading's chart
+            // pick so visualization and engine agree. Don't trust CurrentInstrument here
+            // because it can be stale from a previous song's selection.
+            VocalsTrack multiTrack;
+            if (Player.Profile.IsFreeVocals)
+            {
+                multiTrack = chart.Harmony.Parts.Count > 0 ? chart.Harmony : chart.Vocals;
+            }
+            else
+            {
+                multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+            }
 
             // Compute Party Vocals mic count up front so needle creation and engine
             // construction agree. Humans: real bound-mic count. Free Vocals bots: one
@@ -231,7 +242,12 @@ namespace YARG.Gameplay.Player
             hud.Initialize(player.EnginePreset);
             _hud = hud;
 
-            percussionTrack.Initialize(NoteTrack.Notes);
+            // Free Vocals ignores percussion events — with up to 7 mics on a phrase,
+            // synchronized percussion taps would be a UX cacophony. Pass an empty list
+            // so nothing spawns and the fret never shows.
+            percussionTrack.Initialize(Player.Profile.IsFreeVocals
+                ? new List<VocalNote>()
+                : NoteTrack.Notes);
             _percussionTrack = percussionTrack;
 
             _hud.ShowPlayerName(player, needleIndex);
@@ -391,9 +407,10 @@ namespace YARG.Gameplay.Player
             {
                 // Must match the chart-selection logic in Initialize above so the engine sees
                 // the same parts (and pitch register) as the visualization.
-                var multiTrack = (_chart.Harmony.Parts.Count > 1)
+                // Match the chart-selection in Initialize so engine and visuals agree.
+                var multiTrack = _chart.Harmony.Parts.Count > 0
                     ? _chart.Harmony
-                    : _chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+                    : _chart.Vocals;
                 engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
                     micCount: _partyVocalsMicCount,
                     botPartIndex: Player.Profile.HarmonyIndex);

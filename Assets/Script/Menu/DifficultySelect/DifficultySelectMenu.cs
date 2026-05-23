@@ -412,11 +412,11 @@ namespace YARG.Menu.DifficultySelect
                 });
             }
 
-            // Free Harmony: available whenever the song has multiple HARM parts and the
-            // player is in the vocals family (Solo Vocals or Harmony in _possibleInstruments).
-            bool freeHarmonyAvailable = _maxHarmonyIndex > 1
-                && (_possibleInstruments.Contains(Instrument.Vocals)
-                    || _possibleInstruments.Contains(Instrument.Harmony));
+            // Free Harmony: available whenever the song has any vocals chart (solo or
+            // harmony). On a solo-only chart it degenerates to a single-HARM rendering
+            // (same as if the song had only HARM1 charted).
+            bool freeHarmonyAvailable = _possibleInstruments.Contains(Instrument.Vocals)
+                || _possibleInstruments.Contains(Instrument.Harmony);
             if (freeHarmonyAvailable)
             {
                 bool freeSelected = CurrentPlayer.Profile.FreeHarmony;
