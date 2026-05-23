@@ -786,7 +786,10 @@ namespace YARG.Gameplay.Player
                         float micPitch;
                         bool isHitting = false;
 
-                        if (Engine is YargFreeVocalsEngine freeEngine && _lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
+                        if (Engine is YargFreeVocalsEngine freeEngine
+                            && _lastTargetNote is not null
+                            && IsInThreshold(singTime, _lastHitTime)
+                            && freeEngine.IsMicOnAssignedNote(i))
                         {
                             micPitch = freeEngine.GetMicPitch(i);
                             isHitting = true;
