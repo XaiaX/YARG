@@ -858,6 +858,17 @@ namespace YARG.Gameplay.Player
                         transformCache.localPosition = new Vector3(0f, 0f, lerp);
                         _needleTransform.rotation = Quaternion.Lerp(_needleTransform.rotation,
                             Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * 25f);
+
+                        if (Time.frameCount % 60 == 0 && _needleTransform.childCount > 0)
+                        {
+                            var meshChild = _needleTransform.GetChild(0);
+                            YargLogger.LogFormatDebug(
+                                "SingleMic container world rot={0} local rot={1} | mesh world rot={2} world pos={3} | parent world rot={4} | root world rot={5}",
+                                _needleTransform.rotation.eulerAngles, _needleTransform.localRotation.eulerAngles,
+                                meshChild.rotation.eulerAngles, meshChild.position,
+                                _needleTransform.parent.rotation.eulerAngles,
+                                _needleTransform.root.rotation.eulerAngles);
+                        }
                     }
                     else
                     {
