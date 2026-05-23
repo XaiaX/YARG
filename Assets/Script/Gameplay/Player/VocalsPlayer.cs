@@ -61,6 +61,10 @@ namespace YARG.Gameplay.Player
         // Per-mic particle groups for Party Vocals (one trail per needle)
         private readonly List<ParticleGroup> _micParticleGroups = new();
 
+        // Per-mic last pitch cache — keeps each needle at its prior position when not
+        // actively hitting, instead of all converging on the shared anchor pitch.
+        private readonly List<float?> _micLastPitches = new();
+
         private VocalNote _lastTargetNote;
         private double?   _lastHitTime;
         private double?   _lastSingTime;
@@ -156,6 +160,7 @@ namespace YARG.Gameplay.Player
                     renderer.material = materialInstance;
 
                     _micNeedles.Add((renderer, needleObj.transform, materialInstance));
+                    _micLastPitches.Add(null);
                 }
             }
             else
@@ -785,6 +790,13 @@ namespace YARG.Gameplay.Player
                         {
                             micPitch = freeEngine.GetMicPitch(i);
                             isHitting = true;
+                            _micLastPitches[i] = micPitch;
+                        }
+                        else if (_micLastPitches[i] is float cached)
+                        {
+                            // Hold this needle at its last per-mic pitch so it doesn't
+                            // collapse onto the shared anchor between notes.
+                            micPitch = cached;
                         }
                         else
                         {
