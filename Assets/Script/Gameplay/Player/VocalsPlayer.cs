@@ -58,6 +58,9 @@ namespace YARG.Gameplay.Player
         // Multi-mic needles for Party Vocals
         private readonly List<(MeshRenderer renderer, Transform transform, Material material)> _micNeedles = new();
 
+        // Per-mic particle groups for Party Vocals (one trail per needle)
+        private readonly List<ParticleGroup> _micParticleGroups = new();
+
         private VocalNote _lastTargetNote;
         private double?   _lastHitTime;
         private double?   _lastSingTime;
@@ -200,6 +203,22 @@ namespace YARG.Gameplay.Player
                 // For Free vocals, use HARM1 color by default
                 int colorIndex = Player.Profile.IsFreeVocals ? 0 : Player.Profile.HarmonyIndex;
                 main.startColor = VocalTrack.Colors[colorIndex];
+            }
+
+            if (isPartyVocals)
+            {
+                // Clone the particle group per mic so each needle has its own trail.
+                // Original is hidden — only the clones render.
+                _hittingParticleGroup.gameObject.SetActive(false);
+                for (int i = 0; i < _partyVocalsMicCount; i++)
+                {
+                    var pgObj = Instantiate(_hittingParticleGroup.gameObject,
+                        _hittingParticleGroup.transform.parent);
+                    pgObj.SetActive(true);
+                    var pg = pgObj.GetComponent<ParticleGroup>();
+                    pg.Colorize(VocalTrack.Colors[i]);
+                    _micParticleGroups.Add(pg);
+                }
             }
 
             // Initialize player specific vocal visuals
@@ -737,9 +756,10 @@ namespace YARG.Gameplay.Player
                     {
                         transform.gameObject.SetActive(false);
                     }
-
-                    // Reset Needle Container position so it doesn't stale at the last lead position
-                    _needleTransform.parent.localPosition = Vector3.zero;
+                    foreach (var pg in _micParticleGroups)
+                    {
+                        pg.Stop();
+                    }
                 }
                 else if (_needleVisualContainer.activeSelf)
                 {
@@ -751,22 +771,7 @@ namespace YARG.Gameplay.Player
             {
                 if (_micNeedles.Count > 0)
                 {
-                    // Compute the lead needle's pitch Z and move the Needle Container there
-                    // so particles follow the lead needle. Clones are children of Needle Model
-                    // Container (child of Needle Container), so their Z is compensated by the
-                    // container offset via the zOffset parameter.
                     float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
-                    float leadPitchZ;
-                    if (Engine is YargFreeVocalsEngine freeEngine && _lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
-                    {
-                        leadPitchZ = GameManager.VocalTrack.GetPosForPitch(freeEngine.GetMicPitch(0));
-                    }
-                    else
-                    {
-                        leadPitchZ = GameManager.VocalTrack.GetPosForPitch(
-                            AnchorPitchToOctave(Engine.PitchSang, lastNotePitch));
-                    }
-                    _needleTransform.parent.localPosition = new Vector3(0f, 0f, leadPitchZ);
 
                     // Multi-mic update path. Iterate by needle count alone — bot Party Vocals
                     // has no _inputContexts (engine synthesizes pitches), but still has needles.
@@ -776,27 +781,36 @@ namespace YARG.Gameplay.Player
                         float micPitch;
                         bool isHitting = false;
 
-                        if (Engine is YargFreeVocalsEngine freeEngine2 && _lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
+                        if (Engine is YargFreeVocalsEngine freeEngine && _lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
                         {
-                            micPitch = freeEngine2.GetMicPitch(i);
+                            micPitch = freeEngine.GetMicPitch(i);
                             isHitting = true;
-
-                            // Show particles if hitting (as long as we aren't rewinding)
-                            if (!GameManager.Rewinding)
-                            {
-                                _hittingParticleGroup.Play();
-                            }
                         }
                         else
                         {
-                            // Stop particles if not hitting
-                            _hittingParticleGroup.Stop();
                             micPitch = AnchorPitchToOctave(Engine.PitchSang, lastNotePitch);
                         }
 
                         UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch,
                             isHitting, _lastTargetNote?.IsNonPitched ?? false,
-                            zOffset: leadPitchZ, harmonyColorIndex: i);
+                            zOffset: 0f, harmonyColorIndex: i);
+
+                        // Drive the per-mic particle group: follow the needle's Z, play/stop
+                        // independently. Skips index check defensively — list sizes match.
+                        if (i < _micParticleGroups.Count)
+                        {
+                            var pg = _micParticleGroups[i];
+                            var pgPos = pg.transform.localPosition;
+                            pg.transform.localPosition = new Vector3(pgPos.x, pgPos.y, transform.localPosition.z);
+                            if (isHitting && !GameManager.Rewinding)
+                            {
+                                pg.Play();
+                            }
+                            else
+                            {
+                                pg.Stop();
+                            }
+                        }
                     }
                 }
                 else
