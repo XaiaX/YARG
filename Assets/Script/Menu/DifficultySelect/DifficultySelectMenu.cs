@@ -253,8 +253,21 @@ namespace YARG.Menu.DifficultySelect
                     ChangePlayer(1);
                 });
 
+                string instrumentLabel;
+                if (player.Profile.FreeHarmony)
+                {
+                    bool hasMultipleMics = player.Bindings.Microphones.Count > 1;
+                    bool isBot = player.Profile.IsBot;
+                    instrumentLabel = (!isBot && hasMultipleMics) || (isBot && player.Profile.CurrentInstrument == Instrument.Harmony)
+                        ? Localize.Key("Menu.DifficultySelect.PartyVocals")
+                        : Localize.Key("Menu.DifficultySelect.FreeHarmony");
+                }
+                else
+                {
+                    instrumentLabel = player.Profile.CurrentInstrument.ToLocalizedName();
+                }
                 CreateItem(LocalizeHeader("Instrument"),
-                    player.Profile.CurrentInstrument.ToLocalizedName(),
+                    instrumentLabel,
                     _lastMenuState == State.Instrument, () =>
                 {
                     _menuState = State.Instrument;
