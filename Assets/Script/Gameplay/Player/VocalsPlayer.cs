@@ -786,24 +786,31 @@ namespace YARG.Gameplay.Player
                         float micPitch;
                         bool isHitting = false;
 
-                        if (Engine is YargFreeVocalsEngine freeEngine
+                        bool hasMicNote = Engine is YargFreeVocalsEngine freeEngine
                             && _lastTargetNote is not null
                             && IsInThreshold(singTime, _lastHitTime)
-                            && freeEngine.IsMicOnNote(i))
+                            && freeEngine.IsMicOnNote(i);
+
+                        if (hasMicNote)
                         {
-                            micPitch = freeEngine.GetMicPitch(i);
+                            micPitch = ((YargFreeVocalsEngine) Engine).GetMicPitch(i);
                             isHitting = true;
                             _micLastPitches[i] = micPitch;
                         }
-                        else if (_micLastPitches[i] is float cached)
-                        {
-                            // Hold this needle at its last per-mic pitch so it doesn't
-                            // collapse onto the shared anchor between notes.
-                            micPitch = cached;
-                        }
                         else
                         {
-                            micPitch = AnchorPitchToOctave(Engine.PitchSang, lastNotePitch);
+                            // Hide this needle (and its trail) when its mic isn't on a note.
+                            // Position/cache preserved so the needle reappears in a sensible
+                            // place when its next note starts.
+                            if (transform.gameObject.activeSelf)
+                            {
+                                transform.gameObject.SetActive(false);
+                            }
+                            if (i < _micParticleGroups.Count)
+                            {
+                                _micParticleGroups[i].Stop();
+                            }
+                            continue;
                         }
 
                         UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch,
@@ -817,13 +824,9 @@ namespace YARG.Gameplay.Player
                             var pg = _micParticleGroups[i];
                             var pgPos = pg.transform.localPosition;
                             pg.transform.localPosition = new Vector3(pgPos.x, pgPos.y, transform.localPosition.z);
-                            if (isHitting && !GameManager.Rewinding)
+                            if (!GameManager.Rewinding)
                             {
                                 pg.Play();
-                            }
-                            else
-                            {
-                                pg.Stop();
                             }
                         }
                     }
