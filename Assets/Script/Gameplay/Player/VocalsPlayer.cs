@@ -687,11 +687,17 @@ namespace YARG.Gameplay.Player
             var lerp = Mathf.Lerp(transform.localPosition.z, z, Time.deltaTime * lerpRate);
             transform.localPosition = new Vector3(0f, 0f, lerp);
 
-            // Clone is now a Needle Model Container clone (the mesh child stays untouched
-            // with its prefab scale/X-rotation). Rotate Y only, matching the single-mic path.
-            var targetRot = Quaternion.Euler(0f, targetRotation + 90f, 0f);
-            transform.localRotation = Quaternion.Slerp(transform.localRotation,
-                targetRot, Time.deltaTime * NEEDLE_ROT_LERP);
+            // DIAGNOSTIC: snap rotation directly to rule out slerp convergence issues,
+            // and log the mesh child's localRotation to verify the prefab Euler(90,0,0)
+            // survived Instantiate.
+            transform.localRotation = Quaternion.Euler(0f, targetRotation + 90f, 0f);
+            if (Time.frameCount % 60 == 0 && transform.childCount > 0)
+            {
+                var meshChild = transform.GetChild(0);
+                YargLogger.LogFormatDebug("Party needle clone rot={0} mesh child rot={1} scale={2}",
+                    transform.localRotation.eulerAngles, meshChild.localRotation.eulerAngles, meshChild.localScale);
+            }
+            _ = NEEDLE_ROT_LERP;
 
             // Handle material color for Free Vocals
             if (material != null && harmonyColorIndex >= 0 && harmonyColorIndex < VocalTrack.Colors.Length)
