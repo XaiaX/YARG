@@ -139,7 +139,12 @@ namespace YARG.Gameplay.Player
             // synthetic vocalist per HARM part (so a 3-HARM song gets 3 bot needles).
             if (Player.Profile.IsFreeVocals && player.Profile.IsBot)
             {
-                _partyVocalsMicCount = Mathf.Max(1, multiTrack.Parts.Count);
+                // 0 = Auto (one bot mic per HARM part). 1-7 = explicit override for
+                // testing mismatched mic-to-part ratios.
+                int botMicOverride = Player.Profile.PartyVocalsMicCountOverride;
+                _partyVocalsMicCount = botMicOverride > 0
+                    ? Mathf.Clamp(botMicOverride, 1, 7)
+                    : Mathf.Max(1, multiTrack.Parts.Count);
             }
             else if (player.Bindings.Microphones.Count > 0)
             {
