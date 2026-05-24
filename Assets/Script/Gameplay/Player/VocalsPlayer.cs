@@ -462,7 +462,9 @@ namespace YARG.Gameplay.Player
 
             engine.OnNoteHit += (_, note) =>
             {
-                if (note.IsPercussion)
+                // Free Vocals doesn't spawn percussion visuals, so the pool is empty —
+                // calling HitPercussionNote would NRE in Pool.Return.
+                if (note.IsPercussion && !Player.Profile.IsFreeVocals)
                 {
                     _percussionTrack.HitPercussionNote(note);
                 }
