@@ -19,6 +19,13 @@ namespace YARG.Gameplay.HUD
         private const float FADE_ANIM_LENGTH = 0.5f;
         private const double HIDE_DELAY = 1;
 
+        // RB4-style behavior: switch from the numeric countdown to "GET READY" at
+        // GET_READY_THRESHOLD seconds remaining, so the wheel doesn't visually
+        // collide with the upcoming lyric tube on the highway. Set to <= 0 to keep
+        // YARG's classic count-all-the-way-down behavior.
+        private const double GET_READY_THRESHOLD = 3;
+        private const string GET_READY_TEXT = "GET READY";
+
         public static CountdownDisplayMode DisplayStyle;
 
         [SerializeField]
@@ -35,7 +42,7 @@ namespace YARG.Gameplay.HUD
         private Coroutine _currentCoroutine;
 
         private bool _displayActive;
-        private int _displayedCountdownValue = int.MinValue;
+        private string _displayedCountdownText;
 
         public void UpdateCountdown(double countdownLength, double endTime)
         {
@@ -70,22 +77,29 @@ namespace YARG.Gameplay.HUD
                 return;
             }
 
-            switch (DisplayStyle)
+            if (GET_READY_THRESHOLD > 0 && timeRemaining <= GET_READY_THRESHOLD)
             {
-                case CountdownDisplayMode.Seconds:
+                SetCountdownText(GET_READY_TEXT);
+            }
+            else
+            {
+                switch (DisplayStyle)
                 {
-                    SetCountdownValue((int) Math.Ceiling(timeRemaining));
-                    break;
-                }
-                case CountdownDisplayMode.Measures:
-                {
-                    var syncTrack = GameManager.Chart.SyncTrack;
-                    // This is floored to snap the end time to the start of the measure
-                    double endMeasure = Math.Floor(syncTrack.GetMeasurePosition(endTime));
-                    double currentMeasure = syncTrack.GetMeasurePosition(currentTime);
-                    int remainingMeasures = (int) Math.Ceiling(endMeasure - currentMeasure);
-                    SetCountdownValue(remainingMeasures);
-                    break;
+                    case CountdownDisplayMode.Seconds:
+                    {
+                        SetCountdownText(((int) Math.Ceiling(timeRemaining)).ToString());
+                        break;
+                    }
+                    case CountdownDisplayMode.Measures:
+                    {
+                        var syncTrack = GameManager.Chart.SyncTrack;
+                        // This is floored to snap the end time to the start of the measure
+                        double endMeasure = Math.Floor(syncTrack.GetMeasurePosition(endTime));
+                        double currentMeasure = syncTrack.GetMeasurePosition(currentTime);
+                        int remainingMeasures = (int) Math.Ceiling(endMeasure - currentMeasure);
+                        SetCountdownText(remainingMeasures.ToString());
+                        break;
+                    }
                 }
             }
 
@@ -99,18 +113,18 @@ namespace YARG.Gameplay.HUD
             _canvasGroup.alpha = 0f;
             gameObject.SetActive(true);
             _displayActive = false;
-            _displayedCountdownValue = int.MinValue;
+            _displayedCountdownText = null;
         }
 
-        private void SetCountdownValue(int value)
+        private void SetCountdownText(string text)
         {
-            if (_displayedCountdownValue == value)
+            if (_displayedCountdownText == text)
             {
                 return;
             }
 
-            _displayedCountdownValue = value;
-            _countdownText.SetText(value.ToString());
+            _displayedCountdownText = text;
+            _countdownText.SetText(text);
         }
 
         private void ToggleDisplay(bool isActive)
