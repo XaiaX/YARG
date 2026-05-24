@@ -833,6 +833,17 @@ namespace YARG.Gameplay.Player
                             continue;
                         }
 
+                        // DIAG (party-vocals needle wobble): log per-mic pitch inputs each
+                        // frame so we can confirm whether wobble comes from lastNotePitch
+                        // (HARM1 target's PitchAtSongTime jumping across child-note
+                        // boundaries), from _micPitches[i] flicker, or from _lastTargetNote
+                        // flipping HARMs. Remove once the root cause is fixed.
+                        (float diagPitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, micPitch);
+                        YargLogger.LogFormatTrace(
+                            "[needle-diag] t={0:F3} mic={1} lastNotePitch={2:F3} micPitch={3:F3} pitchDist={4:F3} targetNoteTick={5} targetNotePitch={6:F3}",
+                            GameManager.SongTime, i, lastNotePitch, micPitch, diagPitchDist,
+                            _lastTargetNote?.Tick ?? 0, _lastTargetNote?.Pitch ?? -1f);
+
                         UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch,
                             isHitting, _lastTargetNote?.IsNonPitched ?? false,
                             zOffset: 0f, harmonyColorIndex: i);
