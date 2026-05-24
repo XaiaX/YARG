@@ -24,7 +24,7 @@ namespace YARG.Gameplay.HUD
         // whichever unit the current DisplayStyle uses (measures or seconds), so
         // the swap point lines up with what the user sees. Set to <= 0 to keep
         // YARG's classic count-all-the-way-down behavior.
-        private const int GET_READY_THRESHOLD = 3;
+        private const int GET_READY_THRESHOLD = 2;
         private const int HIDE_AT_VALUE = 1;
         private const string GET_READY_TEXT = "GET READY";
 
