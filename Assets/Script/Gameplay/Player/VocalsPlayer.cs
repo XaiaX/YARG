@@ -857,9 +857,21 @@ namespace YARG.Gameplay.Player
                             GameManager.SongTime, i, lastNotePitch, micPitch, diagPitchDist,
                             _lastTargetNote?.Tick ?? 0, _lastTargetNote?.Pitch ?? -1f);
 
+                        // Color the needle by the HARM part this mic is currently
+                        // singing, not by the mic slot. Falls back to slot index if
+                        // the engine reports no active part (visually arbitrary but
+                        // still distinct).
+                        int effectivePart = ((YargFreeVocalsEngine) Engine).GetEffectivePartForMic(i);
+                        int colorIdx = effectivePart >= 0 ? effectivePart : (i % VocalTrack.Colors.Length);
+
                         UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch,
                             isHitting, _lastTargetNote?.IsNonPitched ?? false,
-                            zOffset: 0f, harmonyColorIndex: i);
+                            zOffset: 0f, harmonyColorIndex: colorIdx);
+
+                        if (i < _micParticleGroups.Count)
+                        {
+                            _micParticleGroups[i].Colorize(VocalTrack.Colors[colorIdx]);
+                        }
 
                         // Drive the per-mic particle group: follow the needle's Z, play/stop
                         // independently. Skips index check defensively — list sizes match.
