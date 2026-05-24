@@ -25,7 +25,7 @@ namespace YARG.Gameplay.HUD
         // the swap point lines up with what the user sees. Set to <= 0 to keep
         // YARG's classic count-all-the-way-down behavior.
         private const int GET_READY_THRESHOLD = 3;
-        private const string GET_READY_TEXT = "GET\nREADY";
+        private const string GET_READY_TEXT = "GET READY";
 
         public static CountdownDisplayMode DisplayStyle;
 
