@@ -174,6 +174,9 @@ namespace YARG.Gameplay.Player
 
         private VocalsTrack _originalVocalsTrack;
         private VocalsTrack _vocalsTrack;
+        // Free Vocals ignores percussion entirely, so percussion-only phrases
+        // should not render their end-of-phrase marker lines either.
+        private bool _isFreeVocals;
 
         private Material _guidelineMaterial;
         private TextMeshPro _lyricWidthTester;
@@ -279,6 +282,7 @@ namespace YARG.Gameplay.Player
         public void Initialize(VocalsTrack vocalsTrack, YargPlayer primaryPlayer, float? trackSpeed)
         {
             _originalVocalsTrack = vocalsTrack;
+            _isFreeVocals = primaryPlayer.Profile.IsFreeVocals;
 
             // Apply the modifiers of the primary player. All players should have the
             // same modifier(s) chosen.

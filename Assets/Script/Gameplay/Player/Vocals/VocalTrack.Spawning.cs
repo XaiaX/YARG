@@ -281,10 +281,16 @@ namespace YARG.Gameplay.Player
 
             while (index < phrases.Count && phrases[index].TimeEnd <= GameManager.SongTime + SpawnTimeOffset)
             {
-                // Spawn the phrase end line
-                var poolable = _phraseLinePool.TakeWithoutEnabling();
-                ((PhraseLineElement) poolable).PhraseRef = phrases[index];
-                poolable.EnableFromPool();
+                // Free Vocals: skip end-of-phrase line for percussion-only phrases so
+                // they don't render as empty marker boxes.
+                bool percussionOnly = _isFreeVocals
+                    && phrases[index].PhraseParentNote.ChildNotes.All(c => c.IsPercussion);
+                if (!percussionOnly)
+                {
+                    var poolable = _phraseLinePool.TakeWithoutEnabling();
+                    ((PhraseLineElement) poolable).PhraseRef = phrases[index];
+                    poolable.EnableFromPool();
+                }
 
                 index++;
             }
