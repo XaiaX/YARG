@@ -241,7 +241,7 @@ namespace YARG.Gameplay.Player
                         _hittingParticleGroup.transform.parent);
                     pgObj.SetActive(true);
                     var pg = pgObj.GetComponent<ParticleGroup>();
-                    pg.Colorize(VocalTrack.Colors[i]);
+                    pg.Colorize(VocalTrack.Colors[i % VocalTrack.Colors.Length]);
                     _micParticleGroups.Add(pg);
                 }
             }
