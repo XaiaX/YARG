@@ -296,11 +296,17 @@ namespace YARG.Gameplay.Player
 
             if (vocalIndex == 0)
             {
-                if (Player.Profile.CurrentInstrument == Instrument.Vocals)
+                if (Player.Profile.IsFreeVocals)
+                {
+                    // Free Vocals ignores percussion entirely — exclude it from the
+                    // countdown source so percussion-only stretches surface as gaps.
+                    Engine.BuildCountdownsFromAllParts(multiTrack.Parts, excludePercussion: true);
+                }
+                else if (Player.Profile.CurrentInstrument == Instrument.Vocals)
                 {
                     Engine.BuildCountdownsFromSelectedPart();
                 }
-                else if (Player.Profile.IsFreeVocals || Player.Profile.CurrentInstrument == Instrument.Harmony)
+                else if (Player.Profile.CurrentInstrument == Instrument.Harmony)
                 {
                     Engine.BuildCountdownsFromAllParts(multiTrack.Parts);
                 }
@@ -985,9 +991,21 @@ namespace YARG.Gameplay.Player
                     totalTime += note.TotalTickLength;
                 }
 
-                _hud.SetHUDShowing(!hasPercussion);
-                _percussionTrack.ShowPercussionFret(hasPercussion);
-                _shouldHideNeedle = hasPercussion;
+                // Free Vocals ignores percussion entirely — don't show the fret, don't
+                // hide the HUD, don't hide the needle for what would otherwise be a
+                // percussion phrase.
+                if (Player.Profile.IsFreeVocals)
+                {
+                    _hud.SetHUDShowing(true);
+                    _percussionTrack.ShowPercussionFret(false);
+                    _shouldHideNeedle = false;
+                }
+                else
+                {
+                    _hud.SetHUDShowing(!hasPercussion);
+                    _percussionTrack.ShowPercussionFret(hasPercussion);
+                    _shouldHideNeedle = hasPercussion;
+                }
             }
         }
 
