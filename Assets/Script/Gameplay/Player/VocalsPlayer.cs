@@ -313,6 +313,7 @@ namespace YARG.Gameplay.Player
 
                 Engine.OnCountdownChange += (countdownLength, endTime) =>
                 {
+                    YargLogger.LogInfo($"[countdown-fire] player={Player.Profile.Name} length={countdownLength:F1} endTime={endTime:F1} songTime={GameManager.SongTime:F1}");
                     GameManager.VocalTrack.UpdateCountdown(countdownLength, endTime);
                 };
             }
