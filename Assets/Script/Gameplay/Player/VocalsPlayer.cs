@@ -639,8 +639,8 @@ namespace YARG.Gameplay.Player
             _hud.UpdateInfo(fill, displayMultiplier,
                 (float) Engine.GetStarPowerBarAmount(), Engine.EngineStats.IsStarPowerActive);
 
-            // Update per-HARM fill for Party Vocals (humans and bots).
-            if (Engine is YargFreeVocalsEngine freeEngine && _partyVocalsMicCount > 1)
+            // Update per-HARM fill for Free Vocals (humans and bots, single- or multi-mic).
+            if (Engine is YargFreeVocalsEngine freeEngine && Player.Profile.IsFreeVocals)
             {
                 var meters = freeEngine.CanonicalMeters;
                 if (meters != null)
