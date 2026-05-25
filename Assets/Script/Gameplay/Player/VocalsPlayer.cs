@@ -566,31 +566,44 @@ namespace YARG.Gameplay.Player
             bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts.Count > 1
                                 && Engine is YargFreeVocalsEngine partyVocalsEngine;
 
+            // Drain all mics first, then process inputs in chronological order. Draining
+            // mic-by-mic and queuing as we go causes BaseEngine.QueueInput to snap later
+            // mics' input times forward to match the first mic's last input (since the
+            // queue must be monotonic in time), collapsing their per-tick freshness. The
+            // visible symptom is needles/trails not appearing whenever 2+ mics are bound
+            // even though scoring at phrase end still works.
+            var collected = new List<(int micIndex, GameInput input)>();
             for (int i = 0; i < _inputContexts.Count; i++)
             {
                 var ctx = _inputContexts[i];
                 foreach (var input in ctx.GetInputsFromMic())
                 {
-                    if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Pitch)
-                    {
-                        ((YargFreeVocalsEngine)Engine).SetMicPitch(i, input.Axis);
+                    collected.Add((i, input));
+                }
+            }
+            collected.Sort((a, b) => a.input.Time.CompareTo(b.input.Time));
 
-                        // Record per-mic pitch for replay
-                        if (_micPitchBuffers != null && i < _micPitchBuffers.Length)
-                        {
-                            _micPitchBuffers[i].Add(input.Axis);
-                        }
-                    }
-                    else
-                    {
-                        if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Hit)
-                        {
-                            continue;
-                        }
+            foreach (var (i, input) in collected)
+            {
+                if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Pitch)
+                {
+                    ((YargFreeVocalsEngine)Engine).SetMicPitch(i, input.Axis);
 
-                        var copy = input;
-                        OnGameInput(ref copy);
+                    // Record per-mic pitch for replay
+                    if (_micPitchBuffers != null && i < _micPitchBuffers.Length)
+                    {
+                        _micPitchBuffers[i].Add(input.Axis);
                     }
+                }
+                else
+                {
+                    if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Hit)
+                    {
+                        continue;
+                    }
+
+                    var copy = input;
+                    OnGameInput(ref copy);
                 }
             }
         }
