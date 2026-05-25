@@ -384,6 +384,19 @@ namespace YARG.Gameplay.Player
         private void OnTargetNoteChangedHandler(VocalNote note)
         {
             _lastTargetNote = note;
+
+            // Free vocals single-mic: tint the trail to the HARM lane being scored, so
+            // the trail "lights up" that lane. Needle keeps its singer-slot material.
+            if (Player.Profile.IsFreeVocals
+                && _micParticleGroups.Count == 0
+                && Engine is YargFreeVocalsEngine freeEngine)
+            {
+                int idx = freeEngine.CurrentTargetHarmonyIndex;
+                if (idx >= 0 && idx < VocalTrack.Colors.Length)
+                {
+                    _hittingParticleGroup.Colorize(VocalTrack.Colors[idx]);
+                }
+            }
         }
 
         protected VocalsEngine CreateEngine()
@@ -844,10 +857,16 @@ namespace YARG.Gameplay.Player
                             isHitting, _lastTargetNote?.IsNonPitched ?? false,
                             zOffset: 0f);
 
+                        // Trail color follows the HARM lane this mic is scoring on, so the
+                        // trail visibly "lights up" that lane. Needle stays singer-colored.
+                        int effectivePart = ((YargFreeVocalsEngine) Engine).GetEffectivePartForMic(i);
+                        int trailColorIdx = effectivePart >= 0 ? effectivePart : (i % VocalTrack.Colors.Length);
+
                         // Drive the per-mic particle group: follow the needle's Z, play/stop
                         // independently. Skips index check defensively — list sizes match.
                         if (i < _micParticleGroups.Count)
                         {
+                            _micParticleGroups[i].Colorize(VocalTrack.Colors[trailColorIdx]);
                             var pg = _micParticleGroups[i];
                             var pgPos = pg.transform.localPosition;
                             pg.transform.localPosition = new Vector3(pgPos.x, pgPos.y, transform.localPosition.z);
