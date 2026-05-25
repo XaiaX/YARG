@@ -523,6 +523,7 @@ namespace YARG.Gameplay.Player
             }
 
             _phraseIndex = -1;
+            _percussionTrack.Initialize(NoteTrack.Notes);
 
             base.ResetPracticeSection();
         }
@@ -968,11 +969,9 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Check if this is a Party Vocals profile (humans or bots).
+            // Party Vocals (humans or bots) ignores percussion — keep HUD/needle visible.
             bool isPartyVocals = Player.Profile.IsFreeVocals && _partyVocalsMicCount > 1
                                 && Engine is YargFreeVocalsEngine;
-
-            // For Party Vocals, don't hide HUD/needle during percussion phrases since percussion is ignored
             if (isPartyVocals)
             {
                 _hud.SetHUDShowing(true);
@@ -980,52 +979,78 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
+            while (ShouldAdvancePhraseIndex(time))
+            {
+                _phraseIndex++;
+
+                // We've reached the end. No need to continue.
+                if (_phraseIndex >= NoteTrack.Notes.Count)
+                {
+                    SetPercussionMode(false);
+                    return;
+                }
+
+                var phrase = NoteTrack.Notes[_phraseIndex];
+                SetPercussionMode(HasPercussion(phrase));
+            }
+        }
+
+        private bool ShouldAdvancePhraseIndex(double time)
+        {
             // Since phrases start at the note, and not sometime before it, use
             // the end times of phrases instead (where the phrase lines are). Problem
             // with this is that we still gotta account for the first phrase, so use
             // an index of -1 for that.
-            while (_phraseIndex == -1 ||
-                (_phraseIndex < NoteTrack.Notes.Count && NoteTrack.Notes[_phraseIndex].TimeEnd <= time))
+            bool beforeFirstPhrase = _phraseIndex == -1;
+            if (beforeFirstPhrase)
             {
-                _phraseIndex++;
-
-                // End if that's the last note
-                if (_phraseIndex >= NoteTrack.Notes.Count)
+                // Track has no notes. Bail early.
+                if (NoteTrack.Notes.Count <= 0)
                 {
-                    break;
+                    return false;
                 }
 
-                var phrase = NoteTrack.Notes[_phraseIndex];
+                var firstPhrase = NoteTrack.Notes[0];
+                var firstPhraseHasStarted = firstPhrase.Time <= time;
+                return firstPhraseHasStarted || HasPercussion(firstPhrase);
+            }
 
-                bool hasPercussion = false;
-                uint totalTime = 0;
-                foreach (var note in phrase.ChildNotes)
-                {
-                    if (note.IsPercussion)
-                    {
-                        hasPercussion = true;
-                        continue;
-                    }
+            bool atTheEndOfTrack = _phraseIndex >= NoteTrack.Notes.Count;
+            if (atTheEndOfTrack)
+            {
+                return false;
+            }
 
-                    totalTime += note.TotalTickLength;
-                }
+            var currentPhrase = NoteTrack.Notes[_phraseIndex];
+            return currentPhrase.TimeEnd <= time;
+        }
 
-                // Free Vocals ignores percussion entirely — don't show the fret, don't
-                // hide the HUD, don't hide the needle for what would otherwise be a
-                // percussion phrase.
-                if (Player.Profile.IsFreeVocals)
+        private void SetPercussionMode(bool show)
+        {
+            // Free Vocals ignores percussion entirely — keep HUD on, needle visible, hide the fret.
+            if (Player.Profile.IsFreeVocals)
+            {
+                _hud.SetHUDShowing(true);
+                _percussionTrack.ShowPercussionFret(false);
+                _shouldHideNeedle = false;
+                return;
+            }
+            _hud.SetHUDShowing(!show);
+            _percussionTrack.ShowPercussionFret(show);
+            _shouldHideNeedle = show;
+        }
+
+        private static bool HasPercussion(VocalNote phrase)
+        {
+            foreach (var note in phrase.ChildNotes)
+            {
+                if (note.IsPercussion)
                 {
-                    _hud.SetHUDShowing(true);
-                    _percussionTrack.ShowPercussionFret(false);
-                    _shouldHideNeedle = false;
-                }
-                else
-                {
-                    _hud.SetHUDShowing(!hasPercussion);
-                    _percussionTrack.ShowPercussionFret(hasPercussion);
-                    _shouldHideNeedle = hasPercussion;
+                    return true;
                 }
             }
+
+            return false;
         }
 
         public override void SetPracticeSection(uint start, uint end)
