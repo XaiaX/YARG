@@ -225,8 +225,11 @@ namespace YARG.Gameplay.Player
                 var startSpeed = main.startSpeed;
                 startSpeed.constant *= trackSpeed;
                 main.startSpeed = startSpeed;
-                // For Free vocals, use HARM1 color by default
-                int colorIndex = Player.Profile.IsFreeVocals ? 0 : Player.Profile.HarmonyIndex;
+                // Trail identifies the singer, not the lane being scored. For Free
+                // vocals, color by the player's needle slot; otherwise by HARM index.
+                int colorIndex = Player.Profile.IsFreeVocals
+                    ? (needleIndex - 1) % VocalTrack.Colors.Length
+                    : Player.Profile.HarmonyIndex;
                 main.startColor = VocalTrack.Colors[colorIndex];
             }
 
@@ -381,21 +384,6 @@ namespace YARG.Gameplay.Player
         private void OnTargetNoteChangedHandler(VocalNote note)
         {
             _lastTargetNote = note;
-
-            // For Free vocals, tint the needle to match the closest-match HARM line
-            if (_needleMaterialInstance == null)
-            {
-                return;
-            }
-
-            if (Player.Profile.IsFreeVocals && Engine is YargFreeVocalsEngine freeEngine)
-            {
-                int targetHarmonyIndex = freeEngine.CurrentTargetHarmonyIndex;
-                if (targetHarmonyIndex >= 0 && targetHarmonyIndex < VocalTrack.Colors.Length)
-                {
-                    _needleMaterialInstance.color = VocalTrack.Colors[targetHarmonyIndex];
-                }
-            }
         }
 
         protected VocalsEngine CreateEngine()
@@ -714,7 +702,7 @@ namespace YARG.Gameplay.Player
 
         private void UpdateSingleNeedle(MeshRenderer renderer, Transform transform, Material material,
             float pitch, float lastNotePitch, bool isHitting, bool isNonPitched,
-            float zOffset = 0f, int harmonyColorIndex = -1)
+            float zOffset = 0f)
         {
             const float NEEDLE_POS_LERP = 30f;
             const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
@@ -751,12 +739,6 @@ namespace YARG.Gameplay.Player
             var targetRot = Quaternion.Euler(0f, targetRotation + 90f, 0f);
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 targetRot, Time.deltaTime * NEEDLE_ROT_LERP);
-
-            // Handle material color for Free Vocals
-            if (material != null && harmonyColorIndex >= 0 && harmonyColorIndex < VocalTrack.Colors.Length)
-            {
-                material.color = VocalTrack.Colors[harmonyColorIndex];
-            }
         }
 
         private float ApplyPitchDeadZone(float pitchDist, float deadZoneInSemitones)
@@ -858,21 +840,9 @@ namespace YARG.Gameplay.Player
                             GameManager.SongTime, i, lastNotePitch, micPitch, diagPitchDist,
                             _lastTargetNote?.Tick ?? 0, _lastTargetNote?.Pitch ?? -1f);
 
-                        // Color the needle by the HARM part this mic is currently
-                        // singing, not by the mic slot. Falls back to slot index if
-                        // the engine reports no active part (visually arbitrary but
-                        // still distinct).
-                        int effectivePart = ((YargFreeVocalsEngine) Engine).GetEffectivePartForMic(i);
-                        int colorIdx = effectivePart >= 0 ? effectivePart : (i % VocalTrack.Colors.Length);
-
                         UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch,
                             isHitting, _lastTargetNote?.IsNonPitched ?? false,
-                            zOffset: 0f, harmonyColorIndex: colorIdx);
-
-                        if (i < _micParticleGroups.Count)
-                        {
-                            _micParticleGroups[i].Colorize(VocalTrack.Colors[colorIdx]);
-                        }
+                            zOffset: 0f);
 
                         // Drive the per-mic particle group: follow the needle's Z, play/stop
                         // independently. Skips index check defensively — list sizes match.
