@@ -462,8 +462,16 @@ namespace YARG.Gameplay.Player
 
                 ShowTextNotifications(isLastPhrase);
 
-                // Order is important here. ShowVocalPhraseResult() will skip showing AWESOME! if other, more important notifications are already showing.
-                _hud.ShowPhraseHit(percent, Combo);
+                // Multi-mic free vocals shows its banner via OnPartyVocalsPhrase
+                // (AWESOME / DOUBLE AWESOME / TRIPLE AWESOME) — suppress the legacy
+                // percent-based text so we don't stack two phrase notifications.
+                bool multiMicFree = Player.Profile.IsFreeVocals
+                    && Engine is YargFreeVocalsEngine freeEng
+                    && freeEng.PartCount > 1;
+                if (!multiMicFree)
+                {
+                    _hud.ShowPhraseHit(percent, Combo);
+                }
             };
 
             engine.OnNoteHit += (_, note) =>
@@ -505,6 +513,21 @@ namespace YARG.Gameplay.Player
 
         private void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<double> canonicalMeters, bool isLastPhrase)
         {
+            if (grade == PhraseGrade.Miss)
+            {
+                // No awesome banner for a missed phrase — fall back to the legacy
+                // percent-based "Messy / Okay / Good / Strong" text so the player still
+                // gets phrase feedback.
+                double bestMeter = 0;
+                for (int i = 0; i < canonicalMeters.Count; i++)
+                {
+                    if (canonicalMeters[i] > bestMeter) bestMeter = canonicalMeters[i];
+                }
+                double threshold = EngineParams.PhraseHitPercent;
+                double percent = threshold > 0 ? bestMeter / threshold : 0;
+                _hud.ShowPhraseHit(percent, Combo);
+                return;
+            }
             _hud.ShowPartyVocalsGrade(grade);
         }
 
