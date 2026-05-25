@@ -645,7 +645,7 @@ namespace YARG.Gameplay.Player
                 var meters = freeEngine.CanonicalMeters;
                 if (meters != null)
                 {
-                    _hud.UpdateHarmFill(meters, freeEngine.AwesomeThreshold);
+                    _hud.UpdateHarmFill(meters, freeEngine.AwesomeThreshold, freeEngine.PartHasContent);
                 }
             }
             else

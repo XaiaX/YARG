@@ -184,7 +184,8 @@ namespace YARG.Gameplay.HUD
             _textNotifications.ShowNotification(notificationType);
         }
 
-        public void UpdateHarmFill(IReadOnlyList<double> meters, double awesomeThreshold)
+        public void UpdateHarmFill(IReadOnlyList<double> meters, double awesomeThreshold,
+            System.Func<int, bool> partHasContent = null)
         {
             if (_harmFillContainer == null) return;
 
@@ -195,7 +196,8 @@ namespace YARG.Gameplay.HUD
             for (int i = 0; i < texts.Length; i++)
             {
                 if (texts[i] == null) continue;
-                if (i < meters.Count)
+                bool show = i < meters.Count && (partHasContent == null || partHasContent(i));
+                if (show)
                 {
                     texts[i].gameObject.SetActive(true);
                     int pct = (int) System.Math.Min(100, meters[i] * scale * 100);
