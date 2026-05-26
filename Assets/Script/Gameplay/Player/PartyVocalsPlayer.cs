@@ -114,26 +114,16 @@ namespace YARG.Gameplay.Player
 
         private void WireSubEngineEvents(PartyVocalsMicSlot slot)
         {
-            int slotIdx = slot.Index;
             slot.OnTargetNoteHandler = note => slot.LastTargetNote = note;
             slot.OnHitHandler = hitting =>
-            {
                 slot.LastHitTime = hitting ? GameManager.InputTime : (double?) null;
-                YARG.Core.Logging.YargLogger.LogFormatDebug("PV-SUB slot={0} OnHit={1}", slotIdx, hitting);
-            };
             slot.OnSingHandler = singing =>
-            {
                 slot.LastSingTime = singing ? GameManager.InputTime : (double?) null;
-                YARG.Core.Logging.YargLogger.LogFormatDebug("PV-SUB slot={0} OnSing={1}", slotIdx, singing);
-            };
 
             slot.Engine.OnTargetNoteChanged += slot.OnTargetNoteHandler;
             slot.Engine.OnHit += slot.OnHitHandler;
             slot.Engine.OnSing += slot.OnSingHandler;
         }
-
-        private int _diagFrame;
-        private int _diagQueuedThisFrame;
 
         protected override void UpdateInputs(double time)
         {
@@ -141,15 +131,20 @@ namespace YARG.Gameplay.Player
 
             if (_slots.Count == 0) return;
 
-            int queued = 0;
-            // Route each mic's collected inputs to its sub-engine.
+            // Route each mic's collected inputs to its sub-engine. Mic inputs carry
+            // raw wallclock timestamps from MicInputContext; BasePlayer.OnGameInput
+            // normalizes them to game-relative time before queueing, but the base
+            // class's PartyVocals fast-path uses SetMicPitch (time-less) for the
+            // band-slot engine, so the conversion never happens for these inputs.
+            // Apply the same normalization here or the sub-engine sees inputs in
+            // its far future and warns ("Queued input is in the future!").
             foreach (var (i, input) in _lastFrameInputs)
             {
                 if (i >= 0 && i < _slots.Count)
                 {
-                    var copy = input;
+                    double adjustedTime = GameManager.GetRelativeInputTime(input.Time) + InputCalibration;
+                    var copy = new GameInput(adjustedTime, input.Action, input.Integer);
                     _slots[i].Engine.QueueInput(ref copy);
-                    queued++;
                 }
             }
 
@@ -157,17 +152,6 @@ namespace YARG.Gameplay.Player
             foreach (var slot in _slots)
             {
                 slot.Engine.Update(time);
-            }
-
-            _diagQueuedThisFrame += queued;
-            _diagFrame++;
-            if (_diagFrame >= 60)
-            {
-                YARG.Core.Logging.YargLogger.LogFormatDebug(
-                    "PV-SUB diag: slots={0} lastFrameInputs(avg/60f)={1} queued(60f)={2}",
-                    _slots.Count, _lastFrameInputs.Count, _diagQueuedThisFrame);
-                _diagFrame = 0;
-                _diagQueuedThisFrame = 0;
             }
         }
 
