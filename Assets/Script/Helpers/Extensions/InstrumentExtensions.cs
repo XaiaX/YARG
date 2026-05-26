@@ -90,6 +90,7 @@ namespace YARG.Helpers.Extensions
 
                 Instrument.Vocals  => "vocals",
                 Instrument.Harmony => "harmVocals",
+                Instrument.PartyVocals => "vocals",
 
                 _ => null,
             };
