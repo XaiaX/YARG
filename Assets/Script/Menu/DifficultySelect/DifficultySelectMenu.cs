@@ -867,7 +867,7 @@ namespace YARG.Menu.DifficultySelect
         private bool HasPlayableDifficulty(SongEntry entry, in Instrument instrument, in Difficulty difficulty)
         {
             // For vocals, insert special difficulties
-            if (instrument is Instrument.Vocals or Instrument.Harmony)
+            if (instrument is Instrument.Vocals or Instrument.Harmony or Instrument.PartyVocals)
             {
                 return difficulty is not Difficulty.ExpertPlus;
             }
