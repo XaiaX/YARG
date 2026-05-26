@@ -4,6 +4,7 @@ using System;
 using UnityEngine;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
+using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
 using YARG.Helpers;
 using YARG.Input;
@@ -34,7 +35,7 @@ namespace YARG.Gameplay.Player
         public double? LastSingTime;
 
         // Subscriptions (held for cleanup).
-        public Action<VocalNote>? OnTargetNoteHandler;
+        public VocalsEngine.TargetNoteChangeEvent? OnTargetNoteHandler;
         public Action<bool>? OnHitHandler;
         public Action<bool>? OnSingHandler;
 
