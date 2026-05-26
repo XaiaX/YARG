@@ -209,6 +209,7 @@ namespace YARG.Input
                 GameMode.ProKeys => CreateProKeysBindings(),
 
                 GameMode.Vocals => CreateVocalsBindings(),
+                GameMode.PartyVocals => CreateVocalsBindings(),
 
                 _ => throw new NotImplementedException($"Unhandled game mode {mode}!")
             };

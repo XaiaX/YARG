@@ -21,6 +21,7 @@ namespace YARG.Input
                 GameMode.ProKeys => SetDefaultProKeysBindings(keyboard),
 
                 GameMode.Vocals => SetDefaultVocalsBindings(keyboard),
+                GameMode.PartyVocals => SetDefaultVocalsBindings(keyboard),
 
                 _ => false
             };
@@ -204,7 +205,7 @@ namespace YARG.Input
 
         private bool SetDefaultVocalsBindings(Keyboard keyboard)
         {
-            if (Mode != GameMode.Vocals)
+            if (Mode != GameMode.Vocals && Mode != GameMode.PartyVocals)
                 return false;
 
             AddBinding(VocalsAction.Hit, keyboard.backspaceKey);

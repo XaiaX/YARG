@@ -248,7 +248,8 @@ namespace YARG.Menu.DifficultySelect
                 CreateItem(LocalizeHeader("Ready"), _lastMenuState == State.Main, _difficultyGreenPrefab, () =>
                 {
                     // If the player just selected vocal modifiers, don't show them again
-                    if (player.Profile.GameMode == GameMode.Vocals &&
+                    if ((player.Profile.GameMode == GameMode.Vocals
+                        || player.Profile.GameMode == GameMode.PartyVocals) &&
                         _vocalModifierSelectIndex == -1)
                     {
                         _vocalModifierSelectIndex = _playerIndex;

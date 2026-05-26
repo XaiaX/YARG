@@ -55,7 +55,7 @@ namespace YARG.Menu.ProfileInfo
                 micSlotUI.Setup(micDevice, () => RemoveMic(captureIndex));
             }
 
-            bool atCap = _bindings.Microphones.Count >= 7;
+            bool atCap = _bindings.Microphones.Count >= (_profile.GameMode == GameMode.PartyVocals ? 7 : 1);
             _addButton.gameObject.SetActive(!atCap);
             if (_maxReachedLabel != null) _maxReachedLabel.SetActive(atCap);
         }
@@ -80,7 +80,7 @@ namespace YARG.Menu.ProfileInfo
                     var device = GlobalAudioHandler.CreateInputDevice(deviceId, deviceName);
                     if (device != null)
                     {
-                        _bindings.AddMicrophone(device);
+                        _bindings.AddMicrophone(device, _profile.GameMode);
                         RefreshList();
                     }
                 });

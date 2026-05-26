@@ -137,6 +137,13 @@ namespace YARG.Gameplay.Player
             // Compute Party Vocals mic count up front so needle creation and engine
             // construction agree. Humans: real bound-mic count. Free Vocals bots: one
             // synthetic vocalist per HARM part (so a 3-HARM song gets 3 bot needles).
+            // Solo Vocals / Harmony are single-mic by mode — take only the first mic.
+            IReadOnlyList<MicDevice> effectiveMics = player.Bindings.Microphones;
+            if (player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
+            {
+                effectiveMics = new[] { effectiveMics[0] };
+            }
+
             if (Player.Profile.IsFreeVocals && player.Profile.IsBot)
             {
                 // 0 = Auto (one bot mic per HARM part). 1-7 = explicit override for
@@ -146,9 +153,9 @@ namespace YARG.Gameplay.Player
                     ? Mathf.Clamp(botMicOverride, 1, 7)
                     : Mathf.Max(1, multiTrack.Parts.Count);
             }
-            else if (player.Bindings.Microphones.Count > 0)
+            else if (effectiveMics.Count > 0)
             {
-                _partyVocalsMicCount = player.Bindings.Microphones.Count;
+                _partyVocalsMicCount = effectiveMics.Count;
             }
             else
             {
@@ -267,14 +274,14 @@ namespace YARG.Gameplay.Player
             // Create and start input contexts for microphones. Skip entirely for bots —
             // bots have no real audio devices; the engine synthesizes their pitches
             // internally via UpdateBot / UpdateBotMultiMic.
-            if (!Player.IsReplay && !player.Profile.IsBot && player.Bindings.Microphones.Count > 0)
+            if (!Player.IsReplay && !player.Profile.IsBot && effectiveMics.Count > 0)
             {
-                int micCount = player.Bindings.Microphones.Count;
+                int micCount = effectiveMics.Count;
 
                 _inputContexts = new List<MicInputContext>(micCount);
                 for (int i = 0; i < micCount; i++)
                 {
-                    var mic = player.Bindings.Microphones[i];
+                    var mic = effectiveMics[i];
                     var ctx = new MicInputContext(mic, GameManager);
                     ctx.Start();
                     _inputContexts.Add(ctx);

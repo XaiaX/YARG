@@ -16,7 +16,8 @@ namespace YARG.Gameplay.HUD
 
             bool usePadding = GameManager.YargPlayers
                 .Where(player => !player.SittingOut)
-                .Any(player => player.Profile.GameMode == GameMode.Vocals);
+                .Any(player => player.Profile.GameMode == GameMode.Vocals
+                    || player.Profile.GameMode == GameMode.PartyVocals);
 
             if (usePadding)
             {

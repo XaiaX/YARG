@@ -423,7 +423,8 @@ namespace YARG.Gameplay
                     YargLogger.LogFormatInfo("Current high score for player {0} on {1}: {2}",
                         player.Profile.Name, player.Profile.CurrentInstrument, lastHighScore ?? 0);
 
-                    if (player.Profile.GameMode != GameMode.Vocals)
+                    if (player.Profile.GameMode != GameMode.Vocals
+                        && player.Profile.GameMode != GameMode.PartyVocals)
                     {
                         highwayIndex++;
                         var prefab = player.Profile.GameMode switch

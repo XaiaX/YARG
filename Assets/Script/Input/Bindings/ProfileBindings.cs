@@ -405,10 +405,11 @@ namespace YARG.Input
             MenuBindings.UpdateBindingsForFrame(updateTime);
         }
 
-        public bool AddMicrophone(MicDevice microphone)
+        public bool AddMicrophone(MicDevice microphone, GameMode gameMode = GameMode.PartyVocals)
         {
-            // Check if we've reached the cap
-            if (_microphones.Count >= MICROPHONE_CAP)
+            // Check if we've reached the cap (Solo Vocals = 1, Party Vocals = 7)
+            int cap = gameMode == GameMode.PartyVocals ? MICROPHONE_CAP : 1;
+            if (_microphones.Count >= cap)
             {
                 microphone.Dispose();
                 return false;
