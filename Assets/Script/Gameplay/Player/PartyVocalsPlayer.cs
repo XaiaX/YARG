@@ -114,16 +114,26 @@ namespace YARG.Gameplay.Player
 
         private void WireSubEngineEvents(PartyVocalsMicSlot slot)
         {
+            int slotIdx = slot.Index;
             slot.OnTargetNoteHandler = note => slot.LastTargetNote = note;
             slot.OnHitHandler = hitting =>
+            {
                 slot.LastHitTime = hitting ? GameManager.InputTime : (double?) null;
+                YARG.Core.Logging.YargLogger.LogFormatDebug("PV-SUB slot={0} OnHit={1}", slotIdx, hitting);
+            };
             slot.OnSingHandler = singing =>
+            {
                 slot.LastSingTime = singing ? GameManager.InputTime : (double?) null;
+                YARG.Core.Logging.YargLogger.LogFormatDebug("PV-SUB slot={0} OnSing={1}", slotIdx, singing);
+            };
 
             slot.Engine.OnTargetNoteChanged += slot.OnTargetNoteHandler;
             slot.Engine.OnHit += slot.OnHitHandler;
             slot.Engine.OnSing += slot.OnSingHandler;
         }
+
+        private int _diagFrame;
+        private int _diagQueuedThisFrame;
 
         protected override void UpdateInputs(double time)
         {
@@ -131,6 +141,7 @@ namespace YARG.Gameplay.Player
 
             if (_slots.Count == 0) return;
 
+            int queued = 0;
             // Route each mic's collected inputs to its sub-engine.
             foreach (var (i, input) in _lastFrameInputs)
             {
@@ -138,6 +149,7 @@ namespace YARG.Gameplay.Player
                 {
                     var copy = input;
                     _slots[i].Engine.QueueInput(ref copy);
+                    queued++;
                 }
             }
 
@@ -145,6 +157,17 @@ namespace YARG.Gameplay.Player
             foreach (var slot in _slots)
             {
                 slot.Engine.Update(time);
+            }
+
+            _diagQueuedThisFrame += queued;
+            _diagFrame++;
+            if (_diagFrame >= 60)
+            {
+                YARG.Core.Logging.YargLogger.LogFormatDebug(
+                    "PV-SUB diag: slots={0} lastFrameInputs(avg/60f)={1} queued(60f)={2}",
+                    _slots.Count, _lastFrameInputs.Count, _diagQueuedThisFrame);
+                _diagFrame = 0;
+                _diagQueuedThisFrame = 0;
             }
         }
 
