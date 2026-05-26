@@ -23,6 +23,7 @@ namespace YARG.Helpers.Extensions
                 GameMode.ProKeys        => "realKeys",
 
                 GameMode.Vocals         => "vocals",
+                GameMode.PartyVocals    => "vocals",
 
                 // GameMode.Dj          => "dj",
 
