@@ -298,14 +298,15 @@ namespace YARG.Menu.ProfileList
                 });
             }
 
-            // Add the microphone (there should be only one or zero)
-            var mic = player.Bindings.Microphone;
-            if (mic is not null)
+            // Add bound microphones. Party Vocals profiles can have multiple;
+            // other vocal modes (Solo, Harmony) cap at one. Iterate either way.
+            foreach (var mic in player.Bindings.Microphones)
             {
                 devicesAvailable = true;
-                dialog.AddListButton(mic.DisplayName, () =>
+                var capturedMic = mic;
+                dialog.AddListButton(capturedMic.DisplayName, () =>
                 {
-                    player.Bindings.RemoveMicrophone(mic);
+                    player.Bindings.RemoveMicrophone(capturedMic);
                     selectedDevice = true;
                 });
             }
@@ -358,6 +359,8 @@ namespace YARG.Menu.ProfileList
                 {
                     // Don't leak player when cancelling
                     PlayerContainer.DisposePlayer(player);
+                    // Refresh so the row doesn't keep showing as active after dispose.
+                    _profileListMenu.RefreshList(Profile);
                     return;
                 }
             }
