@@ -17,8 +17,8 @@ namespace YARG.Gameplay.Player
     public sealed class PartyVocalsMicSlot
     {
         public readonly int Index;
-        public readonly MicDevice Device;
-        public readonly MicInputContext InputContext;
+        public readonly MicDevice? Device;
+        public readonly MicInputContext? InputContext;
         public readonly YargFreeVocalsEngine Engine;
 
         // Visuals
@@ -38,7 +38,7 @@ namespace YARG.Gameplay.Player
         public Action<bool>? OnHitHandler;
         public Action<bool>? OnSingHandler;
 
-        public PartyVocalsMicSlot(int index, MicDevice device, MicInputContext inputContext,
+        public PartyVocalsMicSlot(int index, MicDevice? device, MicInputContext? inputContext,
             YargFreeVocalsEngine engine, GameObject needleContainer, Transform needleTransform,
             MeshRenderer needleRenderer, Material needleMaterial, ParticleGroup particleGroup)
         {

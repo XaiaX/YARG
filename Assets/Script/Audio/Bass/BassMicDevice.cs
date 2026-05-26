@@ -336,9 +336,11 @@ namespace YARG.Audio.BASS
             }
         }
 
+        public override string StableId => $"{DisplayName}@{_deviceId}";
+
         public override SerializedMic Serialize()
         {
-            return new SerializedMic(DisplayName);
+            return new SerializedMic(DisplayName, StableId);
         }
 
         private BassMicDevice(int deviceId, string name)

@@ -171,17 +171,84 @@ namespace YARG.Input
                     OnDeviceAdded(device);
             }
 
-            // Iterate over a copy to avoid modification during iteration
-            foreach (var unresolvedMic in _unresolvedMics.ToList())
+            // Two-pass mic resolver.
+            // Pass 1: exact StableId match. Pass 2: name match against unmatched devices in slot order.
+
+            var remainingUnresolved = _unresolvedMics.ToList();
+            var available = GlobalAudioHandler.GetAllInputDevices();
+
+            // Pass 1: StableId exact match (match on string, only create device on hit).
+            for (int i = remainingUnresolved.Count - 1; i >= 0; i--)
             {
-                var device = GlobalAudioHandler.GetInputDevice(unresolvedMic.Name);
-                if (device != null)
+                var unresolved = remainingUnresolved[i];
+                if (string.IsNullOrEmpty(unresolved.StableId)) continue;
+
+                int matchIdx = -1;
+                for (int j = 0; j < available.Count; j++)
                 {
-                    AddMicrophone(device);
-                    // Remove the original unresolved entry now that it's resolved
-                    _unresolvedMics.Remove(unresolvedMic);
+                    if ($"{available[j].name}@{available[j].id}" == unresolved.StableId)
+                    {
+                        matchIdx = j;
+                        break;
+                    }
+                }
+
+                if (matchIdx >= 0)
+                {
+                    var (id, name) = available[matchIdx];
+                    var device = GlobalAudioHandler.CreateInputDevice(id, name);
+                    if (device != null)
+                    {
+                        var result = TryAddMicrophoneInternal(device);
+                        if (result == MicAddResult.Added)
+                        {
+                            available.RemoveAt(matchIdx);
+                            _unresolvedMics.Remove(unresolved);
+                            remainingUnresolved.RemoveAt(i);
+                        }
+                        else
+                        {
+                            _unresolvedMics.Remove(unresolved);
+                            remainingUnresolved.RemoveAt(i);
+                        }
+                    }
                 }
             }
+
+            // Pass 2: Name match against still-available devices, in original slot order.
+            foreach (var unresolved in remainingUnresolved.ToList())
+            {
+                int matchIdx = -1;
+                for (int j = 0; j < available.Count; j++)
+                {
+                    if (available[j].name == unresolved.Name)
+                    {
+                        matchIdx = j;
+                        break;
+                    }
+                }
+
+                if (matchIdx >= 0)
+                {
+                    var (id, name) = available[matchIdx];
+                    var device = GlobalAudioHandler.CreateInputDevice(id, name);
+                    if (device != null)
+                    {
+                        var result = TryAddMicrophoneInternal(device);
+                        if (result == MicAddResult.Added)
+                        {
+                            available.RemoveAt(matchIdx);
+                            _unresolvedMics.Remove(unresolved);
+                        }
+                        else
+                        {
+                            _unresolvedMics.Remove(unresolved);
+                        }
+                    }
+                }
+            }
+
+            // Pass 3: still-unmatched entries stay in _unresolvedMics for later OnDeviceAdded events.
         }
 
         public void EnableInputs()
@@ -405,28 +472,33 @@ namespace YARG.Input
             MenuBindings.UpdateBindingsForFrame(updateTime);
         }
 
-        public bool AddMicrophone(MicDevice microphone, GameMode gameMode = GameMode.PartyVocals)
+        public bool AddMicrophone(MicDevice microphone)
         {
-            // Check if we've reached the cap (Solo Vocals = 1, Party Vocals = 7)
-            int cap = gameMode == GameMode.PartyVocals ? MICROPHONE_CAP : 1;
+            return TryAddMicrophoneInternal(microphone) == MicAddResult.Added;
+        }
+
+        private enum MicAddResult { Added, CapExceeded, DuplicateId }
+
+        private MicAddResult TryAddMicrophoneInternal(MicDevice microphone)
+        {
+            int cap = Profile.GameMode == GameMode.PartyVocals ? MICROPHONE_CAP : 1;
             if (_microphones.Count >= cap)
             {
                 microphone.Dispose();
-                return false;
+                return MicAddResult.CapExceeded;
             }
 
-            // Check for duplicates by device ID
-            var deviceId = microphone.Serialize().Name;
-            if (_microphones.Any(m => m.Serialize().Name == deviceId))
+            var stableId = microphone.StableId;
+            if (_microphones.Any(m => m.StableId == stableId))
             {
                 microphone.Dispose();
-                return false;
+                return MicAddResult.DuplicateId;
             }
 
             _microphones.Add(microphone);
             _unresolvedMics.Add(microphone.Serialize());
 
-            return true;
+            return MicAddResult.Added;
         }
 
         public bool RemoveMicrophone(MicDevice microphone)
@@ -436,7 +508,8 @@ namespace YARG.Input
             if (index >= 0)
             {
                 _microphones.RemoveAt(index);
-                _unresolvedMics.RemoveAll(m => m.Name == microphone.Serialize().Name);
+                var micStableId = microphone.StableId;
+                _unresolvedMics.RemoveAll(m => m.StableId == micStableId);
                 return true;
             }
 

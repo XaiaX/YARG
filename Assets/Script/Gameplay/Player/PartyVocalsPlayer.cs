@@ -53,29 +53,21 @@ namespace YARG.Gameplay.Player
                 multiTrack = chart.GetVocalsTrack(player.Profile.CurrentInstrument);
             }
 
-            // Only create sub-engines for human players with real mics.
-            // Bots use the band-slot engine's built-in multi-mic bot logic.
-            if (player.Profile.IsBot || player.IsReplay || _inputContexts == null || _inputContexts.Count <= 1)
+            // Replays still short-circuit (deferred to Phase 6 replay format bump).
+            if (player.IsReplay)
             {
                 return;
             }
 
-            // Destroy legacy multi-mic visuals — sub-engine slots will own their own.
-            foreach (var (_, needleTransform, material) in _micNeedles)
-            {
-                if (needleTransform.gameObject != null) Destroy(needleTransform.gameObject);
-                if (material != null) Destroy(material);
-            }
-            _micNeedles.Clear();
+            // Slot count derivation:
+            // - Bot Party Vocals: _partyVocalsMicCount was set by base.Initialize.
+            // - Human Party Vocals: _inputContexts.Count.
+            int slotCount = player.Profile.IsBot
+                ? _partyVocalsMicCount
+                : (_inputContexts?.Count ?? 0);
+            if (slotCount <= 1) return; // single-mic falls through to base
 
-            foreach (var pg in _micParticleGroups)
-            {
-                if (pg != null && pg.gameObject != null) Destroy(pg.gameObject);
-            }
-            _micParticleGroups.Clear();
-
-            int micCount = _inputContexts.Count;
-            for (int i = 0; i < micCount; i++)
+            for (int i = 0; i < slotCount; i++)
             {
                 // 1. Single-mic sub-engine (not registered with EngineManager).
                 var subEngine = new YargFreeVocalsEngine(
@@ -83,7 +75,7 @@ namespace YARG.Gameplay.Player
                     multiTrack.Parts,
                     SyncTrack,
                     EngineParams,
-                    isBot: false,
+                    isBot: player.Profile.IsBot,
                     micCount: 1,
                     botPartIndex: i);
 
@@ -104,8 +96,11 @@ namespace YARG.Gameplay.Player
                 var pg = pgObj.GetComponent<ParticleGroup>();
                 pg.Colorize(VocalTrack.Colors[i % VocalTrack.Colors.Length]);
 
-                var slot = new PartyVocalsMicSlot(i, _inputContexts[i].Device, _inputContexts[i],
-                    subEngine, needleObj, needleObj.transform, renderer, materialInstance, pg);
+                var inputContext = (i < (_inputContexts?.Count ?? 0)) ? _inputContexts[i] : null;
+                var device = inputContext?.Device;
+
+                var slot = new PartyVocalsMicSlot(i, device, inputContext, subEngine,
+                    needleObj, needleObj.transform, renderer, materialInstance, pg);
 
                 WireSubEngineEvents(slot);
                 _slots.Add(slot);

@@ -64,14 +64,15 @@ namespace YARG.Menu.ProfileInfo
         {
             var dialog = DialogManager.Instance.ShowList("Select Microphone");
 
-            var boundNames = new HashSet<string>();
+            var boundIds = new HashSet<string>();
             foreach (var mic in _bindings.Microphones)
-                boundNames.Add(mic.DisplayName);
+                boundIds.Add(mic.StableId);
 
             bool anyAvailable = false;
             foreach (var (id, name) in GlobalAudioHandler.GetAllInputDevices())
             {
-                if (boundNames.Contains(name)) continue;
+                string stableId = $"{name}@{id}";
+                if (boundIds.Contains(stableId)) continue;
                 anyAvailable = true;
                 int deviceId = id;
                 string deviceName = name;
@@ -80,7 +81,7 @@ namespace YARG.Menu.ProfileInfo
                     var device = GlobalAudioHandler.CreateInputDevice(deviceId, deviceName);
                     if (device != null)
                     {
-                        _bindings.AddMicrophone(device, _profile.GameMode);
+                        _bindings.AddMicrophone(device);
                         RefreshList();
                     }
                 });
