@@ -336,7 +336,7 @@ namespace YARG.Audio.BASS
             }
         }
 
-        public override string StableId => $"{DisplayName}@{_deviceId}";
+        public override string StableId => ComputeStableId(_deviceId, DisplayName);
 
         public override SerializedMic Serialize()
         {

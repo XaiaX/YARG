@@ -25,6 +25,14 @@ namespace YARG.Input
         public IReadOnlyList<MicDevice> Microphones => _microphones;
 
         /// <summary>
+        /// Maximum number of microphones this profile may bind, derived from its
+        /// GameMode. PartyVocals = 7; everything else (Solo Vocals / Harmony) = 1.
+        /// Single source of truth — both <see cref="AddMicrophone"/> and any UI that
+        /// gates "Add" buttons should consult this rather than re-deriving the cap.
+        /// </summary>
+        public int MicrophoneCap => Profile.GameMode == GameMode.PartyVocals ? MICROPHONE_CAP : 1;
+
+        /// <summary>
         /// First-microphone accessor preserved for single-mic readers (Vocals, Harmony, Free profiles).
         /// Returns null if no microphones are bound. Setter is intentionally not provided; use AddMicrophone / RemoveMicrophone.
         /// </summary>
@@ -186,7 +194,7 @@ namespace YARG.Input
                 int matchIdx = -1;
                 for (int j = 0; j < available.Count; j++)
                 {
-                    if ($"{available[j].name}@{available[j].id}" == unresolved.StableId)
+                    if (MicDevice.ComputeStableId(available[j].id, available[j].name) == unresolved.StableId)
                     {
                         matchIdx = j;
                         break;
@@ -481,8 +489,7 @@ namespace YARG.Input
 
         private MicAddResult TryAddMicrophoneInternal(MicDevice microphone)
         {
-            int cap = Profile.GameMode == GameMode.PartyVocals ? MICROPHONE_CAP : 1;
-            if (_microphones.Count >= cap)
+            if (_microphones.Count >= MicrophoneCap)
             {
                 microphone.Dispose();
                 return MicAddResult.CapExceeded;
@@ -509,7 +516,13 @@ namespace YARG.Input
             {
                 _microphones.RemoveAt(index);
                 var micStableId = microphone.StableId;
-                _unresolvedMics.RemoveAll(m => m.StableId == micStableId);
+                // Guard against null match-all: if either side is null (e.g. a stale
+                // pre-resolve entry that never got its StableId populated), skip the
+                // unresolved-list cleanup rather than purging every null-StableId entry.
+                if (!string.IsNullOrEmpty(micStableId))
+                {
+                    _unresolvedMics.RemoveAll(m => m.StableId == micStableId);
+                }
                 return true;
             }
 
