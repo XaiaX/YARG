@@ -28,13 +28,20 @@ namespace YARG.Gameplay.Player
         public override BaseEngine BaseEngine => Engine;
 
         [SerializeField]
-        private GameObject _needleVisualContainer;
+        protected GameObject _needleVisualContainer;
         [SerializeField]
-        private MeshRenderer _needleRenderer;
+        protected MeshRenderer _needleRenderer;
         [SerializeField]
-        private Transform _needleTransform;
+        protected Transform _needleTransform;
         [SerializeField]
-        private ParticleGroup _hittingParticleGroup;
+        protected ParticleGroup _hittingParticleGroup;
+
+        /// <summary>
+        /// When true, multi-mic visual paths in this base class are inert —
+        /// <see cref="PartyVocalsPlayer"/> owns per-mic needles via its own
+        /// MicSlot machinery. Defaults to false.
+        /// </summary>
+        protected virtual bool IsPartyVocals => false;
 
         public override bool ShouldUpdateInputsOnResume => false;
 
@@ -43,23 +50,23 @@ namespace YARG.Gameplay.Player
             0.05f, 0.11f, 0.19f, 0.46f, 0.77f, 1.06f
         };
 
-        private InstrumentDifficulty<VocalNote> NoteTrack { get; set; }
+        protected InstrumentDifficulty<VocalNote> NoteTrack { get; set; }
         private InstrumentDifficulty<VocalNote> OriginalNoteTrack { get; set; }
 
-        private MicInputContext _inputContext;
-        private List<MicInputContext> _inputContexts;
+        protected MicInputContext _inputContext;
+        protected List<MicInputContext> _inputContexts;
 
         // Total simulated "vocalists" for Party Vocals. For humans: matches the bound mic
         // count. For Party Vocals bots: matches the song's HARM part count (one bot
         // vocalist per HARM line). Used to size needles and the engine's per-mic buffers
         // before _inputContexts is populated.
-        private int _partyVocalsMicCount = 1;
+        protected int _partyVocalsMicCount = 1;
 
         // Multi-mic needles for Party Vocals
-        private readonly List<(MeshRenderer renderer, Transform transform, Material material)> _micNeedles = new();
+        protected readonly List<(MeshRenderer renderer, Transform transform, Material material)> _micNeedles = new();
 
         // Per-mic particle groups for Party Vocals (one trail per needle)
-        private readonly List<ParticleGroup> _micParticleGroups = new();
+        protected readonly List<ParticleGroup> _micParticleGroups = new();
 
         // Per-mic last pitch cache — keeps each needle at its prior position when not
         // actively hitting, instead of all converging on the shared anchor pitch.
@@ -72,16 +79,20 @@ namespace YARG.Gameplay.Player
         private bool      _hotStartChecked;
         private bool      _newHighScoreShown;
 
-        private VocalsPlayerHUD _hud;
+        protected VocalsPlayerHUD _hud;
         private VocalPercussionTrack _percussionTrack;
         private bool _shouldHideNeedle;
 
         private int _phraseIndex = -1;
 
-        private const int NEEDLES_COUNT = 7;
+        protected const int NEEDLES_COUNT = 7;
 
         // Per-mic pitch recording buffer for Party Vocals replays
         private List<float>[] _micPitchBuffers;
+
+        // Per-frame collected inputs from all mics, populated by UpdateInputs.
+        // Available to subclasses (e.g. PartyVocalsPlayer) for routing to sub-engines.
+        protected readonly List<(int micIndex, GameInput input)> _lastFrameInputs = new();
 
         // Replay playback state for Party Vocals
         private ReplayFrame _replayFrame;
@@ -91,12 +102,12 @@ namespace YARG.Gameplay.Player
         private float _lastDisconnectCheckTime;
         private const float DISCONNECT_CHECK_INTERVAL = 1.0f; // Check every second
 
-        private SongChart _chart;
+        protected SongChart _chart;
 
         // Free vocals: needle material instance (mutable copy of Addressable)
         private Material _needleMaterialInstance;
 
-        public void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
+        public virtual void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
         {
             if (IsInitialized)
@@ -602,18 +613,18 @@ namespace YARG.Gameplay.Player
             // queue must be monotonic in time), collapsing their per-tick freshness. The
             // visible symptom is needles/trails not appearing whenever 2+ mics are bound
             // even though scoring at phrase end still works.
-            var collected = new List<(int micIndex, GameInput input)>();
+            _lastFrameInputs.Clear();
             for (int i = 0; i < _inputContexts.Count; i++)
             {
                 var ctx = _inputContexts[i];
                 foreach (var input in ctx.GetInputsFromMic())
                 {
-                    collected.Add((i, input));
+                    _lastFrameInputs.Add((i, input));
                 }
             }
-            collected.Sort((a, b) => a.input.Time.CompareTo(b.input.Time));
+            _lastFrameInputs.Sort((a, b) => a.input.Time.CompareTo(b.input.Time));
 
-            foreach (var (i, input) in collected)
+            foreach (var (i, input) in _lastFrameInputs)
             {
                 if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                 {
@@ -638,7 +649,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        private bool IsInThreshold(double currentTime, double? lastTime)
+        protected bool IsInThreshold(double currentTime, double? lastTime)
         {
             if (lastTime is null)
             {
@@ -741,7 +752,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        private float GetNeedleRotation(float pitchDist)
+        protected float GetNeedleRotation(float pitchDist)
         {
             const float NEEDLE_ROT_MAX = 12f;
 
@@ -1178,7 +1189,7 @@ namespace YARG.Gameplay.Player
         /// Prefer the octave closest to the reference note for smoother needle tracking.
         /// Rejected alternative: midpoint of all parts (less stable during quick pitch changes).
         /// </summary>
-        private float AnchorPitchToOctave(float sungPitch, float referenceNotePitch)
+        protected float AnchorPitchToOctave(float sungPitch, float referenceNotePitch)
         {
             if (_lastTargetNote is null || _lastTargetNote.IsNonPitched)
             {
@@ -1195,7 +1206,7 @@ namespace YARG.Gameplay.Player
             return normalized + 12f * (referenceOctave + octaveShift);
         }
 
-        private static (float Distance, int OctaveShift) GetPitchDistanceIgnoringOctave(float target, float other)
+        protected static (float Distance, int OctaveShift) GetPitchDistanceIgnoringOctave(float target, float other)
         {
             // Normalize the parameters
             target %= 12f;

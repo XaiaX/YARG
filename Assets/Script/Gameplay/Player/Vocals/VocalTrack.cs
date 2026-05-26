@@ -121,6 +121,8 @@ namespace YARG.Gameplay.Player
         [SerializeField]
         private VocalsPlayer _vocalPlayerPrefab;
         [SerializeField]
+        private PartyVocalsPlayer _partyVocalPlayerPrefab;
+        [SerializeField]
         private VocalPercussionTrack _percussionTrackPrefab;
 
         [Space]
@@ -412,12 +414,15 @@ namespace YARG.Gameplay.Player
             AllowStarPower = true;
         }
 
-        public VocalsPlayer CreatePlayer()
+        public VocalsPlayer CreatePlayer(YargPlayer player)
         {
-            var player = Instantiate(_vocalPlayerPrefab, _playerContainer);
-            _vocalPlayers.Add(player);
-
-            return player;
+            VocalsPlayer prefab = player.Profile.GameMode == GameMode.PartyVocals
+                && _partyVocalPlayerPrefab != null
+                ? _partyVocalPlayerPrefab
+                : _vocalPlayerPrefab;
+            var spawned = Instantiate(prefab, _playerContainer);
+            _vocalPlayers.Add(spawned);
+            return spawned;
         }
 
         public VocalPercussionTrack CreatePercussionTrack()

@@ -1,0 +1,256 @@
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.AddressableAssets;
+using YARG.Core;
+using YARG.Core.Chart;
+using YARG.Core.Engine.Vocals.Engines;
+using YARG.Core.Input;
+using YARG.Gameplay.HUD;
+using YARG.Helpers;
+using YARG.Input;
+using YARG.Player;
+
+namespace YARG.Gameplay.Player
+{
+    /// <summary>
+    /// Coordinator for Party Vocals (GameMode.PartyVocals). Extends VocalsPlayer
+    /// by spawning N visual sub-engines (one per bound mic), each running a
+    /// single-mic YargFreeVocalsEngine to drive its own needle and trail.
+    ///
+    /// Scoring remains the responsibility of the band-slot engine (the base
+    /// VocalsPlayer's engine). Sub-engines are visual-only — they are NOT
+    /// registered with EngineManager and do NOT contribute to score, combo,
+    /// or star power.
+    /// </summary>
+    public sealed class PartyVocalsPlayer : VocalsPlayer
+    {
+        protected override bool IsPartyVocals => true;
+
+        private readonly List<PartyVocalsMicSlot> _slots = new();
+
+        public override void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
+            VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
+        {
+            base.Initialize(index, vocalIndex, player, chart, hud, percussionTrack, lastHighScore, trackSpeed);
+
+            if (player.Profile.GameMode != GameMode.PartyVocals)
+            {
+                // Defensive: PartyVocalsPlayer instantiated for a non-PartyVocals profile.
+                // Treat as base VocalsPlayer — no sub-engines.
+                return;
+            }
+
+            // Determine which multi-track to use (mirrors base.Initialize logic).
+            VocalsTrack multiTrack;
+            if (player.Profile.IsFreeVocals)
+            {
+                bool harmonyHasContent = chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
+                multiTrack = harmonyHasContent ? chart.Harmony : chart.Vocals;
+            }
+            else
+            {
+                multiTrack = chart.GetVocalsTrack(player.Profile.CurrentInstrument);
+            }
+
+            // Only create sub-engines for human players with real mics.
+            // Bots use the band-slot engine's built-in multi-mic bot logic.
+            if (player.Profile.IsBot || player.IsReplay || _inputContexts == null || _inputContexts.Count <= 1)
+            {
+                return;
+            }
+
+            // Destroy legacy multi-mic visuals — sub-engine slots will own their own.
+            foreach (var (_, needleTransform, material) in _micNeedles)
+            {
+                if (needleTransform.gameObject != null) Destroy(needleTransform.gameObject);
+                if (material != null) Destroy(material);
+            }
+            _micNeedles.Clear();
+
+            foreach (var pg in _micParticleGroups)
+            {
+                if (pg != null && pg.gameObject != null) Destroy(pg.gameObject);
+            }
+            _micParticleGroups.Clear();
+
+            int micCount = _inputContexts.Count;
+            for (int i = 0; i < micCount; i++)
+            {
+                // 1. Single-mic sub-engine (not registered with EngineManager).
+                var subEngine = new YargFreeVocalsEngine(
+                    NoteTrack,
+                    multiTrack.Parts,
+                    SyncTrack,
+                    EngineParams,
+                    isBot: false,
+                    micCount: 1,
+                    botPartIndex: i);
+
+                // 2. Clone the needle visual.
+                var needleObj = Instantiate(_needleVisualContainer, _needleVisualContainer.transform.parent);
+                needleObj.SetActive(false);
+                var renderer = needleObj.GetComponentInChildren<MeshRenderer>();
+
+                int micNeedleIndex = (i % NEEDLES_COUNT) + 1;
+                var materialPath = $"VocalNeedle/{micNeedleIndex}";
+                var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
+                var materialInstance = new Material(baseMaterial);
+                renderer.material = materialInstance;
+
+                // 3. Clone the particle group.
+                var pgObj = Instantiate(_hittingParticleGroup.gameObject, _hittingParticleGroup.transform.parent);
+                pgObj.SetActive(false);
+                var pg = pgObj.GetComponent<ParticleGroup>();
+                pg.Colorize(VocalTrack.Colors[i % VocalTrack.Colors.Length]);
+
+                var slot = new PartyVocalsMicSlot(i, _inputContexts[i].Device, _inputContexts[i],
+                    subEngine, needleObj, needleObj.transform, renderer, materialInstance, pg);
+
+                WireSubEngineEvents(slot);
+                _slots.Add(slot);
+            }
+
+            // Hide the base class's default needle and particle group —
+            // sub-engine slots own their own visuals.
+            _needleVisualContainer.SetActive(false);
+            _hittingParticleGroup.gameObject.SetActive(false);
+        }
+
+        private void WireSubEngineEvents(PartyVocalsMicSlot slot)
+        {
+            slot.OnTargetNoteHandler = note => slot.LastTargetNote = note;
+            slot.OnHitHandler = hitting =>
+                slot.LastHitTime = hitting ? GameManager.InputTime : (double?) null;
+            slot.OnSingHandler = singing =>
+                slot.LastSingTime = singing ? GameManager.InputTime : (double?) null;
+
+            slot.Engine.OnTargetNoteChanged += slot.OnTargetNoteHandler;
+            slot.Engine.OnHit += slot.OnHitHandler;
+            slot.Engine.OnSing += slot.OnSingHandler;
+        }
+
+        protected override void UpdateInputs(double time)
+        {
+            base.UpdateInputs(time);
+
+            if (_slots.Count == 0) return;
+
+            // Route each mic's collected inputs to its sub-engine.
+            foreach (var (i, input) in _lastFrameInputs)
+            {
+                if (i >= 0 && i < _slots.Count)
+                {
+                    var copy = input;
+                    _slots[i].Engine.QueueInput(ref copy);
+                }
+            }
+
+            // Drive each sub-engine's update.
+            foreach (var slot in _slots)
+            {
+                slot.Engine.Update(time);
+            }
+        }
+
+        protected override void UpdateVisuals(double visualTime)
+        {
+            base.UpdateVisuals(visualTime);
+
+            if (_slots.Count == 0) return;
+
+            var singTime = GameManager.InputTime;
+            foreach (var slot in _slots)
+            {
+                UpdateSlotNeedle(slot, singTime);
+            }
+        }
+
+        private void UpdateSlotNeedle(PartyVocalsMicSlot slot, double singTime)
+        {
+            var needleContainer = slot.NeedleVisualContainer;
+
+            if (!IsInThreshold(singTime, slot.LastSingTime))
+            {
+                if (needleContainer.activeSelf) needleContainer.SetActive(false);
+                slot.HittingParticleGroup.Stop();
+                return;
+            }
+
+            if (!needleContainer.activeSelf) needleContainer.SetActive(true);
+
+            float lastNotePitch = slot.LastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
+            bool hitting = slot.LastTargetNote is not null && IsInThreshold(singTime, slot.LastHitTime);
+
+            const float NEEDLE_POS_LERP = 30f;
+            const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
+            const float NEEDLE_ROT_LERP = 25f;
+
+            float lerpRate = NEEDLE_POS_LERP;
+
+            if (!needleContainer.activeSelf)
+            {
+                needleContainer.SetActive(true);
+                lerpRate *= NEEDLE_POS_SNAP_MULTIPLIER;
+            }
+
+            if (hitting)
+            {
+                if (!GameManager.Rewinding) slot.HittingParticleGroup.Play();
+
+                float pitch;
+                float targetRotation = 0f;
+
+                if (!slot.LastTargetNote.IsNonPitched)
+                {
+                    pitch = lastNotePitch;
+                    (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, slot.Engine.PitchSang);
+                    targetRotation = GetNeedleRotation(pitchDist);
+                }
+                else
+                {
+                    pitch = slot.Engine.PitchSang + 12f;
+                }
+
+                float z = GameManager.VocalTrack.GetPosForPitch(pitch);
+                var lerp = Mathf.Lerp(slot.NeedleTransform.localPosition.z, z, Time.deltaTime * lerpRate);
+                slot.NeedleTransform.localPosition = new Vector3(0f, 0f, lerp);
+                slot.NeedleTransform.rotation = Quaternion.Lerp(slot.NeedleTransform.rotation,
+                    Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * NEEDLE_ROT_LERP);
+            }
+            else
+            {
+                slot.HittingParticleGroup.Stop();
+                float pitch = AnchorPitchToOctave(slot.Engine.PitchSang, lastNotePitch);
+                float z = GameManager.VocalTrack.GetPosForPitch(pitch);
+                var lerp = Mathf.Lerp(slot.NeedleTransform.localPosition.z, z, Time.deltaTime * lerpRate);
+                slot.NeedleTransform.localPosition = new Vector3(0f, 0f, lerp);
+                slot.NeedleTransform.rotation = Quaternion.Lerp(slot.NeedleTransform.rotation,
+                    Quaternion.Euler(0f, 90f, 0f), Time.deltaTime * NEEDLE_ROT_LERP);
+            }
+
+            // Drive the per-slot particle group position.
+            var pgPos = slot.HittingParticleGroup.transform.localPosition;
+            slot.HittingParticleGroup.transform.localPosition = new Vector3(
+                pgPos.x, pgPos.y, slot.NeedleTransform.localPosition.z);
+        }
+
+        protected override void FinishDestruction()
+        {
+            foreach (var slot in _slots)
+            {
+                if (slot.OnTargetNoteHandler != null) slot.Engine.OnTargetNoteChanged -= slot.OnTargetNoteHandler;
+                if (slot.OnHitHandler != null) slot.Engine.OnHit -= slot.OnHitHandler;
+                if (slot.OnSingHandler != null) slot.Engine.OnSing -= slot.OnSingHandler;
+
+                if (slot.NeedleVisualContainer != null) Destroy(slot.NeedleVisualContainer);
+                if (slot.NeedleMaterial != null) Destroy(slot.NeedleMaterial);
+                if (slot.HittingParticleGroup != null && slot.HittingParticleGroup.gameObject != null)
+                    Destroy(slot.HittingParticleGroup.gameObject);
+            }
+            _slots.Clear();
+
+            base.FinishDestruction();
+        }
+    }
+}
