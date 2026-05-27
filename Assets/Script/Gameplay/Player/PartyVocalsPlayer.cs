@@ -195,17 +195,10 @@ namespace YARG.Gameplay.Player
             // drives _lastTargetNote / _lastHitTime / IsMicOnNote(i). This mirrors the
             // base multi-needle path (VocalsPlayer.cs line 875-878).
             float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
-            bool hasTarget = _lastTargetNote is not null;
-            bool hitTimeFresh = IsInThreshold(singTime, _lastHitTime);
-            bool isFreeEngine = Engine is YargFreeVocalsEngine;
-            bool micOnNote = isFreeEngine && ((YargFreeVocalsEngine)Engine).IsMicOnNote(slot.Index);
-            bool hitting = hasTarget && hitTimeFresh && micOnNote;
-            if (slot.Index == 0 && Time.frameCount % 30 == 0)
-            {
-                YARG.Core.Logging.YargLogger.LogFormatDebug(
-                    "PV-trail slot=0 hasTarget={0} hitTimeFresh={1} micOnNote={2} hitting={3} _lastHitTime={4} singTime={5}",
-                    hasTarget, hitTimeFresh, micOnNote, hitting, _lastHitTime, singTime);
-            }
+            bool hitting = _lastTargetNote is not null
+                && IsInThreshold(singTime, _lastHitTime)
+                && Engine is YargFreeVocalsEngine bandSlot
+                && bandSlot.IsMicOnNote(slot.Index);
 
             const float NEEDLE_POS_LERP = 30f;
             const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
@@ -254,10 +247,12 @@ namespace YARG.Gameplay.Player
                     Quaternion.Euler(0f, 90f, 0f), Time.deltaTime * NEEDLE_ROT_LERP);
             }
 
-            // Drive the per-slot particle group position.
-            var pgPos = slot.HittingParticleGroup.transform.localPosition;
-            slot.HittingParticleGroup.transform.localPosition = new Vector3(
-                pgPos.x, pgPos.y, slot.NeedleTransform.localPosition.z);
+            // Drive the per-slot particle group position. Align to (0, 0, needleZ)
+            // for the same reason as the needle: the prefab's baked x/y was relative
+            // to the un-zeroed player root and projects offscreen now that the root
+            // is reset to origin in UpdateVisuals.
+            slot.HittingParticleGroup.transform.localPosition =
+                new Vector3(0f, 0f, slot.NeedleTransform.localPosition.z);
         }
 
         protected override void FinishDestruction()
