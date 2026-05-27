@@ -216,6 +216,8 @@ namespace YARG.Gameplay.Player
             if (hitting)
             {
                 if (!GameManager.Rewinding) slot.HittingParticleGroup.Play();
+                YARG.Core.Logging.YargLogger.LogFormatDebug("PV-SUB slot={0} hitting=TRUE pgPos={1}",
+                    slot.Index, slot.HittingParticleGroup.transform.localPosition);
 
                 float pitch;
                 float targetRotation = 0f;
