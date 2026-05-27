@@ -114,11 +114,19 @@ namespace YARG.Gameplay.Player
 
         private void WireSubEngineEvents(PartyVocalsMicSlot slot)
         {
+            int slotIdx = slot.Index;
             slot.OnTargetNoteHandler = note => slot.LastTargetNote = note;
             slot.OnHitHandler = hitting =>
+            {
                 slot.LastHitTime = hitting ? GameManager.InputTime : (double?) null;
+                YARG.Core.Logging.YargLogger.LogFormatDebug("PV-SUB slot={0} OnHit={1}", slotIdx, hitting);
+            };
             slot.OnSingHandler = singing =>
+            {
                 slot.LastSingTime = singing ? GameManager.InputTime : (double?) null;
+                YARG.Core.Logging.YargLogger.LogFormatDebug("PV-SUB slot={0} OnSing={1} needleActive={2}",
+                    slotIdx, singing, slot.NeedleVisualContainer != null && slot.NeedleVisualContainer.activeSelf);
+            };
 
             slot.Engine.OnTargetNoteChanged += slot.OnTargetNoteHandler;
             slot.Engine.OnHit += slot.OnHitHandler;
@@ -136,13 +144,15 @@ namespace YARG.Gameplay.Player
             // normalizes them to game-relative time before queueing, but the base
             // class's PartyVocals fast-path uses SetMicPitch (time-less) for the
             // band-slot engine, so the conversion never happens for these inputs.
-            // Apply the same normalization here or the sub-engine sees inputs in
-            // its far future and warns ("Queued input is in the future!").
+            // Apply the same normalization here, and track the latest adjusted time
+            // so Engine.Update is called at-or-after every queued input.
+            double subEngineUpdateTime = time;
             foreach (var (i, input) in _lastFrameInputs)
             {
                 if (i >= 0 && i < _slots.Count)
                 {
                     double adjustedTime = GameManager.GetRelativeInputTime(input.Time) + InputCalibration;
+                    if (adjustedTime > subEngineUpdateTime) subEngineUpdateTime = adjustedTime;
                     var copy = new GameInput(adjustedTime, input.Action, input.Integer);
                     _slots[i].Engine.QueueInput(ref copy);
                 }
@@ -151,7 +161,7 @@ namespace YARG.Gameplay.Player
             // Drive each sub-engine's update.
             foreach (var slot in _slots)
             {
-                slot.Engine.Update(time);
+                slot.Engine.Update(subEngineUpdateTime);
             }
         }
 
