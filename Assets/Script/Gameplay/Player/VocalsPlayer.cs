@@ -444,9 +444,21 @@ namespace YARG.Gameplay.Player
                 // Match the chart-selection in Initialize so engine and visuals agree.
                 bool harmonyHasContent = _chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
                 var multiTrack = harmonyHasContent ? _chart.Harmony : _chart.Vocals;
-                engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
-                    micCount: _partyVocalsMicCount,
-                    botPartIndex: Player.Profile.HarmonyIndex);
+
+                if (IsPartyVocals)
+                {
+                    engine = new PartyVocalsCoordinatorEngine(NoteTrack, multiTrack.Parts, SyncTrack,
+                        EngineParams, Player.Profile.IsBot,
+                        micCount: _partyVocalsMicCount,
+                        botPartIndex: Player.Profile.HarmonyIndex);
+                }
+                else
+                {
+                    engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
+                        micCount: _partyVocalsMicCount,
+                        botPartIndex: Player.Profile.HarmonyIndex);
+                }
+
                 // Register using the free vocals overload
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
             }
@@ -458,8 +470,8 @@ namespace YARG.Gameplay.Player
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
             }
 
-            // Subscribe to Party Vocals phrase events for any multi-mic profile (human or bot).
-            if (engine is YargFreeVocalsEngine freeEngine && _partyVocalsMicCount > 1)
+            // Subscribe to Party Vocals phrase events for any Party Vocals profile (human or bot).
+            if (engine is YargFreeVocalsEngine freeEngine && IsPartyVocals)
             {
                 freeEngine.OnPartyVocalsPhrase += OnPartyVocalsPhrase;
             }
