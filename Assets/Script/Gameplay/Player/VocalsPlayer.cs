@@ -72,8 +72,8 @@ namespace YARG.Gameplay.Player
         // actively hitting, instead of all converging on the shared anchor pitch.
         private readonly List<float?> _micLastPitches = new();
 
-        protected VocalNote _lastTargetNote;
-        protected double?   _lastHitTime;
+        private VocalNote _lastTargetNote;
+        private double?   _lastHitTime;
         private double?   _lastSingTime;
         private double    _previousStarPowerPercent;
         private bool      _hotStartChecked;
@@ -177,7 +177,7 @@ namespace YARG.Gameplay.Player
             // Display index for HUD ShowPlayerName: party-vocals uses the lowest mic-color
             // index (the leader needle); single-mic uses the player slot's needle index.
             int needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
-            if (isPartyVocals && !IsPartyVocals)
+            if (isPartyVocals)
             {
                 // Hide the default single needle — we'll create per-mic needles instead.
                 _needleVisualContainer.SetActive(false);
@@ -251,7 +251,7 @@ namespace YARG.Gameplay.Player
                 main.startColor = VocalTrack.Colors[colorIndex];
             }
 
-            if (isPartyVocals && !IsPartyVocals)
+            if (isPartyVocals)
             {
                 // Clone the particle group per mic so each needle has its own trail.
                 // Original is hidden — only the clones render.
@@ -820,9 +820,6 @@ namespace YARG.Gameplay.Player
 
         private void UpdateSingNeedle()
         {
-            // PartyVocalsPlayer owns its own needle drawing — skip the entire method.
-            if (IsPartyVocals) return;
-
             // Get the appropriate sing time
             var singTime = GameManager.InputTime;
 
