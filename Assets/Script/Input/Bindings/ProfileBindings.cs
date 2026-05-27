@@ -514,9 +514,7 @@ namespace YARG.Input
             int index = _microphones.IndexOf(microphone);
             if (index >= 0)
             {
-                YargLogger.LogFormatDebug("PV-binds RemoveMicrophone profile={0} stableId={1}",
-                    Profile.Name, microphone.StableId);
-                UnityEngine.Debug.Log("PV-binds stack:\n" + System.Environment.StackTrace);
+                UnityEngine.Debug.Log($"PV-binds RemoveMicrophone profile={Profile.Name} stableId={microphone.StableId}\n{System.Environment.StackTrace}");
                 _microphones.RemoveAt(index);
                 var micStableId = microphone.StableId;
                 // Guard against null match-all: if either side is null (e.g. a stale
@@ -534,9 +532,7 @@ namespace YARG.Input
 
         public void RemoveAllMicrophones()
         {
-            YargLogger.LogFormatDebug("PV-binds RemoveAllMicrophones profile={0} count={1}",
-                Profile.Name, _microphones.Count);
-            UnityEngine.Debug.Log("PV-binds stack:\n" + System.Environment.StackTrace);
+            UnityEngine.Debug.Log($"PV-binds RemoveAllMicrophones profile={Profile.Name} count={_microphones.Count}\n{System.Environment.StackTrace}");
             foreach (var microphone in _microphones)
             {
                 microphone.Dispose();
@@ -547,9 +543,7 @@ namespace YARG.Input
 
         public void Dispose()
         {
-            YargLogger.LogFormatDebug("PV-binds Dispose profile={0} micCount={1} unresolvedCount={2}",
-                Profile.Name, _microphones.Count, _unresolvedMics.Count);
-            UnityEngine.Debug.Log("PV-binds stack:\n" + System.Environment.StackTrace);
+            UnityEngine.Debug.Log($"PV-binds Dispose profile={Profile.Name} micCount={_microphones.Count} unresolvedCount={_unresolvedMics.Count}\n{System.Environment.StackTrace}");
             foreach (var device in InputSystem.devices)
             {
                 OnDeviceRemoved(device);
