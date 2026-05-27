@@ -521,9 +521,13 @@ namespace YARG.Gameplay.Player
 
             engine.OnHit += (hitting) =>
             {
-                _lastHitTime = hitting
-                    ? GameManager.InputTime
-                    : null;
+                // Only refresh _lastHitTime on hit; let IsInThreshold's window do
+                // the decay on miss. Multi-mic engines fire OnHit(false) every
+                // tick when no mic is on a note, which would otherwise snap the
+                // trail off on every pitch-tracker dropout. Solo gets a side
+                // benefit: missed-note trails decay over ~50ms instead of
+                // cutting instantly.
+                if (hitting) _lastHitTime = GameManager.InputTime;
             };
 
             return engine;

@@ -128,11 +128,10 @@ namespace YARG.Gameplay.Player
                 // ANDs with two per-mic conditions:
                 // - IsMicOnNote(i): band-slot assignment says this mic is on a
                 //   chart note this tick.
-                // - LastSingTime recency: this mic is actually producing audio
-                //   (Solo gets this implicitly because its OnHit only fires on
-                //   pitch detection, which needs sound; for us a silent mic can
-                //   still be "assigned" by the rolling window, so we gate
-                //   explicitly).
+                // - LastSingTime recency: this mic is actually producing audio.
+                //   Solo gets this implicitly because its OnHit only fires when
+                //   pitch is detected; for us a silent mic can still be
+                //   "assigned" by the rolling window, so we gate explicitly.
                 bool hitting = freeEngine != null
                     && _lastTargetNote is not null
                     && IsInThreshold(singTime, _lastHitTime)
