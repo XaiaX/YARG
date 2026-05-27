@@ -880,11 +880,25 @@ namespace YARG.Gameplay.Player
                             isHitting = true;
                             _micLastPitches[i] = micPitch;
                         }
+                        else if (_micLastPitches[i] is float cached)
+                        {
+                            // Hold this needle at its last on-note pitch so it doesn't
+                            // flicker on/off as hasMicNote toggles within a sustained
+                            // phrase. Restores the behavior from commit fa07ffa3, which
+                            // 4f6939ae changed to "hide entirely" and re-introduced the
+                            // bottom-of-highway flicker we'd already fixed.
+                            micPitch = cached;
+                            // Trail still stops when not actively on note — the cached
+                            // hold is visual continuity for the needle only.
+                            if (i < _micParticleGroups.Count)
+                            {
+                                _micParticleGroups[i].Stop();
+                            }
+                        }
                         else
                         {
-                            // Hide this needle (and its trail) when its mic isn't on a note.
-                            // Position/cache preserved so the needle reappears in a sensible
-                            // place when its next note starts.
+                            // No pitch ever observed for this mic yet — hide until first
+                            // hit, then the cache takes over.
                             if (transform.gameObject.activeSelf)
                             {
                                 transform.gameObject.SetActive(false);
