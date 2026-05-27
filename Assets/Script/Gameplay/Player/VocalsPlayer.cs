@@ -72,8 +72,8 @@ namespace YARG.Gameplay.Player
         // actively hitting, instead of all converging on the shared anchor pitch.
         private readonly List<float?> _micLastPitches = new();
 
-        private VocalNote _lastTargetNote;
-        private double?   _lastHitTime;
+        protected VocalNote _lastTargetNote;
+        protected double?   _lastHitTime;
         private double?   _lastSingTime;
         private double    _previousStarPowerPercent;
         private bool      _hotStartChecked;
