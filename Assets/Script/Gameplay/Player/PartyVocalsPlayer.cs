@@ -90,9 +90,12 @@ namespace YARG.Gameplay.Player
                 var materialInstance = new Material(baseMaterial);
                 renderer.material = materialInstance;
 
-                // 3. Clone the particle group.
+                // 3. Clone the particle group. Must stay SetActive(true): Play() on
+                // an inactive ParticleSystem is a no-op, so leaving it false hides the
+                // trail forever even when the gate (hitting) fires. Matches base
+                // multi-mic path in VocalsPlayer.Initialize.
                 var pgObj = Instantiate(_hittingParticleGroup.gameObject, _hittingParticleGroup.transform.parent);
-                pgObj.SetActive(false);
+                pgObj.SetActive(true);
                 var pg = pgObj.GetComponent<ParticleGroup>();
                 pg.Colorize(VocalTrack.Colors[i % VocalTrack.Colors.Length]);
 
