@@ -171,6 +171,13 @@ namespace YARG.Gameplay.Player
 
             if (_slots.Count == 0) return;
 
+            // Match base multi-needle reset (UpdateSingNeedle line 829-836): the
+            // VocalsPlayer root transform sits at (-5, 0.2, 0) in the prefab. The
+            // single-needle code positions the root each frame, but our per-slot
+            // needles are positioned individually as children, so leaving the root
+            // at that offset would push every clone off-screen.
+            transform.localPosition = Vector3.zero;
+
             var singTime = GameManager.InputTime;
             foreach (var slot in _slots)
             {
