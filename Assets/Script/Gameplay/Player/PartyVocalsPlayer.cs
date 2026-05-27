@@ -181,14 +181,41 @@ namespace YARG.Gameplay.Player
                     Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * NEEDLE_ROT_LERP);
 
                 // Trail: only when this mic is actually on a note. Color follows
-                // the HARM lane the mic is scoring.
+                // the HARM lane(s) the mic actually scored on this tick — not the
+                // slot's static assignment. Resolution:
+                //   0 hits        → assigned-slot color (fallback)
+                //   1 hit         → that part's color (regardless of slot)
+                //   ≥2 hits, slot's assigned part is in the set → slot color
+                //   ≥2 hits, slot's assigned part is NOT in the set → lowest hit part
+                // Effect: when ambiguous (unison across harmonies, talky overlaps)
+                // the mic "wins the tie" toward its own assigned color; otherwise
+                // it picks the lowest active lane.
                 if (hitting && !GameManager.Rewinding)
                 {
-                    int effectivePart = freeEngine.GetEffectivePartForMic(i);
-                    int trailColorIdx = effectivePart >= 0
-                        ? effectivePart % VocalTrack.Colors.Length
-                        : i % VocalTrack.Colors.Length;
-                    slot.Particles.Colorize(VocalTrack.Colors[trailColorIdx]);
+                    uint hitMask  = freeEngine.GetMicHittingParts(i);
+                    int  popCount = System.Numerics.BitOperations.PopCount(hitMask);
+                    int  partCount = System.Math.Max(1, freeEngine.PartCount);
+                    int  assignedPart = i % partCount;
+
+                    int trailPart;
+                    if (popCount == 0)
+                    {
+                        trailPart = i;  // fallback to slot color
+                    }
+                    else if (popCount == 1)
+                    {
+                        trailPart = System.Numerics.BitOperations.TrailingZeroCount(hitMask);
+                    }
+                    else if ((hitMask & (1u << assignedPart)) != 0)
+                    {
+                        trailPart = assignedPart;
+                    }
+                    else
+                    {
+                        trailPart = System.Numerics.BitOperations.TrailingZeroCount(hitMask);
+                    }
+
+                    slot.Particles.Colorize(VocalTrack.Colors[trailPart % VocalTrack.Colors.Length]);
                     slot.Particles.transform.localPosition = new Vector3(0f, 0f, slot.Transform.localPosition.z);
                     slot.Particles.Play();
                 }
