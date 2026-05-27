@@ -514,8 +514,11 @@ namespace YARG.Input
             int index = _microphones.IndexOf(microphone);
             if (index >= 0)
             {
-                UnityEngine.Debug.Log($"PV-binds RemoveMicrophone profile={Profile.Name} stableId={microphone.StableId}\n{System.Environment.StackTrace}");
                 _microphones.RemoveAt(index);
+                // Dispose immediately so BASS releases the underlying device handle.
+                // Without this, the OS mic stays locked until GC, and re-opening the
+                // Add Device dialog won't list it as available.
+                microphone.Dispose();
                 var micStableId = microphone.StableId;
                 // Guard against null match-all: if either side is null (e.g. a stale
                 // pre-resolve entry that never got its StableId populated), skip the
@@ -532,7 +535,6 @@ namespace YARG.Input
 
         public void RemoveAllMicrophones()
         {
-            UnityEngine.Debug.Log($"PV-binds RemoveAllMicrophones profile={Profile.Name} count={_microphones.Count}\n{System.Environment.StackTrace}");
             foreach (var microphone in _microphones)
             {
                 microphone.Dispose();
@@ -543,7 +545,6 @@ namespace YARG.Input
 
         public void Dispose()
         {
-            UnityEngine.Debug.Log($"PV-binds Dispose profile={Profile.Name} micCount={_microphones.Count} unresolvedCount={_unresolvedMics.Count}\n{System.Environment.StackTrace}");
             foreach (var device in InputSystem.devices)
             {
                 OnDeviceRemoved(device);
