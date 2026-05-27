@@ -28,7 +28,8 @@ namespace YARG.Gameplay.Player
             public Transform    Transform;
             public Material     Material;
             public ParticleGroup Particles;
-            public double?      LastSingTime;  // per-mic input recency
+            public double?      LastSingTime;       // per-mic input recency
+            public int          LastResolvedPart;   // sticky trail color source; -1 = none yet
         }
 
         private readonly List<Slot> _slots = new();
@@ -69,6 +70,7 @@ namespace YARG.Gameplay.Player
                     Material  = materialInstance,
                     Particles = pg,
                     LastSingTime = null,
+                    LastResolvedPart = -1,
                 });
             }
         }
@@ -199,7 +201,13 @@ namespace YARG.Gameplay.Player
                     int trailPart;
                     if (hitMask == 0u)
                     {
-                        trailPart = i;  // fallback to slot color
+                        // No information this tick — keep the last resolved color
+                        // rather than flicking to the slot's assigned color, which
+                        // would oscillate yellow/blue on every silent tick within
+                        // a HARM1-only stretch where the slot's assigned lane
+                        // isn't active. Falls back to slot color only on the very
+                        // first frame (before anything resolved).
+                        trailPart = slot.LastResolvedPart >= 0 ? slot.LastResolvedPart : i;
                     }
                     else if ((hitMask & (1u << assignedPart)) != 0)
                     {
@@ -212,6 +220,10 @@ namespace YARG.Gameplay.Player
                         // with assigned not included — pick the lowest set bit.
                         trailPart = LowestSetBit(hitMask);
                     }
+
+                    // Remember for the next silent tick(s).
+                    slot.LastResolvedPart = trailPart;
+                    _slots[i] = slot;
 
                     slot.Particles.Colorize(VocalTrack.Colors[trailPart % VocalTrack.Colors.Length]);
                     slot.Particles.transform.localPosition = new Vector3(0f, 0f, slot.Transform.localPosition.z);
