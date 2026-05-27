@@ -219,7 +219,7 @@ namespace YARG.Gameplay.Player
                 float pitch;
                 float targetRotation = 0f;
 
-                if (!slot.LastTargetNote.IsNonPitched)
+                if (!_lastTargetNote.IsNonPitched)
                 {
                     pitch = lastNotePitch;
                     (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, slot.Engine.PitchSang);
