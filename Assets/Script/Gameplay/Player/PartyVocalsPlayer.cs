@@ -123,14 +123,21 @@ namespace YARG.Gameplay.Player
                     continue;
                 }
 
-                // Per-mic on-note (drives trail + snap-to-chart-pitch). Uses the
-                // band-slot engine's per-mic assignment; if the band-slot doesn't
-                // know which part this mic is on, fall back to "not hitting"
-                // (needle still tracks singer pitch via anchor).
+                // Per-mic on-note (drives trail + snap-to-chart-pitch). Mirrors
+                // Solo's gate (_lastTargetNote + IsInThreshold(_lastHitTime)) and
+                // ANDs with two per-mic conditions:
+                // - IsMicOnNote(i): band-slot assignment says this mic is on a
+                //   chart note this tick.
+                // - LastSingTime recency: this mic is actually producing audio
+                //   (Solo gets this implicitly because its OnHit only fires on
+                //   pitch detection, which needs sound; for us a silent mic can
+                //   still be "assigned" by the rolling window, so we gate
+                //   explicitly).
                 bool hitting = freeEngine != null
                     && _lastTargetNote is not null
                     && IsInThreshold(singTime, _lastHitTime)
-                    && freeEngine.IsMicOnNote(i);
+                    && freeEngine.IsMicOnNote(i)
+                    && IsInThreshold(singTime, slot.LastSingTime);
 
                 float micPitch = freeEngine?.GetMicPitch(i) ?? 0f;
                 float pitch;
