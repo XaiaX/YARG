@@ -72,8 +72,8 @@ namespace YARG.Gameplay.Player
         // actively hitting, instead of all converging on the shared anchor pitch.
         private readonly List<float?> _micLastPitches = new();
 
-        private VocalNote _lastTargetNote;
-        private double?   _lastHitTime;
+        protected VocalNote _lastTargetNote;
+        protected double?   _lastHitTime;
         private double?   _lastSingTime;
         private double    _previousStarPowerPercent;
         private bool      _hotStartChecked;
@@ -81,7 +81,7 @@ namespace YARG.Gameplay.Player
 
         protected VocalsPlayerHUD _hud;
         private VocalPercussionTrack _percussionTrack;
-        private bool _shouldHideNeedle;
+        protected bool _shouldHideNeedle;
 
         private int _phraseIndex = -1;
 
@@ -177,7 +177,7 @@ namespace YARG.Gameplay.Player
             // Display index for HUD ShowPlayerName: party-vocals uses the lowest mic-color
             // index (the leader needle); single-mic uses the player slot's needle index.
             int needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
-            if (isPartyVocals)
+            if (isPartyVocals && !IsPartyVocals)
             {
                 // Hide the default single needle — we'll create per-mic needles instead.
                 _needleVisualContainer.SetActive(false);
@@ -251,7 +251,7 @@ namespace YARG.Gameplay.Player
                 main.startColor = VocalTrack.Colors[colorIndex];
             }
 
-            if (isPartyVocals)
+            if (isPartyVocals && !IsPartyVocals)
             {
                 // Clone the particle group per mic so each needle has its own trail.
                 // Original is hidden — only the clones render.
@@ -767,7 +767,7 @@ namespace YARG.Gameplay.Player
             return distPercent * NEEDLE_ROT_MAX;
         }
 
-        private void UpdateSingleNeedle(MeshRenderer renderer, Transform transform, Material material,
+        protected void UpdateSingleNeedle(MeshRenderer renderer, Transform transform, Material material,
             float pitch, float lastNotePitch, bool isHitting, bool isNonPitched,
             float zOffset = 0f)
         {
@@ -820,6 +820,11 @@ namespace YARG.Gameplay.Player
 
         private void UpdateSingNeedle()
         {
+            // PartyVocalsPlayer owns its own per-mic needle/trail rendering, which
+            // is structurally a copy of the single-needle Solo path replicated per
+            // bound mic. Skip the entire shared method when that subclass is active.
+            if (IsPartyVocals) return;
+
             // Get the appropriate sing time
             var singTime = GameManager.InputTime;
 
