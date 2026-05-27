@@ -192,27 +192,25 @@ namespace YARG.Gameplay.Player
                 // it picks the lowest active lane.
                 if (hitting && !GameManager.Rewinding)
                 {
-                    uint hitMask  = freeEngine.GetMicHittingParts(i);
-                    int  popCount = System.Numerics.BitOperations.PopCount(hitMask);
+                    uint hitMask = freeEngine.GetMicHittingParts(i);
                     int  partCount = System.Math.Max(1, freeEngine.PartCount);
                     int  assignedPart = i % partCount;
 
                     int trailPart;
-                    if (popCount == 0)
+                    if (hitMask == 0u)
                     {
                         trailPart = i;  // fallback to slot color
                     }
-                    else if (popCount == 1)
-                    {
-                        trailPart = System.Numerics.BitOperations.TrailingZeroCount(hitMask);
-                    }
                     else if ((hitMask & (1u << assignedPart)) != 0)
                     {
+                        // Ambiguous OR single-hit-on-assigned: mic's own lane wins.
                         trailPart = assignedPart;
                     }
                     else
                     {
-                        trailPart = System.Numerics.BitOperations.TrailingZeroCount(hitMask);
+                        // Either single hit on a non-assigned lane, or multi-hit
+                        // with assigned not included — pick the lowest set bit.
+                        trailPart = LowestSetBit(hitMask);
                     }
 
                     slot.Particles.Colorize(VocalTrack.Colors[trailPart % VocalTrack.Colors.Length]);
@@ -224,6 +222,15 @@ namespace YARG.Gameplay.Player
                     slot.Particles.Stop();
                 }
             }
+        }
+
+        private static int LowestSetBit(uint v)
+        {
+            // v is never 0 at the call site; guarded for safety.
+            if (v == 0u) return 0;
+            int n = 0;
+            while ((v & 1u) == 0u) { v >>= 1; n++; }
+            return n;
         }
 
         protected override void FinishDestruction()
