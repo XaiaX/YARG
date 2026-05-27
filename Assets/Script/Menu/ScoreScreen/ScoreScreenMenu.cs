@@ -352,26 +352,47 @@ namespace YARG.Menu.ScoreScreen
 #nullable disable
         {
             _analyzingReplay = true;
+            try
+            {
+                return AnalyzeReplayInner(songEntry, replayEntry);
+            }
+            catch (System.Exception ex)
+            {
+                // Don't let a thrown analyzer leave _analyzingReplay stuck — it
+                // gates the Continue button on the score screen, so a stuck flag
+                // means the user can't leave without restarting. Currently
+                // reproducible after any Party Vocals run (legacy MicPitches /
+                // MicCount replay shape isn't handled by the analyzer yet; full
+                // fix is the Phase 6 replay format bump).
+                YargLogger.LogFormatError("Replay analysis threw: {0}", ex);
+                return true;
+            }
+            finally
+            {
+                _analyzingReplay = false;
+            }
+        }
 
+#nullable enable
+        private bool AnalyzeReplayInner(SongEntry songEntry, ReplayInfo? replayEntry)
+#nullable disable
+        {
             var chart = songEntry.LoadChart();
             if (chart == null)
             {
                 YargLogger.LogError("Chart did not load");
-                _analyzingReplay = false;
                 return true;
             }
 
             if (GlobalVariables.State.ScoreScreenStats.Value.PlayerScores.All(e => e.Player.Profile.IsBot))
             {
                 YargLogger.LogInfo("No human players in ReplayEntry.");
-                _analyzingReplay = false;
                 return true;
             }
 
             if (replayEntry == null)
             {
                 YargLogger.LogError("ReplayEntry is null");
-                _analyzingReplay = false;
                 return true;
             }
 
@@ -383,7 +404,6 @@ namespace YARG.Menu.ScoreScreen
             if (result != ReplayReadResult.Valid)
             {
                 YargLogger.LogFormatError("Replay did not load. {0}", result);
-                _analyzingReplay = false;
                 return true;
             }
 
@@ -409,12 +429,10 @@ namespace YARG.Menu.ScoreScreen
                         data.Frames[i].Profile.Name, data.Frames[i].Profile.CurrentInstrument,
                         data.Frames[i].Profile.CurrentDifficulty, item4: analysisResult.StatLog);
 #endif
-                    _analyzingReplay = false;
                     allPass = false;
                 }
             }
 
-            _analyzingReplay = false;
             return allPass;
         }
 
