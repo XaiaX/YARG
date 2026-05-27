@@ -217,6 +217,16 @@ namespace YARG.Gameplay.Player
 
             if (hitting)
             {
+                // Colorize the trail by the HARM lane this mic is actually scoring on,
+                // not by its slot index (the needle stays singer-colored, but the trail
+                // tracks the active part so two singers on HARM1/HARM2 visibly light up
+                // different lanes). Matches base multi-needle behavior (VocalsPlayer.cs
+                // line 919-926).
+                int effectivePart = ((YargFreeVocalsEngine) Engine).GetEffectivePartForMic(slot.Index);
+                int trailColorIdx = effectivePart >= 0
+                    ? effectivePart % VocalTrack.Colors.Length
+                    : slot.Index % VocalTrack.Colors.Length;
+                slot.HittingParticleGroup.Colorize(VocalTrack.Colors[trailColorIdx]);
                 if (!GameManager.Rewinding) slot.HittingParticleGroup.Play();
 
                 float pitch;
