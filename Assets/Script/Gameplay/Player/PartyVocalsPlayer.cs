@@ -29,6 +29,7 @@ namespace YARG.Gameplay.Player
             public Material     Material;
             public ParticleGroup Particles;
             public double?      LastSingTime;       // per-mic input recency
+            public double?      LastOnNoteTime;     // last tick mic landed on any chart note's pitch
             public int          LastResolvedPart;   // sticky trail color source; -1 = none yet
         }
 
@@ -70,6 +71,7 @@ namespace YARG.Gameplay.Player
                     Material  = materialInstance,
                     Particles = pg,
                     LastSingTime = null,
+                    LastOnNoteTime = null,
                     LastResolvedPart = -1,
                 });
             }
@@ -125,19 +127,25 @@ namespace YARG.Gameplay.Player
                     continue;
                 }
 
-                // Per-mic on-note (drives trail + snap-to-chart-pitch). Mirrors
-                // Solo's gate (_lastTargetNote + IsInThreshold(_lastHitTime)) and
-                // ANDs with two per-mic conditions:
-                // - IsMicOnNote(i): band-slot assignment says this mic is on a
-                //   chart note this tick.
-                // - LastSingTime recency: this mic is actually producing audio.
-                //   Solo gets this implicitly because its OnHit only fires when
-                //   pitch is detected; for us a silent mic can still be
-                //   "assigned" by the rolling window, so we gate explicitly.
+                // Refresh per-mic LastOnNoteTime whenever this mic's pitch lands
+                // on any chart note's tolerance window this tick. Replaces the
+                // old IsMicOnNote(i) gate (which only asked "is there a note
+                // available for this mic", regardless of whether the mic was on
+                // pitch). Behaves like Solo's _lastHitTime but per-mic.
+                uint hitMask = freeEngine?.GetMicHittingParts(i) ?? 0u;
+                if (hitMask != 0u)
+                {
+                    slot.LastOnNoteTime = singTime;
+                }
+
+                // Per-mic on-note gate (drives trail + snap-to-chart-pitch).
+                // Mirrors Solo's structure (_lastTargetNote + recent hit time)
+                // with everything per-mic so off-pitch singing on one mic
+                // doesn't leave trails just because the band-slot is scoring
+                // on another mic.
                 bool hitting = freeEngine != null
                     && _lastTargetNote is not null
-                    && IsInThreshold(singTime, _lastHitTime)
-                    && freeEngine.IsMicOnNote(i)
+                    && IsInThreshold(singTime, slot.LastOnNoteTime)
                     && IsInThreshold(singTime, slot.LastSingTime);
 
                 float micPitch = freeEngine?.GetMicPitch(i) ?? 0f;
@@ -194,7 +202,6 @@ namespace YARG.Gameplay.Player
                 // it picks the lowest active lane.
                 if (hitting && !GameManager.Rewinding)
                 {
-                    uint hitMask = freeEngine.GetMicHittingParts(i);
                     int  partCount = System.Math.Max(1, freeEngine.PartCount);
                     int  assignedPart = i % partCount;
 
