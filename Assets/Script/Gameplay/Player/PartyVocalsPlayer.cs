@@ -195,10 +195,17 @@ namespace YARG.Gameplay.Player
             // drives _lastTargetNote / _lastHitTime / IsMicOnNote(i). This mirrors the
             // base multi-needle path (VocalsPlayer.cs line 875-878).
             float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
-            bool hitting = _lastTargetNote is not null
-                && IsInThreshold(singTime, _lastHitTime)
-                && Engine is YargFreeVocalsEngine bandSlot
-                && bandSlot.IsMicOnNote(slot.Index);
+            bool hasTarget = _lastTargetNote is not null;
+            bool hitTimeFresh = IsInThreshold(singTime, _lastHitTime);
+            bool isFreeEngine = Engine is YargFreeVocalsEngine;
+            bool micOnNote = isFreeEngine && ((YargFreeVocalsEngine)Engine).IsMicOnNote(slot.Index);
+            bool hitting = hasTarget && hitTimeFresh && micOnNote;
+            if (slot.Index == 0 && Time.frameCount % 30 == 0)
+            {
+                YARG.Core.Logging.YargLogger.LogFormatDebug(
+                    "PV-trail slot=0 hasTarget={0} hitTimeFresh={1} micOnNote={2} hitting={3} _lastHitTime={4} singTime={5}",
+                    hasTarget, hitTimeFresh, micOnNote, hitting, _lastHitTime, singTime);
+            }
 
             const float NEEDLE_POS_LERP = 30f;
             const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
