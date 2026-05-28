@@ -5,6 +5,7 @@ using UnityEngine.AddressableAssets;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
+using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
 using YARG.Core.Input;
 using YARG.Gameplay.HUD;
