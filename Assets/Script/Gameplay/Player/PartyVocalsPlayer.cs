@@ -181,6 +181,15 @@ namespace YARG.Gameplay.Player
                 }
             }
 
+            // Advance the engine for this frame. The single-mic path delegates to
+            // base.UpdateInputs, which calls BaseEngine.Update; the multi-mic path
+            // above bypasses base to split pitch routing (Pitch -> SetMicPitch,
+            // Hit/StarPower -> OnGameInput), so it must drive the engine itself.
+            // Without this the engine only advanced when real-mic input frames
+            // arrived, so bots (which have no input stream) never progressed — no
+            // scoring and needles stuck at the bottom of the highway.
+            BaseEngine.Update(time + InputCalibration);
+
             // Track per-mic input recency for needle visibility
             var singTime = GameManager.InputTime;
             for (int i = 0; i < _micCount && i < _slots.Count; i++)
