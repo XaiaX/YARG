@@ -53,11 +53,8 @@ namespace YARG.Gameplay.Player
             int micCount;
             if (Player.Profile.IsFreeVocals && player.Profile.IsBot)
             {
-                // 0 = Auto (one bot mic per HARM part). 1-7 = explicit override for testing
-                int botMicOverride = Player.Profile.PartyVocalsMicCountOverride;
-                micCount = botMicOverride > 0
-                    ? Mathf.Clamp(botMicOverride, 1, 7)
-                    : Mathf.Max(1, chart.Vocals.Parts.Count);
+                // 0 = Auto (one bot mic per HARM part)
+                micCount = Mathf.Max(1, chart.Vocals.Parts.Count);
             }
             else if (effectiveMics.Count > 0)
             {
@@ -75,7 +72,7 @@ namespace YARG.Gameplay.Player
             _needleVisualContainer.SetActive(false);
             _hittingParticleGroup.gameObject.SetActive(false);
 
-            for (int i = 0; i < _partyVocalsMicCount; i++)
+            for (int i = 0; i < micCount; i++)
             {
                 // Needle clone.
                 int micNeedleIndex = (i % NEEDLES_COUNT) + 1;

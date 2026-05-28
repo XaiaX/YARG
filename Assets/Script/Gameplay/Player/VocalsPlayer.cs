@@ -238,11 +238,7 @@ namespace YARG.Gameplay.Player
             {
                 Engine.OnTargetNoteChanged -= OnTargetNoteChangedHandler;
 
-                // Unsubscribe from Party Vocals phrase events
-                if (Engine is YargFreeVocalsEngine freeEngine)
-                {
-                    freeEngine.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
-                }
+                Engine.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
             }
 
             // Clean up material
@@ -298,7 +294,6 @@ namespace YARG.Gameplay.Player
                 var multiTrack = harmonyHasContent ? _chart.Harmony : _chart.Vocals;
 
                 engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
-                    micCount: 1,
                     botPartIndex: Player.Profile.HarmonyIndex);
 
                 // Register using the free vocals overload
@@ -331,9 +326,7 @@ namespace YARG.Gameplay.Player
                 // Multi-mic free vocals shows its banner via OnPartyVocalsPhrase
                 // (AWESOME / DOUBLE AWESOME / TRIPLE AWESOME) — suppress the legacy
                 // percent-based text so we don't stack two phrase notifications.
-                bool multiMicFree = Player.Profile.IsFreeVocals
-                    && Engine is YargFreeVocalsEngine freeEng
-                    && freeEng.PartCount > 1;
+                bool multiMicFree = Engine is PartyVocalsCoordinatorEngine;
                 if (!multiMicFree)
                 {
                     _hud.ShowPhraseHit(percent, Combo);
@@ -494,14 +487,10 @@ namespace YARG.Gameplay.Player
             _hud.UpdateInfo(fill, displayMultiplier,
                 (float) Engine.GetStarPowerBarAmount(), Engine.EngineStats.IsStarPowerActive);
 
-            // Update per-HARM fill for Free Vocals
-            if (Engine is YargFreeVocalsEngine freeEngine && Player.Profile.IsFreeVocals)
+            // Update per-HARM fill for Party Vocals (multi-mic via coordinator)
+            if (Engine is PartyVocalsCoordinatorEngine coordinator)
             {
-                var meters = freeEngine.CanonicalMeters;
-                if (meters != null)
-                {
-                    _hud.UpdateHarmFill(meters, freeEngine.AwesomeThreshold, freeEngine.PartHasContent);
-                }
+                _hud.UpdateHarmFill(coordinator.CanonicalMeters, coordinator.AwesomeThreshold, coordinator.PartHasContent);
             }
             else
             {
