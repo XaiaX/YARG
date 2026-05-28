@@ -259,7 +259,6 @@ namespace YARG.Gameplay.Player
             // Free vocals single-mic: tint the trail to the HARM lane being scored, so
             // the trail "lights up" that lane. Needle keeps its singer-slot material.
             if (Player.Profile.IsFreeVocals
-                && _micParticleGroups.Count == 0
                 && Engine is YargFreeVocalsEngine freeEngine)
             {
                 int idx = freeEngine.CurrentTargetHarmonyIndex;

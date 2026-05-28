@@ -333,7 +333,7 @@ namespace YARG.Gameplay.Player
                 // Create coordinator engine with composition
                 engine = new PartyVocalsCoordinatorEngine(NoteTrack, multiTrack.Parts, SyncTrack,
                     EngineParams, Player.Profile.IsBot,
-                    micCount: _slots.Count > 0 ? _slots.Count : 1,
+                    micCount: micCount,
                     botPartIndex: Player.Profile.HarmonyIndex);
 
                 // Register using the free vocals overload
