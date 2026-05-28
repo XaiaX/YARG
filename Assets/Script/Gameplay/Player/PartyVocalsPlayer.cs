@@ -403,7 +403,7 @@ namespace YARG.Gameplay.Player
             {
                 int micIndex = i;
                 var sub = coordinator.SubEngines[i];
-                TargetNoteChangeEvent handler = note => SetSlotTargetNote(micIndex, note);
+                VocalsEngine.TargetNoteChangeEvent handler = note => SetSlotTargetNote(micIndex, note);
                 sub.OnTargetNoteChanged += handler;
                 _targetNoteUnsubscribers.Add(() => sub.OnTargetNoteChanged -= handler);
             }
