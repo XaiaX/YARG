@@ -22,7 +22,7 @@ namespace YARG.Gameplay.Player
 {
     public class VocalsPlayer : BasePlayer
     {
-        public VocalsEngineParameters EngineParams { get; private set; }
+        public VocalsEngineParameters EngineParams { get; protected set; }
         public VocalsEngine           Engine       { get; private set; }
 
         public override BaseEngine BaseEngine => Engine;
