@@ -43,9 +43,16 @@ namespace YARG.Gameplay.Player
             public double?      LastSingTime;
             public double?      LastOnNoteTime;
             public int          LastResolvedPart;
+            public VocalNote    TargetNote;        // this mic's own current chart note (from its sub-engine)
         }
 
         private readonly List<Slot> _slots = new();
+
+        // Per-sub-engine OnTargetNoteChanged unsubscribers. Each sub-engine reports
+        // the note ITS mic is on; we record it per-slot so each needle snaps to its
+        // own line instead of a single shared _lastTargetNote (which all mics would
+        // otherwise follow — it ends up as whichever sub-engine fired last).
+        private readonly List<System.Action> _targetNoteUnsubscribers = new();
 
         public override void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
@@ -214,12 +221,16 @@ namespace YARG.Gameplay.Player
             var singTime  = GameManager.InputTime;
             var songTime  = GameManager.SongTime;
             var coordinator = Engine as PartyVocalsCoordinatorEngine;
-            float lastNotePitch = _lastTargetNote?.PitchAtSongTime(songTime) ?? -1f;
-            bool  isNonPitched  = _lastTargetNote?.IsNonPitched ?? false;
 
             for (int i = 0; i < _slots.Count; i++)
             {
                 var slot = _slots[i];
+
+                // This mic's own chart note (recorded per sub-engine) — each needle
+                // snaps to its own line, not a single shared global target note.
+                var   slotNote      = slot.TargetNote;
+                float lastNotePitch = slotNote?.PitchAtSongTime(songTime) ?? -1f;
+                bool  isNonPitched  = slotNote?.IsNonPitched ?? false;
 
                 // Per-mic visibility: this mic specifically singing recently.
                 bool singing = IsInThreshold(singTime, slot.LastSingTime) && !_shouldHideNeedle;
@@ -241,7 +252,7 @@ namespace YARG.Gameplay.Player
 
                 // Per-mic on-note gate (drives trail + snap-to-chart-pitch).
                 bool hitting = coordinator != null
-                    && _lastTargetNote is not null
+                    && slotNote is not null
                     && IsInThreshold(singTime, slot.LastOnNoteTime)
                     && IsInThreshold(singTime, slot.LastSingTime);
 
@@ -336,6 +347,17 @@ namespace YARG.Gameplay.Player
             return n;
         }
 
+        // Records the chart note a given mic's sub-engine is currently on, so that
+        // mic's needle snaps to its own line. Fired from each sub-engine's
+        // OnTargetNoteChanged (see CreateEngine).
+        private void SetSlotTargetNote(int micIndex, VocalNote note)
+        {
+            if (micIndex < 0 || micIndex >= _slots.Count) return;
+            var s = _slots[micIndex];
+            s.TargetNote = note;
+            _slots[micIndex] = s;
+        }
+
         protected override VocalsEngine CreateEngine()
         {
             if (!Player.IsReplay)
@@ -373,10 +395,17 @@ namespace YARG.Gameplay.Player
             coordinator.OnStarPowerStatus += OnStarPowerStatus;
 
             // The coordinator itself does not fire OnTargetNoteChanged — sub-engines do.
-            // Subscribe all sub-engines so _lastTargetNote stays current from any mic.
-            foreach (var subEngine in coordinator.SubEngines)
+            // Subscribe each sub-engine to record ITS mic's note into that mic's slot,
+            // so every needle snaps to its own line. (Subscribing them all to the shared
+            // OnTargetNoteChangedHandler made all needles follow whichever sub-engine
+            // fired last — i.e. the highest HARM present.)
+            for (int i = 0; i < coordinator.SubEngines.Count; i++)
             {
-                subEngine.OnTargetNoteChanged += OnTargetNoteChangedHandler;
+                int micIndex = i;
+                var sub = coordinator.SubEngines[i];
+                TargetNoteChangeEvent handler = note => SetSlotTargetNote(micIndex, note);
+                sub.OnTargetNoteChanged += handler;
+                _targetNoteUnsubscribers.Add(() => sub.OnTargetNoteChanged -= handler);
             }
 
             coordinator.OnPhraseHit += (percent, fullPoints, isLastPhrase) =>
@@ -434,16 +463,14 @@ namespace YARG.Gameplay.Player
 
         protected override void FinishDestruction()
         {
-            // Unsubscribe sub-engine target-note handlers (base.FinishDestruction
-            // only unsubscribes from Engine itself, but the coordinator doesn't
-            // fire OnTargetNoteChanged — its sub-engines do).
-            if (Engine is PartyVocalsCoordinatorEngine coordinator)
+            // Unsubscribe per-mic sub-engine target-note handlers (base.FinishDestruction
+            // only unsubscribes from Engine itself, but the coordinator doesn't fire
+            // OnTargetNoteChanged — its sub-engines do).
+            foreach (var unsubscribe in _targetNoteUnsubscribers)
             {
-                foreach (var subEngine in coordinator.SubEngines)
-                {
-                    subEngine.OnTargetNoteChanged -= OnTargetNoteChangedHandler;
-                }
+                unsubscribe();
             }
+            _targetNoteUnsubscribers.Clear();
 
             foreach (var slot in _slots)
             {
