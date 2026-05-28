@@ -36,13 +36,7 @@ namespace YARG.Gameplay.Player
         [SerializeField]
         protected ParticleGroup _hittingParticleGroup;
 
-        /// <summary>
-        /// When true, multi-mic visual paths in this base class are inert —
-        /// <see cref="PartyVocalsPlayer"/> owns per-mic needles via its own
-        /// MicSlot machinery. Defaults to false.
-        /// </summary>
-        protected virtual bool IsPartyVocals => false;
-
+        
         public override bool ShouldUpdateInputsOnResume => false;
 
         protected override float[] StarMultiplierThresholds { get; set; } =
@@ -54,23 +48,6 @@ namespace YARG.Gameplay.Player
         private InstrumentDifficulty<VocalNote> OriginalNoteTrack { get; set; }
 
         protected MicInputContext _inputContext;
-        protected List<MicInputContext> _inputContexts;
-
-        // Total simulated "vocalists" for Party Vocals. For humans: matches the bound mic
-        // count. For Party Vocals bots: matches the song's HARM part count (one bot
-        // vocalist per HARM line). Used to size needles and the engine's per-mic buffers
-        // before _inputContexts is populated.
-        protected int _partyVocalsMicCount = 1;
-
-        // Multi-mic needles for Party Vocals
-        protected readonly List<(MeshRenderer renderer, Transform transform, Material material)> _micNeedles = new();
-
-        // Per-mic particle groups for Party Vocals (one trail per needle)
-        protected readonly List<ParticleGroup> _micParticleGroups = new();
-
-        // Per-mic last pitch cache — keeps each needle at its prior position when not
-        // actively hitting, instead of all converging on the shared anchor pitch.
-        private readonly List<float?> _micLastPitches = new();
 
         protected VocalNote _lastTargetNote;
         protected double?   _lastHitTime;
@@ -87,17 +64,8 @@ namespace YARG.Gameplay.Player
 
         protected const int NEEDLES_COUNT = 7;
 
-        // Per-mic pitch recording buffer for Party Vocals replays
-        private List<float>[] _micPitchBuffers;
-
-        // Per-frame collected inputs from all mics, populated by UpdateInputs.
-        // Available to subclasses (e.g. PartyVocalsPlayer) for routing to sub-engines.
-        protected readonly List<(int micIndex, GameInput input)> _lastFrameInputs = new();
-
-        // Replay playback state for Party Vocals
-        private ReplayFrame _replayFrame;
-        private int _replayMicIndex;
-
+        
+        
         // Mic disconnect detection
         private float _lastDisconnectCheckTime;
         private const float DISCONNECT_CHECK_INTERVAL = 1.0f; // Check every second
@@ -145,70 +113,21 @@ namespace YARG.Gameplay.Player
                 multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
             }
 
-            // Compute Party Vocals mic count up front so needle creation and engine
-            // construction agree. Humans: real bound-mic count. Free Vocals bots: one
-            // synthetic vocalist per HARM part (so a 3-HARM song gets 3 bot needles).
-            // Solo Vocals / Harmony are single-mic by mode — take only the first mic.
+            // Get the effective microphone(s) for this player
             IReadOnlyList<MicDevice> effectiveMics = player.Bindings.Microphones;
             if (player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
             {
                 effectiveMics = new[] { effectiveMics[0] };
             }
 
-            if (Player.Profile.IsFreeVocals && player.Profile.IsBot)
-            {
-                // 0 = Auto (one bot mic per HARM part). 1-7 = explicit override for
-                // testing mismatched mic-to-part ratios.
-                int botMicOverride = Player.Profile.PartyVocalsMicCountOverride;
-                _partyVocalsMicCount = botMicOverride > 0
-                    ? Mathf.Clamp(botMicOverride, 1, 7)
-                    : Mathf.Max(1, multiTrack.Parts.Count);
-            }
-            else if (effectiveMics.Count > 0)
-            {
-                _partyVocalsMicCount = effectiveMics.Count;
-            }
-            else
-            {
-                _partyVocalsMicCount = 1;
-            }
-            bool isPartyVocals = _partyVocalsMicCount > 1;
-
-            // Display index for HUD ShowPlayerName: party-vocals uses the lowest mic-color
-            // index (the leader needle); single-mic uses the player slot's needle index.
+            // Get the needle index for this player
             int needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
-            if (isPartyVocals && !IsPartyVocals)
-            {
-                // Hide the default single needle — we'll create per-mic needles instead.
-                _needleVisualContainer.SetActive(false);
 
-                // Create per-mic needles
-                for (int i = 0; i < _partyVocalsMicCount; i++)
-                {
-                    var micNeedleIndex = (i % NEEDLES_COUNT) + 1;
-                    var materialPath = $"VocalNeedle/{micNeedleIndex}";
-                    var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
-                    var materialInstance = new Material(baseMaterial);
-
-                    // Clone the visual container so the cloned subtree includes the renderer
-                    // (which lives on a child object, not on _needleTransform itself).
-                    var needleObj = Instantiate(_needleVisualContainer, _needleVisualContainer.transform.parent);
-                    needleObj.SetActive(true);
-                    var renderer = needleObj.GetComponentInChildren<MeshRenderer>();
-                    renderer.material = materialInstance;
-
-                    _micNeedles.Add((renderer, needleObj.transform, materialInstance));
-                    _micLastPitches.Add(null);
-                }
-            }
-            else
-            {
-                // Existing single-needle path
-                var materialPath = $"VocalNeedle/{needleIndex}";
-                var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
-                _needleMaterialInstance = new Material(baseMaterial);
-                _needleRenderer.material = _needleMaterialInstance;
-            }
+            // Load material for the needle
+            var materialPath = $"VocalNeedle/{needleIndex}";
+            var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
+            _needleMaterialInstance = new Material(baseMaterial);
+            _needleRenderer.material = _needleMaterialInstance;
 
             VocalsPart selectedPart;
 
@@ -251,68 +170,23 @@ namespace YARG.Gameplay.Player
                 main.startColor = VocalTrack.Colors[colorIndex];
             }
 
-            if (isPartyVocals && !IsPartyVocals)
-            {
-                // Clone the particle group per mic so each needle has its own trail.
-                // Original is hidden — only the clones render.
-                _hittingParticleGroup.gameObject.SetActive(false);
-                for (int i = 0; i < _partyVocalsMicCount; i++)
-                {
-                    var pgObj = Instantiate(_hittingParticleGroup.gameObject,
-                        _hittingParticleGroup.transform.parent);
-                    pgObj.SetActive(true);
-                    var pg = pgObj.GetComponent<ParticleGroup>();
-                    pg.Colorize(VocalTrack.Colors[i % VocalTrack.Colors.Length]);
-                    _micParticleGroups.Add(pg);
-                }
-            }
-
+            
             // Initialize player specific vocal visuals
 
             hud.Initialize(player.EnginePreset);
             _hud = hud;
 
-            // Free Vocals ignores percussion events — with up to 7 mics on a phrase,
-            // synchronized percussion taps would be a UX cacophony. Pass an empty list
-            // so nothing spawns and the fret never shows.
-            percussionTrack.Initialize(Player.Profile.IsFreeVocals
-                ? new List<VocalNote>()
-                : NoteTrack.Notes);
+            // Initialize percussion track
+            percussionTrack.Initialize(NoteTrack.Notes);
             _percussionTrack = percussionTrack;
 
             _hud.ShowPlayerName(player, needleIndex);
 
-            // Create and start input contexts for microphones. Skip entirely for bots —
-            // bots have no real audio devices; the engine synthesizes their pitches
-            // internally via UpdateBot / UpdateBotMultiMic.
+            // Create and start input context for microphone
             if (!Player.IsReplay && !player.Profile.IsBot && effectiveMics.Count > 0)
             {
-                int micCount = effectiveMics.Count;
-
-                _inputContexts = new List<MicInputContext>(micCount);
-                for (int i = 0; i < micCount; i++)
-                {
-                    var mic = effectiveMics[i];
-                    var ctx = new MicInputContext(mic, GameManager);
-                    ctx.Start();
-                    _inputContexts.Add(ctx);
-                }
-                // Preserve _inputContext as the first-element accessor for legacy single-mic code paths.
-                _inputContext = _inputContexts[0];
-
-                // Initialize per-mic pitch recording buffer for Party Vocals replays
-                if (_inputContexts.Count > 1)
-                {
-                    _micPitchBuffers = new List<float>[_inputContexts.Count];
-                    for (int i = 0; i < _inputContexts.Count; i++)
-                        _micPitchBuffers[i] = new List<float>();
-                }
-            }
-
-            // Store replay frame for Party Vocals playback
-            if (Player.IsReplay && GameManager.ReplayData != null)
-            {
-                _replayFrame = GameManager.ReplayData.Frames[player.ReplayIndex];
+                _inputContext = new MicInputContext(effectiveMics[0], GameManager);
+                _inputContext.Start();
             }
 
             Engine = CreateEngine();
@@ -356,14 +230,7 @@ namespace YARG.Gameplay.Player
 
         protected override void FinishDestruction()
         {
-            // Stop all input contexts
-            if (_inputContexts != null)
-            {
-                foreach (var ctx in _inputContexts)
-                {
-                    ctx.Stop();
-                }
-            }
+            // Stop input context
             _inputContext?.Stop();
 
             // Unsubscribe from engine events and clean up material instance
@@ -378,25 +245,11 @@ namespace YARG.Gameplay.Player
                 }
             }
 
-            // Clean up single-needle material
+            // Clean up material
             if (_needleMaterialInstance != null)
             {
                 Destroy(_needleMaterialInstance);
             }
-
-            // Clean up mic needles
-            foreach (var (_, transform, material) in _micNeedles)
-            {
-                if (transform.gameObject != null)
-                {
-                    Destroy(transform.gameObject);
-                }
-                if (material != null)
-                {
-                    Destroy(material);
-                }
-            }
-            _micNeedles.Clear();
         }
 
         private void OnTargetNoteChangedHandler(VocalNote note)
@@ -445,19 +298,9 @@ namespace YARG.Gameplay.Player
                 bool harmonyHasContent = _chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
                 var multiTrack = harmonyHasContent ? _chart.Harmony : _chart.Vocals;
 
-                if (IsPartyVocals)
-                {
-                    engine = new PartyVocalsCoordinatorEngine(NoteTrack, multiTrack.Parts, SyncTrack,
-                        EngineParams, Player.Profile.IsBot,
-                        micCount: _partyVocalsMicCount,
-                        botPartIndex: Player.Profile.HarmonyIndex);
-                }
-                else
-                {
-                    engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
-                        micCount: _partyVocalsMicCount,
-                        botPartIndex: Player.Profile.HarmonyIndex);
-                }
+                engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
+                    micCount: 1,
+                    botPartIndex: Player.Profile.HarmonyIndex);
 
                 // Register using the free vocals overload
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
@@ -468,12 +311,6 @@ namespace YARG.Gameplay.Player
                 engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
                 // Register using the indexed overload
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
-            }
-
-            // Subscribe to Party Vocals phrase events for any Party Vocals profile (human or bot).
-            if (engine is YargFreeVocalsEngine freeEngine && IsPartyVocals)
-            {
-                freeEngine.OnPartyVocalsPhrase += OnPartyVocalsPhrase;
             }
 
             engine.OnStarPowerPhraseHit += _ => OnStarPowerPhraseHit();
@@ -601,67 +438,16 @@ namespace YARG.Gameplay.Player
         {
             base.UpdateInputs(time);
 
-            if (_inputContexts is null)
+            if (_inputContext is null)
             {
-                // During replay playback for Party Vocals, feed per-mic pitches from the replay frame.
-                if (Player.IsReplay && Engine is YargFreeVocalsEngine freeEngine
-                    && _replayFrame != null && _replayFrame.MicCount > 0)
-                {
-                    for (int i = 0; i < _replayFrame.MicCount; i++)
-                    {
-                        if (_replayFrame.MicPitches != null && i < _replayFrame.MicPitches.Length
-                            && _replayMicIndex < _replayFrame.MicPitches[i].Length)
-                        {
-                            freeEngine.SetMicPitch(i, _replayFrame.MicPitches[i][_replayMicIndex]);
-                        }
-                    }
-                    _replayMicIndex++;
-                }
                 return;
             }
 
-            bool isPartyVocals = Player.Profile.IsFreeVocals && _inputContexts.Count > 1
-                                && Engine is YargFreeVocalsEngine partyVocalsEngine;
-
-            // Drain all mics first, then process inputs in chronological order. Draining
-            // mic-by-mic and queuing as we go causes BaseEngine.QueueInput to snap later
-            // mics' input times forward to match the first mic's last input (since the
-            // queue must be monotonic in time), collapsing their per-tick freshness. The
-            // visible symptom is needles/trails not appearing whenever 2+ mics are bound
-            // even though scoring at phrase end still works.
-            _lastFrameInputs.Clear();
-            for (int i = 0; i < _inputContexts.Count; i++)
+            // Get input from the microphone
+            foreach (var input in _inputContext.GetInputsFromMic())
             {
-                var ctx = _inputContexts[i];
-                foreach (var input in ctx.GetInputsFromMic())
-                {
-                    _lastFrameInputs.Add((i, input));
-                }
-            }
-            _lastFrameInputs.Sort((a, b) => a.input.Time.CompareTo(b.input.Time));
-
-            foreach (var (i, input) in _lastFrameInputs)
-            {
-                if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Pitch)
-                {
-                    ((YargFreeVocalsEngine)Engine).SetMicPitch(i, input.Axis);
-
-                    // Record per-mic pitch for replay
-                    if (_micPitchBuffers != null && i < _micPitchBuffers.Length)
-                    {
-                        _micPitchBuffers[i].Add(input.Axis);
-                    }
-                }
-                else
-                {
-                    if (isPartyVocals && input.GetAction<VocalsAction>() == VocalsAction.Hit)
-                    {
-                        continue;
-                    }
-
-                    var copy = input;
-                    OnGameInput(ref copy);
-                }
+                var copy = input;
+                OnGameInput(ref copy);
             }
         }
 
@@ -709,7 +495,7 @@ namespace YARG.Gameplay.Player
             _hud.UpdateInfo(fill, displayMultiplier,
                 (float) Engine.GetStarPowerBarAmount(), Engine.EngineStats.IsStarPowerActive);
 
-            // Update per-HARM fill for Free Vocals (humans and bots, single- or multi-mic).
+            // Update per-HARM fill for Free Vocals
             if (Engine is YargFreeVocalsEngine freeEngine && Player.Profile.IsFreeVocals)
             {
                 var meters = freeEngine.CanonicalMeters;
@@ -783,47 +569,7 @@ namespace YARG.Gameplay.Player
             return distPercent * NEEDLE_ROT_MAX;
         }
 
-        protected void UpdateSingleNeedle(MeshRenderer renderer, Transform transform, Material material,
-            float pitch, float lastNotePitch, bool isHitting, bool isNonPitched,
-            float zOffset = 0f)
-        {
-            const float NEEDLE_POS_LERP = 30f;
-            const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
-            const float NEEDLE_ROT_LERP = 25f;
-
-            float lerpRate = NEEDLE_POS_LERP;
-
-            // Show needle
-            if (transform.gameObject.activeSelf == false)
-            {
-                transform.gameObject.SetActive(true);
-
-                // Lerp X times faster if we've just started showing the needle
-                lerpRate *= NEEDLE_POS_SNAP_MULTIPLIER;
-            }
-
-            float targetRotation = 0f;
-
-            if (isHitting && !isNonPitched)
-            {
-                // Get how off the player is
-                (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, pitch);
-                targetRotation = GetNeedleRotation(pitchDist);
-            }
-
-            // Transform!
-            float z = GameManager.VocalTrack.GetPosForPitch(pitch) - zOffset;
-            var lerp = Mathf.Lerp(transform.localPosition.z, z, Time.deltaTime * lerpRate);
-            transform.localPosition = new Vector3(0f, 0f, lerp);
-
-            // Set WORLD rotation, matching single-mic's _needleTransform.rotation =. The
-            // VocalsVisual root is rotated 90° on Y at runtime, so setting localRotation
-            // here would double-compose and point the needle straight down.
-            var targetRot = Quaternion.Euler(0f, targetRotation + 90f, 0f);
-            transform.rotation = Quaternion.Slerp(transform.rotation,
-                targetRot, Time.deltaTime * NEEDLE_ROT_LERP);
-        }
-
+        
         private float ApplyPitchDeadZone(float pitchDist, float deadZoneInSemitones)
         {
             if (pitchDist >= 0.0f)
@@ -836,41 +582,16 @@ namespace YARG.Gameplay.Player
 
         private void UpdateSingNeedle()
         {
-            // PartyVocalsPlayer owns its own per-mic needle/trail rendering, which
-            // is structurally a copy of the single-needle Solo path replicated per
-            // bound mic. Skip the entire shared method when that subclass is active.
-            if (IsPartyVocals) return;
-
             // Get the appropriate sing time
             var singTime = GameManager.InputTime;
-
-            // Multi-mic: single-mic positions the root transform to (0, 0, pitchZ),
-            // but multi-mic positions each needle individually. Reset root so needle
-            // offsets are relative to the correct origin (the root starts at (-5, 0.2, 0)
-            // in the prefab, which would push all cloned needles off-screen).
-            if (_micNeedles.Count > 0)
-            {
-                transform.localPosition = Vector3.zero;
-            }
 
             // Get whether or not the player has sang within the time threshold.
             // We gotta use a threshold here because microphone inputs are passed every X seconds,
             // not in a constant stream.
             if (!IsInThreshold(singTime, _lastSingTime) || _shouldHideNeedle)
             {
-                // Hide needles if there's no singing
-                if (_micNeedles.Count > 0)
-                {
-                    foreach (var (_, transform, _) in _micNeedles)
-                    {
-                        transform.gameObject.SetActive(false);
-                    }
-                    foreach (var pg in _micParticleGroups)
-                    {
-                        pg.Stop();
-                    }
-                }
-                else if (_needleVisualContainer.activeSelf)
+                // Hide needle if there's no singing
+                if (_needleVisualContainer.activeSelf)
                 {
                     _needleVisualContainer.SetActive(false);
                 }
@@ -878,163 +599,70 @@ namespace YARG.Gameplay.Player
             }
             else
             {
-                if (_micNeedles.Count > 0)
+                // Show needle if it's hidden
+                if (!_needleVisualContainer.activeSelf)
                 {
-                    float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
-
-                    // Multi-mic update path. Iterate by needle count alone — bot Party Vocals
-                    // has no _inputContexts (engine synthesizes pitches), but still has needles.
-                    for (int i = 0; i < _micNeedles.Count; i++)
-                    {
-                        var (renderer, transform, material) = _micNeedles[i];
-                        float micPitch;
-                        bool isHitting = false;
-
-                        bool hasMicNote = Engine is YargFreeVocalsEngine freeEngine
-                            && _lastTargetNote is not null
-                            && IsInThreshold(singTime, _lastHitTime)
-                            && freeEngine.IsMicOnNote(i);
-
-                        if (hasMicNote)
-                        {
-                            micPitch = ((YargFreeVocalsEngine) Engine).GetMicPitch(i);
-                            isHitting = true;
-                            _micLastPitches[i] = micPitch;
-                        }
-                        else if (_micLastPitches[i] is float cached)
-                        {
-                            // Hold this needle at its last on-note pitch so it doesn't
-                            // flicker on/off as hasMicNote toggles within a sustained
-                            // phrase. Restores the behavior from commit fa07ffa3, which
-                            // 4f6939ae changed to "hide entirely" and re-introduced the
-                            // bottom-of-highway flicker we'd already fixed.
-                            micPitch = cached;
-                            // Trail still stops when not actively on note — the cached
-                            // hold is visual continuity for the needle only.
-                            if (i < _micParticleGroups.Count)
-                            {
-                                _micParticleGroups[i].Stop();
-                            }
-                        }
-                        else
-                        {
-                            // No pitch ever observed for this mic yet — hide until first
-                            // hit, then the cache takes over.
-                            if (transform.gameObject.activeSelf)
-                            {
-                                transform.gameObject.SetActive(false);
-                            }
-                            if (i < _micParticleGroups.Count)
-                            {
-                                _micParticleGroups[i].Stop();
-                            }
-                            continue;
-                        }
-
-                        // DIAG (party-vocals needle wobble): log per-mic pitch inputs each
-                        // frame so we can confirm whether wobble comes from lastNotePitch
-                        // (HARM1 target's PitchAtSongTime jumping across child-note
-                        // boundaries), from _micPitches[i] flicker, or from _lastTargetNote
-                        // flipping HARMs. Remove once the root cause is fixed.
-                        (float diagPitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, micPitch);
-                        YargLogger.LogFormatTrace(
-                            "[needle-diag] t={0:F3} mic={1} lastNotePitch={2:F3} micPitch={3:F3} pitchDist={4:F3} targetNoteTick={5} targetNotePitch={6:F3}",
-                            GameManager.SongTime, i, lastNotePitch, micPitch, diagPitchDist,
-                            _lastTargetNote?.Tick ?? 0, _lastTargetNote?.Pitch ?? -1f);
-
-                        UpdateSingleNeedle(renderer, transform, material, micPitch, lastNotePitch,
-                            isHitting, _lastTargetNote?.IsNonPitched ?? false,
-                            zOffset: 0f);
-
-                        // Trail color follows the HARM lane this mic is scoring on, so the
-                        // trail visibly "lights up" that lane. Needle stays singer-colored.
-                        int effectivePart = ((YargFreeVocalsEngine) Engine).GetEffectivePartForMic(i);
-                        int trailColorIdx = effectivePart >= 0 ? effectivePart : (i % VocalTrack.Colors.Length);
-
-                        // Drive the per-mic particle group: follow the needle's Z, play/stop
-                        // independently. Skips index check defensively — list sizes match.
-                        if (i < _micParticleGroups.Count)
-                        {
-                            _micParticleGroups[i].Colorize(VocalTrack.Colors[trailColorIdx]);
-                            var pg = _micParticleGroups[i];
-                            var pgPos = pg.transform.localPosition;
-                            pg.transform.localPosition = new Vector3(pgPos.x, pgPos.y, transform.localPosition.z);
-                            if (!GameManager.Rewinding)
-                            {
-                                pg.Play();
-                            }
-                        }
-                    }
+                    _needleVisualContainer.SetActive(true);
                 }
-                else
+
+                float lerpRate = 30f;
+                const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
+
+                // Lerp faster if we've just started showing the needle
+                lerpRate *= NEEDLE_POS_SNAP_MULTIPLIER;
+
+                var transformCache = transform;
+                float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
+
+                if (_lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
                 {
-                    // Single-mic update path (existing logic)
-                    float lerpRate = 30f;
-                    const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
-
-                    // Show needle
-                    if (!_needleVisualContainer.activeSelf)
+                    // Show particles if hitting (as long as we aren't rewinding)
+                    if (!GameManager.Rewinding)
                     {
-                        _needleVisualContainer.SetActive(true);
-
-                        // Lerp X times faster if we've just started showing the needle
-                        lerpRate *= NEEDLE_POS_SNAP_MULTIPLIER;
+                        _hittingParticleGroup.Play();
                     }
 
-                    var transformCache = transform;
-                    float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
+                    float pitch;
+                    float targetRotation = 0f;
 
-                    if (_lastTargetNote is not null && IsInThreshold(singTime, _lastHitTime))
+                    if (!_lastTargetNote.IsNonPitched)
                     {
-                        // Show particles if hitting (as long as we aren't rewinding)
-                        if (!GameManager.Rewinding)
-                        {
-                            _hittingParticleGroup.Play();
-                        }
+                        // If the player is hitting, just set the needle position to the note
+                        pitch = lastNotePitch;
 
-                        float pitch;
-                        float targetRotation = 0f;
-
-                        if (!_lastTargetNote.IsNonPitched)
-                        {
-                            // If the player is hitting, just set the needle position to the note
-                            pitch = lastNotePitch;
-
-                            // Rotate the needle a little bit depending on how off it is (unless it's non-pitched)
-                            // Get how off the player is
-                            (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, Engine.PitchSang);
-                            targetRotation = GetNeedleRotation(pitchDist);
-                        }
-                        else
-                        {
-                            // If the note is non-pitched, just use the singing position
-                            pitch = Engine.PitchSang + 12f;
-                        }
-
-                        // Transform!
-                        float z = GameManager.VocalTrack.GetPosForPitch(pitch);
-                        var lerp = Mathf.Lerp(transformCache.localPosition.z, z, Time.deltaTime * lerpRate);
-                        transformCache.localPosition = new Vector3(0f, 0f, lerp);
-                        _needleTransform.rotation = Quaternion.Lerp(_needleTransform.rotation,
-                            Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * 25f);
+                        // Rotate the needle a little bit depending on how off it is (unless it's non-pitched)
+                        (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, Engine.PitchSang);
+                        targetRotation = GetNeedleRotation(pitchDist);
                     }
                     else
                     {
-                        // Stop particles if not hitting
-                        _hittingParticleGroup.Stop();
-
-                        // Get the pitch anchored to the correct octave for smooth needle tracking
-                        float pitch = AnchorPitchToOctave(Engine.PitchSang, lastNotePitch);
-
-                        // Set the position of the needle
-                        var z = GameManager.VocalTrack.GetPosForPitch(pitch);
-                        var lerp = Mathf.Lerp(transformCache.localPosition.z, z, Time.deltaTime * lerpRate);
-                        transformCache.localPosition = new Vector3(0f, 0f, lerp);
-
-                        // Lerp the rotation to none
-                        _needleTransform.rotation = Quaternion.Lerp(_needleTransform.rotation,
-                            Quaternion.Euler(0f, 90f, 0f), Time.deltaTime * 25f);
+                        // If the note is non-pitched, just use the singing position
+                        pitch = Engine.PitchSang + 12f;
                     }
+
+                    // Transform!
+                    float z = GameManager.VocalTrack.GetPosForPitch(pitch);
+                    var lerp = Mathf.Lerp(transformCache.localPosition.z, z, Time.deltaTime * lerpRate);
+                    transformCache.localPosition = new Vector3(0f, 0f, lerp);
+                    _needleTransform.rotation = Quaternion.Lerp(_needleTransform.rotation,
+                        Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * 25f);
+                }
+                else
+                {
+                    // Stop particles if not hitting
+                    _hittingParticleGroup.Stop();
+
+                    // Get the pitch anchored to the correct octave for smooth needle tracking
+                    float pitch = AnchorPitchToOctave(Engine.PitchSang, lastNotePitch);
+
+                    // Set the position of the needle
+                    var z = GameManager.VocalTrack.GetPosForPitch(pitch);
+                    var lerp = Mathf.Lerp(transformCache.localPosition.z, z, Time.deltaTime * lerpRate);
+                    transformCache.localPosition = new Vector3(0f, 0f, lerp);
+
+                    // Lerp the rotation to none
+                    _needleTransform.rotation = Quaternion.Lerp(_needleTransform.rotation,
+                        Quaternion.Euler(0f, 90f, 0f), Time.deltaTime * 25f);
                 }
             }
         }
@@ -1047,10 +675,8 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Party Vocals (humans or bots) ignores percussion — keep HUD/needle visible.
-            bool isPartyVocals = Player.Profile.IsFreeVocals && _partyVocalsMicCount > 1
-                                && Engine is YargFreeVocalsEngine;
-            if (isPartyVocals)
+            // Free Vocals ignores percussion — keep HUD/needle visible.
+            if (Player.Profile.IsFreeVocals)
             {
                 _hud.SetHUDShowing(true);
                 _shouldHideNeedle = false;
@@ -1153,49 +779,7 @@ namespace YARG.Gameplay.Player
             // Vocals has no stem muting
         }
 
-        private void CheckMicDisconnect()
-        {
-            if (_inputContexts == null || _inputContexts.Count <= 1) return;
-
-            for (int i = _inputContexts.Count - 1; i >= 0; i--)
-            {
-                var ctx = _inputContexts[i];
-                if (ctx.Device == null || !IsDeviceConnected(ctx.Device))
-                {
-                    // Mic disconnected.
-                    ctx.Stop();
-                    _inputContexts.RemoveAt(i);
-
-                    // Clear the mic's pitch in the engine so it stops accumulating hits
-                    if (Engine is YargFreeVocalsEngine freeEngine)
-                    {
-                        freeEngine.SetMicPitch(i, -1f);
-                    }
-
-                    // Remove the corresponding needle.
-                    if (i < _micNeedles.Count)
-                    {
-                        var (_, transform, material) = _micNeedles[i];
-                        if (transform.gameObject != null)
-                        {
-                            Destroy(transform.gameObject);
-                        }
-                        if (material != null)
-                        {
-                            Destroy(material);
-                        }
-                        _micNeedles.RemoveAt(i);
-                    }
-                }
-            }
-
-            // All mics gone?
-            if (_inputContexts.Count == 0)
-            {
-                YargLogger.LogWarning("All microphones disconnected during gameplay");
-            }
-        }
-
+        
         private bool IsDeviceConnected(MicDevice device)
         {
             if (device is YARG.Audio.BASS.BassMicDevice bassMicDevice)
@@ -1273,16 +857,6 @@ namespace YARG.Gameplay.Player
         public override (ReplayFrame Frame, ReplayStats Stats) ConstructReplayData()
         {
             var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
-
-            if (_micPitchBuffers != null)
-            {
-                frame.MicCount = _micPitchBuffers.Length;
-                frame.MicPitches = new float[_micPitchBuffers.Length][];
-                for (int i = 0; i < _micPitchBuffers.Length; i++)
-                {
-                    frame.MicPitches[i] = _micPitchBuffers[i].ToArray();
-                }
-            }
 
             return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
         }

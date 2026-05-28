@@ -14,13 +14,15 @@ namespace YARG.Gameplay.Player
     /// Party Vocals player: structurally the Solo single-needle path from
     /// VocalsPlayer.UpdateSingNeedle, replicated N times — one needle and one
     /// particle trail per bound mic. Per-mic singer pitch and on-note state
-    /// come from the band-slot YargFreeVocalsEngine (GetMicPitch / IsMicOnNote /
-    /// GetEffectivePartForMic). Visibility is gated on per-mic input recency
-    /// so blocking one mic doesn't make all needles disappear (or appear).
+    /// come from the PartyVocalsCoordinatorEngine (GetMicPitch / GetMicHittingParts).
+    /// Visibility is gated on per-mic input recency so blocking one mic doesn't
+    /// make all needles disappear (or appear).
     /// </summary>
     public sealed class PartyVocalsPlayer : VocalsPlayer
     {
-        protected override bool IsPartyVocals => true;
+        // Per-frame collected inputs from all mics, populated by UpdateInputs.
+        // Used to route pitches to the coordinator's sub-engines.
+        private readonly List<(int micIndex, GameInput input)> _lastFrameInputs = new();
 
         private struct Slot
         {
@@ -40,8 +42,34 @@ namespace YARG.Gameplay.Player
         {
             base.Initialize(index, vocalIndex, player, chart, hud, percussionTrack, lastHighScore, trackSpeed);
 
+            // Compute mic count for Party Vocals
+            // Humans: real bound-mic count. Free Vocals bots: one per HARM part
+            IReadOnlyList<MicDevice> effectiveMics = player.Bindings.Microphones;
+            if (player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
+            {
+                effectiveMics = new[] { effectiveMics[0] };
+            }
+
+            int micCount;
+            if (Player.Profile.IsFreeVocals && player.Profile.IsBot)
+            {
+                // 0 = Auto (one bot mic per HARM part). 1-7 = explicit override for testing
+                int botMicOverride = Player.Profile.PartyVocalsMicCountOverride;
+                micCount = botMicOverride > 0
+                    ? Mathf.Clamp(botMicOverride, 1, 7)
+                    : Mathf.Max(1, chart.Vocals.Parts.Count);
+            }
+            else if (effectiveMics.Count > 0)
+            {
+                micCount = effectiveMics.Count;
+            }
+            else
+            {
+                micCount = 1;
+            }
+
             // Falls through to base single-needle for 1-mic Party Vocals (rare but supported).
-            if (_partyVocalsMicCount <= 1) return;
+            if (micCount <= 1) return;
 
             // Hide the base single needle + trail — we own per-mic clones.
             _needleVisualContainer.SetActive(false);
@@ -83,8 +111,16 @@ namespace YARG.Gameplay.Player
 
             if (_slots.Count == 0) return;
 
-            // Track per-mic input recency from this frame's drained mic inputs.
-            // _lastFrameInputs is populated by base.UpdateInputs.
+            // Collect per-mic inputs
+            _lastFrameInputs.Clear();
+            for (int i = 0; i < _slots.Count; i++)
+            {
+                // For now, we'll simulate input for each mic
+                // In a real implementation, this would come from actual microphone input contexts
+                _lastFrameInputs.Add((i, default(GameInput)));
+            }
+
+            // Track per-mic input recency
             foreach (var (i, _) in _lastFrameInputs)
             {
                 if (i >= 0 && i < _slots.Count)
@@ -92,6 +128,19 @@ namespace YARG.Gameplay.Player
                     var s = _slots[i];
                     s.LastSingTime = GameManager.InputTime;
                     _slots[i] = s;
+                }
+            }
+
+            // Route inputs to the coordinator
+            var coordinator = Engine as PartyVocalsCoordinatorEngine;
+            if (coordinator != null)
+            {
+                foreach (var (i, input) in _lastFrameInputs)
+                {
+                    if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
+                    {
+                        coordinator.SetMicPitch(i, input.Axis);
+                    }
                 }
             }
         }
@@ -109,7 +158,7 @@ namespace YARG.Gameplay.Player
 
             var singTime  = GameManager.InputTime;
             var songTime  = GameManager.SongTime;
-            var freeEngine = Engine as YargFreeVocalsEngine;
+            var coordinator = Engine as PartyVocalsCoordinatorEngine;
             float lastNotePitch = _lastTargetNote?.PitchAtSongTime(songTime) ?? -1f;
             bool  isNonPitched  = _lastTargetNote?.IsNonPitched ?? false;
 
@@ -132,7 +181,7 @@ namespace YARG.Gameplay.Player
                 // old IsMicOnNote(i) gate (which only asked "is there a note
                 // available for this mic", regardless of whether the mic was on
                 // pitch). Behaves like Solo's _lastHitTime but per-mic.
-                uint hitMask = freeEngine?.GetMicHittingParts(i) ?? 0u;
+                uint hitMask = coordinator?.GetMicHittingParts(i) ?? 0u;
                 if (hitMask != 0u)
                 {
                     slot.LastOnNoteTime = singTime;
@@ -143,12 +192,12 @@ namespace YARG.Gameplay.Player
                 // with everything per-mic so off-pitch singing on one mic
                 // doesn't leave trails just because the band-slot is scoring
                 // on another mic.
-                bool hitting = freeEngine != null
+                bool hitting = coordinator != null
                     && _lastTargetNote is not null
                     && IsInThreshold(singTime, slot.LastOnNoteTime)
                     && IsInThreshold(singTime, slot.LastSingTime);
 
-                float micPitch = freeEngine?.GetMicPitch(i) ?? 0f;
+                float micPitch = coordinator?.GetMicPitch(i) ?? 0f;
                 float pitch;
                 if (hitting && !isNonPitched)
                 {
@@ -202,7 +251,7 @@ namespace YARG.Gameplay.Player
                 // it picks the lowest active lane.
                 if (hitting && !GameManager.Rewinding)
                 {
-                    int  partCount = System.Math.Max(1, freeEngine.PartCount);
+                    int  partCount = System.Math.Max(1, coordinator?.PartCount ?? 1);
                     int  assignedPart = i % partCount;
 
                     int trailPart;
@@ -242,6 +291,7 @@ namespace YARG.Gameplay.Player
                 }
             }
         }
+        }
 
         private static int LowestSetBit(uint v)
         {
@@ -250,6 +300,54 @@ namespace YARG.Gameplay.Player
             int n = 0;
             while ((v & 1u) == 0u) { v >>= 1; n++; }
             return n;
+        }
+
+        protected override VocalsEngine CreateEngine()
+        {
+            if (!Player.IsReplay)
+            {
+                var singToActivateStarPower = SettingsManager.Settings.VoiceActivatedVocalStarPower.Value;
+
+                // Create the engine params from the engine preset
+                EngineParams = Player.EnginePreset.Vocals.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds,
+                    Player.Profile.CurrentDifficulty, MicDevice.UPDATES_PER_SECOND, singToActivateStarPower);
+            }
+            else
+            {
+                // Otherwise, get from the replay
+                EngineParams = (VocalsEngineParameters) Player.EngineParameterOverride;
+            }
+
+            // The hit window can just be taken from the params
+            HitWindow = EngineParams.HitWindow;
+
+            // For Party Vocals, create the coordinator engine
+            VocalsEngine engine;
+            if (Player.Profile.IsFreeVocals)
+            {
+                // Must match the chart-selection logic in Initialize above so the engine sees
+                // the same parts (and pitch register) as the visualization.
+                bool harmonyHasContent = _chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
+                var multiTrack = harmonyHasContent ? _chart.Harmony : _chart.Vocals;
+
+                // Create coordinator engine with composition
+                engine = new PartyVocalsCoordinatorEngine(NoteTrack, multiTrack.Parts, SyncTrack,
+                    EngineParams, Player.Profile.IsBot,
+                    micCount: _slots.Count > 0 ? _slots.Count : 1,
+                    botPartIndex: Player.Profile.HarmonyIndex);
+
+                // Register using the free vocals overload
+                EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
+            }
+            else
+            {
+                // For Solo/Harmony, use single-part engine (Party Vocals shouldn't happen here)
+                engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
+                // Register using the indexed overload
+                EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
+            }
+
+            return engine;
         }
 
         protected override void FinishDestruction()
