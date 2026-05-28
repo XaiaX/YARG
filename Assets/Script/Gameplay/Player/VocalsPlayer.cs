@@ -51,13 +51,13 @@ namespace YARG.Gameplay.Player
 
         protected VocalNote _lastTargetNote;
         protected double?   _lastHitTime;
-        private double?   _lastSingTime;
+        protected double?   _lastSingTime;
         private double    _previousStarPowerPercent;
         private bool      _hotStartChecked;
         private bool      _newHighScoreShown;
 
         protected VocalsPlayerHUD _hud;
-        private VocalPercussionTrack _percussionTrack;
+        protected VocalPercussionTrack _percussionTrack;
         protected bool _shouldHideNeedle;
 
         private int _phraseIndex = -1;
@@ -65,11 +65,6 @@ namespace YARG.Gameplay.Player
         protected const int NEEDLES_COUNT = 7;
 
         
-        
-        // Mic disconnect detection
-        private float _lastDisconnectCheckTime;
-        private const float DISCONNECT_CHECK_INTERVAL = 1.0f; // Check every second
-
         protected SongChart _chart;
 
         // Free vocals: needle material instance (mutable copy of Addressable)
@@ -248,7 +243,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        private void OnTargetNoteChangedHandler(VocalNote note)
+        protected void OnTargetNoteChangedHandler(VocalNote note)
         {
             _lastTargetNote = note;
 
@@ -265,7 +260,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        protected VocalsEngine CreateEngine()
+        protected virtual VocalsEngine CreateEngine()
         {
             if (!Player.IsReplay)
             {
@@ -374,7 +369,7 @@ namespace YARG.Gameplay.Player
             return engine;
         }
 
-        private void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<double> canonicalMeters, bool isLastPhrase)
+        protected void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<double> canonicalMeters, bool isLastPhrase)
         {
             if (grade == PhraseGrade.Miss)
             {
@@ -458,16 +453,6 @@ namespace YARG.Gameplay.Player
             UpdatePercussionPhrase(visualTime);
             UpdateSingNeedle();
 
-            // Check for mic disconnects (throttled to avoid per-frame cost)
-            if (_inputContexts != null && _inputContexts.Count > 1)
-            {
-                if (Time.time - _lastDisconnectCheckTime >= DISCONNECT_CHECK_INTERVAL)
-                {
-                    CheckMicDisconnect();
-                    _lastDisconnectCheckTime = Time.time;
-                }
-            }
-
             // Get combo meter fill
             float fill = 0f;
             if (Engine.PhraseTicksTotal != null && Engine.PhraseTicksTotal.Value != 0)
@@ -498,7 +483,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        private void ShowTextNotifications(bool isLastPhrase)
+        protected void ShowTextNotifications(bool isLastPhrase)
         {
             if (SettingsManager.Settings.DisableTextNotifications.Value)
             {
