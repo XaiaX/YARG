@@ -35,8 +35,7 @@ namespace YARG.Menu.DifficultySelect
             Instrument,
             Difficulty,
             Modifiers,
-            Harmony,
-            PartyVocalsBotMicCount
+            Harmony
         }
 
         [SerializeField]
@@ -216,10 +215,7 @@ namespace YARG.Menu.DifficultySelect
                 case State.Harmony:
                     CreateHarmonyMenu();
                     break;
-                case State.PartyVocalsBotMicCount:
-                    CreatePartyVocalsBotMicCountMenu();
-                    break;
-            }
+                            }
 
             _lastMenuState = _menuState;
         }
@@ -305,25 +301,7 @@ namespace YARG.Menu.DifficultySelect
                     });
                 }
 
-                // Free Vocals bots: expose a mic-count override for testing edge
-                // cases (e.g. 3 mics vs 2 parts, 1 mic vs 3 semi-overlapping parts).
-                // Auto = one bot mic per HARM part in the chart.
-                if (player.Profile.IsFreeVocals && player.Profile.IsBot)
-                {
-                    byte botMicOverride = player.Profile.PartyVocalsMicCountOverride;
-                    string botMicLabel = botMicOverride == 0
-                        ? "Auto"
-                        : botMicOverride.ToString();
-
-                    CreateItem("Bot Mics",
-                        botMicLabel,
-                        _lastMenuState == State.PartyVocalsBotMicCount, () =>
-                    {
-                        _menuState = State.PartyVocalsBotMicCount;
-                        UpdateForPlayer();
-                    });
-                }
-
+                
                 // Only allow vocal modifiers to be selected once (so they don't conflict)
                 if (player.Profile.GameMode != GameMode.Vocals ||
                     _vocalModifierSelectIndex == -1 ||
@@ -549,30 +527,7 @@ namespace YARG.Menu.DifficultySelect
             }
         }
 
-        private void CreatePartyVocalsBotMicCountMenu()
-        {
-            var profile = CurrentPlayer.Profile;
-            byte current = profile.PartyVocalsMicCountOverride;
-
-            CreateItem("Auto", current == 0, () =>
-            {
-                profile.PartyVocalsMicCountOverride = 0;
-                _menuState = State.Main;
-                UpdateForPlayer();
-            });
-
-            for (int i = 1; i <= 7; i++)
-            {
-                byte capture = (byte) i;
-                CreateItem(capture.ToString(), current == capture, () =>
-                {
-                    profile.PartyVocalsMicCountOverride = capture;
-                    _menuState = State.Main;
-                    UpdateForPlayer();
-                });
-            }
-        }
-
+        
         private void UpdateModifierMenu()
         {
             var profile = CurrentPlayer.Profile;
