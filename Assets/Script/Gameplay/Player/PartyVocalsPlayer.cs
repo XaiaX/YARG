@@ -60,8 +60,15 @@ namespace YARG.Gameplay.Player
 
             if (player.Profile.IsFreeVocals && player.Profile.IsBot)
             {
-                // 0 = Auto (one bot mic per HARM part)
-                _micCount = Mathf.Max(1, chart.Vocals.Parts.Count);
+                // One bot mic per charted HARM part. Use the same track CreateEngine
+                // scores on (Harmony when it has content, else Vocals) so the slot
+                // count matches the coordinator's part count. chart.Vocals always has
+                // exactly one part, so reading chart.Vocals.Parts.Count here gave every
+                // bot a single needle (no per-mic slots) — visible as missing needles
+                // and trails even though scoring ran correctly off the Harmony parts.
+                bool harmonyHasContent = chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
+                var botTrack = harmonyHasContent ? chart.Harmony : chart.Vocals;
+                _micCount = Mathf.Max(1, botTrack.Parts.Count);
             }
             else if (effectiveMics.Count > 0)
             {
