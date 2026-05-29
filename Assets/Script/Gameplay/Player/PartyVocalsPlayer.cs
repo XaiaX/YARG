@@ -99,8 +99,12 @@ namespace YARG.Gameplay.Player
 
             base.Initialize(index, vocalIndex, player, chart, hud, percussionTrack, lastHighScore, trackSpeed);
 
-            // Falls through to base single-needle for 1-mic Party Vocals (rare but supported).
-            if (_micCount <= 1) return;
+            // Always use per-mic slots (even for _micCount == 1). The engine is a
+            // PartyVocalsCoordinatorEngine, not a regular VocalsEngine — the base
+            // single-needle path doesn't drive the coordinator's sub-engines, so
+            // bots and real-mic visuals would break on solo-only charts where
+            // _micCount == 1.
+            if (_micCount < 1) return;
 
             // Hide the base single needle + trail — we own per-mic clones.
             _needleVisualContainer.SetActive(false);
@@ -153,13 +157,13 @@ namespace YARG.Gameplay.Player
 
         protected override void UpdateInputs(double time)
         {
-            // For multi-mic: bypass base.UpdateInputs to route each mic's pitch
+            // For coordinator engines: bypass base.UpdateInputs to route each mic's pitch
             // directly to the coordinator's SetMicPitch instead of the base engine's
             // input queue (coordinator.MutateStateWithInput ignores VocalsAction.Pitch).
             var coordinator = Engine as PartyVocalsCoordinatorEngine;
-            bool isMultiMic = coordinator != null && _micCount > 1;
+            bool isCoordinator = coordinator != null;
 
-            if (!isMultiMic)
+            if (!isCoordinator)
             {
                 base.UpdateInputs(time);
                 return;
