@@ -189,36 +189,13 @@ namespace YARG.Gameplay.Player
                         for (int i = 0; i < _micCount && i < replayFrame.PerMicInputs.Length && i < _replayInputIndices.Length; i++)
                         {
                             var stream = replayFrame.PerMicInputs[i];
-                            while (_replayInputIndices[i] < stream.Length && stream[_replayInputIndices[i]].Time <= time)
-                            {
-                                var input = stream[_replayInputIndices[i]];
-                                if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
-                                {
-                                    coordinator.SetMicPitch(i, input.Axis);
-                                    sangThisFrame[i] = true;
-                                }
-                                else
-                                {
-                                    OnGameInput(ref input);
-                                }
-                                _replayInputIndices[i]++;
-                            }
+                            // Route both Pitch and Hit/StarPower (routeOtherInputs=true)
+                            sangThisFrame[i] = ConsumeMicStreamUpToTime(i, stream, time, coordinator, routeOtherInputs: true);
                         }
                         BaseEngine.Update(time + InputCalibration);
 
-                        // Stamp per-mic singing recency (matches live path logic at lines 278-292).
-                        // A mic counts as singing when it consumed a Pitch input this frame
-                        // OR its sub-engine is currently on a note (GetMicHittingParts != 0).
-                        var singTime = GameManager.InputTime;
-                        for (int i = 0; i < _micCount && i < _slots.Count; i++)
-                        {
-                            bool micActive = sangThisFrame[i] || coordinator.GetMicHittingParts(i) != 0u;
-                            if (!micActive) continue;
-
-                            var s = _slots[i];
-                            s.LastSingTime = singTime;
-                            _slots[i] = s;
-                        }
+                        // Stamp per-mic singing recency via shared helper.
+                        StampMicSingTimes(sangThisFrame, coordinator);
                     }
                     return;
                 }
@@ -294,21 +271,8 @@ namespace YARG.Gameplay.Player
             // scoring and needles stuck at the bottom of the highway.
             BaseEngine.Update(time + InputCalibration);
 
-            // Stamp per-mic singing recency only when the mic actually sang this frame:
-            // a real mic that produced a pitch frame above, or a bot mic whose sub-engine
-            // is currently on a note. Leaving it unstamped during rests lets the needle
-            // hold at its last note then hide (fade out) like the Solo needle, instead of
-            // staying lit the whole song.
-            var singTime = GameManager.InputTime;
-            for (int i = 0; i < _micCount && i < _slots.Count; i++)
-            {
-                bool micActive = sangThisFrame[i] || coordinator.GetMicHittingParts(i) != 0u;
-                if (!micActive) continue;
-
-                var s = _slots[i];
-                s.LastSingTime = singTime;
-                _slots[i] = s;
-            }
+            // Stamp per-mic singing recency via shared helper.
+            StampMicSingTimes(sangThisFrame, liveCoordinator);
         }
 
         protected override void ResetVisuals()
@@ -666,6 +630,57 @@ namespace YARG.Gameplay.Player
         }
 
         /// <summary>
+        /// Consume and feed a single mic's per-mic input stream up to a given time cutoff.
+        /// Pitch inputs are routed to coordinator.SetMicPitch.
+        /// If routeOtherInputs is true, Hit/StarPower are also routed via OnGameInput.
+        /// Tracks whether the mic produced a Pitch input this frame.
+        /// Advances the replay cursor (_replayInputIndices[micIndex]).
+        /// </summary>
+        private bool ConsumeMicStreamUpToTime(int micIndex, GameInput[] stream, double timeCutoff,
+            PartyVocalsCoordinatorEngine coordinator, bool routeOtherInputs = false)
+        {
+            if (stream == null || coordinator == null) return false;
+
+            bool micSang = false;
+            while (_replayInputIndices[micIndex] < stream.Length && stream[_replayInputIndices[micIndex]].Time <= timeCutoff)
+            {
+                var input = stream[_replayInputIndices[micIndex]];
+                if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
+                {
+                    coordinator.SetMicPitch(micIndex, input.Axis);
+                    micSang = true;
+                }
+                else if (routeOtherInputs)
+                {
+                    OnGameInput(ref input);
+                }
+                _replayInputIndices[micIndex]++;
+            }
+            return micSang;
+        }
+
+        /// <summary>
+        /// Stamp the LastSingTime for all mics given a per-mic sang flag and the coordinator.
+        /// A mic is considered singing if it produced a pitch frame this cycle (sangFlags[i])
+        /// OR its sub-engine is currently on a note (GetMicHittingParts != 0).
+        /// </summary>
+        private void StampMicSingTimes(System.Span<bool> sangFlags, PartyVocalsCoordinatorEngine coordinator)
+        {
+            if (coordinator == null) return;
+
+            var singTime = GameManager.InputTime;
+            for (int i = 0; i < _micCount && i < _slots.Count; i++)
+            {
+                bool micActive = sangFlags[i] || coordinator.GetMicHittingParts(i) != 0u;
+                if (!micActive) continue;
+
+                var s = _slots[i];
+                s.LastSingTime = singTime;
+                _slots[i] = s;
+            }
+        }
+
+        /// <summary>
         /// Override seek path to handle per-mic replay streams. The base SetReplayTime
         /// path resets the engine and processes the flat ReplayInputs list; for Party Vocals,
         /// we must also reset and re-feed each per-mic stream from PerMicInputs[i]
@@ -699,20 +714,13 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            double adjustedTime = time + InputCalibration;
+            // Use raw time (not adjusted) as the cutoff, matching the live replay loop.
+            System.Span<bool> sangThisFrame = stackalloc bool[_micCount];
             for (int i = 0; i < _micCount && i < replayFrame.PerMicInputs.Length; i++)
             {
-                var stream = replayFrame.PerMicInputs[i];
-                while (_replayInputIndices[i] < stream.Length && stream[_replayInputIndices[i]].Time <= adjustedTime)
-                {
-                    var input = stream[_replayInputIndices[i]];
-                    if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
-                    {
-                        coordinator.SetMicPitch(i, input.Axis);
-                    }
-                    _replayInputIndices[i]++;
-                }
+                sangThisFrame[i] = ConsumeMicStreamUpToTime(i, replayFrame.PerMicInputs[i], time, coordinator);
             }
+            StampMicSingTimes(sangThisFrame, coordinator);
         }
 
         /// <summary>
