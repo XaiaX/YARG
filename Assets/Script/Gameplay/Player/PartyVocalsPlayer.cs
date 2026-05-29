@@ -10,6 +10,7 @@ using YARG.Core.Engine;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
 using YARG.Core.Input;
+using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Helpers;
 using YARG.Input;
