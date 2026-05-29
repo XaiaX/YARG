@@ -193,18 +193,18 @@ namespace YARG.Gameplay.Player
                     {
                         // Per-mic "sang this frame" flags: track which mics consumed
                         // a Pitch input this frame (for needle visibility).
-                        System.Span<bool> sangThisFrame = stackalloc bool[_micCount];
+                        System.Span<bool> replaySangThisFrame = stackalloc bool[_micCount];
 
                         for (int i = 0; i < _micCount && i < replayFrame.PerMicInputs.Length && i < _replayInputIndices.Length; i++)
                         {
                             var stream = replayFrame.PerMicInputs[i];
                             // Route both Pitch and Hit/StarPower (routeOtherInputs=true)
-                            sangThisFrame[i] = ConsumeMicStreamUpToTime(i, stream, time, coordinator, routeOtherInputs: true);
+                            replaySangThisFrame[i] = ConsumeMicStreamUpToTime(i, stream, time, coordinator, routeOtherInputs: true);
                         }
                         BaseEngine.Update(time + InputCalibration);
 
                         // Stamp per-mic singing recency via shared helper.
-                        StampMicSingTimes(sangThisFrame, coordinator);
+                        StampMicSingTimes(replaySangThisFrame, coordinator);
                     }
                     return;
                 }
@@ -237,7 +237,7 @@ namespace YARG.Gameplay.Player
 
                     if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                     {
-                        coordinator.SetMicPitch(0, input.Axis);
+                        liveCoordinator.SetMicPitch(0, input.Axis);
                         sangThisFrame[0] = true;
                     }
                     else
@@ -260,7 +260,7 @@ namespace YARG.Gameplay.Player
 
                     if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                     {
-                        coordinator.SetMicPitch(micIndex, input.Axis);
+                        liveCoordinator.SetMicPitch(micIndex, input.Axis);
                         if (micIndex < _micCount) sangThisFrame[micIndex] = true;
                     }
                     else
