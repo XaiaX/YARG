@@ -785,6 +785,12 @@ namespace YARG.Menu.DifficultySelect
 
         private bool HasPlayableInstrument(SongEntry entry, in Instrument instrument)
         {
+            // Party Vocals is playable when the song has any vocals chart (solo or harmony).
+            if (instrument == Instrument.PartyVocals)
+            {
+                return entry.HasInstrument(Instrument.Vocals) || entry.HasInstrument(Instrument.Harmony);
+            }
+
             // For vocals, all players *must* select the same gamemode (solo/harmony)
             if (instrument is Instrument.Vocals or Instrument.Harmony)
             {
