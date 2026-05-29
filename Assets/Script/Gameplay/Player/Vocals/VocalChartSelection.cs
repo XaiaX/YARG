@@ -1,6 +1,6 @@
 using System.Linq;
 using YARG.Core.Chart;
-using YARG.Player;
+using YARG.Core.Game;
 
 namespace YARG.Gameplay.Player
 {

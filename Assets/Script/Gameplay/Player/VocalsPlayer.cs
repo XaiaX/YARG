@@ -61,14 +61,10 @@ namespace YARG.Gameplay.Player
         protected VocalPercussionTrack _percussionTrack;
         protected bool _shouldHideNeedle;
 
-        // Stored engine event handlers for clean unsubscription on practice reset
-        private BaseEngine<VocalNote>.StarPowerPhraseHitEvent _onStarPowerPhraseHitHandler;
-        private VocalsEngine.PhraseHitEvent _onPhraseHitHandler;
-        private BaseEngine<VocalNote>.NoteHitEvent _onNoteHitHandler;
-        private BaseEngine<VocalNote>.NoteMissedEvent _onNoteMissedHandler;
-        private Action<bool> _onSingHandler;
-        private Action<bool> _onHitHandler;
-        private BaseEngine<VocalNote>.CountdownChangeEvent _onCountdownChangeHandler;
+        // Inline-lambda engine event subscriptions, stored as closures for
+        // clean unsubscription on practice reset (avoids needing to reference
+        // the engine's nested generic delegate types as field types).
+        private readonly List<System.Action> _engineUnsubscribers = new();
 
         private int _phraseIndex = -1;
 
@@ -215,11 +211,12 @@ namespace YARG.Gameplay.Player
                     Engine.BuildCountdownsFromAllParts(multiTrack.Parts);
                 }
 
-                _onCountdownChangeHandler = (countdownLength, endTime) =>
+                var onCountdownChangeHandler = (double countdownLength, double endTime) =>
                 {
                     GameManager.VocalTrack.UpdateCountdown(countdownLength, endTime);
                 };
-                Engine.OnCountdownChange += _onCountdownChangeHandler;
+                Engine.OnCountdownChange += onCountdownChangeHandler;
+                _engineUnsubscribers.Add(() => Engine.OnCountdownChange -= onCountdownChangeHandler);
             }
 
             if (GameManager.IsPractice)
@@ -237,17 +234,18 @@ namespace YARG.Gameplay.Player
         {
             if (Engine == null) return;
 
-            Engine.OnStarPowerPhraseHit -= _onStarPowerPhraseHitHandler;
+            // Inline-lambda subscriptions: unsubscribe via stored closures
+            foreach (var unsub in _engineUnsubscribers)
+            {
+                unsub();
+            }
+            _engineUnsubscribers.Clear();
+
+            // Method-reference subscriptions: unsubscribe directly
             Engine.OnStarPowerStatus -= OnStarPowerStatus;
             Engine.OnTargetNoteChanged -= OnTargetNoteChangedHandler;
-            Engine.OnPhraseHit -= _onPhraseHitHandler;
-            Engine.OnNoteHit -= _onNoteHitHandler;
-            Engine.OnNoteMissed -= _onNoteMissedHandler;
-            Engine.OnSing -= _onSingHandler;
-            Engine.OnHit -= _onHitHandler;
             Engine.OnComboIncrement -= OnComboIncrement;
             Engine.OnComboReset -= OnComboReset;
-            Engine.OnCountdownChange -= _onCountdownChangeHandler;
             Engine.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
         }
 
@@ -326,13 +324,14 @@ namespace YARG.Gameplay.Player
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
             }
 
-            _onStarPowerPhraseHitHandler = _ => OnStarPowerPhraseHit();
-            engine.OnStarPowerPhraseHit += _onStarPowerPhraseHitHandler;
+            var onStarPowerPhraseHitHandler = _ => OnStarPowerPhraseHit();
+            engine.OnStarPowerPhraseHit += onStarPowerPhraseHitHandler;
+            _engineUnsubscribers.Add(() => engine.OnStarPowerPhraseHit -= onStarPowerPhraseHitHandler);
             engine.OnStarPowerStatus += OnStarPowerStatus;
 
             engine.OnTargetNoteChanged += OnTargetNoteChangedHandler;
 
-            _onPhraseHitHandler = (percent, fullPoints, isLastPhrase) =>
+            var onPhraseHitHandler = (double percent, bool fullPoints, bool isLastPhrase) =>
             {
                 if (!fullPoints)
                 {
@@ -352,9 +351,10 @@ namespace YARG.Gameplay.Player
                     _hud.ShowPhraseHit(percent, Combo);
                 }
             };
-            engine.OnPhraseHit += _onPhraseHitHandler;
+            engine.OnPhraseHit += onPhraseHitHandler;
+            _engineUnsubscribers.Add(() => engine.OnPhraseHit -= onPhraseHitHandler);
 
-            _onNoteHitHandler = (_, note) =>
+            var onNoteHitHandler = (int _, VocalNote note) =>
             {
                 // Free Vocals doesn't spawn percussion visuals, so the pool is empty —
                 // calling HitPercussionNote would NRE in Pool.Return.
@@ -363,9 +363,10 @@ namespace YARG.Gameplay.Player
                     _percussionTrack.HitPercussionNote(note);
                 }
             };
-            engine.OnNoteHit += _onNoteHitHandler;
+            engine.OnNoteHit += onNoteHitHandler;
+            _engineUnsubscribers.Add(() => engine.OnNoteHit -= onNoteHitHandler);
 
-            _onNoteMissedHandler = (_, _) =>
+            var onNoteMissedHandler = (int _, VocalNote _) =>
             {
                 if (LastCombo >= 2)
                 {
@@ -374,17 +375,19 @@ namespace YARG.Gameplay.Player
 
                 LastCombo = Combo;
             };
-            engine.OnNoteMissed += _onNoteMissedHandler;
+            engine.OnNoteMissed += onNoteMissedHandler;
+            _engineUnsubscribers.Add(() => engine.OnNoteMissed -= onNoteMissedHandler);
 
-            _onSingHandler = (singing) =>
+            var onSingHandler = (bool singing) =>
             {
                 _lastSingTime = singing
                     ? GameManager.InputTime
                     : null;
             };
-            engine.OnSing += _onSingHandler;
+            engine.OnSing += onSingHandler;
+            _engineUnsubscribers.Add(() => engine.OnSing -= onSingHandler);
 
-            _onHitHandler = (hitting) =>
+            var onHitHandler = (bool hitting) =>
             {
                 // Only refresh _lastHitTime on hit; let IsInThreshold's window do
                 // the decay on miss. Multi-mic engines fire OnHit(false) every
@@ -394,7 +397,8 @@ namespace YARG.Gameplay.Player
                 // cutting instantly.
                 if (hitting) _lastHitTime = GameManager.InputTime;
             };
-            engine.OnHit += _onHitHandler;
+            engine.OnHit += onHitHandler;
+            _engineUnsubscribers.Add(() => engine.OnHit -= onHitHandler);
 
             return engine;
         }

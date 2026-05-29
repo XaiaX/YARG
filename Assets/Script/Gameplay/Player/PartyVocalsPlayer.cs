@@ -56,13 +56,8 @@ namespace YARG.Gameplay.Player
         // otherwise follow — it ends up as whichever sub-engine fired last).
         private readonly List<System.Action> _targetNoteUnsubscribers = new();
 
-        // Stored coordinator event handlers for clean unsubscription on practice reset
-        private BaseEngine<VocalNote>.StarPowerPhraseHitEvent _coordinatorStarPowerHandler;
-        private VocalsEngine.PhraseHitEvent _coordinatorPhraseHitHandler;
-        private BaseEngine<VocalNote>.NoteHitEvent _coordinatorNoteHitHandler;
-        private BaseEngine<VocalNote>.NoteMissedEvent _coordinatorNoteMissedHandler;
-        private Action<bool> _coordinatorSingHandler;
-        private Action<bool> _coordinatorHitHandler;
+        // Stored coordinator event closures for clean unsubscription on practice reset
+        private readonly List<System.Action> _coordinatorUnsubscribers = new();
 
         public override void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
@@ -416,8 +411,9 @@ namespace YARG.Gameplay.Player
             EngineContainer = GameManager.EngineManager.Register(coordinator, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
 
             // Wire all engine events (mirrors VocalsPlayer.CreateEngine wiring)
-            _coordinatorStarPowerHandler = _ => OnStarPowerPhraseHit();
-            coordinator.OnStarPowerPhraseHit += _coordinatorStarPowerHandler;
+            var coordinatorStarPowerHandler = _ => OnStarPowerPhraseHit();
+            coordinator.OnStarPowerPhraseHit += coordinatorStarPowerHandler;
+            _coordinatorUnsubscribers.Add(() => coordinator.OnStarPowerPhraseHit -= coordinatorStarPowerHandler);
             coordinator.OnStarPowerStatus += OnStarPowerStatus;
 
             // The coordinator itself does not fire OnTargetNoteChanged — sub-engines do.
@@ -434,7 +430,7 @@ namespace YARG.Gameplay.Player
                 _targetNoteUnsubscribers.Add(() => sub.OnTargetNoteChanged -= handler);
             }
 
-            _coordinatorPhraseHitHandler = (percent, fullPoints, isLastPhrase) =>
+            var coordinatorPhraseHitHandler = (double percent, bool fullPoints, bool isLastPhrase) =>
             {
                 if (!fullPoints)
                 {
@@ -448,9 +444,10 @@ namespace YARG.Gameplay.Player
                 // Multi-mic shows its banner via OnPartyVocalsPhrase — suppress
                 // the legacy percent-based text to avoid stacking two notifications.
             };
-            coordinator.OnPhraseHit += _coordinatorPhraseHitHandler;
+            coordinator.OnPhraseHit += coordinatorPhraseHitHandler;
+            _coordinatorUnsubscribers.Add(() => coordinator.OnPhraseHit -= coordinatorPhraseHitHandler);
 
-            _coordinatorNoteHitHandler = (_, note) =>
+            var coordinatorNoteHitHandler = (int _, VocalNote note) =>
             {
                 // Free Vocals doesn't spawn percussion visuals
                 if (note.IsPercussion && !Player.Profile.IsFreeVocals)
@@ -458,9 +455,10 @@ namespace YARG.Gameplay.Player
                     _percussionTrack.HitPercussionNote(note);
                 }
             };
-            coordinator.OnNoteHit += _coordinatorNoteHitHandler;
+            coordinator.OnNoteHit += coordinatorNoteHitHandler;
+            _coordinatorUnsubscribers.Add(() => coordinator.OnNoteHit -= coordinatorNoteHitHandler);
 
-            _coordinatorNoteMissedHandler = (_, _) =>
+            var coordinatorNoteMissedHandler = (int _, VocalNote _) =>
             {
                 if (LastCombo >= 2)
                 {
@@ -469,23 +467,26 @@ namespace YARG.Gameplay.Player
 
                 LastCombo = Combo;
             };
-            coordinator.OnNoteMissed += _coordinatorNoteMissedHandler;
+            coordinator.OnNoteMissed += coordinatorNoteMissedHandler;
+            _coordinatorUnsubscribers.Add(() => coordinator.OnNoteMissed -= coordinatorNoteMissedHandler);
 
-            _coordinatorSingHandler = (singing) =>
+            var coordinatorSingHandler = (bool singing) =>
             {
                 _lastSingTime = singing
                     ? GameManager.InputTime
                     : null;
             };
-            coordinator.OnSing += _coordinatorSingHandler;
+            coordinator.OnSing += coordinatorSingHandler;
+            _coordinatorUnsubscribers.Add(() => coordinator.OnSing -= coordinatorSingHandler);
 
-            _coordinatorHitHandler = (hitting) =>
+            var coordinatorHitHandler = (bool hitting) =>
             {
                 // Only refresh _lastHitTime on hit; let IsInThreshold's window do
                 // the decay on miss.
                 if (hitting) _lastHitTime = GameManager.InputTime;
             };
-            coordinator.OnHit += _coordinatorHitHandler;
+            coordinator.OnHit += coordinatorHitHandler;
+            _coordinatorUnsubscribers.Add(() => coordinator.OnHit -= coordinatorHitHandler);
 
             coordinator.OnPartyVocalsPhrase += OnPartyVocalsPhrase;
 
@@ -496,17 +497,12 @@ namespace YARG.Gameplay.Player
         {
             base.UnsubscribeEngineEvents();
 
-            // Unsubscribe coordinator-level inline lambdas (base only stores its own
-            // handlers; PartyVocalsPlayer.CreateEngine subscribes these separately).
-            if (Engine != null)
+            // Unsubscribe coordinator-level inline lambdas
+            foreach (var unsub in _coordinatorUnsubscribers)
             {
-                Engine.OnStarPowerPhraseHit -= _coordinatorStarPowerHandler;
-                Engine.OnPhraseHit -= _coordinatorPhraseHitHandler;
-                Engine.OnNoteHit -= _coordinatorNoteHitHandler;
-                Engine.OnNoteMissed -= _coordinatorNoteMissedHandler;
-                Engine.OnSing -= _coordinatorSingHandler;
-                Engine.OnHit -= _coordinatorHitHandler;
+                unsub();
             }
+            _coordinatorUnsubscribers.Clear();
 
             // Unsubscribe per-mic sub-engine target-note handlers
             foreach (var unsubscribe in _targetNoteUnsubscribers)
