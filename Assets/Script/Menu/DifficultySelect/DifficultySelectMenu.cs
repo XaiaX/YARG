@@ -254,19 +254,7 @@ namespace YARG.Menu.DifficultySelect
                     ChangePlayer(1);
                 });
 
-                string instrumentLabel;
-                if (player.Profile.FreeHarmony)
-                {
-                    bool hasMultipleMics = player.Bindings.Microphones.Count > 1;
-                    bool isBot = player.Profile.IsBot;
-                    instrumentLabel = (!isBot && hasMultipleMics) || (isBot && player.Profile.CurrentInstrument == Instrument.Harmony)
-                        ? Localize.Key("Menu.DifficultySelect.PartyVocals")
-                        : Localize.Key("Menu.DifficultySelect.FreeHarmony");
-                }
-                else
-                {
-                    instrumentLabel = player.Profile.CurrentInstrument.ToLocalizedName();
-                }
+                string instrumentLabel = player.Profile.CurrentInstrument.ToLocalizedName();
                 CreateItem(LocalizeHeader("Instrument"),
                     instrumentLabel,
                     _lastMenuState == State.Instrument, () =>
@@ -389,13 +377,11 @@ namespace YARG.Menu.DifficultySelect
         {
             foreach (var instrument in _possibleInstruments)
             {
-                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument
-                    && !CurrentPlayer.Profile.FreeHarmony;
+                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
                 CreateItem(instrument.ToLocalizedName(), selected, () =>
                 {
                     var preferredInstrument = CurrentPlayer.Profile.PreferredInstrument;
                     CurrentPlayer.Profile.CurrentInstrument = instrument;
-                    CurrentPlayer.Profile.FreeHarmony = false;
 
                     // What we are doing here is resetting preferred instrument only if the current preferred instrument
                     // was an option for this chart. This ensures that preferred instrument does not change when the
@@ -414,40 +400,6 @@ namespace YARG.Menu.DifficultySelect
                 });
             }
 
-            // Free Harmony: available whenever the song has any vocals chart (solo or
-            // harmony). On a solo-only chart it degenerates to a single-HARM rendering
-            // (same as if the song had only HARM1 charted).
-            bool freeHarmonyAvailable = _possibleInstruments.Contains(Instrument.Vocals)
-                || _possibleInstruments.Contains(Instrument.Harmony);
-            if (freeHarmonyAvailable)
-            {
-                bool freeSelected = CurrentPlayer.Profile.FreeHarmony;
-                bool hasMultipleMics = CurrentPlayer.Bindings.Microphones.Count > 1;
-                bool isBotProfile = CurrentPlayer.Profile.IsBot;
-
-                string freeHarmonyLabel = !isBotProfile && hasMultipleMics
-                    ? Localize.Key("Menu.DifficultySelect.PartyVocals")  // "Party Vocals"
-                    : Localize.Key("Menu.DifficultySelect.FreeHarmony");  // "Free Harmony"
-
-                CreateItem(freeHarmonyLabel, freeSelected, () =>
-                {
-                    // Pick a CurrentInstrument that's actually in _possibleInstruments —
-                    // otherwise ChangePlayer's reset-to-first logic will overwrite it.
-                    // The chart-selection in GameManager.Loading.cs uses IsFreeVocals, not
-                    // CurrentInstrument, so either works for visualization.
-                    CurrentPlayer.Profile.CurrentInstrument = _possibleInstruments.Contains(Instrument.Vocals)
-                        ? Instrument.Vocals
-                        : Instrument.Harmony;
-                    CurrentPlayer.Profile.FreeHarmony = true;
-
-                    FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
-                    UpdatePossibleDifficulties();
-                    UpdatePossibleModifiers();
-
-                    _menuState = State.Main;
-                    UpdateForPlayer();
-                });
-            }
         }
 
         private void CreateDifficultyMenu()
@@ -514,11 +466,7 @@ namespace YARG.Menu.DifficultySelect
                 bool harmonySelected = profile.HarmonyIndex == (i - 1);
                 CreateItem($"HARM{i}", harmonySelected, () =>
                 {
-                    if (!profile.IsBot || !profile.FreeHarmony)
-                    {
-                        profile.CurrentInstrument = Instrument.Harmony;
-                        profile.FreeHarmony = false;
-                    }
+                    profile.CurrentInstrument = Instrument.Harmony;
                     profile.HarmonyIndex = (byte) (capture - 1);
 
                     _menuState = State.Main;

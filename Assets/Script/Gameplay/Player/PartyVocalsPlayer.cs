@@ -57,6 +57,13 @@ namespace YARG.Gameplay.Player
         // otherwise follow — it ends up as whichever sub-engine fired last).
         private readonly List<System.Action> _targetNoteUnsubscribers = new();
 
+        // Per-mic input buffers for recording replays. Each buffer stores the sequence
+        // of GameInput values for one mic during the live session.
+        private List<GameInput>[] _recordingBuffers;
+
+        // Tracks replay input consumption for each mic stream during playback
+        private int[] _replayInputIndices;
+
         // Stored coordinator event handlers for clean unsubscription on practice reset
         private BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.StarPowerPhraseHitEvent _coordinatorStarPowerHandler;
         private VocalsEngine.PhraseHitEvent _coordinatorPhraseHitHandler;
@@ -142,6 +149,15 @@ namespace YARG.Gameplay.Player
                 });
             }
 
+            // Initialize per-mic recording and replay buffers
+            _recordingBuffers = new List<GameInput>[_micCount];
+            _replayInputIndices = new int[_micCount];
+            for (int i = 0; i < _micCount; i++)
+            {
+                _recordingBuffers[i] = new List<GameInput>();
+                _replayInputIndices[i] = 0;
+            }
+
             // Create additional mic input contexts for mics 1..N.
             // Mic 0 is handled by base._inputContext (created in base.Initialize).
             if (!Player.IsReplay && !player.Profile.IsBot)
@@ -157,11 +173,43 @@ namespace YARG.Gameplay.Player
 
         protected override void UpdateInputs(double time)
         {
+            // Handle replay playback: feed each sub-engine from its replay stream
+            if (Player.IsReplay)
+            {
+                var replayFrame = GameManager.ReplayData.Frames[Player.ReplayIndex];
+                if (replayFrame.PerMicInputs != null)
+                {
+                    var coordinator = Engine as PartyVocalsCoordinatorEngine;
+                    if (coordinator != null)
+                    {
+                        for (int i = 0; i < _micCount && i < replayFrame.PerMicInputs.Length && i < _replayInputIndices.Length; i++)
+                        {
+                            var stream = replayFrame.PerMicInputs[i];
+                            while (_replayInputIndices[i] < stream.Length && stream[_replayInputIndices[i]].Time <= time)
+                            {
+                                var input = stream[_replayInputIndices[i]];
+                                if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
+                                {
+                                    coordinator.SetMicPitch(i, input.Axis);
+                                }
+                                else
+                                {
+                                    OnGameInput(ref input);
+                                }
+                                _replayInputIndices[i]++;
+                            }
+                        }
+                        BaseEngine.Update(time + InputCalibration);
+                    }
+                    return;
+                }
+            }
+
             // For coordinator engines: bypass base.UpdateInputs to route each mic's pitch
             // directly to the coordinator's SetMicPitch instead of the base engine's
             // input queue (coordinator.MutateStateWithInput ignores VocalsAction.Pitch).
-            var coordinator = Engine as PartyVocalsCoordinatorEngine;
-            bool isCoordinator = coordinator != null;
+            var liveCoordinator = Engine as PartyVocalsCoordinatorEngine;
+            bool isCoordinator = liveCoordinator != null;
 
             if (!isCoordinator)
             {
@@ -179,6 +227,9 @@ namespace YARG.Gameplay.Player
             {
                 foreach (var input in _inputContext.GetInputsFromMic())
                 {
+                    // Record input for replay
+                    _recordingBuffers[0].Add(input);
+
                     if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                     {
                         coordinator.SetMicPitch(0, input.Axis);
@@ -199,6 +250,9 @@ namespace YARG.Gameplay.Player
                 int micIndex = i + 1;
                 foreach (var input in _additionalMicContexts[i].GetInputsFromMic())
                 {
+                    // Record input for replay
+                    _recordingBuffers[micIndex].Add(input);
+
                     if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                     {
                         coordinator.SetMicPitch(micIndex, input.Axis);
@@ -573,6 +627,23 @@ namespace YARG.Gameplay.Player
             _additionalMicContexts.Clear();
 
             base.FinishDestruction();
+        }
+
+        public override (ReplayFrame Frame, ReplayStats Stats) ConstructReplayData()
+        {
+            var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
+
+            // Set per-mic input streams for Party Vocals replays
+            if (Player.Profile.GameMode == GameMode.PartyVocals)
+            {
+                frame.PerMicInputs = new GameInput[_recordingBuffers.Length][];
+                for (int i = 0; i < _recordingBuffers.Length; i++)
+                {
+                    frame.PerMicInputs[i] = _recordingBuffers[i].ToArray();
+                }
+            }
+
+            return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
         }
     }
 }
