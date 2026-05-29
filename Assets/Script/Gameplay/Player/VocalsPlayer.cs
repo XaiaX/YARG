@@ -783,9 +783,13 @@ namespace YARG.Gameplay.Player
         /// </summary>
         protected float AnchorPitchToOctave(float sungPitch, float referenceNotePitch)
         {
-            if (_lastTargetNote is null || _lastTargetNote.IsNonPitched)
+            if (referenceNotePitch < 0f)
             {
-                // No reference note: add one octave to keep needle in middle of track
+                // No reference note (callers pass the -1 sentinel) or a non-pitched/talky
+                // note (Pitch < 0): add one octave to keep the needle in the middle of the
+                // track. Uses the parameter rather than _lastTargetNote so per-mic Party
+                // Vocals callers — which don't populate _lastTargetNote — anchor to their
+                // own line instead of always falling through here and jumping an octave up.
                 return sungPitch + 12f;
             }
 
