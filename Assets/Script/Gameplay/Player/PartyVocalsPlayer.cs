@@ -152,6 +152,11 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
+            // Per-mic "sang this frame" flags: a real mic counts as singing when it
+            // produced a pitch frame; a bot mic (no input stream) is handled below via
+            // its sub-engine. Used to stamp LastSingTime only when actually singing.
+            System.Span<bool> sangThisFrame = stackalloc bool[_micCount];
+
             // Mic 0: read from base._inputContext
             if (_inputContext != null)
             {
@@ -160,6 +165,7 @@ namespace YARG.Gameplay.Player
                     if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                     {
                         coordinator.SetMicPitch(0, input.Axis);
+                        sangThisFrame[0] = true;
                     }
                     else
                     {
@@ -179,6 +185,7 @@ namespace YARG.Gameplay.Player
                     if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                     {
                         coordinator.SetMicPitch(micIndex, input.Axis);
+                        if (micIndex < _micCount) sangThisFrame[micIndex] = true;
                     }
                     else
                     {
@@ -197,10 +204,17 @@ namespace YARG.Gameplay.Player
             // scoring and needles stuck at the bottom of the highway.
             BaseEngine.Update(time + InputCalibration);
 
-            // Track per-mic input recency for needle visibility
+            // Stamp per-mic singing recency only when the mic actually sang this frame:
+            // a real mic that produced a pitch frame above, or a bot mic whose sub-engine
+            // is currently on a note. Leaving it unstamped during rests lets the needle
+            // hold at its last note then hide (fade out) like the Solo needle, instead of
+            // staying lit the whole song.
             var singTime = GameManager.InputTime;
             for (int i = 0; i < _micCount && i < _slots.Count; i++)
             {
+                bool micActive = sangThisFrame[i] || coordinator.GetMicHittingParts(i) != 0u;
+                if (!micActive) continue;
+
                 var s = _slots[i];
                 s.LastSingTime = singTime;
                 _slots[i] = s;
