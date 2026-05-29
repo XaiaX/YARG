@@ -516,6 +516,19 @@ namespace YARG.Gameplay.Player
                 unsubscribe();
             }
             _targetNoteUnsubscribers.Clear();
+
+            // Reset per-mic slot state so stale trails/singing timestamps
+            // don't persist across practice resets.
+            for (int i = 0; i < _slots.Count; i++)
+            {
+                var s = _slots[i];
+                s.LastSingTime = null;
+                s.LastOnNoteTime = null;
+                s.TargetNote = null;
+                s.LastResolvedPart = -1;
+                s.Particles.Stop();
+                _slots[i] = s;
+            }
         }
 
         protected override void FinishDestruction()
