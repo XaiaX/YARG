@@ -238,6 +238,24 @@ namespace YARG.Gameplay.Player
             }
         }
 
+        protected override void ResetVisuals()
+        {
+            base.ResetVisuals();
+
+            for (int i = 0; i < _slots.Count; i++)
+            {
+                var s = _slots[i];
+                s.LastSingTime = null;
+                s.LastOnNoteTime = null;
+                s.TargetNote = null;
+                s.LastResolvedPart = -1;
+                s.Particles.Stop();
+                if (s.Transform.gameObject.activeSelf)
+                    s.Transform.gameObject.SetActive(false);
+                _slots[i] = s;
+            }
+        }
+
         protected override void UpdateVisuals(double visualTime)
         {
             base.UpdateVisuals(visualTime);
