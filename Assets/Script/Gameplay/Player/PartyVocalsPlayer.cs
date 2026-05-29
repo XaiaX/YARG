@@ -93,7 +93,15 @@ namespace YARG.Gameplay.Player
                 // bot a single needle (no per-mic slots) — visible as missing needles
                 // and trails even though scoring ran correctly off the Harmony parts.
                 var botTrack = VocalChartSelection.ResolveMultitrack(chart, player.Profile);
-                _micCount = Mathf.Max(1, botTrack.Parts.Count);
+
+                // PartyVocalsMicCountOverride: 0 = Auto (one synthetic vocalist per
+                // charted HARM part). 1-7 forces that many regardless of part count —
+                // a test/dev knob for mismatched mic-to-part ratios. The coordinator
+                // handles mic counts that differ from part count (cap/wrap mapping).
+                byte micOverride = player.Profile.PartyVocalsMicCountOverride;
+                _micCount = micOverride == 0
+                    ? Mathf.Max(1, botTrack.Parts.Count)
+                    : micOverride;
             }
             else if (effectiveMics.Count > 0)
             {
