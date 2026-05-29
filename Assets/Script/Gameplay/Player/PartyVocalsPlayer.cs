@@ -182,6 +182,10 @@ namespace YARG.Gameplay.Player
                     var coordinator = Engine as PartyVocalsCoordinatorEngine;
                     if (coordinator != null)
                     {
+                        // Per-mic "sang this frame" flags: track which mics consumed
+                        // a Pitch input this frame (for needle visibility).
+                        System.Span<bool> sangThisFrame = stackalloc bool[_micCount];
+
                         for (int i = 0; i < _micCount && i < replayFrame.PerMicInputs.Length && i < _replayInputIndices.Length; i++)
                         {
                             var stream = replayFrame.PerMicInputs[i];
@@ -191,6 +195,7 @@ namespace YARG.Gameplay.Player
                                 if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
                                 {
                                     coordinator.SetMicPitch(i, input.Axis);
+                                    sangThisFrame[i] = true;
                                 }
                                 else
                                 {
@@ -200,6 +205,20 @@ namespace YARG.Gameplay.Player
                             }
                         }
                         BaseEngine.Update(time + InputCalibration);
+
+                        // Stamp per-mic singing recency (matches live path logic at lines 278-292).
+                        // A mic counts as singing when it consumed a Pitch input this frame
+                        // OR its sub-engine is currently on a note (GetMicHittingParts != 0).
+                        var singTime = GameManager.InputTime;
+                        for (int i = 0; i < _micCount && i < _slots.Count; i++)
+                        {
+                            bool micActive = sangThisFrame[i] || coordinator.GetMicHittingParts(i) != 0u;
+                            if (!micActive) continue;
+
+                            var s = _slots[i];
+                            s.LastSingTime = singTime;
+                            _slots[i] = s;
+                        }
                     }
                     return;
                 }
@@ -644,6 +663,71 @@ namespace YARG.Gameplay.Player
             }
 
             return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
+        }
+
+        /// <summary>
+        /// Override seek path to handle per-mic replay streams. The base SetReplayTime
+        /// path resets the engine and processes the flat ReplayInputs list; for Party Vocals,
+        /// we must also reset and re-feed each per-mic stream from PerMicInputs[i]
+        /// to maintain pitch consistency across seek/rewind operations.
+        ///
+        /// Design: Call base SetReplayTime to handle flat-list reset and the single
+        /// BaseEngine.Update, then re-feed per-mic streams up to the target time.
+        /// This avoids double-feeding Hit/StarPower (which go through flat Inputs)
+        /// while ensuring per-mic pitch is reconstructed correctly.
+        /// </summary>
+        public override void SetReplayTime(double time)
+        {
+            base.SetReplayTime(time);
+
+            // Reset per-mic replay cursors
+            for (int i = 0; i < _replayInputIndices.Length; i++)
+            {
+                _replayInputIndices[i] = 0;
+            }
+
+            // Re-feed per-mic streams up to the new time
+            var replayFrame = GameManager.ReplayData.Frames[Player.ReplayIndex];
+            if (replayFrame.PerMicInputs == null)
+            {
+                return;
+            }
+
+            var coordinator = Engine as PartyVocalsCoordinatorEngine;
+            if (coordinator == null)
+            {
+                return;
+            }
+
+            double adjustedTime = time + InputCalibration;
+            for (int i = 0; i < _micCount && i < replayFrame.PerMicInputs.Length; i++)
+            {
+                var stream = replayFrame.PerMicInputs[i];
+                while (_replayInputIndices[i] < stream.Length && stream[_replayInputIndices[i]].Time <= adjustedTime)
+                {
+                    var input = stream[_replayInputIndices[i]];
+                    if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
+                    {
+                        coordinator.SetMicPitch(i, input.Axis);
+                    }
+                    _replayInputIndices[i]++;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Override Rewind to stop per-mic particle trails (mirrors base VocalsPlayer behavior).
+        /// </summary>
+        public override void Rewind(double visualTime)
+        {
+            base.Rewind(visualTime);
+
+            for (int i = 0; i < _slots.Count; i++)
+            {
+                var s = _slots[i];
+                s.Particles.Stop();
+                _slots[i] = s;
+            }
         }
     }
 }
