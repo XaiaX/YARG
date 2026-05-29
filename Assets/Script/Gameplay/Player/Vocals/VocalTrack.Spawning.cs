@@ -281,10 +281,10 @@ namespace YARG.Gameplay.Player
 
             while (index < phrases.Count && phrases[index].TimeEnd <= GameManager.SongTime + SpawnTimeOffset)
             {
-                // Free Vocals: skip end-of-phrase line for percussion-only phrases so
-                // they don't render as empty marker boxes.
-                bool percussionOnly = _isFreeVocals
-                    && phrases[index].PhraseParentNote.ChildNotes.All(c => c.IsPercussion);
+                // Skip end-of-phrase line for percussion-only phrases so
+                // they don't render as empty marker boxes. Matches
+                // StaticPhraseTracker's unconditional percussion exclusion.
+                bool percussionOnly = phrases[index].PhraseParentNote.ChildNotes.All(c => c.IsPercussion);
                 if (!percussionOnly)
                 {
                     var poolable = _phraseLinePool.TakeWithoutEnabling();

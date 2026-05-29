@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
@@ -44,6 +45,7 @@ namespace YARG.Gameplay.Player
             public double?      LastOnNoteTime;
             public int          LastResolvedPart;
             public VocalNote    TargetNote;        // this mic's own current chart note (from its sub-engine)
+            public AsyncOperationHandle<Material> MaterialHandle;
         }
 
         private readonly List<Slot> _slots = new();
@@ -53,6 +55,14 @@ namespace YARG.Gameplay.Player
         // own line instead of a single shared _lastTargetNote (which all mics would
         // otherwise follow — it ends up as whichever sub-engine fired last).
         private readonly List<System.Action> _targetNoteUnsubscribers = new();
+
+        // Stored coordinator event handlers for clean unsubscription on practice reset
+        private BaseEngine<VocalNote>.StarPowerPhraseHitEvent _coordinatorStarPowerHandler;
+        private VocalsEngine.PhraseHitEvent _coordinatorPhraseHitHandler;
+        private BaseEngine<VocalNote>.NoteHitEvent _coordinatorNoteHitHandler;
+        private BaseEngine<VocalNote>.NoteMissedEvent _coordinatorNoteMissedHandler;
+        private Action<bool> _coordinatorSingHandler;
+        private Action<bool> _coordinatorHitHandler;
 
         public override void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
@@ -74,8 +84,7 @@ namespace YARG.Gameplay.Player
                 // exactly one part, so reading chart.Vocals.Parts.Count here gave every
                 // bot a single needle (no per-mic slots) — visible as missing needles
                 // and trails even though scoring ran correctly off the Harmony parts.
-                bool harmonyHasContent = chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
-                var botTrack = harmonyHasContent ? chart.Harmony : chart.Vocals;
+                var botTrack = VocalChartSelection.ResolveMultitrack(chart, player.Profile);
                 _micCount = Mathf.Max(1, botTrack.Parts.Count);
             }
             else if (effectiveMics.Count > 0)
@@ -99,8 +108,10 @@ namespace YARG.Gameplay.Player
             for (int i = 0; i < _micCount; i++)
             {
                 // Needle clone.
+                // AC27.2: one-shot sync load per slot at Initialize; handle released in FinishDestruction.
                 int micNeedleIndex = (i % NEEDLES_COUNT) + 1;
-                var baseMaterial = Addressables.LoadAssetAsync<Material>($"VocalNeedle/{micNeedleIndex}").WaitForCompletion();
+                var materialHandle = Addressables.LoadAssetAsync<Material>($"VocalNeedle/{micNeedleIndex}");
+                var baseMaterial = materialHandle.WaitForCompletion();
                 var materialInstance = new Material(baseMaterial);
 
                 var needleObj = Instantiate(_needleVisualContainer, _needleVisualContainer.transform.parent);
@@ -122,6 +133,7 @@ namespace YARG.Gameplay.Player
                     LastSingTime = null,
                     LastOnNoteTime = null,
                     LastResolvedPart = -1,
+                    MaterialHandle = materialHandle,
                 });
             }
 
@@ -393,8 +405,7 @@ namespace YARG.Gameplay.Player
 
             // Must match the chart-selection logic in Initialize so the engine sees
             // the same parts (and pitch register) as the visualization.
-            bool harmonyHasContent = _chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
-            var multiTrack = harmonyHasContent ? _chart.Harmony : _chart.Vocals;
+            var multiTrack = VocalChartSelection.ResolveMultitrack(_chart, Player.Profile);
 
             var coordinator = new PartyVocalsCoordinatorEngine(NoteTrack, multiTrack.Parts, SyncTrack,
                 EngineParams, Player.Profile.IsBot,
@@ -405,7 +416,8 @@ namespace YARG.Gameplay.Player
             EngineContainer = GameManager.EngineManager.Register(coordinator, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
 
             // Wire all engine events (mirrors VocalsPlayer.CreateEngine wiring)
-            coordinator.OnStarPowerPhraseHit += _ => OnStarPowerPhraseHit();
+            _coordinatorStarPowerHandler = _ => OnStarPowerPhraseHit();
+            coordinator.OnStarPowerPhraseHit += _coordinatorStarPowerHandler;
             coordinator.OnStarPowerStatus += OnStarPowerStatus;
 
             // The coordinator itself does not fire OnTargetNoteChanged — sub-engines do.
@@ -422,7 +434,7 @@ namespace YARG.Gameplay.Player
                 _targetNoteUnsubscribers.Add(() => sub.OnTargetNoteChanged -= handler);
             }
 
-            coordinator.OnPhraseHit += (percent, fullPoints, isLastPhrase) =>
+            _coordinatorPhraseHitHandler = (percent, fullPoints, isLastPhrase) =>
             {
                 if (!fullPoints)
                 {
@@ -436,8 +448,9 @@ namespace YARG.Gameplay.Player
                 // Multi-mic shows its banner via OnPartyVocalsPhrase — suppress
                 // the legacy percent-based text to avoid stacking two notifications.
             };
+            coordinator.OnPhraseHit += _coordinatorPhraseHitHandler;
 
-            coordinator.OnNoteHit += (_, note) =>
+            _coordinatorNoteHitHandler = (_, note) =>
             {
                 // Free Vocals doesn't spawn percussion visuals
                 if (note.IsPercussion && !Player.Profile.IsFreeVocals)
@@ -445,8 +458,9 @@ namespace YARG.Gameplay.Player
                     _percussionTrack.HitPercussionNote(note);
                 }
             };
+            coordinator.OnNoteHit += _coordinatorNoteHitHandler;
 
-            coordinator.OnNoteMissed += (_, _) =>
+            _coordinatorNoteMissedHandler = (_, _) =>
             {
                 if (LastCombo >= 2)
                 {
@@ -455,39 +469,61 @@ namespace YARG.Gameplay.Player
 
                 LastCombo = Combo;
             };
+            coordinator.OnNoteMissed += _coordinatorNoteMissedHandler;
 
-            coordinator.OnSing += (singing) =>
+            _coordinatorSingHandler = (singing) =>
             {
                 _lastSingTime = singing
                     ? GameManager.InputTime
                     : null;
             };
+            coordinator.OnSing += _coordinatorSingHandler;
 
-            coordinator.OnHit += (hitting) =>
+            _coordinatorHitHandler = (hitting) =>
             {
                 // Only refresh _lastHitTime on hit; let IsInThreshold's window do
                 // the decay on miss.
                 if (hitting) _lastHitTime = GameManager.InputTime;
             };
+            coordinator.OnHit += _coordinatorHitHandler;
 
             coordinator.OnPartyVocalsPhrase += OnPartyVocalsPhrase;
 
             return coordinator;
         }
 
-        protected override void FinishDestruction()
+        protected override void UnsubscribeEngineEvents()
         {
-            // Unsubscribe per-mic sub-engine target-note handlers (base.FinishDestruction
-            // only unsubscribes from Engine itself, but the coordinator doesn't fire
-            // OnTargetNoteChanged — its sub-engines do).
+            base.UnsubscribeEngineEvents();
+
+            // Unsubscribe coordinator-level inline lambdas (base only stores its own
+            // handlers; PartyVocalsPlayer.CreateEngine subscribes these separately).
+            if (Engine != null)
+            {
+                Engine.OnStarPowerPhraseHit -= _coordinatorStarPowerHandler;
+                Engine.OnPhraseHit -= _coordinatorPhraseHitHandler;
+                Engine.OnNoteHit -= _coordinatorNoteHitHandler;
+                Engine.OnNoteMissed -= _coordinatorNoteMissedHandler;
+                Engine.OnSing -= _coordinatorSingHandler;
+                Engine.OnHit -= _coordinatorHitHandler;
+            }
+
+            // Unsubscribe per-mic sub-engine target-note handlers
             foreach (var unsubscribe in _targetNoteUnsubscribers)
             {
                 unsubscribe();
             }
             _targetNoteUnsubscribers.Clear();
+        }
 
+        protected override void FinishDestruction()
+        {
             foreach (var slot in _slots)
             {
+                if (slot.MaterialHandle.IsValid())
+                {
+                    Addressables.Release(slot.MaterialHandle);
+                }
                 if (slot.Transform != null && slot.Transform.gameObject != null)
                     Destroy(slot.Transform.gameObject);
                 if (slot.Material != null) Destroy(slot.Material);

@@ -2,6 +2,7 @@
 using System.Linq;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
@@ -60,6 +61,15 @@ namespace YARG.Gameplay.Player
         protected VocalPercussionTrack _percussionTrack;
         protected bool _shouldHideNeedle;
 
+        // Stored engine event handlers for clean unsubscription on practice reset
+        private BaseEngine<VocalNote>.StarPowerPhraseHitEvent _onStarPowerPhraseHitHandler;
+        private VocalsEngine.PhraseHitEvent _onPhraseHitHandler;
+        private BaseEngine<VocalNote>.NoteHitEvent _onNoteHitHandler;
+        private BaseEngine<VocalNote>.NoteMissedEvent _onNoteMissedHandler;
+        private Action<bool> _onSingHandler;
+        private Action<bool> _onHitHandler;
+        private BaseEngine<VocalNote>.CountdownChangeEvent _onCountdownChangeHandler;
+
         private int _phraseIndex = -1;
 
         protected const int NEEDLES_COUNT = 7;
@@ -69,6 +79,7 @@ namespace YARG.Gameplay.Player
 
         // Free vocals: needle material instance (mutable copy of Addressable)
         private Material _needleMaterialInstance;
+        private AsyncOperationHandle<Material> _needleMaterialHandle;
 
         public virtual void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
@@ -97,11 +108,7 @@ namespace YARG.Gameplay.Player
             VocalsTrack multiTrack;
             if (Player.Profile.IsFreeVocals)
             {
-                // Harmony track may have placeholder parts with no phrases (e.g. older
-                // solo-only songs like Creep load 3 empty HARM parts). Check for actual
-                // content, not just Parts.Count, so we fall back to Solo Vocals.
-                bool harmonyHasContent = chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
-                multiTrack = harmonyHasContent ? chart.Harmony : chart.Vocals;
+                multiTrack = VocalChartSelection.ResolveMultitrack(chart, Player.Profile);
             }
             else
             {
@@ -119,8 +126,10 @@ namespace YARG.Gameplay.Player
             int needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
 
             // Load material for the needle
+            // AC27.2: one-shot sync load at Initialize; handle released in FinishDestruction.
             var materialPath = $"VocalNeedle/{needleIndex}";
-            var baseMaterial = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
+            _needleMaterialHandle = Addressables.LoadAssetAsync<Material>(materialPath);
+            var baseMaterial = _needleMaterialHandle.WaitForCompletion();
             _needleMaterialInstance = new Material(baseMaterial);
             _needleRenderer.material = _needleMaterialInstance;
 
@@ -206,10 +215,11 @@ namespace YARG.Gameplay.Player
                     Engine.BuildCountdownsFromAllParts(multiTrack.Parts);
                 }
 
-                Engine.OnCountdownChange += (countdownLength, endTime) =>
+                _onCountdownChangeHandler = (countdownLength, endTime) =>
                 {
                     GameManager.VocalTrack.UpdateCountdown(countdownLength, endTime);
                 };
+                Engine.OnCountdownChange += _onCountdownChangeHandler;
             }
 
             if (GameManager.IsPractice)
@@ -223,17 +233,35 @@ namespace YARG.Gameplay.Player
 
         }
 
+        protected virtual void UnsubscribeEngineEvents()
+        {
+            if (Engine == null) return;
+
+            Engine.OnStarPowerPhraseHit -= _onStarPowerPhraseHitHandler;
+            Engine.OnStarPowerStatus -= OnStarPowerStatus;
+            Engine.OnTargetNoteChanged -= OnTargetNoteChangedHandler;
+            Engine.OnPhraseHit -= _onPhraseHitHandler;
+            Engine.OnNoteHit -= _onNoteHitHandler;
+            Engine.OnNoteMissed -= _onNoteMissedHandler;
+            Engine.OnSing -= _onSingHandler;
+            Engine.OnHit -= _onHitHandler;
+            Engine.OnComboIncrement -= OnComboIncrement;
+            Engine.OnComboReset -= OnComboReset;
+            Engine.OnCountdownChange -= _onCountdownChangeHandler;
+            Engine.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
+        }
+
         protected override void FinishDestruction()
         {
             // Stop input context
             _inputContext?.Stop();
 
-            // Unsubscribe from engine events and clean up material instance
-            if (Engine != null)
-            {
-                Engine.OnTargetNoteChanged -= OnTargetNoteChangedHandler;
+            UnsubscribeEngineEvents();
 
-                Engine.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
+            // Release Addressable handle (AC20)
+            if (_needleMaterialHandle.IsValid())
+            {
+                Addressables.Release(_needleMaterialHandle);
             }
 
             // Clean up material
@@ -282,11 +310,7 @@ namespace YARG.Gameplay.Player
             VocalsEngine engine;
             if (Player.Profile.IsFreeVocals)
             {
-                // Must match the chart-selection logic in Initialize above so the engine sees
-                // the same parts (and pitch register) as the visualization.
-                // Match the chart-selection in Initialize so engine and visuals agree.
-                bool harmonyHasContent = _chart.Harmony.Parts.Any(p => p.NotePhrases.Count > 0);
-                var multiTrack = harmonyHasContent ? _chart.Harmony : _chart.Vocals;
+                var multiTrack = VocalChartSelection.ResolveMultitrack(_chart, Player.Profile);
 
                 engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
                     botPartIndex: Player.Profile.HarmonyIndex);
@@ -302,12 +326,13 @@ namespace YARG.Gameplay.Player
                 EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
             }
 
-            engine.OnStarPowerPhraseHit += _ => OnStarPowerPhraseHit();
+            _onStarPowerPhraseHitHandler = _ => OnStarPowerPhraseHit();
+            engine.OnStarPowerPhraseHit += _onStarPowerPhraseHitHandler;
             engine.OnStarPowerStatus += OnStarPowerStatus;
 
             engine.OnTargetNoteChanged += OnTargetNoteChangedHandler;
 
-            engine.OnPhraseHit += (percent, fullPoints, isLastPhrase) =>
+            _onPhraseHitHandler = (percent, fullPoints, isLastPhrase) =>
             {
                 if (!fullPoints)
                 {
@@ -327,8 +352,9 @@ namespace YARG.Gameplay.Player
                     _hud.ShowPhraseHit(percent, Combo);
                 }
             };
+            engine.OnPhraseHit += _onPhraseHitHandler;
 
-            engine.OnNoteHit += (_, note) =>
+            _onNoteHitHandler = (_, note) =>
             {
                 // Free Vocals doesn't spawn percussion visuals, so the pool is empty —
                 // calling HitPercussionNote would NRE in Pool.Return.
@@ -337,8 +363,9 @@ namespace YARG.Gameplay.Player
                     _percussionTrack.HitPercussionNote(note);
                 }
             };
+            engine.OnNoteHit += _onNoteHitHandler;
 
-            engine.OnNoteMissed += (_, _) =>
+            _onNoteMissedHandler = (_, _) =>
             {
                 if (LastCombo >= 2)
                 {
@@ -347,15 +374,17 @@ namespace YARG.Gameplay.Player
 
                 LastCombo = Combo;
             };
+            engine.OnNoteMissed += _onNoteMissedHandler;
 
-            engine.OnSing += (singing) =>
+            _onSingHandler = (singing) =>
             {
                 _lastSingTime = singing
                     ? GameManager.InputTime
                     : null;
             };
+            engine.OnSing += _onSingHandler;
 
-            engine.OnHit += (hitting) =>
+            _onHitHandler = (hitting) =>
             {
                 // Only refresh _lastHitTime on hit; let IsInThreshold's window do
                 // the decay on miss. Multi-mic engines fire OnHit(false) every
@@ -365,6 +394,7 @@ namespace YARG.Gameplay.Player
                 // cutting instantly.
                 if (hitting) _lastHitTime = GameManager.InputTime;
             };
+            engine.OnHit += _onHitHandler;
 
             return engine;
         }
@@ -743,6 +773,7 @@ namespace YARG.Gameplay.Player
 
             _phraseIndex = -1;
 
+            UnsubscribeEngineEvents();
             Engine = CreateEngine();
             ResetPracticeSection();
         }
