@@ -223,7 +223,7 @@ namespace YARG.Gameplay.Player
                 // Legacy replay without PerMicInputs: fall back to the base replay
                 // path (flat input list). Pitch data won't be available, so vocal
                 // notes won't score, but Hit/StarPower inputs will still process.
-                YargLogger.LogFormatWarning("PartyVocals replay has no PerMicInputs — replay will be incomplete");
+                YargLogger.LogWarning("PartyVocals replay has no PerMicInputs — replay will be incomplete");
                 base.UpdateInputs(time);
                 return;
             }
