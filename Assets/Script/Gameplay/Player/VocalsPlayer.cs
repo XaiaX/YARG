@@ -116,8 +116,10 @@ namespace YARG.Gameplay.Player
             }
 
             // Get the effective microphone(s) for this player
-            IReadOnlyList<MicDevice> effectiveMics = player.Bindings.Microphones;
-            if (player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
+            IReadOnlyList<MicDevice> effectiveMics = player.IsReplay
+                ? null
+                : player.Bindings.Microphones;
+            if (effectiveMics != null && player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
             {
                 effectiveMics = new[] { effectiveMics[0] };
             }
