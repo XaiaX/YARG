@@ -95,6 +95,23 @@ namespace YARG.Gameplay.Player
                 // For replays, derive mic count from the recorded PerMicInputs stream count.
                 var replayFrame = GameManager.ReplayData.Frames[player.ReplayIndex];
                 _micCount = replayFrame.PerMicInputs?.Length ?? 1;
+
+                // Diagnostic: log per-mic replay stream state
+                if (replayFrame.PerMicInputs != null)
+                {
+                    for (int d = 0; d < replayFrame.PerMicInputs.Length; d++)
+                    {
+                        var s = replayFrame.PerMicInputs[d];
+                        string firstInfo = s.Length > 0
+                            ? $", first: time={s[0].Time:F3} action={s[0].Action}"
+                            : "";
+                        Debug.Log($"[PartyVocals] replay mic{d}: {s.Length} inputs{firstInfo}");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"[PartyVocals] replay: PerMicInputs is null, _micCount={_micCount}");
+                }
             }
             else if (player.Profile.IsFreeVocals && player.Profile.IsBot)
             {
@@ -213,6 +230,12 @@ namespace YARG.Gameplay.Player
                             replaySangThisFrame[i] = ConsumeMicStreamUpToTime(i, stream, time, coordinator, routeOtherInputs: true);
                         }
                         BaseEngine.Update(time + InputCalibration);
+
+                        // One-shot diagnostic: log time comparison on first frame past song start
+                        if (time > 1.0 && _replayInputIndices[0] == 0 && replayFrame.PerMicInputs.Length > 0 && replayFrame.PerMicInputs[0].Length > 0)
+                        {
+                            Debug.Log($"[PartyVocals] replay stall: game time={time:F3}, first input time={replayFrame.PerMicInputs[0][0].Time:F3}");
+                        }
 
                         // Stamp per-mic singing recency via shared helper.
                         StampMicSingTimes(replaySangThisFrame, coordinator);
