@@ -231,12 +231,6 @@ namespace YARG.Gameplay.Player
                         }
                         BaseEngine.Update(time + InputCalibration);
 
-                        // One-shot diagnostic: log time comparison on first frame past song start
-                        if (time > 1.0 && _replayInputIndices[0] == 0 && replayFrame.PerMicInputs.Length > 0 && replayFrame.PerMicInputs[0].Length > 0)
-                        {
-                            Debug.Log($"[PartyVocals] replay stall: game time={time:F3}, first input time={replayFrame.PerMicInputs[0][0].Time:F3}");
-                        }
-
                         // Stamp per-mic singing recency via shared helper.
                         StampMicSingTimes(replaySangThisFrame, coordinator);
                     }
@@ -691,8 +685,13 @@ namespace YARG.Gameplay.Player
         {
             if (stream == null || coordinator == null) return false;
 
+            // Replay inputs are stored with absolute timestamps (InputManager.CurrentInputTime
+            // at the moment of recording). Compare against the live absolute clock, not the
+            // relative game time passed in as timeCutoff.
+            double now = InputManager.CurrentInputTime;
+
             bool micSang = false;
-            while (_replayInputIndices[micIndex] < stream.Length && stream[_replayInputIndices[micIndex]].Time <= timeCutoff)
+            while (_replayInputIndices[micIndex] < stream.Length && stream[_replayInputIndices[micIndex]].Time <= now)
             {
                 var input = stream[_replayInputIndices[micIndex]];
                 if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
@@ -764,7 +763,8 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Use raw time (not adjusted) as the cutoff, matching the live replay loop.
+            // ConsumeMicStreamUpToTime uses InputManager.CurrentInputTime (absolute)
+            // internally, so the timeCutoff parameter is effectively ignored.
             System.Span<bool> sangThisFrame = stackalloc bool[_micCount];
             for (int i = 0; i < _micCount && i < replayFrame.PerMicInputs.Length; i++)
             {
