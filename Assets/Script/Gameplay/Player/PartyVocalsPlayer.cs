@@ -79,13 +79,23 @@ namespace YARG.Gameplay.Player
             // Compute mic count BEFORE base.Initialize: base.Initialize calls
             // CreateEngine() (virtual) which now dispatches to our override,
             // and the override needs _micCount to construct the coordinator.
-            IReadOnlyList<MicDevice> effectiveMics = player.Bindings.Microphones;
-            if (player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
+            IReadOnlyList<MicDevice> effectiveMics = null;
+            if (!player.IsReplay)
             {
-                effectiveMics = new[] { effectiveMics[0] };
+                effectiveMics = player.Bindings.Microphones;
+                if (player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
+                {
+                    effectiveMics = new[] { effectiveMics[0] };
+                }
             }
 
-            if (player.Profile.IsFreeVocals && player.Profile.IsBot)
+            if (player.IsReplay)
+            {
+                // For replays, derive mic count from the recorded PerMicInputs stream count.
+                var replayFrame = GameManager.ReplayData.Frames[player.ReplayIndex];
+                _micCount = replayFrame.PerMicInputs?.Length ?? 1;
+            }
+            else if (player.Profile.IsFreeVocals && player.Profile.IsBot)
             {
                 // One bot mic per charted HARM part. Use the same track CreateEngine
                 // scores on (Harmony when it has content, else Vocals) so the slot
