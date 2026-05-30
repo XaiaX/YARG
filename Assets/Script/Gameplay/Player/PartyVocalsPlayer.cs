@@ -10,6 +10,7 @@ using YARG.Core.Engine;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
 using YARG.Core.Input;
+using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Helpers;
@@ -218,6 +219,13 @@ namespace YARG.Gameplay.Player
                     }
                     return;
                 }
+
+                // Legacy replay without PerMicInputs: fall back to the base replay
+                // path (flat input list). Pitch data won't be available, so vocal
+                // notes won't score, but Hit/StarPower inputs will still process.
+                YargLogger.LogFormatWarning("PartyVocals replay has no PerMicInputs — replay will be incomplete");
+                base.UpdateInputs(time);
+                return;
             }
 
             // For coordinator engines: bypass base.UpdateInputs to route each mic's pitch
