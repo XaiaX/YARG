@@ -59,9 +59,6 @@ namespace YARG.Gameplay.Player
         // otherwise follow — it ends up as whichever sub-engine fired last).
         private readonly List<System.Action> _targetNoteUnsubscribers = new();
 
-        // Per-mic input buffers for recording replays. Each buffer stores the sequence
-        // of GameInput values for one mic during the live session.
-        private List<GameInput>[] _recordingBuffers;
 
         // Tracks replay input consumption for each mic stream during playback
         private int[] _replayInputIndices;
@@ -92,26 +89,11 @@ namespace YARG.Gameplay.Player
 
             if (player.IsReplay)
             {
-                // For replays, derive mic count from the recorded PerMicInputs stream count.
+                // For replays, derive mic count from the packed inputs in the flat stream.
                 var replayFrame = GameManager.ReplayData.Frames[player.ReplayIndex];
-                _micCount = replayFrame.PerMicInputs?.Length ?? 1;
+                _micCount = DetermineMicCountFromInputs(replayFrame.Inputs);
 
-                // Diagnostic: log per-mic replay stream state
-                if (replayFrame.PerMicInputs != null)
-                {
-                    for (int d = 0; d < replayFrame.PerMicInputs.Length; d++)
-                    {
-                        var s = replayFrame.PerMicInputs[d];
-                        string firstInfo = s.Length > 0
-                            ? $", first: time={s[0].Time:F3} action={s[0].Action}"
-                            : "";
-                        Debug.Log($"[PartyVocals] replay mic{d}: {s.Length} inputs{firstInfo}");
-                    }
-                }
-                else
-                {
-                    Debug.Log($"[PartyVocals] replay: PerMicInputs is null, _micCount={_micCount}");
-                }
+                Debug.Log($"[PartyVocals] replay: derived mic count={_micCount} from flat stream");
             }
             else if (player.Profile.IsFreeVocals && player.Profile.IsBot)
             {
@@ -186,12 +168,10 @@ namespace YARG.Gameplay.Player
                 });
             }
 
-            // Initialize per-mic recording and replay buffers
-            _recordingBuffers = new List<GameInput>[_micCount];
+            // Initialize replay indices
             _replayInputIndices = new int[_micCount];
             for (int i = 0; i < _micCount; i++)
             {
-                _recordingBuffers[i] = new List<GameInput>();
                 _replayInputIndices[i] = 0;
             }
 
@@ -651,16 +631,6 @@ namespace YARG.Gameplay.Player
         {
             var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
 
-            // Set per-mic input streams for Party Vocals replays
-            if (Player.Profile.GameMode == GameMode.PartyVocals)
-            {
-                frame.PerMicInputs = new GameInput[_recordingBuffers.Length][];
-                for (int i = 0; i < _recordingBuffers.Length; i++)
-                {
-                    frame.PerMicInputs[i] = _recordingBuffers[i].ToArray();
-                }
-            }
-
             return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
         }
 
@@ -771,6 +741,31 @@ namespace YARG.Gameplay.Player
                 s.Particles.Stop();
                 _slots[i] = s;
             }
+        }
+
+        /// <summary>
+        /// Determine the number of mics from the packed flat input stream.
+        /// Each mic's inputs are packed with the mic index in the action field.
+        /// </summary>
+        private int DetermineMicCountFromInputs(GameInput[] inputs)
+        {
+            if (inputs == null || inputs.Length == 0)
+                return 1;
+
+            int maxMicIndex = 0;
+            foreach (var input in inputs)
+            {
+                // PartyVocalsInput.Pack packs the mic index in the upper bits
+                // and the action in the lower bits.
+                int packedAction = input.Action;
+                int micIndex = PartyVocalsInput.UnpackMic(packedAction);
+
+                if (micIndex > maxMicIndex)
+                    maxMicIndex = micIndex;
+            }
+
+            // micIndex is 0-based, so +1 gives the count
+            return maxMicIndex + 1;
         }
     }
 }
