@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Game;
+using YARG.Gameplay.Player;
 using YARG.Helpers.Extensions;
 using YARG.Helpers.UI;
 using YARG.Localization;

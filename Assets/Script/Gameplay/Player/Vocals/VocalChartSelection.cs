@@ -1,4 +1,5 @@
 using System.Linq;
+using YARG.Core;
 using YARG.Core.Chart;
 using YARG.Core.Game;
 
