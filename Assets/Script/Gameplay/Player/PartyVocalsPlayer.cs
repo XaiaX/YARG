@@ -558,8 +558,8 @@ namespace YARG.Gameplay.Player
 
             _coordinatorNoteHitHandler = (_, note) =>
             {
-                // Free Vocals doesn't spawn percussion visuals
-                if (note.IsPercussion && !Player.Profile.IsFreeVocals)
+                // Party Vocals shows percussion hit feedback (scored at the coordinator).
+                if (note.IsPercussion)
                 {
                     _percussionTrack.HitPercussionNote(note);
                 }
