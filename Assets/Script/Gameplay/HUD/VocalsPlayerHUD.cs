@@ -32,12 +32,14 @@ namespace YARG.Gameplay.HUD
         private PlayerNameDisplay _playerNameDisplay;
 
         [Header("Party Vocals")]
-        [SerializeField] private TextMeshProUGUI _harm1FillText;
-        [SerializeField] private TextMeshProUGUI _harm2FillText;
-        [SerializeField] private TextMeshProUGUI _harm3FillText;
+        [SerializeField] private Image _harm1Fill;
+        [SerializeField] private Image _harm2Fill;
+        [SerializeField] private Image _harm3Fill;
         [SerializeField] private GameObject _harmFillContainer;
 
         private float _comboMeterFillTarget;
+
+        private readonly float[] _harmFillTargets = new float[3];
 
         private Coroutine _hudCoroutine;
 
@@ -68,6 +70,13 @@ namespace YARG.Gameplay.HUD
             }
 
             _starPowerFill.fillAmount = 0f;
+
+            var harmFills = new[] { _harm1Fill, _harm2Fill, _harm3Fill };
+            for (int i = 0; i < harmFills.Length; i++)
+            {
+                if (harmFills[i] != null && i < VocalTrack.Colors.Length)
+                    harmFills[i].color = VocalTrack.Colors[i];
+            }
         }
 
         private void Update()
@@ -93,6 +102,15 @@ namespace YARG.Gameplay.HUD
             else
             {
                 _starPowerPulse.color = Color.white.WithAlpha(0);
+            }
+
+            // Update harmony fills
+            var harmFills = new[] { _harm1Fill, _harm2Fill, _harm3Fill };
+            for (int i = 0; i < harmFills.Length; i++)
+            {
+                if (harmFills[i] == null) continue;
+                harmFills[i].fillAmount = Mathf.Lerp(harmFills[i].fillAmount,
+                    _harmFillTargets[i], Time.deltaTime * 12f);
             }
         }
 
@@ -190,23 +208,15 @@ namespace YARG.Gameplay.HUD
             if (_harmFillContainer == null) return;
 
             _harmFillContainer.SetActive(true);
-            var texts = new[] { _harm1FillText, _harm2FillText, _harm3FillText };
+            var fills = new[] { _harm1Fill, _harm2Fill, _harm3Fill };
             double scale = awesomeThreshold > 0 ? 1.0 / awesomeThreshold : 1.0;
 
-            for (int i = 0; i < texts.Length; i++)
+            for (int i = 0; i < fills.Length; i++)
             {
-                if (texts[i] == null) continue;
+                if (fills[i] == null) continue;
                 bool show = i < meters.Count && (partHasContent == null || partHasContent(i));
-                if (show)
-                {
-                    texts[i].gameObject.SetActive(true);
-                    int pct = (int) System.Math.Min(100, meters[i] * scale * 100);
-                    texts[i].text = $"HARM{i + 1} {pct}%";
-                }
-                else
-                {
-                    texts[i].gameObject.SetActive(false);
-                }
+                fills[i].gameObject.SetActive(show);
+                _harmFillTargets[i] = show ? (float) System.Math.Min(1.0, meters[i] * scale) : 0f;
             }
         }
 
