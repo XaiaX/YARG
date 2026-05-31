@@ -208,6 +208,41 @@ namespace YARG.Gameplay.Player
             }
         }
 
+        private void RouteMicInputs(int micIndex, MicInputContext context)
+        {
+            if (context == null) return;
+            foreach (var input in context.GetInputsFromMic())
+            {
+                var action = input.GetAction<VocalsAction>();
+                int packed = PartyVocalsInput.Pack(micIndex, action);
+
+                // Preserve the union value: pitch carries Axis (float), hit/SP carry Button.
+                GameInput tagged = action == VocalsAction.Pitch
+                    ? new GameInput(input.Time, packed, input.Axis)
+                    : new GameInput(input.Time, packed, input.Button);
+
+                // OnGameInput applies relative-time + InputCalibration, queues to the
+                // engine (coordinator demux routes by mic and sets the per-mic sang flag),
+                // and records to _replayInputs.
+                OnGameInput(ref tagged);
+            }
+        }
+
+        private void StampMicSingTimes(PartyVocalsCoordinatorEngine coordinator)
+        {
+            if (coordinator == null) return;
+            var singTime = GameManager.InputTime;
+            for (int i = 0; i < _micCount && i < _slots.Count; i++)
+            {
+                bool micActive = coordinator.DidMicSingThisTick(i)
+                                 || coordinator.GetMicHittingParts(i) != 0u;
+                if (!micActive) continue;
+                var s = _slots[i];
+                s.LastSingTime = singTime;
+                _slots[i] = s;
+            }
+        }
+
         protected override void UpdateInputs(double time)
         {
             // Handle replay playback: feed each sub-engine from its replay stream
@@ -245,9 +280,10 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // For coordinator engines: bypass base.UpdateInputs to route each mic's pitch
-            // directly to the coordinator's SetMicPitch instead of the base engine's
-            // input queue (coordinator.MutateStateWithInput ignores VocalsAction.Pitch).
+            // For coordinator engines: route all input through OnGameInput with packed mic index.
+            // The base.UpdateInputs path is bypassed (it uses single _inputContext and doesn't know
+            // about mic indices). OnGameInput handles relative time conversion, calibration,
+            // queuing to the coordinator, and replay recording.
             var liveCoordinator = Engine as PartyVocalsCoordinatorEngine;
             bool isCoordinator = liveCoordinator != null;
 
@@ -257,68 +293,21 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Per-mic "sang this frame" flags: a real mic counts as singing when it
-            // produced a pitch frame; a bot mic (no input stream) is handled below via
-            // its sub-engine. Used to stamp LastSingTime only when actually singing.
-            System.Span<bool> sangThisFrame = stackalloc bool[_micCount];
+            // Reset per-mic sang flags before routing inputs. The coordinator demux sets
+            // the per-mic sang flag while processing each pitch during OnGameInput.
+            liveCoordinator.ResetMicSangFlags();
 
-            // Mic 0: read from base._inputContext
-            if (_inputContext != null)
-            {
-                foreach (var input in _inputContext.GetInputsFromMic())
-                {
-                    // Record input for replay (convert to relative time, same as BasePlayer.OnGameInput)
-                    var recorded = new GameInput(GameManager.GetRelativeInputTime(input.Time), input.Action, input.Axis);
-                    _recordingBuffers[0].Add(recorded);
-
-                    if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
-                    {
-                        liveCoordinator.SetMicPitch(0, input.Axis);
-                        sangThisFrame[0] = true;
-                    }
-                    else
-                    {
-                        // Hit / StarPower go through the normal input path
-                        var copy = input;
-                        OnGameInput(ref copy);
-                    }
-                }
-            }
-
-            // Mics 1..N
+            // Route all mic input through OnGameInput with packed mic index.
+            // OnGameInput handles time conversion, calibration, queuing, and replay recording.
+            RouteMicInputs(0, _inputContext);
             for (int i = 0; i < _additionalMicContexts.Count; i++)
-            {
-                int micIndex = i + 1;
-                foreach (var input in _additionalMicContexts[i].GetInputsFromMic())
-                {
-                    // Record input for replay (convert to relative time, same as BasePlayer.OnGameInput)
-                    var recorded = new GameInput(GameManager.GetRelativeInputTime(input.Time), input.Action, input.Axis);
-                    _recordingBuffers[micIndex].Add(recorded);
+                RouteMicInputs(i + 1, _additionalMicContexts[i]);
 
-                    if (input.GetAction<VocalsAction>() == VocalsAction.Pitch)
-                    {
-                        liveCoordinator.SetMicPitch(micIndex, input.Axis);
-                        if (micIndex < _micCount) sangThisFrame[micIndex] = true;
-                    }
-                    else
-                    {
-                        var copy = input;
-                        OnGameInput(ref copy);
-                    }
-                }
-            }
-
-            // Advance the engine for this frame. The single-mic path delegates to
-            // base.UpdateInputs, which calls BaseEngine.Update; the multi-mic path
-            // above bypasses base to split pitch routing (Pitch -> SetMicPitch,
-            // Hit/StarPower -> OnGameInput), so it must drive the engine itself.
-            // Without this the engine only advanced when real-mic input frames
-            // arrived, so bots (which have no input stream) never progressed — no
-            // scoring and needles stuck at the bottom of the highway.
+            // Advance the engine for this frame.
             BaseEngine.Update(time + InputCalibration);
 
-            // Stamp per-mic singing recency via shared helper.
-            StampMicSingTimes(sangThisFrame, liveCoordinator);
+            // Stamp per-mic singing recency via coordinator flags.
+            StampMicSingTimes(liveCoordinator);
         }
 
         protected override void ResetVisuals()
