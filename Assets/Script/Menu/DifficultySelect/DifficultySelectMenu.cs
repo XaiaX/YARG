@@ -36,7 +36,8 @@ namespace YARG.Menu.DifficultySelect
             Difficulty,
             Modifiers,
             Harmony,
-            PartyVocalsBotMicCount
+            PartyVocalsBotMicCount,
+            PartyVocalsChartChoice
         }
 
         [SerializeField]
@@ -219,6 +220,9 @@ namespace YARG.Menu.DifficultySelect
                 case State.PartyVocalsBotMicCount:
                     CreatePartyVocalsBotMicCountMenu();
                     break;
+                case State.PartyVocalsChartChoice:
+                    CreatePartyVocalsChartChoiceMenu();
+                    break;
             }
 
             _lastMenuState = _menuState;
@@ -310,6 +314,38 @@ namespace YARG.Menu.DifficultySelect
                         _menuState = State.PartyVocalsBotMicCount;
                         UpdateForPlayer();
                     });
+                }
+
+                // Party Vocals: explicit Solo-vs-HARM chart choice. Only meaningful
+                // when the song offers both charts; otherwise show the forced chart.
+                if (player.Profile.GameMode == GameMode.PartyVocals)
+                {
+                    var song = GlobalVariables.State.CurrentSong;
+                    bool hasHarm = song.HasInstrument(Instrument.Harmony);
+                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
+                    bool realChoice = hasHarm && hasSolo;
+
+                    // Resolved chart for display: what ResolveMultitrack will pick.
+                    bool willSingSolo =
+                        player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
+                            ? hasSolo
+                            : !hasHarm;
+                    string chartLabel = willSingSolo ? "Solo" : "Harmony";
+
+                    if (realChoice)
+                    {
+                        CreateItem(LocalizeHeader("VocalChart"), chartLabel,
+                            _lastMenuState == State.PartyVocalsChartChoice, () =>
+                        {
+                            _menuState = State.PartyVocalsChartChoice;
+                            UpdateForPlayer();
+                        });
+                    }
+                    else
+                    {
+                        // Single-chart song: show the forced chart, non-actionable.
+                        CreateItem(LocalizeHeader("VocalChart"), chartLabel, false, () => { });
+                    }
                 }
 
                 // Only allow vocal modifiers to be selected once (so they don't conflict)
@@ -519,6 +555,26 @@ namespace YARG.Menu.DifficultySelect
                     UpdateForPlayer();
                 });
             }
+        }
+
+        private void CreatePartyVocalsChartChoiceMenu()
+        {
+            var profile = CurrentPlayer.Profile;
+            var current = profile.PartyVocalsChartPreference;
+
+            CreateItem("Auto", current == PartyVocalsChartPreference.Auto, () =>
+            {
+                profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Auto;
+                _menuState = State.Main;
+                UpdateForPlayer();
+            });
+
+            CreateItem("Solo", current == PartyVocalsChartPreference.Solo, () =>
+            {
+                profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Solo;
+                _menuState = State.Main;
+                UpdateForPlayer();
+            });
         }
 
         private void UpdateModifierMenu()
