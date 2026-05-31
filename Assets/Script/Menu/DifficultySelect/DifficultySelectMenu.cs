@@ -299,7 +299,7 @@ namespace YARG.Menu.DifficultySelect
 
                 // Free Vocals bots: expose a mic-count override for testing edge
                 // cases (e.g. 3 mics vs 2 parts, 1 mic vs 3 semi-overlapping parts).
-                // Auto = one bot mic per HARM part in the chart.
+                // Auto = one bot mic per HARM part in the chart (default).
                 if (player.Profile.IsFreeVocals && player.Profile.IsBot)
                 {
                     byte botMicOverride = player.Profile.PartyVocalsMicCountOverride;
@@ -562,9 +562,9 @@ namespace YARG.Menu.DifficultySelect
             var profile = CurrentPlayer.Profile;
             var current = profile.PartyVocalsChartPreference;
 
-            CreateItem("Auto", current == PartyVocalsChartPreference.Auto, () =>
+            CreateItem("Harmony", current == PartyVocalsChartPreference.Harmony, () =>
             {
-                profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Auto;
+                profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Harmony;
                 _menuState = State.Main;
                 UpdateForPlayer();
             });

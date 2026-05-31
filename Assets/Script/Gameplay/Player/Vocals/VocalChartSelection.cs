@@ -45,7 +45,7 @@ namespace YARG.Gameplay.Player
             return profile.PartyVocalsChartPreference switch
             {
                 PartyVocalsChartPreference.Solo => solo ? chart.Vocals : chart.Harmony,
-                // Auto (and any future/unknown value): prefer Harmony, else Solo.
+                // Harmony (and any future/unknown value): prefer Harmony, else Solo.
                 _                                => harmony ? chart.Harmony : chart.Vocals,
             };
         }
