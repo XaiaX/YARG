@@ -123,11 +123,6 @@ namespace YARG.Gameplay.Player
 
             base.Initialize(index, vocalIndex, player, chart, hud, percussionTrack, lastHighScore, trackSpeed);
 
-            // Harmony tracks (HARM1/HARM2/HARM3) don't carry MIDI StarPower phrase events —
-            // those live on the solo vocal track.  Stamp SP flags onto NoteTrack from the
-            // solo chart so the coordinator can award star power.
-            InheritStarPowerFlagsFromSoloTrack();
-
             // Always use per-mic slots (even for _micCount == 1). The engine is a
             // PartyVocalsCoordinatorEngine, not a regular VocalsEngine — the base
             // single-needle path doesn't drive the coordinator's sub-engines, so
@@ -412,33 +407,6 @@ namespace YARG.Gameplay.Player
                 else
                 {
                     slot.Particles.Stop();
-                }
-            }
-        }
-
-        private void InheritStarPowerFlagsFromSoloTrack()
-        {
-            // Already has flags (solo chart was selected) — nothing to do.
-            if (NoteTrack.Notes.Any(n => n.IsStarPower)) return;
-
-            var soloPart = _chart.Vocals.Parts.FirstOrDefault();
-            if (soloPart == null) return;
-
-            var spNotes = soloPart.CloneAsInstrumentDifficulty().Notes
-                .Where(n => n.IsStarPower)
-                .ToList();
-            if (spNotes.Count == 0) return;
-
-            foreach (var note in NoteTrack.Notes)
-            {
-                if (note.IsStarPower) continue;
-                foreach (var sp in spNotes)
-                {
-                    if (note.Tick >= sp.Tick && note.Tick < sp.Tick + sp.TickLength)
-                    {
-                        note.Flags |= NoteFlags.StarPower;
-                        break;
-                    }
                 }
             }
         }

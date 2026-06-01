@@ -155,6 +155,11 @@ namespace YARG.Gameplay.Player
             OriginalNoteTrack = selectedPart.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
 
+            // Harmony tracks (HARM1/HARM2/HARM3) may not carry MIDI StarPower phrase
+            // events — those are on the solo vocal track.  Stamp SP flags from the
+            // solo chart so the engine can award star power.
+            InheritStarPowerFlagsFromSoloTrack();
+
             _phraseIndex = -1;
             _previousStarPowerPercent = 0.0;
 
@@ -872,6 +877,32 @@ namespace YARG.Gameplay.Player
             var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
 
             return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
+        }
+
+        private void InheritStarPowerFlagsFromSoloTrack()
+        {
+            if (NoteTrack.Notes.Any(n => n.IsStarPower)) return;
+
+            var soloPart = _chart.Vocals.Parts.FirstOrDefault();
+            if (soloPart == null) return;
+
+            var spNotes = soloPart.CloneAsInstrumentDifficulty().Notes
+                .Where(n => n.IsStarPower)
+                .ToList();
+            if (spNotes.Count == 0) return;
+
+            foreach (var note in NoteTrack.Notes)
+            {
+                if (note.IsStarPower) continue;
+                foreach (var sp in spNotes)
+                {
+                    if (note.Tick >= sp.Tick && note.Tick < sp.Tick + sp.TickLength)
+                    {
+                        note.Flags |= NoteFlags.StarPower;
+                        break;
+                    }
+                }
+            }
         }
     }
 }
