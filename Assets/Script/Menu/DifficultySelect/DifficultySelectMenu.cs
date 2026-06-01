@@ -841,11 +841,11 @@ namespace YARG.Menu.DifficultySelect
             return Localize.Key("Menu.DifficultySelect", key);
         }
 
-        // Profile icon shown in the player header. Party Vocals shows a MIC-count icon
-        // (distinct from the in-song HUD icon, which is keyed to harmony PART count):
-        // 1->vocals, 2->twoVocals, 3->harmVocals, 4-7->numbered sprite. Bots set to Auto
-        // (mic-count override 0) use the '0' icon. All other game modes use their normal
-        // instrument sprite.
+        // Profile icon shown in the player header. Party Vocals uses the multi-mic
+        // "harmVocals" icon when the song has a harmony chart, else the solo "vocals" icon.
+        // (A mic-count icon would need numbered sprites wired into the TMP sprite asset —
+        // not worth it for a prototype. Both names below already resolve.) All other game
+        // modes use their normal instrument sprite.
         private static string GetProfileIconSprite(YargPlayer player)
         {
             var profile = player.Profile;
@@ -854,22 +854,9 @@ namespace YARG.Menu.DifficultySelect
                 return profile.GameMode.ToResourceName();
             }
 
-            if (profile.IsBot && profile.PartyVocalsMicCountOverride == 0)
-            {
-                return "0";
-            }
-
-            int micCount = profile.IsBot
-                ? profile.PartyVocalsMicCountOverride
-                : player.Bindings.Microphones.Count;
-
-            return micCount switch
-            {
-                <= 1 => "vocals",
-                2    => "twoVocals",
-                3    => "harmVocals",
-                _    => (micCount > 7 ? 7 : micCount).ToString(),
-            };
+            return GlobalVariables.State.CurrentSong.HasInstrument(Instrument.Harmony)
+                ? "harmVocals"
+                : "vocals";
         }
 
         private bool HasPlayableInstrument(SongEntry entry, in Instrument instrument)
