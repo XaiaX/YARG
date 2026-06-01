@@ -688,14 +688,10 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Free Vocals ignores percussion — keep HUD/needle visible.
-            if (Player.Profile.IsFreeVocals)
-            {
-                _hud.SetHUDShowing(true);
-                _shouldHideNeedle = false;
-                return;
-            }
-
+            // Party Vocals percussion only occurs on a solo VOCALS resolved track (harmony
+            // charts have no percussion), so HasPercussion below self-scopes this to the
+            // fallback-to-solo case — the percussion-mode UI matches solo Vocals there and
+            // stays inert on harmony charts.
             while (ShouldAdvancePhraseIndex(time))
             {
                 _phraseIndex++;
@@ -744,14 +740,10 @@ namespace YARG.Gameplay.Player
 
         private void SetPercussionMode(bool show)
         {
-            // Free Vocals ignores percussion entirely — keep HUD on, needle visible, hide the fret.
-            if (Player.Profile.IsFreeVocals)
-            {
-                _hud.SetHUDShowing(true);
-                _percussionTrack.ShowPercussionFret(false);
-                _shouldHideNeedle = false;
-                return;
-            }
+            // Applies to both solo and Party Vocals. For party, _shouldHideNeedle is
+            // honored per-mic in PartyVocalsPlayer.UpdateVisuals (each slot is gated on
+            // it), so this blanks every needle + trail during a percussion section, the
+            // same way solo hides its single needle.
             _hud.SetHUDShowing(!show);
             _percussionTrack.ShowPercussionFret(show);
             _shouldHideNeedle = show;
