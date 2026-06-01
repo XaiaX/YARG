@@ -44,7 +44,21 @@ namespace YARG.Gameplay.HUD
             var profile = player.Profile;
             _playerName.text = profile.Name;
 
-            var spriteName = player.GetInstrumentSprite();
+            string spriteName;
+            if (profile.GameMode == GameMode.PartyVocals && GameManager.Song != null)
+            {
+                spriteName = GameManager.Song.VocalsCount switch
+                {
+                    >= 3 => "InstrumentIcons[harmVocals]",
+                    2 => "InstrumentIcons[twoVocals]",
+                    _ => "InstrumentIcons[vocals]",
+                };
+            }
+            else
+            {
+                spriteName = player.GetInstrumentSprite();
+            }
+
             _instrumentIcon.sprite = Addressables
                 .LoadAssetAsync<Sprite>(spriteName)
                 .WaitForCompletion();

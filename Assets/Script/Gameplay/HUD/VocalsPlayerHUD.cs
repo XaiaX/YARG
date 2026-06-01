@@ -204,7 +204,8 @@ namespace YARG.Gameplay.HUD
         }
 
         public void UpdateHarmFill(IReadOnlyList<double> meters, double awesomeThreshold,
-            System.Func<int, bool> partHasContent = null)
+            System.Func<int, bool> partHasContent = null,
+            System.Func<int, bool> partInCurrentPhrase = null)
         {
             if (_harmFillContainer == null) return;
 
@@ -217,7 +218,24 @@ namespace YARG.Gameplay.HUD
                 if (fills[i] == null) continue;
                 bool show = i < meters.Count && (partHasContent == null || partHasContent(i));
                 fills[i].gameObject.SetActive(show);
-                _harmFillTargets[i] = show ? (float) System.Math.Min(1.0, meters[i] * scale) : 0f;
+
+                if (!show)
+                {
+                    _harmFillTargets[i] = 0f;
+                    continue;
+                }
+
+                bool present = partInCurrentPhrase == null || partInCurrentPhrase(i);
+                if (present)
+                {
+                    fills[i].color = VocalTrack.Colors[i];
+                    _harmFillTargets[i] = (float) System.Math.Min(1.0, meters[i] * scale);
+                }
+                else
+                {
+                    fills[i].color = new Color(0.4f, 0.4f, 0.4f);
+                    _harmFillTargets[i] = 1.0f;
+                }
             }
         }
 
