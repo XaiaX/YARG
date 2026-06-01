@@ -115,7 +115,7 @@ namespace YARG.Gameplay.HUD
                 harmFills[i].fillAmount = Mathf.Lerp(harmFills[i].fillAmount,
                     _harmFillTargets[i], Time.deltaTime * 12f);
                 harmFills[i].color = Color.Lerp(harmFills[i].color,
-                    _harmColorTargets[i], Time.deltaTime * 3f);
+                    _harmColorTargets[i], Time.deltaTime * 4f);
             }
         }
 
