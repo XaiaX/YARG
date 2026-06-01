@@ -504,6 +504,11 @@ namespace YARG.Gameplay.Player
                 // Party Vocals shows percussion hit feedback (scored at the coordinator).
                 if (note.IsPercussion)
                 {
+                    // [PV-PERC-DIAG] C: coordinator scored a percussion note and called
+                    // back. If B logs but this doesn't, the engine rejected the tap
+                    // (hit-window/timing). If this logs but no on-track feedback shows,
+                    // the defect is in the visual layer (HitPercussionNote / track mode).
+                    YargLogger.LogFormatInfo("[PV-PERC-DIAG] C NoteHit: percussion scored t={0:0.000}", note.Time);
                     _percussionTrack.HitPercussionNote(note);
                 }
             };
