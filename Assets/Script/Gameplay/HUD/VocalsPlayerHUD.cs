@@ -233,8 +233,8 @@ namespace YARG.Gameplay.HUD
                 }
                 else
                 {
-                    fills[i].color = new Color(0.4f, 0.4f, 0.4f);
-                    _harmFillTargets[i] = 1.0f;
+                    fills[i].color = new Color(1f, 0f, 1f);
+                    _harmFillTargets[i] = 0.75f;
                 }
             }
         }
