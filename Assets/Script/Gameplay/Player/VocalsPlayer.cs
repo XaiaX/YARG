@@ -9,6 +9,7 @@ using YARG.Core.Chart;
 using YARG.Core.Engine;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
+using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Logging;
 using YARG.Core.Replays;
@@ -294,7 +295,9 @@ namespace YARG.Gameplay.Player
         {
             if (!Player.IsReplay)
             {
-                var singToActivateStarPower = SettingsManager.Settings.VoiceActivatedVocalStarPower.Value;
+                var singToActivateStarPower =
+                    SettingsManager.Settings.VoiceActivatedVocalStarPower.Value &&
+                    !Player.Profile.IsModifierActive(Modifier.ManualVocalStarPower);
 
                 // Create the engine params from the engine preset
                 EngineParams = Player.EnginePreset.Vocals.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds,

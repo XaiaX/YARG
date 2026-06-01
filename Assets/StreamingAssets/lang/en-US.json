@@ -67,7 +67,8 @@
             "NoDynamics": "No Dynamics",
             "NoVocalPercussion" : "No Percussion",
             "RangeCompress": "No Range Shifts",
-            "OpensToGreens": "Opens To Greens"
+            "OpensToGreens": "Opens To Greens",
+            "ManualVocalStarPower": "Manual Star Power"
         },
         "SortAttribute": {
             "Album": "Album",
