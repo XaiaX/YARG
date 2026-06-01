@@ -18,28 +18,29 @@ namespace Editor
     ///   Unity -batchmode -nographics -quit -projectPath &lt;tree&gt;/YARG \
     ///         -executeMethod Editor.BuildScript.BuildWindows -buildOutput /path/to/out
     ///
-    /// Requires the matching Build Support module installed in Unity Hub. Uses the Mono
-    /// scripting backend because IL2CPP cannot cross-compile from a non-target host
-    /// (e.g. Mac → Windows); Mono builds anywhere. See
-    /// docs/party-vocals-prototype-overview-and-build.md.
+    /// Requires the matching Build Support module installed in Unity Hub. The *Mono* entry
+    /// points cross-compile from any host; the *IL2CPP* entry points give better runtime
+    /// performance but only build on a matching host (no cross-compile — e.g. Windows IL2CPP
+    /// must be built on Windows). See docs/party-vocals-prototype-overview-and-build.md.
     /// </summary>
     public static class BuildScript
     {
         private const string DefineSymbol = "YARG_TEST_BUILD";
 
-        [MenuItem("File/Prototype Build/Windows (x64)", false, 230)]
+        // Mono backend — cross-compiles from any host.
+        [MenuItem("File/Prototype Build/Windows (x64, Mono)", false, 230)]
         public static void BuildWindows() =>
-            Build(BuildTarget.StandaloneWindows64, "Windows", "YARG.exe");
+            Build(BuildTarget.StandaloneWindows64, "Windows", "YARG.exe", ScriptingImplementation.Mono2x);
 
-        [MenuItem("File/Prototype Build/Linux (x64)", false, 231)]
+        [MenuItem("File/Prototype Build/Linux (x64, Mono)", false, 231)]
         public static void BuildLinux() =>
-            Build(BuildTarget.StandaloneLinux64, "Linux", "YARG.x86_64");
+            Build(BuildTarget.StandaloneLinux64, "Linux", "YARG.x86_64", ScriptingImplementation.Mono2x);
 
-        [MenuItem("File/Prototype Build/macOS", false, 232)]
+        [MenuItem("File/Prototype Build/macOS (Mono)", false, 232)]
         public static void BuildMac() =>
-            Build(BuildTarget.StandaloneOSX, "Mac", "YARG.app");
+            Build(BuildTarget.StandaloneOSX, "Mac", "YARG.app", ScriptingImplementation.Mono2x);
 
-        [MenuItem("File/Prototype Build/All Platforms", false, 244)]
+        [MenuItem("File/Prototype Build/All Platforms (Mono)", false, 233)]
         public static void BuildAll()
         {
             BuildWindows();
@@ -47,17 +48,35 @@ namespace Editor
             BuildMac();
         }
 
-        private static void Build(BuildTarget target, string subdir, string exeName)
+        // IL2CPP backend — better runtime perf, but only builds on a matching host (no
+        // cross-compile). Output goes to a separate "<platform>-IL2CPP" folder so it can sit
+        // beside the Mono build for an A/B performance comparison.
+        [MenuItem("File/Prototype Build/Windows (x64, IL2CPP)", false, 264)]
+        public static void BuildWindowsIL2CPP() =>
+            Build(BuildTarget.StandaloneWindows64, "Windows", "YARG.exe", ScriptingImplementation.IL2CPP);
+
+        [MenuItem("File/Prototype Build/Linux (x64, IL2CPP)", false, 265)]
+        public static void BuildLinuxIL2CPP() =>
+            Build(BuildTarget.StandaloneLinux64, "Linux", "YARG.x86_64", ScriptingImplementation.IL2CPP);
+
+        [MenuItem("File/Prototype Build/macOS (IL2CPP)", false, 266)]
+        public static void BuildMacIL2CPP() =>
+            Build(BuildTarget.StandaloneOSX, "Mac", "YARG.app", ScriptingImplementation.IL2CPP);
+
+        private static void Build(BuildTarget target, string baseSubdir, string exeName,
+            ScriptingImplementation backend)
         {
-            // Output dir: -buildOutput <dir> CLI arg, else <project>/Builds.
+            // Output dir: -buildOutput <dir> CLI arg, else <project>/Builds. IL2CPP builds go
+            // to "<platform>-IL2CPP" so they don't overwrite the Mono build (A/B side by side).
+            string subdir = backend == ScriptingImplementation.IL2CPP ? baseSubdir + "-IL2CPP" : baseSubdir;
             string root = GetArg("-buildOutput")
                 ?? Path.Combine(Directory.GetParent(Application.dataPath)!.FullName, "Builds");
             string outDir = Path.Combine(root, subdir);
             Directory.CreateDirectory(outDir);
             string locationPath = Path.Combine(outDir, exeName);
 
-            // Mono so the build cross-compiles from any host (IL2CPP can't, e.g. Mac→Windows).
-            PlayerSettings.SetScriptingBackend(NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
+            // Mono cross-compiles from any host; IL2CPP only builds on a matching host.
+            PlayerSettings.SetScriptingBackend(NamedBuildTarget.Standalone, backend);
 
             // Switch active target (first switch per platform reimports — slow).
             if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, target))
