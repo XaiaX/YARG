@@ -44,7 +44,7 @@ namespace YARG.Menu.DifficultySelect
                 group = gameObject.AddComponent<CanvasGroup>();
             }
 
-            group.alpha = interactable ? 1f : 0.4f;
+            group.alpha = interactable ? 1f : 0.3f;
             group.interactable = interactable;
             group.blocksRaycasts = interactable;
         }
