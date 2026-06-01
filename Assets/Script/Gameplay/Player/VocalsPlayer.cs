@@ -515,7 +515,8 @@ namespace YARG.Gameplay.Player
             // Update per-HARM fill for Party Vocals (multi-mic via coordinator)
             if (Engine is PartyVocalsCoordinatorEngine coordinator)
             {
-                _hud.UpdateHarmFill(coordinator.CanonicalMeters, coordinator.AwesomeThreshold, coordinator.PartInCurrentPhrase);
+                _hud.UpdateHarmFill(coordinator.CanonicalMeters, coordinator.AwesomeThreshold,
+                    coordinator.PartInCurrentPhrase, coordinator.PartInNextPhrase, coordinator.CurrentPhraseProgress);
             }
             else
             {

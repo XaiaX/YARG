@@ -208,7 +208,8 @@ namespace YARG.Gameplay.HUD
         }
 
         public void UpdateHarmFill(IReadOnlyList<double> meters, double awesomeThreshold,
-            System.Func<int, bool> partInCurrentPhrase = null)
+            System.Func<int, bool> partInCurrentPhrase = null,
+            System.Func<int, bool> partInNextPhrase = null, double phraseProgress = 0.0)
         {
             if (_harmFillContainer == null) return;
 
@@ -232,6 +233,20 @@ namespace YARG.Gameplay.HUD
                         : 0f;
                     _harmFillTargets[i] = target;
                     if (!wasPresent) fills[i].fillAmount = target;
+                }
+                else if (partInNextPhrase != null && partInNextPhrase(i))
+                {
+                    // Count-in: this part returns next phrase. Drain 100%→0% across the
+                    // current phrase so the player can prepare; brighter grey (0.8) than
+                    // dimmed signals the upcoming entry.
+                    // Bypass the fill lerp — phraseProgress already advances smoothly every
+                    // frame, so set fillAmount directly and sync the target so Update()'s
+                    // 12f lerp is a no-op (order-independent, no flicker). Color still rides
+                    // the existing 4f lerp for a quick "it changed" fade.
+                    float drained = 1f - (float) phraseProgress;
+                    _harmColorTargets[i] = new Color(0.8f, 0.8f, 0.8f);
+                    _harmFillTargets[i] = drained;
+                    fills[i].fillAmount = drained;
                 }
                 else
                 {
