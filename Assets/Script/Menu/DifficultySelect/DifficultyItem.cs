@@ -31,5 +31,22 @@ namespace YARG.Menu.DifficultySelect
             _body.text = body;
             Button.SetOnClickEvent(action);
         }
+
+        /// <summary>
+        /// Dims the item and disables interaction (used to show a fixed, non-editable
+        /// choice). Adds a CanvasGroup at runtime so no prefab change is needed.
+        /// </summary>
+        public void SetInteractable(bool interactable)
+        {
+            var group = GetComponent<CanvasGroup>();
+            if (group == null)
+            {
+                group = gameObject.AddComponent<CanvasGroup>();
+            }
+
+            group.alpha = interactable ? 1f : 0.4f;
+            group.interactable = interactable;
+            group.blocksRaycasts = interactable;
+        }
     }
 }

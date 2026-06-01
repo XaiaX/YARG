@@ -192,7 +192,7 @@ namespace YARG.Menu.DifficultySelect
         {
             // Set player text
             var profile = CurrentPlayer.Profile;
-            _text.text = $"<sprite name=\"{profile.GameMode.ToResourceName()}\"> {profile.Name}";
+            _text.text = $"<sprite name=\"{GetProfileIconSprite(CurrentPlayer)}\"> {profile.Name}";
 
             // Reset content
             _navGroup.ClearNavigatables();
@@ -262,14 +262,44 @@ namespace YARG.Menu.DifficultySelect
                     ChangePlayer(1);
                 });
 
-                string instrumentLabel = player.Profile.CurrentInstrument.ToLocalizedName();
-                CreateItem(LocalizeHeader("Instrument"),
-                    instrumentLabel,
-                    _lastMenuState == State.Instrument, () =>
+                // Party Vocals' only instrument is Party Vocals, so the meaningful choice
+                // under "Instrument" is the Solo-vs-Harmony vocal chart. Repurpose the row to
+                // open the chart picker and show the resolved chart. When the song offers only
+                // one vocal chart there's nothing to pick, so the row is shown dimmed and
+                // non-interactable (visible feedback instead of a silent no-op).
+                if (player.Profile.GameMode == GameMode.PartyVocals)
                 {
-                    _menuState = State.Instrument;
-                    UpdateForPlayer();
-                });
+                    var song = GlobalVariables.State.CurrentSong;
+                    bool hasHarm = song.HasInstrument(Instrument.Harmony);
+                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
+                    bool realChoice = hasHarm && hasSolo;
+
+                    // Resolved chart for display: what ResolveMultitrack will pick.
+                    bool willSingSolo =
+                        player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
+                            ? hasSolo
+                            : !hasHarm;
+                    string chartLabel = willSingSolo ? "Solo" : "Harmony";
+
+                    CreateItem(LocalizeHeader("Instrument"), chartLabel,
+                        _lastMenuState == State.PartyVocalsChartChoice, () =>
+                    {
+                        _menuState = State.PartyVocalsChartChoice;
+                        UpdateForPlayer();
+                    },
+                    interactable: realChoice);
+                }
+                else
+                {
+                    string instrumentLabel = player.Profile.CurrentInstrument.ToLocalizedName();
+                    CreateItem(LocalizeHeader("Instrument"),
+                        instrumentLabel,
+                        _lastMenuState == State.Instrument, () =>
+                    {
+                        _menuState = State.Instrument;
+                        UpdateForPlayer();
+                    });
+                }
 
                 CreateItem(LocalizeHeader("Difficulty"),
                     player.Profile.CurrentDifficulty.ToLocalizedName(),
@@ -316,37 +346,7 @@ namespace YARG.Menu.DifficultySelect
                     });
                 }
 
-                // Party Vocals: explicit Solo-vs-HARM chart choice. Only meaningful
-                // when the song offers both charts; otherwise show the forced chart.
-                if (player.Profile.GameMode == GameMode.PartyVocals)
-                {
-                    var song = GlobalVariables.State.CurrentSong;
-                    bool hasHarm = song.HasInstrument(Instrument.Harmony);
-                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
-                    bool realChoice = hasHarm && hasSolo;
-
-                    // Resolved chart for display: what ResolveMultitrack will pick.
-                    bool willSingSolo =
-                        player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
-                            ? hasSolo
-                            : !hasHarm;
-                    string chartLabel = willSingSolo ? "Solo" : "Harmony";
-
-                    if (realChoice)
-                    {
-                        CreateItem(LocalizeHeader("VocalChart"), chartLabel,
-                            _lastMenuState == State.PartyVocalsChartChoice, () =>
-                        {
-                            _menuState = State.PartyVocalsChartChoice;
-                            UpdateForPlayer();
-                        });
-                    }
-                    else
-                    {
-                        // Single-chart song: show the forced chart, non-actionable.
-                        CreateItem(LocalizeHeader("VocalChart"), chartLabel, false, () => { });
-                    }
-                }
+                // (Party Vocals' Solo/Harmony chart choice now lives on the Instrument row above.)
 
                 // Only allow vocal modifiers to be selected once (so they don't conflict)
                 if (player.Profile.GameMode != GameMode.Vocals ||
@@ -791,7 +791,7 @@ namespace YARG.Menu.DifficultySelect
             Navigator.Instance.PopScheme();
         }
 
-        private void CreateItem(string header, string body, bool selected, DifficultyItem difficultyItem, UnityAction a)
+        private void CreateItem(string header, string body, bool selected, DifficultyItem difficultyItem, UnityAction a, bool interactable = true)
         {
             var btn = Instantiate(difficultyItem, _container);
 
@@ -802,6 +802,15 @@ namespace YARG.Menu.DifficultySelect
             else
             {
                 btn.Initialize(header, body, a);
+            }
+
+            btn.SetInteractable(interactable);
+
+            // Non-interactable items (e.g. a forced single-chart choice) are shown dimmed and
+            // kept out of the nav group so they can't be focused or activated.
+            if (!interactable)
+            {
+                return;
             }
 
             _navGroup.AddNavigatable(btn.Button);
@@ -817,9 +826,9 @@ namespace YARG.Menu.DifficultySelect
             CreateItem(null, body, selected, difficultyItem, a);
         }
 
-        private void CreateItem(string header, string body, bool selected, UnityAction a)
+        private void CreateItem(string header, string body, bool selected, UnityAction a, bool interactable = true)
         {
-            CreateItem(header, body, selected, _difficultyItemPrefab, a);
+            CreateItem(header, body, selected, _difficultyItemPrefab, a, interactable);
         }
 
         private void CreateItem(string body, bool selected, UnityAction a)
@@ -830,6 +839,37 @@ namespace YARG.Menu.DifficultySelect
         private string LocalizeHeader(string key)
         {
             return Localize.Key("Menu.DifficultySelect", key);
+        }
+
+        // Profile icon shown in the player header. Party Vocals shows a MIC-count icon
+        // (distinct from the in-song HUD icon, which is keyed to harmony PART count):
+        // 1->vocals, 2->twoVocals, 3->harmVocals, 4-7->numbered sprite. Bots set to Auto
+        // (mic-count override 0) use the '0' icon. All other game modes use their normal
+        // instrument sprite.
+        private static string GetProfileIconSprite(YargPlayer player)
+        {
+            var profile = player.Profile;
+            if (profile.GameMode != GameMode.PartyVocals)
+            {
+                return profile.GameMode.ToResourceName();
+            }
+
+            if (profile.IsBot && profile.PartyVocalsMicCountOverride == 0)
+            {
+                return "0";
+            }
+
+            int micCount = profile.IsBot
+                ? profile.PartyVocalsMicCountOverride
+                : player.Bindings.Microphones.Count;
+
+            return micCount switch
+            {
+                <= 1 => "vocals",
+                2    => "twoVocals",
+                3    => "harmVocals",
+                _    => (micCount > 7 ? 7 : micCount).ToString(),
+            };
         }
 
         private bool HasPlayableInstrument(SongEntry entry, in Instrument instrument)
