@@ -131,7 +131,7 @@ namespace YARG.Input.Serialization
             // this hash) is differing between launches. Diagnostic only.
             if (device.layout == "Keyboard")
             {
-                YargLogger.LogFormatInfo("[KBD-HASH-DIAG] Keyboard hash={0} desc={1}", hash, descriptionJson);
+                YargLogger.LogInfo($"[KBD-HASH-DIAG] Keyboard hash={hash} desc={descriptionJson}");
             }
 
             // Cache the calculated hash
