@@ -43,7 +43,12 @@ namespace YARG
 
         public SceneIndex CurrentScene { get; private set; } = SceneIndex.Persistent;
 
-        public string CurrentVersion { get; private set; } = "v0.14";
+        // FORK-LOCAL (Party Vocals prototype branding): the version label for non-editor
+        // builds. Test builds fall back to this when no (gitignored) Resources/version.txt
+        // is present; this is only ever displayed (watermark, main menu) or stored as a
+        // string (score GameVersion), never parsed. Restore "v0.14" if merged upstream.
+        // See docs/party-vocals-prototype-build-branding.md.
+        public string CurrentVersion { get; private set; } = "Party Vocals Prototype";
 
         protected override void SingletonAwake()
         {
