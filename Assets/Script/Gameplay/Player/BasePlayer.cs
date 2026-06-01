@@ -361,18 +361,6 @@ namespace YARG.Gameplay.Player
             // Allow the input to be explicitly ignored before processing it
             if (InterceptInput(ref input)) return;
 
-            // [PV-PERC-DIAG] B: a percussion-tap (Hit) input reached the engine
-            // queue for a Party Vocals coordinator. Catches BOTH the keyboard path
-            // (raw VocalsAction.Hit, decodes as mic 0) and the mic path (packed via
-            // PartyVocalsInput.Pack in RouteMicInputs). If A logs but this doesn't,
-            // routing dropped it; if neither logs while tapping, input never arrived.
-            if (BaseEngine is YARG.Core.Engine.Vocals.Engines.PartyVocalsCoordinatorEngine
-                && YARG.Core.Engine.Vocals.PartyVocalsInput.UnpackAction(input.Action) == VocalsAction.Hit)
-            {
-                YargLogger.LogFormatInfo("[PV-PERC-DIAG] B OnGameInput: Hit queued mic={0} action=0x{1:X} t={2:0.000}",
-                    YARG.Core.Engine.Vocals.PartyVocalsInput.UnpackMic(input.Action), input.Action, input.Time);
-            }
-
             BaseEngine.QueueInput(ref input);
             OnInputQueued(input);
             _replayInputs.Add(input);

@@ -2,7 +2,6 @@
 using YARG.Audio;
 using YARG.Core.Audio;
 using YARG.Core.Input;
-using YARG.Core.Logging;
 using YARG.Gameplay;
 
 namespace YARG.Input
@@ -48,12 +47,6 @@ namespace YARG.Input
                 else
                 {
                     gameInput = GameInput.Create(frame.Time, VocalsAction.Hit, true);
-
-                    // [PV-PERC-DIAG] A: mic produced a percussion-tap (Hit) frame.
-                    // Fires for any mic Hit (solo or party) — Hit frames are rare,
-                    // so volume is low. If this never logs while tapping, the mic
-                    // device isn't emitting IsHit frames in this configuration.
-                    YargLogger.LogFormatInfo("[PV-PERC-DIAG] A MicInputContext: Hit frame dequeued t={0:0.000}", frame.Time);
                 }
 
                 yield return gameInput;
