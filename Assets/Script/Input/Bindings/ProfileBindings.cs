@@ -416,6 +416,16 @@ namespace YARG.Input
 
         public void OnDeviceAdded(InputDevice device)
         {
+            // [KBD-HASH-DIAG] On load/resolve, show whether the live keyboard matches a
+            // serialized device entry (matchIndex >= 0 = will re-resolve; < 0 = orphaned,
+            // device won't be re-added). Lists serialized entries so we can compare hashes.
+            if (device.layout == "Keyboard")
+            {
+                YargLogger.LogFormatInfo("[KBD-HASH-DIAG] OnDeviceAdded keyboard profile='{0}' liveHash={1} matchIndex={2} serialized=[{3}]",
+                    Profile.Name, device.GetHash(), FindSerializedIndex(device),
+                    string.Join(", ", _unresolvedDevices.Select(d => d.Layout + ":" + d.Hash)));
+            }
+
             // Ignore already-added devices
             if (ContainsDevice(device))
                 return;
