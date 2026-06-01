@@ -66,6 +66,11 @@ namespace YARG.Input.Serialization
         public string Layout;
         public string Hash;
 
+        // SerializedInputDevice has two constructors, so Newtonsoft can't pick one on its
+        // own — without this attribute deserialization throws "Unable to find a constructor
+        // to use", which aborts loading the ENTIRE bindings file (so all device bindings are
+        // silently dropped on every launch). Param names map to the Layout/Hash properties.
+        [JsonConstructor]
         public SerializedInputDevice(string layout, string hash)
         {
             Layout = layout;
