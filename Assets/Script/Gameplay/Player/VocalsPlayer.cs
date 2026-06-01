@@ -516,7 +516,8 @@ namespace YARG.Gameplay.Player
             if (Engine is PartyVocalsCoordinatorEngine coordinator)
             {
                 _hud.UpdateHarmFill(coordinator.CanonicalMeters, coordinator.AwesomeThreshold,
-                    coordinator.PartInCurrentPhrase, coordinator.PartInNextPhrase, coordinator.CurrentPhraseProgress);
+                    coordinator.PartInCurrentPhrase, coordinator.PartInNextPhrase, coordinator.CurrentPhraseProgress,
+                    coordinator.CurrentPhraseDurationSeconds);
             }
             else
             {

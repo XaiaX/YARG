@@ -209,7 +209,8 @@ namespace YARG.Gameplay.HUD
 
         public void UpdateHarmFill(IReadOnlyList<double> meters, double awesomeThreshold,
             System.Func<int, bool> partInCurrentPhrase = null,
-            System.Func<int, bool> partInNextPhrase = null, double phraseProgress = 0.0)
+            System.Func<int, bool> partInNextPhrase = null, double phraseProgress = 0.0,
+            double phraseDurationSeconds = 0.0)
         {
             if (_harmFillContainer == null) return;
 
@@ -243,7 +244,17 @@ namespace YARG.Gameplay.HUD
                     // frame, so set fillAmount directly and sync the target so Update()'s
                     // 12f lerp is a no-op (order-independent, no flicker). Color still rides
                     // the existing 4f lerp for a quick "it changed" fade.
-                    float drained = 1f - (float) phraseProgress;
+                    // Hold full for the first ~500ms, then drain to 0 by phrase end. The hold
+                    // is converted to a fraction of phraseProgress via the phrase duration;
+                    // capped at 0.6 so a very short phrase still drains noticeably (not a snap).
+                    const float countInHoldSeconds = 0.5f;
+                    double holdFrac = phraseDurationSeconds > 0.0
+                        ? System.Math.Min(0.6, countInHoldSeconds / phraseDurationSeconds)
+                        : 0.0;
+                    double drainP = phraseProgress <= holdFrac
+                        ? 0.0
+                        : (phraseProgress - holdFrac) / (1.0 - holdFrac);
+                    float drained = 1f - (float) drainP;
                     _harmColorTargets[i] = new Color(0.8f, 0.8f, 0.8f);
                     _harmFillTargets[i] = drained;
                     fills[i].fillAmount = drained;
