@@ -235,7 +235,7 @@ namespace YARG.Gameplay.HUD
                 }
                 else
                 {
-                    _harmColorTargets[i] = new Color(0.8f, 0.8f, 0.8f);
+                    _harmColorTargets[i] = new Color(0.1f, 0.1f, 0.1f);
                     _harmFillTargets[i] = 1f;
                     if (wasPresent) fills[i].fillAmount = 1f;
                 }
