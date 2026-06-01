@@ -25,10 +25,6 @@ using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 #endif
 
-#if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
-using System.Collections.Generic;
-#endif
-
 namespace YARG.Gameplay
 {
     public class BackgroundManager : GameplayBehaviour, IDisposable
