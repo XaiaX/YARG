@@ -155,34 +155,10 @@ namespace YARG.Gameplay.Player
             OriginalNoteTrack = selectedPart.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
 
-            // ── PV-SP-DIAG2 (temporary instrumentation) ─────────────────────────────
-            // Solo-only track: bot and live both clone chart.Vocals.Parts[0], so their
-            // NoteTracks should be flag-identical. They aren't (bot IsSP=True, live
-            // IsSP=False). Capture where the flag is per player: native count right
-            // after the clone, the shared solo source's SP-phrase count at read time
-            // (shared-state mutation check), the active modifiers, and the count after
-            // the inherit pass.
-            int diagNativeSp = NoteTrack.Notes.Count(n => n.IsStarPower);
-            int diagSelectedPartSp = selectedPart.NotePhrases.Count(p => p.PhraseParentNote.IsStarPower);
-            int diagSoloSourceSp = _chart.Vocals.Parts.FirstOrDefault()
-                ?.NotePhrases.Count(p => p.PhraseParentNote.IsStarPower) ?? -1;
-            // ────────────────────────────────────────────────────────────────────────
-
             // Harmony tracks (HARM1/HARM2/HARM3) may not carry MIDI StarPower phrase
             // events — those are on the solo vocal track.  Stamp SP flags from the
             // solo chart so the engine can award star power.
             InheritStarPowerFlagsFromSoloTrack();
-
-            // ── PV-SP-DIAG2 (temporary instrumentation) ─────────────────────────────
-            YargLogger.LogWarning(
-                $"PV-SP-DIAG2 player={Player.Profile.Name} IsBot={Player.Profile.IsBot} " +
-                $"IsFree={Player.Profile.IsFreeVocals} trackInstrument={NoteTrack.Instrument} " +
-                $"unpitchedOnly={Player.Profile.IsModifierActive(Modifier.UnpitchedOnly)} " +
-                $"noVocalPerc={Player.Profile.IsModifierActive(Modifier.NoVocalPercussion)} " +
-                $"noteCount={NoteTrack.Notes.Count} nativeSP={diagNativeSp} " +
-                $"selectedPartSP={diagSelectedPartSp} sharedSoloSourceSP={diagSoloSourceSp} " +
-                $"afterInheritSP={NoteTrack.Notes.Count(n => n.IsStarPower)}");
-            // ────────────────────────────────────────────────────────────────────────
 
             _phraseIndex = -1;
             _previousStarPowerPercent = 0.0;
