@@ -131,14 +131,6 @@ namespace YARG.Input.Serialization
             var hashBytes = _hashAlgorithm.ComputeHash(descriptionBytes);
             hash = BitConverter.ToString(hashBytes).Replace("-", "");
 
-            // [KBD-HASH-DIAG] Log the keyboard's description + hash so we can diff it across a
-            // restart: if the keyboard device isn't persisting, the description JSON (and thus
-            // this hash) is differing between launches. Diagnostic only.
-            if (device.layout == "Keyboard")
-            {
-                YargLogger.LogInfo($"[KBD-HASH-DIAG] Keyboard hash={hash} desc={descriptionJson}");
-            }
-
             // Cache the calculated hash
             _hashCache.Add(device, hash);
 
