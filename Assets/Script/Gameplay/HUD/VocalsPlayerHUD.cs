@@ -41,6 +41,7 @@ namespace YARG.Gameplay.HUD
         private float _comboMeterFillTarget;
 
         private readonly float[] _harmFillTargets = new float[3];
+        private readonly Color[] _harmColorTargets = new Color[3];
         private readonly bool[] _harmPartPresent = new bool[3];
 
         private Coroutine _hudCoroutine;
@@ -113,6 +114,8 @@ namespace YARG.Gameplay.HUD
                 if (harmFills[i] == null) continue;
                 harmFills[i].fillAmount = Mathf.Lerp(harmFills[i].fillAmount,
                     _harmFillTargets[i], Time.deltaTime * 12f);
+                harmFills[i].color = Color.Lerp(harmFills[i].color,
+                    _harmColorTargets[i], Time.deltaTime * 15f);
             }
         }
 
@@ -223,7 +226,7 @@ namespace YARG.Gameplay.HUD
 
                 if (present)
                 {
-                    fills[i].color = VocalTrack.Colors[i];
+                    _harmColorTargets[i] = VocalTrack.Colors[i];
                     float target = i < meters.Count
                         ? (float) System.Math.Min(1.0, meters[i] * scale)
                         : 0f;
@@ -232,9 +235,9 @@ namespace YARG.Gameplay.HUD
                 }
                 else
                 {
-                    fills[i].color = Color.white;
-                    _harmFillTargets[i] = 0.75f;
-                    if (wasPresent) fills[i].fillAmount = 0.75f;
+                    _harmColorTargets[i] = new Color(0.8f, 0.8f, 0.8f);
+                    _harmFillTargets[i] = 1f;
+                    if (wasPresent) fills[i].fillAmount = 1f;
                 }
 
                 _harmPartPresent[i] = present;
