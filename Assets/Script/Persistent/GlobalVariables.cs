@@ -183,7 +183,17 @@ namespace YARG
         {
 #if UNITY_EDITOR
             return LoadVersionFromGit();
-#elif YARG_TEST_BUILD || YARG_NIGHTLY_BUILD
+#elif YARG_TEST_BUILD
+            // FORK-LOCAL (Party Vocals prototype branding): display
+            // "Party Vocals Prototype (<short commit>)" instead of the raw git string.
+            // BuildGitCommitVersion writes version.txt = "{branch} b{count} ({sha})"; we keep
+            // the prototype name (CurrentVersion's initializer) for branding and append only
+            // the commit for build traceability. Restore the plain version.txt read below if
+            // this branch is ever upstreamed. See docs/party-vocals-prototype-build-branding.md.
+            var protoVersionFile = Resources.Load<TextAsset>("version");
+            string commit = ExtractShortCommit(protoVersionFile?.text);
+            return commit != null ? $"{CurrentVersion} ({commit})" : CurrentVersion;
+#elif YARG_NIGHTLY_BUILD
             var versionFile = Resources.Load<TextAsset>("version");
             if (versionFile != null)
             {
@@ -197,6 +207,29 @@ namespace YARG
             return CurrentVersion;
 #endif
         }
+
+#if YARG_TEST_BUILD
+        // FORK-LOCAL (Party Vocals prototype branding): pull the short commit hash out of the
+        // string BuildGitCommitVersion writes ("{branch} b{count} ({sha})"). Returns null when
+        // the input is null/empty or has no "(...)" segment.
+        private static string ExtractShortCommit(string gitVersion)
+        {
+            if (string.IsNullOrEmpty(gitVersion))
+            {
+                return null;
+            }
+
+            int open = gitVersion.LastIndexOf('(');
+            int close = gitVersion.LastIndexOf(')');
+            if (open < 0 || close <= open)
+            {
+                return null;
+            }
+
+            string commit = gitVersion.Substring(open + 1, close - open - 1).Trim();
+            return commit.Length > 0 ? commit : null;
+        }
+#endif
 
         public static string LoadVersionFromGit()
         {
