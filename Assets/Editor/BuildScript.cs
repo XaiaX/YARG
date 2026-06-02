@@ -36,7 +36,7 @@ namespace Editor
         public static void BuildLinux() =>
             Build(BuildTarget.StandaloneLinux64, "Linux", "YARG.x86_64", ScriptingImplementation.Mono2x);
 
-        [MenuItem("File/Prototype Build/macOS (Mono)", false, 232)]
+        [MenuItem("File/Prototype Build/macOS (universal, Mono)", false, 232)]
         public static void BuildMac() =>
             Build(BuildTarget.StandaloneOSX, "Mac", "YARG.app", ScriptingImplementation.Mono2x);
 
@@ -59,7 +59,7 @@ namespace Editor
         public static void BuildLinuxIL2CPP() =>
             Build(BuildTarget.StandaloneLinux64, "Linux", "YARG.x86_64", ScriptingImplementation.IL2CPP);
 
-        [MenuItem("File/Prototype Build/macOS (IL2CPP)", false, 266)]
+        [MenuItem("File/Prototype Build/macOS (universal, IL2CPP)", false, 266)]
         public static void BuildMacIL2CPP() =>
             Build(BuildTarget.StandaloneOSX, "Mac", "YARG.app", ScriptingImplementation.IL2CPP);
 
