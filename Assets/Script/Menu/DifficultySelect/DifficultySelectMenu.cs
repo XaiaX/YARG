@@ -272,7 +272,20 @@ namespace YARG.Menu.DifficultySelect
                     var song = GlobalVariables.State.CurrentSong;
                     bool hasHarm = song.HasInstrument(Instrument.Harmony);
                     bool hasSolo = song.HasInstrument(Instrument.Vocals);
-                    bool realChoice = hasHarm && hasSolo;
+
+                    // All Party Vocals players share one VocalTrack, so a later player's
+                    // chart must match the first player's or it won't render. Lock every
+                    // player after the first to that choice: copy the preference (so the
+                    // shared track and replay record the chart actually played) and dim
+                    // the row, exactly like a single-chart song. The first Party Vocals
+                    // player still chooses freely.
+                    var lockedPreference = GetLockedPartyVocalsPreference();
+                    if (lockedPreference is { } locked)
+                    {
+                        player.Profile.PartyVocalsChartPreference = locked;
+                    }
+
+                    bool realChoice = hasHarm && hasSolo && lockedPreference is null;
 
                     // Resolved chart for display: what ResolveMultitrack will pick.
                     bool willSingSolo =
@@ -899,6 +912,31 @@ namespace YARG.Menu.DifficultySelect
                 Instrument.FiveLaneDrums => entry.HasInstrument(Instrument.ProDrums),
                 _ => false
             };
+        }
+
+        /// <summary>
+        /// Returns the Solo-vs-Harmony chart preference locked in by the first
+        /// non-sitting-out Party Vocals player ahead of the current one, or null when
+        /// the current player IS that first player (and so chooses freely).
+        /// All Party Vocals players share a single <see cref="VocalTrack"/> that is
+        /// initialized from the first vocal player (see GameManager.Loading.cs), so a
+        /// later player picking a different chart wouldn't render — it must match the
+        /// first player's choice. Mirrors the same-gamemode constraint for the old
+        /// Vocals/Harmony path in <see cref="HasPlayableInstrument"/>.
+        /// </summary>
+        private PartyVocalsChartPreference? GetLockedPartyVocalsPreference()
+        {
+            for (int i = 0; i < _playerIndex; i++)
+            {
+                var player = PlayerContainer.Players[i];
+                if (player.SittingOut) continue;
+                if (player.Profile.GameMode == GameMode.PartyVocals)
+                {
+                    return player.Profile.PartyVocalsChartPreference;
+                }
+            }
+
+            return null;
         }
 
         private bool HasPlayableDifficulty(SongEntry entry, in Instrument instrument, in Difficulty difficulty)
