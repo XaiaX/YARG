@@ -110,19 +110,37 @@ namespace YARG.Menu.ScoreScreen
             {
                 if (!AnalyzeReplay(song, scoreScreenStats.ReplayInfo))
                 {
+#if YARG_TEST_BUILD
+                    // FORK-LOCAL (Party Vocals prototype): suppress the user-facing "report this
+                    // to GitHub/Discord" dialog. This is an unofficial/unsupported build and we
+                    // do NOT want testers reporting replay-hash mismatches to the YARG channels.
+                    // Known issue intentionally HIDDEN, not fixed: replay analysis can be
+                    // inconsistent on this branch. Still logged locally so it isn't lost. Restore
+                    // the dialog before upstreaming. See docs/party-vocals-prototype-build-branding.md.
+                    YargLogger.LogFormatWarning(
+                        "Replay analysis produced inconsistent results (report dialog suppressed in prototype build). Chart Hash: {0}",
+                        song.Hash);
+#else
                     DialogManager.Instance.ShowMessage("Inconsistent Replay Results!",
                         "The replay analysis for this run produced inconsistent results to the actual gameplay.\n" +
                         "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
                         $"Chart Hash: {song.Hash}");
+#endif
                 }
             }
             catch (Exception ex)
             {
                 YargLogger.LogException(ex, $"Failed to analyze replay! Song hash: {song.Hash}");
+#if YARG_TEST_BUILD
+                // FORK-LOCAL (Party Vocals prototype): suppress the user-facing report dialog
+                // (same rationale as above — the exception is already logged just above).
+                // Restore before upstreaming. See docs/party-vocals-prototype-build-branding.md.
+#else
                 DialogManager.Instance.ShowMessage("Failed To Analyze Replay!",
                     "The replay analysis for this run resulted in an unexpected error.\n" +
                     "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
                     $"Chart Hash: {song.Hash}");
+#endif
             }
 #endif
 
