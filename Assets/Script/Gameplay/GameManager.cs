@@ -1036,7 +1036,8 @@ namespace YARG.Gameplay
 
         public void EndCoda(CodaSection coda)
         {
-            _breBox.EndCoda(EngineManager.TotalCodaBonus, () => { _breBoxActive = false; });
+            var songEnding = SongTime >= LastNoteTime;
+            _breBox.EndCoda(EngineManager.TotalCodaBonus, songEnding, () => { _breBoxActive = false; });
         }
 
         public void ResetCoda()
