@@ -767,11 +767,13 @@ namespace YARG.Gameplay
         public void SetVenueCameraManager(CameraManager cameraManager)
         {
             VenueCameraManager = cameraManager;
+            InitializeCameraDebug();
         }
 
         public void SetVenueCharacterManager(CharacterManager characterManager)
         {
             VenueCharacterManager = characterManager;
+            InitializeCharacterDebug();
         }
 
         public void SetEditHUD(bool on)

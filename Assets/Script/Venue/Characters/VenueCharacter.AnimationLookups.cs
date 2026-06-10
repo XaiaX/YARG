@@ -734,6 +734,9 @@ namespace YARG.Venue.Characters
                         // Also clear any outstanding triggers
                         ResetGenericTriggers();
 
+                        // Update the current generic state (for debug)
+                        CurrentGenericState = state;
+
                         // Now reset them if necessary so that transitions can use them to select the correct variety
                         if (IsLayeredState(state))
                         {
@@ -756,6 +759,10 @@ namespace YARG.Venue.Characters
                                     break;
                             }
                         }
+                    }
+                    else if (IsLeftHandPositionState(state))
+                    {
+                        CurrentHandPosition = state;
                     }
 
                     ResetAllTriggers();
@@ -926,6 +933,11 @@ namespace YARG.Venue.Characters
         {
             return state is AnimationStateType.Idle or AnimationStateType.Playing or AnimationStateType.IdleRealtime
                 or AnimationStateType.Mellow or AnimationStateType.Intense;
+        }
+
+        private static bool IsLeftHandPositionState(AnimationStateType state)
+        {
+            return state is >= AnimationStateType.LeftHandPosition1 and <= AnimationStateType.LeftHandPosition20;
         }
 
         // TODO: Extend this to more than just what happens to be needed for the test venue
