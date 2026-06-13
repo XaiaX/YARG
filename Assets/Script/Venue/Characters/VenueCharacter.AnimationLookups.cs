@@ -712,10 +712,17 @@ namespace YARG.Venue.Characters
                     {
                         hasTrigger = true;
                         hash = info.Hash;
-                        continue;
+                        // continue;
                     }
 
-                    _animator.Play(info.Hash, info.Layer, 0f);
+                    // As a temporary measure, the continue above was commented out so that venue animations
+                    // are forced to play even when there is a corresponding trigger. Once we figure out why
+                    // triggers aren't always causing the correct animator state machine transitions to happen
+                    // we should restore the continue above.
+                    //
+                    // Note that the trigger is *also* set, but since it happens on the same frame as this crossfade
+                    // it should in theory take over if it is actually working, so this is in a way just a fallback
+                    _animator.CrossFadeInFixedTime(info.Hash, 0.05f);
                 }
 
                 if (hasTrigger)
