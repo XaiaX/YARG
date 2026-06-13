@@ -470,11 +470,6 @@ namespace YARG.Gameplay.Player
 
             _previousBassGrooveState = currentBassGrooveState;
 
-            if (!stats.IsStarPowerActive && _previousStarPowerAmount < 0.5 && currentStarPowerAmount >= 0.5)
-            {
-                TrackView.ShowStarPowerReady();
-            }
-
             if (stats.IsStarPowerActive && !_wasStarPowerActive && !_didLowerTrack)
             {
                 CameraPositioner.Scoop();
@@ -1130,6 +1125,12 @@ namespace YARG.Gameplay.Player
             }
 
             OnStarPowerPhraseHit();
+        }
+
+        protected override void OnStarPowerReady()
+        {
+            base.OnStarPowerReady();
+            TrackView.ShowStarPowerReady();
         }
 
         public override void GameplayUpdate()
