@@ -7,6 +7,7 @@ using UnityEngine.UI;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Game;
 using YARG.Gameplay.Player;
+using YARG.Gameplay.Vocals;
 using YARG.Helpers.Extensions;
 using YARG.Helpers.UI;
 using YARG.Localization;
@@ -139,16 +140,9 @@ namespace YARG.Gameplay.HUD
 
         public static string GetVocalPerformanceText(double hitPercent)
         {
-            string performanceKey = hitPercent switch
-            {
-                >= 1f => "Awesome",
-                >= 0.8f => "Strong",
-                >= 0.7f => "Good",
-                >= 0.6f => "Okay",
-                >= 0.1f => "Messy",
-                _ => "Awful"
-            };
-
+            // Single source of truth for the grade thresholds lives in VocalPhraseGrade.Classify,
+            // shared with the score-screen phrase summary so the two can't drift.
+            var performanceKey = VocalPhraseGradeExtensions.Classify(hitPercent).ToLocalizationKey();
             return Localize.Key("Gameplay.Vocals.Performance", performanceKey);
         }
 
