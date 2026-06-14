@@ -63,7 +63,7 @@ namespace YARG.Menu.ScoreScreen
 
         [Space]
         [SerializeField]
-        protected ScrollRect _statsRect;
+        private ScrollRect _statsRect;
 
         [Space]
         [SerializeField]
@@ -81,14 +81,14 @@ namespace YARG.Menu.ScoreScreen
         [SerializeField]
         private TextMeshProUGUI _bandBonusScore;
         [SerializeField]
-        protected TextMeshProUGUI _averageOffset;
+        private TextMeshProUGUI _averageOffset;
         [SerializeField]
         private TextMeshProUGUI _starPowerActivations;
         [SerializeField]
         private TextMeshProUGUI _timeInStarPower;
 
         [SerializeField]
-        protected RectTransform _advancedStatsRect;
+        private RectTransform _advancedStatsRect;
         [SerializeField]
         private RectTransform _basicStatsRect;
 
@@ -102,7 +102,7 @@ namespace YARG.Menu.ScoreScreen
         private GameObject _modifiersUsedSeparator;
 
 
-        protected ScoreCardColorizer _colorizer;
+        private ScoreCardColorizer _colorizer;
         private GameObject _offsetHistogramObject;
         private RectTransform _offsetHistogramRootRect;
         private RectTransform _offsetHistogramContentRect;
@@ -262,7 +262,7 @@ namespace YARG.Menu.ScoreScreen
             _modifiersUsedSeparator.gameObject.SetActive(anyModifiersUsed);
         }
 
-        protected virtual void BuildOffsetHistogram()
+        private void BuildOffsetHistogram()
         {
             if (!TryGetHistogramSection(out var sectionContainer, out int insertIndex))
             {
@@ -314,7 +314,7 @@ namespace YARG.Menu.ScoreScreen
             _offsetHistogramRootRect.SetSiblingIndex(insertIndex);
         }
 
-        protected bool TryGetHistogramSection(out Transform sectionContainer, out int insertIndex)
+        private bool TryGetHistogramSection(out Transform sectionContainer, out int insertIndex)
         {
             sectionContainer = null;
             insertIndex = 0;
@@ -492,7 +492,7 @@ namespace YARG.Menu.ScoreScreen
             return canvas != null ? Mathf.Max(0.0001f, canvas.scaleFactor) : 1f;
         }
 
-        protected void SetOffsetHistogramActive(bool active)
+        private void SetOffsetHistogramActive(bool active)
         {
             if (_offsetHistogramObject != null && _offsetHistogramObject.activeSelf != active)
             {
@@ -524,7 +524,7 @@ namespace YARG.Menu.ScoreScreen
             return bins;
         }
 
-        protected TextMeshProUGUI CreateHistogramLabel(Transform parent, string name, TextAlignmentOptions alignment)
+        private TextMeshProUGUI CreateHistogramLabel(Transform parent, string name, TextAlignmentOptions alignment)
         {
             var labelObject = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
             labelObject.transform.SetParent(parent, false);
