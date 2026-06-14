@@ -540,10 +540,17 @@ namespace YARG.Menu.ScoreScreen
             }
         }
 
+        // Fraction of each HARM segment that holds the pure color at each end before
+        // transitioning. 0.35 means the first 35% holds the lower color, the last 35% holds
+        // the upper color, and only the middle 30% blends. This keeps adjacent warm colors
+        // (gold/orange/yellow) visually distinct instead of muddling into a wash.
+        private const float PARTY_HOLD_FRACTION = 0.35f;
+
         /// <summary>
-        /// Builds a 1×N vertical gradient texture from a list of color stops. The stops are evenly
-        /// spaced from bottom (stops[0]) to top (stops[last]). Lerp between consecutive stops.
-        /// The first segment (stops[0] → stops[1]) is the gold ramp; subsequent segments are HARM colors.
+        /// Builds a 1×N vertical gradient texture from a list of color stops. Stops are evenly
+        /// spaced from bottom (stops[0]) to top (stops[last]). Each segment holds its endpoint
+        /// colors for PARTY_HOLD_FRACTION at each end, then eases through the middle portion,
+        /// so adjacent HARM colors stay visually distinct.
         /// </summary>
         private static Texture2D CreatePartyGradient(params Color[] stops)
         {
@@ -558,7 +565,27 @@ namespace YARG.Menu.ScoreScreen
                 float scaled = t * segments;
                 int seg = Mathf.Min((int) scaled, segments - 1);
                 float localT = scaled - seg;
-                pixels[i] = Color.Lerp(stops[seg], stops[seg + 1], localT);
+
+                // Hold the lower color for the first PART, the upper for the last PART,
+                // and smoothstep through the middle so the transition is crisp but not jarring.
+                float hold = PARTY_HOLD_FRACTION;
+                float transitionRange = 1f - 2f * hold;
+                float blended;
+                if (localT <= hold)
+                {
+                    blended = 0f;
+                }
+                else if (localT >= 1f - hold)
+                {
+                    blended = 1f;
+                }
+                else
+                {
+                    float norm = (localT - hold) / transitionRange;
+                    blended = norm * norm * (3f - 2f * norm); // smoothstep
+                }
+
+                pixels[i] = Color.Lerp(stops[seg], stops[seg + 1], blended);
             }
             tex.SetPixels(pixels);
             tex.Apply();
