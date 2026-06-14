@@ -628,8 +628,11 @@
             "PointsResult": "{0:N0}\nPOINTS"
         },
         "Vocals": {
+            "Percussion": "PERCUSSION",
             "Performance": {
                 "Awesome": "AWESOME!",
+                "DoubleAwesome": "DOUBLE AWESOME!",
+                "TripleAwesome": "TRIPLE AWESOME!",
                 "Awful": "AWFUL",
                 "Good": "GOOD",
                 "Messy": "MESSY",

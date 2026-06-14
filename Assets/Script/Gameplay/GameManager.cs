@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
 using YARG.Core.Engine;
+using YARG.Core.Engine.Vocals;
 using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Logging;
@@ -625,6 +626,12 @@ namespace YARG.Gameplay
                         0 :
                         // PendingScore should be 0 at this point, so no reason to add it
                         (float) player.BaseStats.CommittedScore / player.BaseEngine.BaseNoteScore,
+
+                    // Route live-captured phrase data for the vocals score screen.
+                    VocalPhrasePercents = (player as VocalsPlayer)?.PhrasePercents as List<float>,
+                    VocalPercussionHits = (player as VocalsPlayer)?.PercussionHits ?? 0,
+                    VocalPercussionTotal = (player as VocalsPlayer)?.PercussionTotal ?? 0,
+                    VocalPhraseGrades = (player as VocalsPlayer)?.PhraseGrades as List<PhraseGrade>,
                 }).ToArray(),
                 BandScore = BandScore,
                 BandStars = (int) BandStars,

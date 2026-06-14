@@ -1,4 +1,6 @@
-﻿using YARG.Core.Engine;
+﻿using System.Collections.Generic;
+using YARG.Core.Engine;
+using YARG.Core.Engine.Vocals;
 using YARG.Core.Replays;
 using YARG.Player;
 using YARG.Replays;
@@ -12,6 +14,13 @@ namespace YARG.Menu.ScoreScreen
 
         public YargPlayer Player;
         public BaseStats  Stats;
+
+        // Vocals phrase-summary data (captured live during gameplay, not replay-serialized).
+        // Null for non-vocal players or old replays.
+        public List<float>       VocalPhrasePercents;
+        public int               VocalPercussionHits;
+        public int               VocalPercussionTotal;
+        public List<PhraseGrade> VocalPhraseGrades;
     }
 
     public struct ScoreScreenStats

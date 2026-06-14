@@ -73,6 +73,24 @@ namespace YARG.Gameplay.Player
 
         private int _phraseIndex = -1;
 
+        // --- Score-screen phrase capture (live, Unity-side; not replay-serialized) ---
+        // Populated from engine events during gameplay and routed to the score screen
+        // via PlayerScoreCard. See feature-notes-vocals-phrase-summary.md.
+        private readonly List<float> _phrasePercents = new();
+        public IReadOnlyList<float> PhrasePercents => _phrasePercents;
+
+        // Party Vocals only: per-phrase grade (Triple/Double/Awesome/Miss).
+        // Populated from OnPartyVocalsPhrase. Stays aligned with _phrasePercents since
+        // both events fire once per phrase in PartyVocalsCoordinatorEngine.ProcessPhraseEnd.
+        private readonly List<PhraseGrade> _phraseGrades = new();
+        public IReadOnlyList<PhraseGrade> PhraseGrades => _phraseGrades;
+
+        // Percussion is solo-Vocals only (harmony charts have no percussion notes).
+        private int _percussionHits;
+        private int _percussionTotal;
+        public int PercussionHits => _percussionHits;
+        public int PercussionTotal => _percussionTotal;
+
         protected const int NEEDLES_COUNT = 7;
 
         
@@ -191,6 +209,21 @@ namespace YARG.Gameplay.Player
             // Initialize percussion track
             percussionTrack.Initialize(NoteTrack.Notes);
             _percussionTrack = percussionTrack;
+
+            // Count total percussion notes for the score-screen tally (solo Vocals only —
+            // harmony charts have no percussion). We walk ChildNotes of every phrase.
+            _percussionTotal = 0;
+            for (int i = 0; i < NoteTrack.Notes.Count; i++)
+            {
+                var phrase = NoteTrack.Notes[i];
+                foreach (var child in phrase.ChildNotes)
+                {
+                    if (child.IsPercussion)
+                    {
+                        _percussionTotal++;
+                    }
+                }
+            }
 
             _hud.ShowPlayerName(player, needleIndex);
 
@@ -344,6 +377,9 @@ namespace YARG.Gameplay.Player
 
             _onPhraseHitHandler = (percent, fullPoints, isLastPhrase) =>
             {
+                // Capture phrase fraction for the score-screen histogram.
+                _phrasePercents.Add((float) percent);
+
                 if (!fullPoints)
                 {
                     IsFc = false;
@@ -370,6 +406,7 @@ namespace YARG.Gameplay.Player
                 // calling HitPercussionNote would NRE in Pool.Return.
                 if (note.IsPercussion && !Player.Profile.IsFreeVocals)
                 {
+                    _percussionHits++;
                     _percussionTrack.HitPercussionNote(note);
                 }
             };
@@ -411,6 +448,9 @@ namespace YARG.Gameplay.Player
 
         protected void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<double> canonicalMeters, bool isLastPhrase)
         {
+            // Capture party grade for the score-screen tally.
+            _phraseGrades.Add(grade);
+
             if (grade == PhraseGrade.Miss)
             {
                 // No awesome banner for a missed phrase — fall back to the legacy
@@ -436,6 +476,8 @@ namespace YARG.Gameplay.Player
 
         public override void ResetPracticeSection()
         {
+            ResetScoreScreenCaptures();
+
             Engine.Reset(true);
 
             if (NoteTrack.Notes.Count > 0)
@@ -448,6 +490,25 @@ namespace YARG.Gameplay.Player
             _percussionTrack.Initialize(NoteTrack.Notes);
 
             base.ResetPracticeSection();
+        }
+
+        public override void SetReplayTime(double time)
+        {
+            // Clear captured phrase data before the base class reprocesses replay inputs,
+            // which re-fires OnPhraseHit / OnNoteHit and would otherwise stack duplicates.
+            ResetScoreScreenCaptures();
+            base.SetReplayTime(time);
+        }
+
+        /// <summary>
+        /// Clears all score-screen capture data. Call before any engine reset or replay
+        /// seek that re-fires phrase/note events, so captures don't accumulate duplicates.
+        /// </summary>
+        protected void ResetScoreScreenCaptures()
+        {
+            _phrasePercents.Clear();
+            _phraseGrades.Clear();
+            _percussionHits = 0;
         }
 
         public override void Rewind(double visualTime)
@@ -776,6 +837,20 @@ namespace YARG.Gameplay.Player
                 OriginalNoteTrack.TextEvents);
 
             _phraseIndex = -1;
+
+            // Recompute percussion total for the filtered practice notes.
+            _percussionTotal = 0;
+            for (int i = 0; i < NoteTrack.Notes.Count; i++)
+            {
+                var phrase = NoteTrack.Notes[i];
+                foreach (var child in phrase.ChildNotes)
+                {
+                    if (child.IsPercussion)
+                    {
+                        _percussionTotal++;
+                    }
+                }
+            }
 
             UnsubscribeEngineEvents();
             Engine = CreateEngine();
