@@ -369,38 +369,49 @@ namespace YARG.Menu.DifficultySelect
 
                 // (Party Vocals' Solo/Harmony chart choice now lives on the Instrument row above.)
 
-                // Only allow vocal modifiers to be selected once (so they don't conflict)
-                if (player.Profile.GameMode != GameMode.Vocals ||
-                    _vocalModifierSelectIndex == -1 ||
-                    _vocalModifierSelectIndex == _playerIndex)
+                // Vocal modifiers must be uniform across all vocal players, so only the
+                // first vocal player to claim selection can edit them. Later vocal players
+                // see the inherited selection, dimmed and non-interactable — the same
+                // pattern as the Party Vocals instrument/chart row.
+                bool isVocalMode = player.Profile.GameMode == GameMode.Vocals
+                    || player.Profile.GameMode == GameMode.PartyVocals;
+                bool modifiersLocked = isVocalMode
+                    && _vocalModifierSelectIndex != -1
+                    && _vocalModifierSelectIndex != _playerIndex;
+
+                // Show the effective modifiers: the primary player's selection when locked,
+                // otherwise this player's own.
+                var modifiersSource = modifiersLocked
+                    ? PlayerContainer.Players[_vocalModifierSelectIndex].Profile
+                    : player.Profile;
+
+                // Create modifiers body text
+                string modifierText = "";
+                if ((modifiersSource.CurrentModifiers & ~_excusableModifiers) == Modifier.None)
                 {
-                    // Create modifiers body text
-                    string modifierText = "";
-                    if ((player.Profile.CurrentModifiers & ~_excusableModifiers) == Modifier.None)
-                    {
-                        // If there are no modifiers (ignoring the excusable ones), then just say "none"
-                        modifierText = Modifier.None.ToLocalizedName();
-                    }
-                    else
-                    {
-                        // Combine all modifiers
-                        foreach (var modifier in _possibleModifiers)
-                        {
-                            if (!player.Profile.IsModifierActive(modifier)) continue;
-
-                            modifierText += modifier.ToLocalizedName() + "\n";
-                        }
-
-                        modifierText = modifierText.Trim();
-                    }
-
-                    CreateItem(LocalizeHeader("Modifiers"),
-                        modifierText, _lastMenuState == State.Modifiers, () =>
-                    {
-                        _menuState = State.Modifiers;
-                        UpdateForPlayer();
-                    });
+                    // If there are no modifiers (ignoring the excusable ones), then just say "none"
+                    modifierText = Modifier.None.ToLocalizedName();
                 }
+                else
+                {
+                    // Combine all modifiers
+                    foreach (var modifier in _possibleModifiers)
+                    {
+                        if (!modifiersSource.IsModifierActive(modifier)) continue;
+
+                        modifierText += modifier.ToLocalizedName() + "\n";
+                    }
+
+                    modifierText = modifierText.Trim();
+                }
+
+                CreateItem(LocalizeHeader("Modifiers"),
+                    modifierText, _lastMenuState == State.Modifiers, () =>
+                {
+                    _menuState = State.Modifiers;
+                    UpdateForPlayer();
+                },
+                interactable: !modifiersLocked);
             }
 
             // Only show if there is more than one play, only if there is instruments available
@@ -682,7 +693,8 @@ namespace YARG.Menu.DifficultySelect
                         if (player.SittingOut) continue;
                         if (player == primaryPlayer) continue;
 
-                        if (player.Profile.GameMode == GameMode.Vocals)
+                        if (player.Profile.GameMode == GameMode.Vocals ||
+                            player.Profile.GameMode == GameMode.PartyVocals)
                         {
                             player.Profile.ApplySessionModifiers(primaryPlayer.Profile);
                         }
