@@ -75,14 +75,14 @@ namespace YARG.Gameplay.Player
 
         // Per-phrase normalized hit percents, captured live from OnPhraseHit in chronological
         // (song) order. Routed to the score screen's Advanced view for the vocals phrase summary.
-        private readonly List<float> _phrasePercents = new();
+        protected readonly List<float> _phrasePercents = new();
         public IReadOnlyList<float> PhrasePercents => _phrasePercents;
 
         // Vocal percussion isn't tracked in stats; tally hits/total live for the score screen.
         // Total is derived from chart data so it's correct regardless of shared mutable state
         // (multiple engines on the same VocalsPart share VocalNote objects — first engine to hit
         // a percussion note mutates WasHit, causing sibling engines to skip it).
-        private int _percussionHits;
+        protected int _percussionHits;
         private int _percussionTotalFromChart;
         public int PercussionHits => _percussionHits;
         public int PercussionTotal => _percussionTotalFromChart;

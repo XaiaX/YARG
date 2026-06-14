@@ -485,6 +485,9 @@ namespace YARG.Gameplay.Player
 
             _coordinatorPhraseHitHandler = (percent, fullPoints, isLastPhrase) =>
             {
+                // Capture the phrase score for the score screen's phrase summary.
+                _phrasePercents.Add((float) percent);
+
                 if (!fullPoints)
                 {
                     IsFc = false;
@@ -504,6 +507,7 @@ namespace YARG.Gameplay.Player
                 // Party Vocals shows percussion hit feedback (scored at the coordinator).
                 if (note.IsPercussion)
                 {
+                    _percussionHits++;
                     _percussionTrack.HitPercussionNote(note);
                 }
             };
