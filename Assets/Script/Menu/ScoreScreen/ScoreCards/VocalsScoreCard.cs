@@ -13,12 +13,18 @@ namespace YARG.Menu.ScoreScreen
         protected override bool ShouldShowOffsetHistogram => false;
 
         private IReadOnlyList<float> _phrasePercents;
+        private IReadOnlyList<PhraseGrade> _phraseGrades;
         private int _percussionHits;
         private int _percussionTotal;
 
         public void SetPhrasePercents(IReadOnlyList<float> percents)
         {
             _phrasePercents = percents;
+        }
+
+        public void SetPhraseGrades(IReadOnlyList<PhraseGrade> grades)
+        {
+            _phraseGrades = grades;
         }
 
         public void SetPercussion(int hits, int total)
@@ -39,7 +45,7 @@ namespace YARG.Menu.ScoreScreen
             // Build the phrase histogram + tally into the Advanced view (advanced-only automatically).
             // Renders nothing if the list is null/empty.
             VocalsPhraseHistogram.Build(AdvancedStatsRect, _phrasePercents, CreateStatLabel, AdvancedAccentColor,
-                _percussionHits, _percussionTotal);
+                _percussionHits, _percussionTotal, _phraseGrades);
         }
     }
 }

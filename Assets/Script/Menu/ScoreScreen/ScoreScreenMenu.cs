@@ -249,6 +249,7 @@ namespace YARG.Menu.ScoreScreen
                         card = Instantiate(_vocalsCardPrefab, _cardContainer);
                         ((ScoreCard<VocalsStats>)card).Initialize(score.IsHighScore, score.Player, score.Stats as VocalsStats, score.AverageMultiplier);
                         ((VocalsScoreCard) card).SetPhrasePercents(score.VocalPhrasePercents);
+                        ((VocalsScoreCard) card).SetPhraseGrades(score.VocalPhraseGrades);
                         ((VocalsScoreCard) card).SetPercussion(score.VocalPercussionHits, score.VocalPercussionTotal);
                         break;
                     }

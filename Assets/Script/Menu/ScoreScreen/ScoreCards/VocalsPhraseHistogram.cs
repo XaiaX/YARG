@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using YARG.Core.Engine.Vocals;
 using YARG.Gameplay.Vocals;
 using YARG.Localization;
 
@@ -64,9 +65,22 @@ namespace YARG.Menu.ScoreScreen
         private static Texture2D _awesomeBarGradient;
         private static Texture2D _grayBarGradient;
 
+        // Party Vocals: cached multi-segment awesome bar gradients (one per tier).
+        // Bottom is always UT Orange → Gold (the existing awesome ramp); the top transitions through
+        // HARM colors (Cyan = 1×, Orange = 2×, Yellow = 3×).
+        private static Texture2D _partySingleAwesomeGradient;
+        private static Texture2D _partyDoubleAwesomeGradient;
+        private static Texture2D _partyTripleAwesomeGradient;
+
+        // Harmony line colors from VocalTrack.Colors (indices 0=Cyan/HARM1, 1=Orange/HARM2,
+        // 2=Yellow/HARM3). These are the same colors used for the tallies and bar gradient tops.
+        private static readonly Color Harm1Cyan    = new(0f, 0.800f, 1f);
+        private static readonly Color Harm2Orange  = new(1f, 0.522f, 0f);
+        private static readonly Color Harm3Yellow  = new(1f, 0.859f, 0f);
+
         public static void Build(RectTransform parent, IReadOnlyList<float> percents,
             Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory, Color accentColor,
-            int percussionHits, int percussionTotal)
+            int percussionHits, int percussionTotal, IReadOnlyList<PhraseGrade> phraseGrades = null)
         {
             if (parent == null || percents == null || percents.Count == 0)
             {
@@ -86,11 +100,12 @@ namespace YARG.Menu.ScoreScreen
             StyleText(header, _headerFont, HeaderColor, TextAlignmentOptions.Top);
             AddLayoutElement(header.rectTransform, 50f);
 
-            BuildGraph(rootRect, percents);
-            BuildTally(rootRect, percents, labelFactory, accentColor, percussionHits, percussionTotal);
+            BuildGraph(rootRect, percents, phraseGrades);
+            BuildTally(rootRect, percents, phraseGrades, labelFactory, accentColor, percussionHits, percussionTotal);
         }
 
-        private static void BuildGraph(RectTransform parent, IReadOnlyList<float> percents)
+        private static void BuildGraph(RectTransform parent, IReadOnlyList<float> percents,
+            IReadOnlyList<PhraseGrade> phraseGrades)
         {
             var graphObject = new GameObject("Graph", typeof(RectTransform));
             var graphRect = (RectTransform) graphObject.transform;
@@ -168,6 +183,10 @@ namespace YARG.Menu.ScoreScreen
             int count = percents.Count;
             float halfGap = count < BAR_GAP_THRESHOLD ? BAR_HALF_GAP_PX : 0f;
 
+            // Party mode is active when phrase grades were provided (non-empty). In that mode,
+            // awesome bars get a multi-segment gradient (gold → HARM colors) based on the tier.
+            bool partyMode = phraseGrades != null && phraseGrades.Count > 0;
+
             for (int i = 0; i < count; i++)
             {
                 var grade = VocalPhraseGradeExtensions.Classify(percents[i]);
@@ -185,12 +204,26 @@ namespace YARG.Menu.ScoreScreen
                 barRect.offsetMin = new Vector2(halfGap, BAR_BASE_Y);
                 barRect.offsetMax = new Vector2(-halfGap, BAR_BASE_Y + height);
 
-                if (grade == VocalPhraseGrade.Awesome)
+                // In party mode, an awesome bar is one where the phrase grade is not Miss
+                // (i.e. Awesome/DoubleAwesome/TripleAwesome). In solo mode, use the fraction-based
+                // classification as before.
+                bool isAwesomeBar = partyMode
+                    ? (i < phraseGrades.Count && phraseGrades[i] != PhraseGrade.Miss)
+                    : grade == VocalPhraseGrade.Awesome;
+
+                if (isAwesomeBar)
                 {
-                    // Vertical gradient: gold (#FFD642) at top, UT Orange (#FF8413) at bottom.
-                    // Brightness alternates via RawImage tint (same texture, no second allocation).
                     var rawImage = barObject.AddComponent<RawImage>();
-                    rawImage.texture = GetOrCreateAwesomeBarGradient();
+                    if (partyMode && i < phraseGrades.Count)
+                    {
+                        rawImage.texture = GetOrCreatePartyAwesomeBarGradient(phraseGrades[i]);
+                    }
+                    else
+                    {
+                        // Vertical gradient: gold (#FFD642) at top, UT Orange (#FF8413) at bottom.
+                        // Brightness alternates via RawImage tint (same texture, no second allocation).
+                        rawImage.texture = GetOrCreateAwesomeBarGradient();
+                    }
                     float tint = isBright ? 1f : BAR_DIM_TINT;
                     rawImage.color = new Color(tint, tint, tint, BAR_ALPHA);
                     rawImage.raycastTarget = false;
@@ -224,26 +257,64 @@ namespace YARG.Menu.ScoreScreen
         }
 
         private static void BuildTally(RectTransform parent, IReadOnlyList<float> percents,
+            IReadOnlyList<PhraseGrade> phraseGrades,
             Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory, Color dividerColor,
             int percussionHits, int percussionTotal)
         {
-            // Tally phrases per tier.
-            int tierCount = VocalPhraseGrade.Awesome - VocalPhraseGrade.Awful + 1;
-            var counts = new int[tierCount];
-            for (int i = 0; i < percents.Count; i++)
-            {
-                counts[(int) VocalPhraseGradeExtensions.Classify(percents[i])]++;
-            }
+            bool partyMode = phraseGrades != null && phraseGrades.Count > 0;
 
             var tallyRect = CreateLayoutColumn("Tally", parent, TALLY_SPACING);
             var tallyLayout = tallyRect.GetComponent<VerticalLayoutGroup>();
             tallyLayout.padding = new RectOffset((int) TALLY_SIDE_PADDING, (int) TALLY_SIDE_PADDING, 0, 0);
 
-            // Always show every tier (best -> worst) so multiple players' tables line up row-for-row,
-            // even when a tier has no phrases.
-            for (int grade = tierCount - 1; grade >= 0; grade--)
+            if (partyMode)
             {
-                BuildTallyRow(tallyRect, (VocalPhraseGrade) grade, counts[grade], labelFactory);
+                // Party mode: the Awesome row splits into Triple/Double/Single sub-counts.
+                // Miss phrases are classified by their fraction into the solo tiers below.
+                int tripleCount = 0, doubleCount = 0, singleCount = 0;
+                int tierCount = VocalPhraseGrade.Awesome - VocalPhraseGrade.Awful + 1;
+                var missCounts = new int[tierCount]; // Strong → Awful (not Awesome)
+
+                for (int i = 0; i < percents.Count; i++)
+                {
+                    if (i < phraseGrades.Count)
+                    {
+                        switch (phraseGrades[i])
+                        {
+                            case PhraseGrade.TripleAwesome: tripleCount++; continue;
+                            case PhraseGrade.DoubleAwesome: doubleCount++; continue;
+                            case PhraseGrade.Awesome:       singleCount++; continue;
+                        }
+                    }
+                    // Miss (or no grade): classify by fraction into the solo tiers.
+                    missCounts[(int) VocalPhraseGradeExtensions.Classify(percents[i])]++;
+                }
+
+                // Awesome row with three colored sub-counts (best → worst, left → right).
+                BuildAwesomeTallyRow(tallyRect, tripleCount, doubleCount, singleCount, labelFactory);
+
+                // Remaining tiers (Strong → Awful) for miss-classified phrases.
+                for (int g = (int) VocalPhraseGrade.Strong; g >= (int) VocalPhraseGrade.Awful; g--)
+                {
+                    BuildTallyRow(tallyRect, (VocalPhraseGrade) g, missCounts[g], labelFactory);
+                }
+            }
+            else
+            {
+                // Solo mode: tally phrases per tier (unchanged).
+                int tierCount = VocalPhraseGrade.Awesome - VocalPhraseGrade.Awful + 1;
+                var counts = new int[tierCount];
+                for (int i = 0; i < percents.Count; i++)
+                {
+                    counts[(int) VocalPhraseGradeExtensions.Classify(percents[i])]++;
+                }
+
+                // Always show every tier (best -> worst) so multiple players' tables line up row-for-row,
+                // even when a tier has no phrases.
+                for (int grade = tierCount - 1; grade >= 0; grade--)
+                {
+                    BuildTallyRow(tallyRect, (VocalPhraseGrade) grade, counts[grade], labelFactory);
+                }
             }
 
             // Vocal percussion (not a graded tier) gets its own row below the tiers, set off by a
@@ -265,6 +336,55 @@ namespace YARG.Menu.ScoreScreen
             var image = dividerObject.GetComponent<Image>();
             image.color = color;
             image.raycastTarget = false;
+        }
+
+        /// <summary>
+        /// Party mode Awesome tally row: shows three color-coded sub-counts (3×, 2×, 1×) instead
+        /// of a single Awesome count. The label is "AWESOME!" (same localization key as solo),
+        /// and the three counts use HARM line colors (Yellow, Orange, Cyan).
+        /// </summary>
+        private static void BuildAwesomeTallyRow(RectTransform parent, int tripleCount, int doubleCount,
+            int singleCount, Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory)
+        {
+            var rowObject = new GameObject("Tally Awesome (Party)", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            var rowRect = (RectTransform) rowObject.transform;
+            rowRect.SetParent(parent, false);
+            AddLayoutElement(rowRect, TALLY_ROW_HEIGHT);
+
+            var rowLayout = rowObject.GetComponent<HorizontalLayoutGroup>();
+            rowLayout.childAlignment = TextAnchor.MiddleLeft;
+            rowLayout.spacing = 0f;
+            rowLayout.childForceExpandWidth = false;
+            rowLayout.childForceExpandHeight = false;
+            rowLayout.childControlWidth = true;
+            rowLayout.childControlHeight = true;
+
+            // Tier label, left-justified.
+            var label = labelFactory(rowRect, "Label", TextAlignmentOptions.Left);
+            label.text = Localize.Key("Gameplay.Vocals.Performance", VocalPhraseGrade.Awesome.ToLocalizationKey());
+            StyleText(label, _labelFont, CoolGrayColor, TextAlignmentOptions.Left);
+            var labelLayout = label.gameObject.AddComponent<LayoutElement>();
+            labelLayout.flexibleWidth = 1f;
+            labelLayout.preferredHeight = TALLY_ROW_HEIGHT;
+
+            // Three color-coded sub-counts: 3× (yellow), 2× (orange), 1× (cyan).
+            // Rich text colors use hex so they survive the font style pipeline.
+            string yellowHex = ColorUtility.ToHtmlStringRGB(Harm3Yellow);
+            string orangeHex = ColorUtility.ToHtmlStringRGB(Harm2Orange);
+            string cyanHex   = ColorUtility.ToHtmlStringRGB(Harm1Cyan);
+
+            var countText = labelFactory(rowRect, "Count", TextAlignmentOptions.Right);
+            countText.text =
+                $"<color=#{yellowHex}>3\u00d7 {tripleCount}</color>  " +
+                $"<color=#{orangeHex}>2\u00d7 {doubleCount}</color>  " +
+                $"<color=#{cyanHex}>1\u00d7 {singleCount}</color>";
+            countText.richText = true;
+            StyleText(countText, _labelFont, null, TextAlignmentOptions.Right);
+            var countLayout = countText.gameObject.AddComponent<LayoutElement>();
+            countLayout.minWidth = TALLY_COUNT_WIDTH * 2f;
+            countLayout.preferredWidth = TALLY_COUNT_WIDTH * 2f;
+            countLayout.flexibleWidth = 0f;
+            countLayout.preferredHeight = TALLY_ROW_HEIGHT;
         }
 
         private static void BuildPercussionRow(RectTransform parent, int hits, int total,
@@ -387,6 +507,61 @@ namespace YARG.Menu.ScoreScreen
             tex.SetPixels(pixels);
             tex.Apply();
             _awesomeBarGradient = tex;
+            return tex;
+        }
+
+        /// <summary>
+        /// Party Vocals multi-segment awesome bar gradient. The bottom is always UT Orange → Gold
+        /// (matching the solo awesome gradient). The top transitions through HARM colors based on
+        /// the awesome tier:
+        ///   Single (Awesome):       Gold bottom → Cyan (HARM1) top
+        ///   Double (DoubleAwesome): Gold bottom → Orange (HARM2) mid → Cyan (HARM1) top
+        ///   Triple (TripleAwesome): Gold bottom → Yellow (HARM3) ⅓ → Orange (HARM2) ⅔ → Cyan (HARM1) top
+        /// </summary>
+        private static Texture2D GetOrCreatePartyAwesomeBarGradient(PhraseGrade grade)
+        {
+            switch (grade)
+            {
+                case PhraseGrade.TripleAwesome:
+                    if (_partyTripleAwesomeGradient == null)
+                        _partyTripleAwesomeGradient = CreatePartyGradient(
+                            UtOrangeColor, GoldColor, Harm3Yellow, Harm2Orange, Harm1Cyan);
+                    return _partyTripleAwesomeGradient;
+                case PhraseGrade.DoubleAwesome:
+                    if (_partyDoubleAwesomeGradient == null)
+                        _partyDoubleAwesomeGradient = CreatePartyGradient(
+                            UtOrangeColor, GoldColor, Harm2Orange, Harm1Cyan);
+                    return _partyDoubleAwesomeGradient;
+                default: // Awesome (single)
+                    if (_partySingleAwesomeGradient == null)
+                        _partySingleAwesomeGradient = CreatePartyGradient(
+                            UtOrangeColor, GoldColor, Harm1Cyan);
+                    return _partySingleAwesomeGradient;
+            }
+        }
+
+        /// <summary>
+        /// Builds a 1×N vertical gradient texture from a list of color stops. The stops are evenly
+        /// spaced from bottom (stops[0]) to top (stops[last]). Lerp between consecutive stops.
+        /// The first segment (stops[0] → stops[1]) is the gold ramp; subsequent segments are HARM colors.
+        /// </summary>
+        private static Texture2D CreatePartyGradient(params Color[] stops)
+        {
+            var tex = new Texture2D(1, GRADIENT_TEX_WIDTH, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            var pixels = new Color[GRADIENT_TEX_WIDTH];
+            int segments = stops.Length - 1;
+            for (int i = 0; i < GRADIENT_TEX_WIDTH; i++)
+            {
+                float t = i / (GRADIENT_TEX_WIDTH - 1f);
+                float scaled = t * segments;
+                int seg = Mathf.Min((int) scaled, segments - 1);
+                float localT = scaled - seg;
+                pixels[i] = Color.Lerp(stops[seg], stops[seg + 1], localT);
+            }
+            tex.SetPixels(pixels);
+            tex.Apply();
             return tex;
         }
 

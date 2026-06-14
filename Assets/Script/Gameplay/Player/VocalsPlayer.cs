@@ -78,6 +78,13 @@ namespace YARG.Gameplay.Player
         protected readonly List<float> _phrasePercents = new();
         public IReadOnlyList<float> PhrasePercents => _phrasePercents;
 
+        // Per-phrase Party Vocals grades (Miss/Awesome/DoubleAwesome/TripleAwesome), captured from
+        // OnPartyVocalsPhrase. Only the PartyVocalsCoordinatorEngine fires this event, so this list
+        // stays empty for solo and traditional harmony vocals. Routed to the score screen so the
+        // histogram can show Triple/Double/Single Awesome breakdowns.
+        protected readonly List<PhraseGrade> _phraseGrades = new();
+        public IReadOnlyList<PhraseGrade> PhraseGrades => _phraseGrades;
+
         // Vocal percussion isn't tracked in stats; tally hits/total live for the score screen.
         // Total is derived from chart data so it's correct regardless of shared mutable state
         // (multiple engines on the same VocalsPart share VocalNote objects — first engine to hit
@@ -435,6 +442,8 @@ namespace YARG.Gameplay.Player
 
         protected void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<double> canonicalMeters, bool isLastPhrase)
         {
+            _phraseGrades.Add(grade);
+
             if (grade == PhraseGrade.Miss)
             {
                 // No awesome banner for a missed phrase — fall back to the legacy
@@ -464,6 +473,7 @@ namespace YARG.Gameplay.Player
         private void ResetScoreScreenCaptures()
         {
             _phrasePercents.Clear();
+            _phraseGrades.Clear();
             _percussionHits = 0;
         }
 

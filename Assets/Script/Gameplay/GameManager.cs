@@ -626,6 +626,7 @@ namespace YARG.Gameplay
                         // PendingScore should be 0 at this point, so no reason to add it
                         (float) player.BaseStats.CommittedScore / player.BaseEngine.BaseNoteScore,
                     VocalPhrasePercents = (player as VocalsPlayer)?.PhrasePercents,
+                    VocalPhraseGrades = (player as VocalsPlayer)?.PhraseGrades,
                     VocalPercussionHits = (player as VocalsPlayer)?.PercussionHits ?? 0,
                     VocalPercussionTotal = (player as VocalsPlayer)?.PercussionTotal ?? 0,
                 }).ToArray(),
