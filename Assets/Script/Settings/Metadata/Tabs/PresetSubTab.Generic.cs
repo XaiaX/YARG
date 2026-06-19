@@ -350,7 +350,6 @@ namespace YARG.Settings.Metadata
                         switch(windowField.Field.Name)
                         {
                             case nameof(EnginePreset.HitWindowPreset.FrontToBackRatio):
-                            case nameof(EnginePreset.HitWindowPreset.TremoloWindow):
                                 dynamicOnlyField = false;
                                 break;
 

@@ -234,13 +234,10 @@ namespace YARG.Gameplay.Player
 
             if (vocalIndex == 0)
             {
-                if (Player.Profile.IsFreeVocals)
-                {
-                    // Free Vocals ignores percussion entirely — exclude it from the
-                    // countdown source so percussion-only stretches surface as gaps.
-                    Engine.BuildCountdownsFromAllParts(multiTrack.Parts, excludePercussion: true);
-                }
-                else if (Player.Profile.CurrentInstrument == Instrument.Vocals)
+                // Free Vocals (single- or multi-mic) builds its percussion-excluded
+                // countdowns inside the engine constructor (YargFreeVocalsEngine /
+                // PartyVocalsCoordinatorEngine), so no explicit build is needed here.
+                if (Player.Profile.CurrentInstrument == Instrument.Vocals)
                 {
                     Engine.BuildCountdownsFromSelectedPart();
                 }
@@ -282,7 +279,10 @@ namespace YARG.Gameplay.Player
             Engine.OnComboIncrement -= OnComboIncrement;
             Engine.OnComboReset -= OnComboReset;
             Engine.OnCountdownChange -= _onCountdownChangeHandler;
-            Engine.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
+            if (Engine is PartyVocalsCoordinatorEngine coordinator)
+            {
+                coordinator.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
+            }
         }
 
         protected override void FinishDestruction()
