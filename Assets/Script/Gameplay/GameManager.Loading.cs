@@ -49,6 +49,9 @@ namespace YARG.Gameplay
         [SerializeField]
         private GameObject _proGuitarPrefab;
 
+        private const double NORMALIZED_SAMPLE_VOLUME_MULTIPLIER = 0.5;
+        private const double DEFAULT_SAMPLE_VOLUME_MULTIPLIER = 1.0;
+
         private LoadFailureState _loadState;
         private string _loadFailureMessage;
 
@@ -109,6 +112,8 @@ namespace YARG.Gameplay
 
             // Disable until everything's loaded
             enabled = false;
+
+            ApplySampleNormalization();
 
             YargLogger.LogFormatInfo("Loading song {0} - {1}", Song.Name, Song.Artist);
 
@@ -266,6 +271,18 @@ namespace YARG.Gameplay
             enabled = true;
             IsSongStarted = true;
             _songStarted?.Invoke();
+        }
+
+        private void ApplySampleNormalization()
+        {
+            double multiplier = SettingsManager.Settings.EnableNormalization.Value
+                ? NORMALIZED_SAMPLE_VOLUME_MULTIPLIER
+                : DEFAULT_SAMPLE_VOLUME_MULTIPLIER;
+
+            GlobalAudioHandler.SetVolumeMultiplier(SongStem.Sfx, multiplier);
+            GlobalAudioHandler.SetVolumeMultiplier(SongStem.DrumSfx, multiplier);
+            GlobalAudioHandler.SetVolumeMultiplier(SongStem.VoxSample, multiplier);
+            GlobalAudioHandler.SetVolumeMultiplier(SongStem.Metronome, multiplier);
         }
 
         private bool LoadReplay()
