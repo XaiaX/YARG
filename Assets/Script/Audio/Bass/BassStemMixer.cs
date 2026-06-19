@@ -534,11 +534,6 @@ namespace YARG.Audio.BASS
             return true;
         }
 
-        protected override void ToggleBuffer_Internal(bool enable)
-        {
-            _BufferSetter(enable, Bass.PlaybackBufferLength);
-        }
-
         protected override void SetBufferLength_Internal(int length)
         {
             _BufferSetter(SettingsManager.Settings.EnablePlaybackBuffer.Value, length);
