@@ -83,8 +83,16 @@ namespace YARG.Menu.ProfileInfo
                     {
                         _bindings.AddMicrophone(device);
                         RefreshList();
+                        DialogManager.Instance.ClearDialog();
                     }
-                });
+                    else
+                    {
+                        YargLogger.LogFormatWarning("Failed to initialize microphone `{0}`.", deviceName);
+                        DialogManager.Instance.ClearDialog();
+                        DialogManager.Instance.ShowMessage("Microphone Error",
+                            $"Failed to initialize microphone:\n\n{deviceName}\n\nPlease try again or choose a different microphone.");
+                    }
+                }, closeOnClick: false);
             }
 
             if (!anyAvailable)
