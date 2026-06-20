@@ -265,8 +265,6 @@ namespace YARG.Settings
             public VolumeSetting MusicPlayerVolume { get; } = new(0.15f, MusicPlayerVolumeCallback);
             public VolumeSetting VocalMonitoring { get; } = new(0.7f, VocalMonitoringCallback);
 
-            public ToggleSetting EnablePlaybackBuffer { get; } = new(true);
-
             public IntSetting PlaybackBufferLength { get; }
                 = new(75, GlobalAudioHandler.MinimumBufferLength, GlobalAudioHandler.MaximumBufferLength,
                     GlobalAudioHandler.SetBufferLength);
