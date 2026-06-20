@@ -820,7 +820,7 @@ namespace YARG.Gameplay.Player
 
         public override void SetPracticeSection(uint start, uint end)
         {
-            var practiceNotes = OriginalNoteTrack.Notes.Where(n => n.Tick >= start && n.Tick < end).ToList();
+            var practiceNotes = OriginalNoteTrack.Notes.Where(n => IsVocalPhraseInPracticeRange(n, start, end)).ToList();
 
             NoteTrack = new InstrumentDifficulty<VocalNote>(
                 OriginalNoteTrack.Instrument,
@@ -834,6 +834,20 @@ namespace YARG.Gameplay.Player
             UnsubscribeEngineEvents();
             Engine = CreateEngine();
             ResetPracticeSection();
+        }
+
+        // Ported from upstream #1502: include vocal phrases whose start falls before the
+        // practice section but whose notes are fully contained within it (some HMX charts
+        // start a phrase before the section marker).
+        private static bool IsVocalPhraseInPracticeRange(VocalNote note, uint start, uint end)
+        {
+            if (note.Tick >= start && note.Tick < end)
+            {
+                return true;
+            }
+
+            return note.ChildNotes.Count > 0 &&
+                note.ChildNotes.All(child => child.Tick >= start && child.TotalTickEnd <= end);
         }
 
         public override void SetStemMuteState(bool muted)
