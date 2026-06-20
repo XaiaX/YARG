@@ -79,18 +79,26 @@ namespace YARG.Menu.ProfileInfo
                 dialog.AddListButton(deviceName, () =>
                 {
                     var device = GlobalAudioHandler.CreateInputDevice(deviceId, deviceName);
-                    if (device != null)
-                    {
-                        _bindings.AddMicrophone(device);
-                        RefreshList();
-                        DialogManager.Instance.ClearDialog();
-                    }
-                    else
+                    if (device == null)
                     {
                         YargLogger.LogFormatWarning("Failed to initialize microphone `{0}`.", deviceName);
                         DialogManager.Instance.ClearDialog();
                         DialogManager.Instance.ShowMessage("Microphone Error",
                             $"Failed to initialize microphone:\n\n{deviceName}\n\nPlease try again or choose a different microphone.");
+                        return;
+                    }
+
+                    if (_bindings.AddMicrophone(device))
+                    {
+                        RefreshList();
+                        DialogManager.Instance.ClearDialog();
+                    }
+                    else
+                    {
+                        YargLogger.LogFormatWarning("Microphone rejected (cap reached) for `{0}`.", deviceName);
+                        DialogManager.Instance.ClearDialog();
+                        DialogManager.Instance.ShowMessage("Microphone Limit Reached",
+                            $"You've reached the maximum number of microphones ({_bindings.MicrophoneCap}) for this profile.");
                     }
                 }, closeOnClick: false);
             }
