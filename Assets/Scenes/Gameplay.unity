@@ -1478,6 +1478,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   FFTSmoothingFactor: 0.8
   WaveSmoothingFactor: 0.5
+  DefaultAlbumCover: {fileID: 2800000, guid: 99b586a3d71a1fe4fa824ca2ae667ba4, type: 3}
 --- !u!114 &318454379
 MonoBehaviour:
   m_ObjectHideFlags: 0
