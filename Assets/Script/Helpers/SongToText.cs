@@ -49,7 +49,7 @@ namespace YARG.Helpers
             "<sub_header> artist\n" +
             "if album then album, year\n" +
             "if covered_by then covered_by\n" +
-            "\"Charter:\" charter";
+            "if charter then charter";
 
         public const string FORMAT_SHORT =
             "<header> song (speed_percent)\n" +
@@ -109,7 +109,7 @@ namespace YARG.Helpers
                 "album", x => x.Album
             },
             {
-                "charter", x => string.IsNullOrEmpty(x.Charter) || x.Charter == SongMetadata.DEFAULT_CHARTER ? "Unknown" : x.Charter
+                "charter", x => $"Charted by: {x.Charter}"
             },
             {
                 "speed_percent", _ =>
@@ -142,7 +142,7 @@ namespace YARG.Helpers
                 "album", x => !string.IsNullOrEmpty(x.Album) && x.Album != SongMetadata.DEFAULT_ALBUM
             },
             {
-                "charter", x => !string.IsNullOrEmpty(x.Charter)
+                "charter", x => !string.IsNullOrEmpty(x.Charter) && x.Charter != SongMetadata.DEFAULT_CHARTER
             },
             {
                 "changed_speed", _ => Mathf.Approximately(GlobalVariables.State.SongSpeed, 1f)
