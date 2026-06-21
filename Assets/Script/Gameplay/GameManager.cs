@@ -627,6 +627,8 @@ namespace YARG.Gameplay
                         (float) player.BaseStats.CommittedScore / player.BaseEngine.BaseNoteScore,
                     VocalPhrasePercents = (player as VocalsPlayer)?.PhrasePercents,
                     VocalPhraseGrades = (player as VocalsPlayer)?.PhraseGrades,
+                    VocalPhrasePartResults = (player as VocalsPlayer)?.PhrasePartResults,
+                    VocalAwesomeThreshold = (player as VocalsPlayer)?.AwesomeThreshold ?? 0d,
                     VocalPercussionHits = (player as VocalsPlayer)?.PercussionHits ?? 0,
                     VocalPercussionTotal = (player as VocalsPlayer)?.PercussionTotal ?? 0,
                 }).ToArray(),

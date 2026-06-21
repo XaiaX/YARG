@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using YARG.Core.Engine;
 using YARG.Core.Engine.Vocals;
+using YARG.Core.Engine.Vocals.Engines;
 using YARG.Core.Replays;
 using YARG.Player;
 using YARG.Replays;
@@ -27,6 +28,14 @@ namespace YARG.Menu.ScoreScreen
         // Null for non-vocals players and solo/traditional-harmony vocals (no grades list). When
         // non-empty, the score screen histogram shows Triple/Double/Single Awesome breakdowns.
         public IReadOnlyList<PhraseGrade> VocalPhraseGrades;
+
+        // Per-phrase per-part Party Vocals results: for each phrase, the active harmony parts and
+        // their canonical meters. Null for non-vocals/solo. Drives the per-part Awesome segments.
+        public IReadOnlyList<IReadOnlyList<PartyPartResult>> VocalPhrasePartResults;
+
+        // Awesome meter threshold (PhraseHitPercent); 0 when not a vocals player. Used to scale
+        // each part's meter into a 0..1 fill in the histogram.
+        public double VocalAwesomeThreshold;
     }
 
     public struct ScoreScreenStats

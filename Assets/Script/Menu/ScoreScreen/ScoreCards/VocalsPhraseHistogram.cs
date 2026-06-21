@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 using YARG.Core.Engine.Vocals;
+using YARG.Core.Engine.Vocals.Engines;
 using YARG.Gameplay.Vocals;
 using YARG.Localization;
 
@@ -29,6 +31,8 @@ namespace YARG.Menu.ScoreScreen
         private const float TALLY_SPACING = 2f;
         private const float TALLY_SIDE_PADDING = HORIZONTAL_MARGIN; // line table edges up with the bars
         private const float TALLY_COUNT_WIDTH = 56f;
+        private const float AWESOME_TIER_SPACING = 16f;     // gap between Awesome-row tier entries
+        private const float AWESOME_ICON_DIM = 0.35f;       // dimmed (impossible-part) Awesome icon — RGB multiplier (darker)
         private const float DIVIDER_THICKNESS = 2f;
         private const float SECTION_SPACING = 14f;
         private const float BAR_BASE_Y = 1f;
@@ -42,6 +46,7 @@ namespace YARG.Menu.ScoreScreen
         private static readonly Color GoldColor      = new(1f,        0.83921569f, 0.25882353f); // #FFD642 Awesome bar top
         private static readonly Color UtOrangeColor  = new(1f,        0.51764706f, 0.07450980f); // #FF8413 Awesome bar bottom
         private static readonly Color BarDefaultColor = new(0.47843137f, 0.47843137f, 0.47843137f); // #7a7a7a Gray (Light #4) — dim bars
+        private static readonly Color PartyMissMarkerColor = new(0.30f, 0.30f, 0.30f); // #4d4d4d — Miss-phrase buffer (darker than the axis)
         private static readonly Color BarBrightColor  = new(0.62745098f, 0.62745098f, 0.62745098f); // #a0a0a0 Gray (Light #3.5) — bright bars
         private static readonly Color BarCapColor      = new(0.9607843f,  0.9607843f,  0.9607843f,  1f); // #F5F5F5 White Smoke
         // Tier cutoff line colors (branding palette).
@@ -67,11 +72,6 @@ namespace YARG.Menu.ScoreScreen
 
         // Party Vocals: cached multi-segment awesome bar gradients (one per tier).
         // Bottom is always UT Orange → Gold (the existing awesome ramp); the top transitions through
-        // HARM colors (Cyan = 1×, Orange = 2×, Yellow = 3×).
-        private static Texture2D _partySingleAwesomeGradient;
-        private static Texture2D _partyDoubleAwesomeGradient;
-        private static Texture2D _partyTripleAwesomeGradient;
-
         // Harmony line colors from VocalTrack.Colors (indices 0=Cyan/HARM1, 1=Orange/HARM2,
         // 2=Yellow/HARM3). These are the same colors used for the tallies and bar gradient tops.
         private static readonly Color Harm1Cyan    = new(0f, 0.800f, 1f);
@@ -80,11 +80,19 @@ namespace YARG.Menu.ScoreScreen
 
         public static void Build(RectTransform parent, IReadOnlyList<float> percents,
             Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory, Color accentColor,
-            int percussionHits, int percussionTotal, IReadOnlyList<PhraseGrade> phraseGrades = null)
+            int percussionHits, int percussionTotal, IReadOnlyList<PhraseGrade> phraseGrades = null,
+            IReadOnlyList<IReadOnlyList<PartyPartResult>> partyPartResults = null, double awesomeThreshold = 0)
         {
             if (parent == null || percents == null || percents.Count == 0)
             {
                 return;
+            }
+
+            // Force a layout pass so the bars' world positions are final before we snap 1px elements
+            // (caps, dividers) to screen pixels.
+            if (parent.root is RectTransform layoutRoot)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(layoutRoot);
             }
 
             EnsureFonts();
@@ -100,12 +108,29 @@ namespace YARG.Menu.ScoreScreen
             StyleText(header, _headerFont, HeaderColor, TextAlignmentOptions.Top);
             AddLayoutElement(header.rectTransform, 50f);
 
-            BuildGraph(rootRect, percents, phraseGrades);
-            BuildTally(rootRect, percents, phraseGrades, labelFactory, accentColor, percussionHits, percussionTotal);
+            // Highest harmony part the chart offers (duet = 2, trio = 3). Used to dim impossible
+            // tier icons in the Awesome tally row (e.g. a duet can never hit a triple-awesome).
+            int maxHarmonyParts = 1;
+            if (partyPartResults != null)
+            {
+                foreach (var phrase in partyPartResults)
+                {
+                    if (phrase == null) continue;
+                    foreach (var pr in phrase)
+                    {
+                        int partCount = pr.PartIndex + 1;
+                        if (partCount > maxHarmonyParts) maxHarmonyParts = partCount;
+                    }
+                }
+            }
+
+            BuildGraph(rootRect, percents, phraseGrades, partyPartResults, awesomeThreshold);
+            BuildTally(rootRect, percents, phraseGrades, maxHarmonyParts, labelFactory, accentColor, percussionHits, percussionTotal);
         }
 
         private static void BuildGraph(RectTransform parent, IReadOnlyList<float> percents,
-            IReadOnlyList<PhraseGrade> phraseGrades)
+            IReadOnlyList<PhraseGrade> phraseGrades, IReadOnlyList<IReadOnlyList<PartyPartResult>> partyPartResults,
+            double awesomeThreshold)
         {
             var graphObject = new GameObject("Graph", typeof(RectTransform));
             var graphRect = (RectTransform) graphObject.transform;
@@ -132,6 +157,7 @@ namespace YARG.Menu.ScoreScreen
             innerBarsRect.offsetMax = new Vector2(-BAR_EDGE_PAD, 0f);
 
             float lineThickness = Mathf.Ceil(PixelUnit(barsRect));
+            float onePixel = PixelUnit(barsRect);
 
             // Baseline axis line.
             var axis = new GameObject("XAxis", typeof(RectTransform), typeof(Image));
@@ -146,52 +172,74 @@ namespace YARG.Menu.ScoreScreen
             axisImage.color = new Color(1f, 1f, 1f, 0.25f);
             axisImage.raycastTarget = false;
 
-            // Tier background regions at uniform 0.125 alpha, drawn BEHIND the bars.
-            DrawTierRegions(barsRect);
-
-            // Subtle tier boundary lines on top of the regions, still behind bars.
-            for (int tier = 1; tier <= 4; tier++)
+            // Backdrop: party mode uses a single uniform grey wash (full-height per-part bars don't
+            // line up with tier cutoffs); solo keeps the tier regions + boundary lines.
+            bool partyMode = phraseGrades != null && phraseGrades.Count > 0;
+            if (partyMode)
             {
-                var grade = (VocalPhraseGrade) tier;
-                float threshold = (float) grade.LowerBound();
-                var lineColor = grade switch
-                {
-                    VocalPhraseGrade.Messy => LineColorMessy,
-                    VocalPhraseGrade.Okay  => LineColorOkay,
-                    VocalPhraseGrade.Good  => LineColorGood,
-                    _                      => LineColorStrong
-                };
-                lineColor.a = 0.03125f;
+                DrawSolidBackdrop(barsRect);
+            }
+            else
+            {
+                // Tier background regions at uniform 0.125 alpha, drawn BEHIND the bars.
+                DrawTierRegions(barsRect);
 
-                var cutoffObj = new GameObject($"Cutoff {grade}", typeof(RectTransform), typeof(Image));
-                var cutoffRect = (RectTransform) cutoffObj.transform;
-                cutoffRect.SetParent(barsRect, false);
-                cutoffRect.anchorMin = new Vector2(0f, 0f);
-                cutoffRect.anchorMax = new Vector2(1f, 0f);
-                cutoffRect.pivot = new Vector2(0.5f, 0.5f);
-                cutoffRect.sizeDelta = new Vector2(0f, lineThickness);
-                cutoffRect.anchoredPosition = new Vector2(0f, BAR_BASE_Y + threshold * GRAPH_HEIGHT);
-                var cutoffImg = cutoffObj.GetComponent<Image>();
-                cutoffImg.color = lineColor;
-                cutoffImg.raycastTarget = false;
+                // Subtle tier boundary lines on top of the regions, still behind bars.
+                for (int tier = 1; tier <= 4; tier++)
+                {
+                    var grade = (VocalPhraseGrade) tier;
+                    float threshold = (float) grade.LowerBound();
+                    var lineColor = grade switch
+                    {
+                        VocalPhraseGrade.Messy => LineColorMessy,
+                        VocalPhraseGrade.Okay  => LineColorOkay,
+                        VocalPhraseGrade.Good  => LineColorGood,
+                        _                      => LineColorStrong
+                    };
+                    lineColor.a = 0.03125f;
+
+                    var cutoffObj = new GameObject($"Cutoff {grade}", typeof(RectTransform), typeof(Image));
+                    var cutoffRect = (RectTransform) cutoffObj.transform;
+                    cutoffRect.SetParent(barsRect, false);
+                    cutoffRect.anchorMin = new Vector2(0f, 0f);
+                    cutoffRect.anchorMax = new Vector2(1f, 0f);
+                    cutoffRect.pivot = new Vector2(0.5f, 0.5f);
+                    cutoffRect.sizeDelta = new Vector2(0f, lineThickness);
+                    cutoffRect.anchoredPosition = new Vector2(0f, BAR_BASE_Y + threshold * GRAPH_HEIGHT);
+                    var cutoffImg = cutoffObj.GetComponent<Image>();
+                    cutoffImg.color = lineColor;
+                    cutoffImg.raycastTarget = false;
+                }
             }
 
 
             // Push bars to the top of the render order so they sit in front of regions and lines.
             innerBarsRect.SetAsLastSibling();
 
+            // Party-mode diagonal "transparency" hatch (clear + pure white), drawn once across the
+            // bars rectangle behind the bars. Added as the first child of the bars rect so every
+            // per-bar element renders above it; absent parts (nothing drawn) reveal the hatch.
+            if (partyMode)
+            {
+                AddPartyHatchField(innerBarsRect, BAR_BASE_Y, GRAPH_HEIGHT);
+            }
+
             int count = percents.Count;
             float halfGap = count < BAR_GAP_THRESHOLD ? BAR_HALF_GAP_PX : 0f;
 
-            // Party mode is active when phrase grades were provided (non-empty). In that mode,
-            // awesome bars get a multi-segment gradient (gold → HARM colors) based on the tier.
-            bool partyMode = phraseGrades != null && phraseGrades.Count > 0;
+            // partyMode was set above (with the backdrop); party bars render full-height segments.
 
             for (int i = 0; i < count; i++)
             {
                 var grade = VocalPhraseGradeExtensions.Classify(percents[i]);
-                float fraction = Mathf.Clamp01(percents[i]);
-                float height = Mathf.Max(BAR_MIN_HEIGHT, fraction * GRAPH_HEIGHT);
+
+                // Party bars render one segment per available harmony part and are full-height
+                // (the per-part fills encode performance, not the bar height). Solo bars keep
+                // height = phrase score, as before.
+                bool partyBar = partyMode && partyPartResults != null && i < partyPartResults.Count;
+                float height = partyBar
+                    ? (GRAPH_HEIGHT - BAR_BASE_Y)
+                    : Mathf.Max(BAR_MIN_HEIGHT, Mathf.Clamp01(percents[i]) * GRAPH_HEIGHT);
 
                 bool isBright = (i % 2) == 1; // odd bars brighter
 
@@ -204,26 +252,23 @@ namespace YARG.Menu.ScoreScreen
                 barRect.offsetMin = new Vector2(halfGap, BAR_BASE_Y);
                 barRect.offsetMax = new Vector2(-halfGap, BAR_BASE_Y + height);
 
+                if (partyBar)
+                {
+                    BuildPartyBar(barRect, partyPartResults[i], phraseGrades[i], awesomeThreshold, isBright, height, onePixel);
+                    continue;
+                }
+
                 // In party mode, an awesome bar is one where the phrase grade is not Miss
                 // (i.e. Awesome/DoubleAwesome/TripleAwesome). In solo mode, use the fraction-based
                 // classification as before.
-                bool isAwesomeBar = partyMode
-                    ? (i < phraseGrades.Count && phraseGrades[i] != PhraseGrade.Miss)
-                    : grade == VocalPhraseGrade.Awesome;
+                bool isAwesomeBar = grade == VocalPhraseGrade.Awesome;
 
                 if (isAwesomeBar)
                 {
                     var rawImage = barObject.AddComponent<RawImage>();
-                    if (partyMode && i < phraseGrades.Count)
-                    {
-                        rawImage.texture = GetOrCreatePartyAwesomeBarGradient(phraseGrades[i]);
-                    }
-                    else
-                    {
-                        // Vertical gradient: gold (#FFD642) at top, UT Orange (#FF8413) at bottom.
-                        // Brightness alternates via RawImage tint (same texture, no second allocation).
-                        rawImage.texture = GetOrCreateAwesomeBarGradient();
-                    }
+                    // Vertical gradient: gold (#FFD642) at top, UT Orange (#FF8413) at bottom.
+                    // Brightness alternates via RawImage tint (same texture, no second allocation).
+                    rawImage.texture = GetOrCreateAwesomeBarGradient();
                     float tint = isBright ? 1f : BAR_DIM_TINT;
                     rawImage.color = new Color(tint, tint, tint, BAR_ALPHA);
                     rawImage.raycastTarget = false;
@@ -256,8 +301,265 @@ namespace YARG.Menu.ScoreScreen
             }
         }
 
+        // Party-mode Awesome bar: a full-height bar split into one band per available harmony part
+        // (lowest part number at the bottom), plus a thin status buffer at the very bottom that is
+        // gold when the phrase ranked Awesome/Double/Triple and dark grey when it was a Miss. Each
+        // band fills solid with its harmony line color if that part reached Awesome; otherwise it
+        // fills from the band's bottom to (meter / threshold) in the harmony color dimmed 10%.
+        // Thin dark-grey dividers separate the bands.
+        private const float PARTY_BUFFER_HEIGHT = 5f;
+        // Dim percentages are ADDITIVE per band (factor = 1 - sum): a not-awesome band on an odd
+        // bar dims 30% + 10% = 40%. Absent-part gaps are exempt from the stripe.
+        private const float PARTY_DIM_NOT_AWESOME = 0.30f;  // not-awesome available band
+        private const float PARTY_STRIPE_DIM       = 0.10f;  // odd-bar alternating stripe (available content)
+        private const float PARTY_GRADIENT_BOTTOM  = 0.80f;  // segment fills shade to 20% darker at the bottom
+        private const float PARTY_TRACK_DIM         = 0.75f;  // available-segment lane background (harmony x 0.25)
+        // Diagonal-stripe "transparency" backdrop shown wherever no part is available.
+        private const int STRIPE_TEX_SIZE = 64;              // must be a multiple of (STRIPE_WIDTH*2) to tile seamlessly
+        private const int STRIPE_WIDTH    = 4;               // on-pixels per stripe half-period
+        private static readonly Color STRIPE_DARK  = new Color(0f, 0f, 0f, 0f);   // clear — lets the grey backdrop show through
+        private static readonly Color STRIPE_LIGHT = new Color(0f, 0f, 0f, 0.3f); // black @ 0.3 — the diagonal hatch lines (subtly darken the field)
+
+        private static void BuildPartyBar(RectTransform bar, IReadOnlyList<PartyPartResult> parts,
+            PhraseGrade grade, double awesomeThreshold, bool oddBar, float barHeight, float onePixel)
+        {
+            // Always three segments (HARM1/HARM2/HARM3, bottom -> top). Each fill carries a subtle
+            // vertical gradient (full color -> 20% darker at the bottom). An absent part renders as
+            // a full fill dimmed 75% (a "gap") — exempt from the odd-bar stripe and without a cap.
+            // A not-awesome segment gets a cap line at its fill top; a full (Awesome) segment does
+            // not (so 99% is distinguishable from 100%). Dim percentages are additive (factor = 1 - sum).
+            const int SEGMENTS = 3;
+            double[] meters = new double[SEGMENTS];
+            bool[] available = new bool[SEGMENTS];
+            if (parts != null)
+            {
+                foreach (var pr in parts)
+                {
+                    if (pr.PartIndex >= 0 && pr.PartIndex < SEGMENTS)
+                    {
+                        available[pr.PartIndex] = true;
+                        meters[pr.PartIndex] = pr.Meter;
+                    }
+                }
+            }
+
+            float stripe = oddBar ? PARTY_STRIPE_DIM : 0f;
+            bool awesomePhrase = grade != PhraseGrade.Miss;
+            Texture2D segGradient = GetOrCreatePartySegmentGradient();
+
+            float gapH = onePixel;
+
+            float bufferH = SnapToScreenPixel(bar, PARTY_BUFFER_HEIGHT);
+
+            // Bottom status buffer: gold (gold->UT-orange gradient) when Awesome; darker grey when
+            // Miss. Opaque so the stripes don't bleed through. Not subject to the odd-bar stripe.
+            if (awesomePhrase)
+            {
+                AddBarRawImage(bar, "Buffer", 0f, bufferH, GetOrCreateAwesomeBarGradient(),
+                    Color.white, 1f);
+            }
+            else
+            {
+                AddBarImage(bar, "Buffer", 0f, bufferH, PartyMissMarkerColor, 1f);
+            }
+
+            // Above the buffer: SEGMENTS bands separated by one-pixel black gaps. Every vertical
+            // position is snapped to a screen pixel; the top band is anchored to barHeight so the
+            // bar fills exactly to the top (no gap under the backdrop edge).
+            float bandHAvg = (barHeight - bufferH - SEGMENTS * gapH) / SEGMENTS;
+            float y = bufferH;
+
+            for (int p = 0; p < SEGMENTS; p++)
+            {
+                // Gap below this band = the black divider.
+                AddBarImage(bar, $"Div {p}", y, gapH, Color.black, 0.8f);
+                float bandBottom = SnapToScreenPixel(bar, y + gapH);
+                float bandTop = (p == SEGMENTS - 1) ? barHeight : SnapToScreenPixel(bar, bandBottom + bandHAvg);
+                float bandH = bandTop - bandBottom;
+                Color lineColor = HarmonyColor(p);
+
+                if (!available[p])
+                {
+                    // Absent part: no fill — the striped background shows through ("transparent").
+                    y = bandTop;
+                    continue;
+                }
+
+                bool awesome = awesomeThreshold > 0 && meters[p] >= awesomeThreshold;
+
+                // Lane background: darkened harmony color covering the stripes for this segment.
+                // Deliberately NOT subject to the odd-bar stripe: this is a constant "part is
+                // available" marker (harmony x0.25) in every bar so the available/absent
+                // distinction reads consistently across the row. Only the meter fill alternates.
+                AddBarImage(bar, $"Track {p}", bandBottom, bandH,
+                    Dim(lineColor, 1f - PARTY_TRACK_DIM), 1f);
+
+                // Meter fill (gradient) on top of the track: full when Awesome, partial otherwise.
+                float fillDim = (awesome ? 0f : PARTY_DIM_NOT_AWESOME) + stripe;
+                float fillFrac = awesome ? 1f
+                    : Mathf.Clamp01(awesomeThreshold > 0 ? (float) (meters[p] / awesomeThreshold) : 0f);
+                float fillTop = awesome ? bandTop : SnapToScreenPixel(bar, bandBottom + fillFrac * bandH);
+                float height = fillTop - bandBottom;
+                AddBarRawImage(bar, $"Part {p}", bandBottom, height, segGradient,
+                    Dim(lineColor, 1f - fillDim), 1f);
+
+                // Cap highlight across the fill top, only when the segment isn't completely full.
+                if (!awesome && height > onePixel)
+                {
+                    AddBarImage(bar, $"Cap {p}", fillTop - onePixel, onePixel,
+                        BarCapColor, 0.20f);
+                }
+
+                y = bandTop;
+            }
+        }
+
+        private static Color Dim(Color c, float factor) => new Color(c.r * factor, c.g * factor, c.b * factor);
+
+        // Snap a local-space offset (relative to `parent`'s bottom) to an actual screen pixel, so
+        // 1px elements land on whole pixels regardless of the parent's fractional screen position.
+        private static float SnapToScreenPixel(RectTransform parent, float localY)
+        {
+            float scale = parent.lossyScale.y;
+            if (scale <= 0f) return localY;
+            float worldY = parent.position.y + localY * scale;
+            return (Mathf.Round(worldY) - parent.position.y) / scale;
+        }
+
+        // Single diagonal "transparency" hatch field drawn once across the bars rectangle (full width
+        // of the bars rect, from BAR_BASE_Y to the top), behind the bars. Clear pixels let the solid
+        // grey backdrop show; pure-white pixels are the diagonal hatch lines. Tiled at 1:1 (one
+        // STRIPE_TEX_SIZE repeat per STRIPE_TEX_SIZE screen pixels) so the pattern stays crisp and
+        // continuous across the whole field — one continuous field, no per-bar restart, so no boundary
+        // drift. Absent parts (nothing drawn over them) reveal the hatch; available parts' tracks cover it.
+        private static void AddPartyHatchField(RectTransform parent, float bottom, float top)
+        {
+            float height = top - bottom;
+            if (height <= 0f)
+            {
+                return;
+            }
+
+            var obj = new GameObject("Hatch", typeof(RectTransform), typeof(RawImage));
+            var rect = (RectTransform) obj.transform;
+            rect.SetParent(parent, false);
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.offsetMin = new Vector2(0f, bottom);
+            rect.offsetMax = new Vector2(0f, top);
+
+            var img = obj.GetComponent<RawImage>();
+            img.texture = GetOrCreateDiagonalStripeTexture();
+            img.color = Color.white; // white tint so the texture's own clear/white pixels show as-is
+            img.raycastTarget = false;
+
+            // Tile at 1:1 screen pixels. The field's pixel size isn't known at build time (newly
+            // created anchored rects report 0 until layout runs), so a tiler component recomputes the
+            // uvRect from the rect's world-space size once layout settles / whenever it changes.
+            obj.AddComponent<NativeResolutionTiler>().Setup(img, STRIPE_TEX_SIZE);
+        }
+
+        // Recomputes a RawImage's uvRect so its texture tiles at 1:1 screen pixels, re-applying
+        // whenever the rect's dimensions change (OnRectTransformDimensionsChange fires once layout
+        // assigns the field its real size). Measures via world corners -> screen pixels so it's
+        // correct regardless of canvas render mode. No per-frame cost: it only runs on size change.
+        private class NativeResolutionTiler : MonoBehaviour
+        {
+            private RawImage _image;
+            private Canvas _canvas;
+            private int _texSize;
+            private float _lastW = -1f;
+            private float _lastH = -1f;
+
+            public void Setup(RawImage image, int texSize)
+            {
+                _image = image;
+                _texSize = texSize;
+                _canvas = image.GetComponentInParent<Canvas>();
+                Apply();
+            }
+
+            private void OnRectTransformDimensionsChange() => Apply();
+
+            private void Apply()
+            {
+                if (_image == null) return;
+                var rt = _image.rectTransform;
+                var corners = new Vector3[4];
+                rt.GetWorldCorners(corners);
+                Camera cam = _canvas != null ? _canvas.worldCamera : null;
+                Vector2 bl = RectTransformUtility.WorldToScreenPoint(cam, corners[0]);
+                Vector2 tr = RectTransformUtility.WorldToScreenPoint(cam, corners[2]);
+                float w = Mathf.Abs(tr.x - bl.x);
+                float h = Mathf.Abs(tr.y - bl.y);
+                if (Mathf.Approximately(w, _lastW) && Mathf.Approximately(h, _lastH)) return;
+                _lastW = w;
+                _lastH = h;
+                float tilesX = Mathf.Max(w / _texSize, 1f);
+                float tilesY = Mathf.Max(h / _texSize, 1f);
+                _image.uvRect = new Rect(0f, 0f, tilesX, tilesY);
+            }
+        }
+
+        // A bottom-anchored, full-width solid-color block within `parent`, occupying [bottom, bottom+height].
+        // Returns null (no GameObject) for non-positive height so zero-fill parts render nothing.
+        // Like AddBarImage but a RawImage with a texture (for gradient fills); color tints the texture.
+        private static RawImage AddBarRawImage(RectTransform parent, string name, float bottom, float height,
+            Texture2D texture, Color color, float alpha)
+        {
+            if (height <= 0f)
+            {
+                return null;
+            }
+
+            var obj = new GameObject(name, typeof(RectTransform), typeof(RawImage));
+            var rect = (RectTransform) obj.transform;
+            rect.SetParent(parent, false);
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.offsetMin = new Vector2(0f, bottom);
+            rect.offsetMax = new Vector2(0f, bottom + height);
+
+            var img = obj.GetComponent<RawImage>();
+            img.texture = texture;
+            color.a = alpha;
+            img.color = color;
+            img.raycastTarget = false;
+            return img;
+        }
+
+        private static Image AddBarImage(RectTransform parent, string name, float bottom, float height,
+            Color color, float alpha)
+        {
+            if (height <= 0f)
+            {
+                return null;
+            }
+
+            var obj = new GameObject(name, typeof(RectTransform), typeof(Image));
+            var rect = (RectTransform) obj.transform;
+            rect.SetParent(parent, false);
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.offsetMin = new Vector2(0f, bottom);
+            rect.offsetMax = new Vector2(0f, bottom + height);
+
+            var img = obj.GetComponent<Image>();
+            color.a = alpha;
+            img.color = color;
+            img.raycastTarget = false;
+            return img;
+        }
+
+        private static Color HarmonyColor(int partIndex) => partIndex switch
+        {
+            0 => Harm1Cyan,
+            1 => Harm2Orange,
+            _ => Harm3Yellow,
+        };
+
         private static void BuildTally(RectTransform parent, IReadOnlyList<float> percents,
-            IReadOnlyList<PhraseGrade> phraseGrades,
+            IReadOnlyList<PhraseGrade> phraseGrades, int maxHarmonyParts,
             Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory, Color dividerColor,
             int percussionHits, int percussionTotal)
         {
@@ -291,7 +593,7 @@ namespace YARG.Menu.ScoreScreen
                 }
 
                 // Awesome row with three colored sub-counts (best → worst, left → right).
-                BuildAwesomeTallyRow(tallyRect, tripleCount, doubleCount, singleCount, labelFactory);
+                BuildAwesomeTallyRow(tallyRect, tripleCount, doubleCount, singleCount, maxHarmonyParts, labelFactory);
 
                 // Remaining tiers (Strong → Awful) for miss-classified phrases.
                 for (int g = (int) VocalPhraseGrade.Strong; g >= (int) VocalPhraseGrade.Awful; g--)
@@ -339,12 +641,15 @@ namespace YARG.Menu.ScoreScreen
         }
 
         /// <summary>
-        /// Party mode Awesome tally row: shows three color-coded sub-counts (3×, 2×, 1×) instead
-        /// of a single Awesome count. The label is "AWESOME!" (same localization key as solo),
-        /// and the three counts use HARM line colors (Yellow, Orange, Cyan).
+        /// Party mode Awesome tally row: three tier entries (Triple/Double/Single Awesome), each a
+        /// harmony part-count icon (InstrumentIcons vocals/twoVocals/harmVocals) plus its count. Icons use their
+        /// default sheet colors; counts are white (muted when 0), matching the other tally rows.
+        /// An icon is dimmed when that harmony part can't exist for this song (e.g. a duet dims the
+        /// triple icon). The label is "AWESOME!" (same localization key as solo).
         /// </summary>
         private static void BuildAwesomeTallyRow(RectTransform parent, int tripleCount, int doubleCount,
-            int singleCount, Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory)
+            int singleCount, int maxHarmonyParts,
+            Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory)
         {
             var rowObject = new GameObject("Tally Awesome (Party)", typeof(RectTransform), typeof(HorizontalLayoutGroup));
             var rowRect = (RectTransform) rowObject.transform;
@@ -353,13 +658,13 @@ namespace YARG.Menu.ScoreScreen
 
             var rowLayout = rowObject.GetComponent<HorizontalLayoutGroup>();
             rowLayout.childAlignment = TextAnchor.MiddleLeft;
-            rowLayout.spacing = 0f;
+            rowLayout.spacing = AWESOME_TIER_SPACING;
             rowLayout.childForceExpandWidth = false;
             rowLayout.childForceExpandHeight = false;
             rowLayout.childControlWidth = true;
             rowLayout.childControlHeight = true;
 
-            // Tier label, left-justified.
+            // Tier label, left-justified (flexible so the tier entries sit on the right).
             var label = labelFactory(rowRect, "Label", TextAlignmentOptions.Left);
             label.text = Localize.Key("Gameplay.Vocals.Performance", VocalPhraseGrade.Awesome.ToLocalizationKey());
             StyleText(label, _labelFont, CoolGrayColor, TextAlignmentOptions.Left);
@@ -367,24 +672,60 @@ namespace YARG.Menu.ScoreScreen
             labelLayout.flexibleWidth = 1f;
             labelLayout.preferredHeight = TALLY_ROW_HEIGHT;
 
-            // Three color-coded sub-counts: 3× (yellow), 2× (orange), 1× (cyan).
-            // Rich text colors use hex so they survive the font style pipeline.
-            string yellowHex = ColorUtility.ToHtmlStringRGB(Harm3Yellow);
-            string orangeHex = ColorUtility.ToHtmlStringRGB(Harm2Orange);
-            string cyanHex   = ColorUtility.ToHtmlStringRGB(Harm1Cyan);
+            // Three tier entries (Triple -> Double -> Single, left to right). Each is a harmony
+            // part-count icon + its count; the icon is dimmed when that part can't exist here.
+            int[] counts = { tripleCount, doubleCount, singleCount };
+            for (int t = 0; t < 3; t++)
+            {
+                int partCount = 3 - t; // triple=3, double=2, single=1
+                AddAwesomeTierEntry(rowRect, partCount, counts[t], partCount > maxHarmonyParts, labelFactory);
+            }
+        }
 
-            var countText = labelFactory(rowRect, "Count", TextAlignmentOptions.Right);
-            countText.text =
-                $"<color=#{yellowHex}>3\u00d7 {tripleCount}</color>  " +
-                $"<color=#{orangeHex}>2\u00d7 {doubleCount}</color>  " +
-                $"<color=#{cyanHex}>1\u00d7 {singleCount}</color>";
-            countText.richText = true;
-            StyleText(countText, _labelFont, null, TextAlignmentOptions.Right);
-            var countLayout = countText.gameObject.AddComponent<LayoutElement>();
-            countLayout.minWidth = TALLY_COUNT_WIDTH * 2f;
-            countLayout.preferredWidth = TALLY_COUNT_WIDTH * 2f;
-            countLayout.flexibleWidth = 0f;
-            countLayout.preferredHeight = TALLY_ROW_HEIGHT;
+        // One Awesome tier entry: a harmony part-count icon (InstrumentIcons vocals/twoVocals/harmVocals, default
+        // sheet color) + its count (white, muted when 0). The icon is dimmed when that part can't
+        // exist for this chart (so it reads as unachievable rather than just zero).
+        private static void AddAwesomeTierEntry(RectTransform parent, int partCount, int count, bool dimmed,
+            Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory)
+        {
+            var entryObject = new GameObject($"Awesome {partCount}", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            var entryRect = (RectTransform) entryObject.transform;
+            entryRect.SetParent(parent, false);
+
+            var entryLayout = entryObject.GetComponent<HorizontalLayoutGroup>();
+            entryLayout.childAlignment = TextAnchor.MiddleRight;
+            entryLayout.spacing = 2f;
+            entryLayout.childForceExpandWidth = false;
+            entryLayout.childForceExpandHeight = false;
+            entryLayout.childControlWidth = true;
+            entryLayout.childControlHeight = true;
+
+            // Harmony part-count icon (InstrumentIcons sub-sprite, matching the difficulty ring /
+            // player-name display: vocals=1, twoVocals=2, harmVocals=3+).
+            string iconKey = partCount switch
+            {
+                >= 3 => "InstrumentIcons[harmVocals]",
+                2 => "InstrumentIcons[twoVocals]",
+                _ => "InstrumentIcons[vocals]",
+            };
+            var iconObject = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            var iconRect = (RectTransform) iconObject.transform;
+            iconRect.SetParent(entryRect, false);
+            var iconImage = iconObject.GetComponent<Image>();
+            iconImage.sprite = Addressables.LoadAssetAsync<Sprite>(iconKey).WaitForCompletion();
+            iconImage.color = dimmed ? new Color(AWESOME_ICON_DIM, AWESOME_ICON_DIM, AWESOME_ICON_DIM, 1f) : Color.white;
+            iconImage.preserveAspect = true;
+            iconImage.raycastTarget = false;
+            var iconLayout = iconObject.AddComponent<LayoutElement>();
+            iconLayout.preferredWidth = TALLY_ROW_HEIGHT;
+            iconLayout.preferredHeight = TALLY_ROW_HEIGHT;
+
+            // Count (white when > 0, muted when 0). Content-sized (no LayoutElement) so the icon
+            // sits tight against its own number — no fixed-width box gap — and triple-digit counts
+            // (some long songs) only widen the entry when they actually appear.
+            var countText = labelFactory(entryRect, "Count", TextAlignmentOptions.Right);
+            countText.text = count.ToString();
+            StyleText(countText, _labelFont, count > 0 ? (Color?) null : MutedColor, TextAlignmentOptions.Right);
         }
 
         private static void BuildPercussionRow(RectTransform parent, int hits, int total,
@@ -461,6 +802,25 @@ namespace YARG.Menu.ScoreScreen
             countLayout.preferredHeight = TALLY_ROW_HEIGHT;
         }
 
+        // Party-mode backdrop: one uniform grey wash (the "Okay" grey). The diagonal-stripe
+        // "transparency" texture is drawn per-bar (see BuildPartyBar), not across the whole graph,
+        // so the background between bars stays a clean grey.
+        private static void DrawSolidBackdrop(RectTransform barsRect)
+        {
+            var obj = new GameObject("Backdrop", typeof(RectTransform), typeof(Image));
+            var rect = (RectTransform) obj.transform;
+            rect.SetParent(barsRect, false);
+            // Continuous faint grey wash filling the whole bars rect (#7a7a7a @ 0.125 — the darkness
+            // the absent-part sections match). At 0.125 the baseline axis still shows through.
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            var img = obj.GetComponent<Image>();
+            img.color = new Color(BarDefaultColor.r, BarDefaultColor.g, BarDefaultColor.b, REGION_FILL_ALPHA);
+            img.raycastTarget = false;
+        }
+
         private static void DrawTierRegions(RectTransform barsRect)
         {
             // Five regions covering the full graph height, bottom to top.
@@ -490,6 +850,61 @@ namespace YARG.Menu.ScoreScreen
             }
         }
 
+        private static Texture2D _partySegmentGradient;
+
+        // Normalized vertical brightness ramp (white at top -> PARTY_GRADIENT_BOTTOM at bottom),
+        // tinted per fill with the segment's base color so each fill shades subtly darker toward
+        // its bottom. One texture shared across all party segment fills.
+        private static Texture2D GetOrCreatePartySegmentGradient()
+        {
+            if (_partySegmentGradient != null)
+            {
+                return _partySegmentGradient;
+            }
+
+            var tex = new Texture2D(1, GRADIENT_TEX_WIDTH, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            var pixels = new Color[GRADIENT_TEX_WIDTH];
+            for (int i = 0; i < GRADIENT_TEX_WIDTH; i++)
+            {
+                // Row 0 (v=0, bottom) = dimmed; top row = full white. Tinted per fill.
+                float t = i / (GRADIENT_TEX_WIDTH - 1f);
+                float b = Mathf.Lerp(PARTY_GRADIENT_BOTTOM, 1f, t);
+                pixels[i] = new Color(b, b, b, 1f);
+            }
+            tex.SetPixels(pixels);
+            tex.Apply();
+            _partySegmentGradient = tex;
+            return tex;
+        }
+
+        private static Texture2D _diagonalStripeTexture;
+
+        // Tiling diagonal-stripe texture (faint, low-alpha) used as the party-mode "transparency"
+        // backdrop. wrapMode=Repeat so it tiles via the RawImage's uvRect.
+        private static Texture2D GetOrCreateDiagonalStripeTexture()
+        {
+            if (_diagonalStripeTexture != null) return _diagonalStripeTexture;
+            var tex = new Texture2D(STRIPE_TEX_SIZE, STRIPE_TEX_SIZE, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Point;
+            tex.wrapMode = TextureWrapMode.Repeat;
+            int period = STRIPE_WIDTH * 2;
+            var pixels = new Color[STRIPE_TEX_SIZE * STRIPE_TEX_SIZE];
+            for (int y = 0; y < STRIPE_TEX_SIZE; y++)
+            {
+                for (int x = 0; x < STRIPE_TEX_SIZE; x++)
+                {
+                    bool on = (((x - y) % period + period) % period) < STRIPE_WIDTH;
+                    pixels[y * STRIPE_TEX_SIZE + x] = on ? STRIPE_LIGHT : STRIPE_DARK;
+                }
+            }
+            tex.SetPixels(pixels);
+            tex.Apply();
+            _diagonalStripeTexture = tex;
+            return tex;
+        }
+
         private static Texture2D GetOrCreateAwesomeBarGradient()
         {
             if (_awesomeBarGradient != null)
@@ -507,88 +922,6 @@ namespace YARG.Menu.ScoreScreen
             tex.SetPixels(pixels);
             tex.Apply();
             _awesomeBarGradient = tex;
-            return tex;
-        }
-
-        /// <summary>
-        /// Party Vocals multi-segment awesome bar gradient. The bottom is always UT Orange → Gold
-        /// (matching the solo awesome gradient). The top transitions through HARM colors based on
-        /// the awesome tier:
-        ///   Single (Awesome):       Gold bottom → Cyan (HARM1) top
-        ///   Double (DoubleAwesome): Gold bottom → Orange (HARM2) mid → Cyan (HARM1) top
-        ///   Triple (TripleAwesome): Gold bottom → Yellow (HARM3) ⅓ → Orange (HARM2) ⅔ → Cyan (HARM1) top
-        /// </summary>
-        private static Texture2D GetOrCreatePartyAwesomeBarGradient(PhraseGrade grade)
-        {
-            switch (grade)
-            {
-                case PhraseGrade.TripleAwesome:
-                    if (_partyTripleAwesomeGradient == null)
-                        _partyTripleAwesomeGradient = CreatePartyGradient(
-                            UtOrangeColor, GoldColor, Harm3Yellow, Harm2Orange, Harm1Cyan);
-                    return _partyTripleAwesomeGradient;
-                case PhraseGrade.DoubleAwesome:
-                    if (_partyDoubleAwesomeGradient == null)
-                        _partyDoubleAwesomeGradient = CreatePartyGradient(
-                            UtOrangeColor, GoldColor, Harm2Orange, Harm1Cyan);
-                    return _partyDoubleAwesomeGradient;
-                default: // Awesome (single)
-                    if (_partySingleAwesomeGradient == null)
-                        _partySingleAwesomeGradient = CreatePartyGradient(
-                            UtOrangeColor, GoldColor, Harm1Cyan);
-                    return _partySingleAwesomeGradient;
-            }
-        }
-
-        // Fraction of each HARM segment that holds the pure color at each end before
-        // transitioning. 0.35 means the first 35% holds the lower color, the last 35% holds
-        // the upper color, and only the middle 30% blends. This keeps adjacent warm colors
-        // (gold/orange/yellow) visually distinct instead of muddling into a wash.
-        private const float PARTY_HOLD_FRACTION = 0.35f;
-
-        /// <summary>
-        /// Builds a 1×N vertical gradient texture from a list of color stops. Stops are evenly
-        /// spaced from bottom (stops[0]) to top (stops[last]). Each segment holds its endpoint
-        /// colors for PARTY_HOLD_FRACTION at each end, then eases through the middle portion,
-        /// so adjacent HARM colors stay visually distinct.
-        /// </summary>
-        private static Texture2D CreatePartyGradient(params Color[] stops)
-        {
-            var tex = new Texture2D(1, GRADIENT_TEX_WIDTH, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Bilinear;
-            tex.wrapMode = TextureWrapMode.Clamp;
-            var pixels = new Color[GRADIENT_TEX_WIDTH];
-            int segments = stops.Length - 1;
-            for (int i = 0; i < GRADIENT_TEX_WIDTH; i++)
-            {
-                float t = i / (GRADIENT_TEX_WIDTH - 1f);
-                float scaled = t * segments;
-                int seg = Mathf.Min((int) scaled, segments - 1);
-                float localT = scaled - seg;
-
-                // Hold the lower color for the first PART, the upper for the last PART,
-                // and smoothstep through the middle so the transition is crisp but not jarring.
-                float hold = PARTY_HOLD_FRACTION;
-                float transitionRange = 1f - 2f * hold;
-                float blended;
-                if (localT <= hold)
-                {
-                    blended = 0f;
-                }
-                else if (localT >= 1f - hold)
-                {
-                    blended = 1f;
-                }
-                else
-                {
-                    float norm = (localT - hold) / transitionRange;
-                    blended = norm * norm * (3f - 2f * norm); // smoothstep
-                }
-
-                pixels[i] = Color.Lerp(stops[seg], stops[seg + 1], blended);
-            }
-            tex.SetPixels(pixels);
-            tex.Apply();
             return tex;
         }
 

@@ -144,6 +144,10 @@ namespace YARG.Menu.ScoreScreen
             AverageMultiplier = averageMultiplier;
         }
 
+        // Asset name for the difficulty-ring instrument icon. Overridden by cards that need a
+        // context-specific icon (e.g. Vocals uses the harmony part-count mic icon).
+        protected virtual string GetDifficultyRingAsset() => Player.Profile.CurrentInstrument.ToResourceName();
+
         public virtual void SetCardContents()
         {
             _playerName.text = Player.Profile.Name;
@@ -153,7 +157,7 @@ namespace YARG.Menu.ScoreScreen
 
             if (_difficultyRing != null)
             {
-                _difficultyRing.SetInfo(Player.Profile.CurrentInstrument.ToResourceName(),
+                _difficultyRing.SetInfo(GetDifficultyRingAsset(),
                     Player.Profile.CurrentInstrument,
                     GlobalVariables.State.CurrentSong[Player.Profile.CurrentInstrument]);
             }

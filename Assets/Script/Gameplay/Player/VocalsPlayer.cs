@@ -85,6 +85,17 @@ namespace YARG.Gameplay.Player
         protected readonly List<PhraseGrade> _phraseGrades = new();
         public IReadOnlyList<PhraseGrade> PhraseGrades => _phraseGrades;
 
+        // Per-phrase per-part Party Vocals results: for each phrase, the active harmony parts
+        // (those with notes in that phrase) and their raw canonical meters. Captured from
+        // OnPartyVocalsPhrase alongside the grade. Empty for solo/traditional vocals. Routed to the
+        // score screen so the histogram can render one Awesome segment per available part.
+        protected readonly List<IReadOnlyList<PartyPartResult>> _phrasePartResults = new();
+        public IReadOnlyList<IReadOnlyList<PartyPartResult>> PhrasePartResults => _phrasePartResults;
+
+        // Awesome meter threshold (PhraseHitPercent), exposed so the score screen can scale each
+        // part's meter into a 0..1 fill without reaching into engine parameters.
+        public double AwesomeThreshold => EngineParams.PhraseHitPercent;
+
         // Vocal percussion isn't tracked in stats; tally hits/total live for the score screen.
         // Total is derived from chart data so it's correct regardless of shared mutable state
         // (multiple engines on the same VocalsPart share VocalNote objects — first engine to hit
@@ -441,9 +452,10 @@ namespace YARG.Gameplay.Player
             return engine;
         }
 
-        protected void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<double> canonicalMeters, bool isLastPhrase)
+        protected void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<PartyPartResult> parts, bool isLastPhrase)
         {
             _phraseGrades.Add(grade);
+            _phrasePartResults.Add(parts);
 
             if (grade == PhraseGrade.Miss)
             {
@@ -451,9 +463,9 @@ namespace YARG.Gameplay.Player
                 // percent-based "Messy / Okay / Good / Strong" text so the player still
                 // gets phrase feedback.
                 double bestMeter = 0;
-                for (int i = 0; i < canonicalMeters.Count; i++)
+                for (int i = 0; i < parts.Count; i++)
                 {
-                    if (canonicalMeters[i] > bestMeter) bestMeter = canonicalMeters[i];
+                    if (parts[i].Meter > bestMeter) bestMeter = parts[i].Meter;
                 }
                 double threshold = EngineParams.PhraseHitPercent;
                 double percent = threshold > 0 ? bestMeter / threshold : 0;
@@ -475,6 +487,7 @@ namespace YARG.Gameplay.Player
         {
             _phrasePercents.Clear();
             _phraseGrades.Clear();
+            _phrasePartResults.Clear();
             _percussionHits = 0;
         }
 
