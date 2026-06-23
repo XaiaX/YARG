@@ -431,6 +431,38 @@ namespace YARG.Gameplay.Player
             _slots[micIndex] = s;
         }
 
+        /// <summary>
+        /// Builds a note track whose phrase list is the union of all harmony parts'
+        /// phrases (deduplicated by tick range, sorted). The coordinator iterates this
+        /// list to drive phrase-end scoring. Without the union, phrases from sections
+        /// where only HARM2/HARM3 have notes are invisible — HARM1's empty phrases are
+        /// skipped during chart parsing, so Parts[0] alone misses them.
+        /// </summary>
+        private static InstrumentDifficulty<VocalNote> BuildMergedCoordinatorTrack(
+            IReadOnlyList<VocalsPart> allParts, InstrumentDifficulty<VocalNote> baseTrack)
+        {
+            var merged = new List<VocalNote>();
+            var seen = new HashSet<(uint tick, uint tickEnd)>();
+
+            foreach (var part in allParts)
+            {
+                foreach (var phrase in part.NotePhrases)
+                {
+                    var note = phrase.PhraseParentNote;
+                    if (seen.Add((note.Tick, note.TickEnd)))
+                    {
+                        merged.Add(note);
+                    }
+                }
+            }
+
+            merged.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+
+            return new InstrumentDifficulty<VocalNote>(
+                baseTrack.Instrument, Difficulty.Expert,
+                merged, new(baseTrack.Phrases), new(baseTrack.TextEvents));
+        }
+
         protected override VocalsEngine CreateEngine()
         {
             if (!Player.IsReplay)
@@ -456,7 +488,9 @@ namespace YARG.Gameplay.Player
             // the same parts (and pitch register) as the visualization.
             var multiTrack = VocalChartSelection.ResolveMultitrack(_chart, Player.Profile);
 
-            var coordinator = new PartyVocalsCoordinatorEngine(NoteTrack, multiTrack.Parts, SyncTrack,
+            var mergedNoteTrack = BuildMergedCoordinatorTrack(multiTrack.Parts, NoteTrack);
+
+            var coordinator = new PartyVocalsCoordinatorEngine(mergedNoteTrack, multiTrack.Parts, SyncTrack,
                 EngineParams, Player.Profile.IsBot,
                 micCount: _micCount,
                 botPartIndex: Player.Profile.HarmonyIndex);
