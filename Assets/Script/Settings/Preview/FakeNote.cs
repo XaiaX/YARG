@@ -90,7 +90,7 @@ namespace YARG.Settings.Preview
 
             // Update color
             var info = FakeTrackPlayer.CurrentGameModeInfo;
-            var useStarPower = FakeTrackPlayer.ForceStarPower || FakeTrackPlayer.ForceStarPowerNotes;
+            var useStarPower = FakeTrackPlayer.ForceStarPowerNotes;
             var color = useStarPower && info.NoteStarPowerColorProvider is not null
                 ? info.NoteStarPowerColorProvider(colorProfile, NoteRef)
                 : info.NoteColorProvider(colorProfile, NoteRef);
