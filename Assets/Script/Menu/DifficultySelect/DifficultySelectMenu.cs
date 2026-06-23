@@ -17,6 +17,7 @@ using YARG.Localization;
 using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Menu.Filters;
+using YARG.Menu.MusicLibrary;
 using YARG.Player;
 using YARG.Song;
 
@@ -48,6 +49,8 @@ namespace YARG.Menu.DifficultySelect
         private NavigationGroup _navGroup;
         [SerializeField]
         private TextMeshProUGUI _text;
+        [SerializeField]
+        private DifficultyRing _difficultyRing;
         [SerializeField]
         private TMP_InputField _speedInput;
         [SerializeField]
@@ -172,6 +175,17 @@ namespace YARG.Menu.DifficultySelect
         private void UpdateForSelectionChanged(NavigatableBehaviour navigatableBehaviour,
             SelectionOrigin selectionOrigin)
         {
+            // Live-preview the ring for the highlighted instrument in the instrument
+            // sub-menu, so the player sees the tier before committing a selection.
+            if (_menuState == State.Instrument)
+            {
+                int? selIndex = _navGroup.SelectedIndex;
+                if (selIndex is { } si && si >= 0 && si < _possibleInstruments.Count)
+                {
+                    SetDifficultyRingForInstrument(_possibleInstruments[si]);
+                }
+            }
+
             if (!_scrollbar)
             {
                 return;
@@ -200,7 +214,9 @@ namespace YARG.Menu.DifficultySelect
         {
             // Set player text
             var profile = CurrentPlayer.Profile;
-            _text.text = $"<sprite name=\"{GetProfileIconSprite(CurrentPlayer)}\"> {profile.Name}";
+            _text.text = profile.Name;
+
+            UpdateDifficultyRing();
 
             // Reset content
             _navGroup.ClearNavigatables();
@@ -235,6 +251,58 @@ namespace YARG.Menu.DifficultySelect
 
             _lastMenuState = _menuState;
         }
+
+        // Refresh the header ring to the song's charter-rated tier for the current
+        // instrument. Mirrors ScoreCard.SetCardContents (ScoreCard.cs:158-163): same
+        // data source (CurrentSong[instrument]), driven from UpdateForPlayer so it
+        // tracks instrument changes (e.g. guitar<->bass can have different tiers).
+        private void UpdateDifficultyRing()
+        {
+            SetDifficultyRingForInstrument(CurrentPlayer.Profile.CurrentInstrument);
+        }
+
+        // Set the ring to show the tier for a specific instrument. Used both for the
+        // committed selection (via UpdateDifficultyRing) and for live preview while
+        // navigating the instrument sub-menu (via UpdateForSelectionChanged).
+        private void SetDifficultyRingForInstrument(Instrument instrument)
+        {
+            if (_difficultyRing == null) return;
+
+            var song = GlobalVariables.State.CurrentSong;
+            var tierValues = song[instrument];
+
+            // Harmony and PartyVocals read from HarmonyVocals, which is empty on
+            // solo-only songs (no harmony chart). Fall back to the lead vocals tier
+            // so the ring still shows meaningful data instead of the dimmed state.
+            if (instrument is Instrument.Harmony or Instrument.PartyVocals
+                && !tierValues.IsActive())
+            {
+                tierValues = song[Instrument.Vocals];
+            }
+
+            _difficultyRing.SetInfo(
+                GetInstrumentRingAsset(instrument, song.VocalsCount),
+                instrument,
+                tierValues);
+        }
+
+        // Resolve the bare Addressable icon name for the ring. Handles the 22-fret
+        // pro-instrument gap (ToResourceName returns null for ProGuitar_22Fret /
+        // ProBass_22Fret, InstrumentExtensions.cs:95) and selects the part-count mic
+        // icon for harmony/party-vocals based on the song's vocal part count.
+        private static string GetInstrumentRingAsset(Instrument instrument, int vocalPartCount)
+            => instrument switch
+        {
+            Instrument.ProGuitar_22Fret => "realGuitar",
+            Instrument.ProBass_22Fret   => "realBass",
+            Instrument.Harmony or Instrument.PartyVocals => vocalPartCount switch
+            {
+                >= 3 => "harmVocals",
+                2    => "twoVocals",
+                _    => "vocals",
+            },
+            _ => instrument.ToResourceName(),
+        };
 
         private void CreateMainMenu()
         {
