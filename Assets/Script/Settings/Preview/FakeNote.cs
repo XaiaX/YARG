@@ -43,7 +43,9 @@ namespace YARG.Settings.Preview
             }
 
             // Find the correct note group
-            _currentNoteGroup = _noteGroups.Find(i => i.NoteType == NoteRef.NoteType).Group;
+            var pair = _noteGroups.Find(i => i.NoteType == NoteRef.NoteType);
+            _currentNoteGroup = pair.Group != null ? pair.Group
+                : _noteGroups.Find(i => i.NoteType == ThemeNoteType.Normal).Group;
 
             if (!NoteRef.CenterNote)
             {
@@ -88,10 +90,22 @@ namespace YARG.Settings.Preview
 
             // Update color
             var info = FakeTrackPlayer.CurrentGameModeInfo;
-            var color = FakeTrackPlayer.ForceStarPower && info.NoteStarPowerColorProvider is not null
+            var useStarPower = FakeTrackPlayer.ForceStarPower || FakeTrackPlayer.ForceStarPowerNotes;
+            var color = useStarPower && info.NoteStarPowerColorProvider is not null
                 ? info.NoteStarPowerColorProvider(colorProfile, NoteRef)
                 : info.NoteColorProvider(colorProfile, NoteRef);
             _currentNoteGroup.SetColorWithEmission(color, color);
+
+            // Set metal color
+            var metalColor = (FakeTrackPlayer.SelectedGameMode switch
+            {
+                GameMode.FiveFretGuitar => colorProfile.FiveFretGuitar.GetMetalColor(useStarPower),
+                GameMode.FourLaneDrums  => colorProfile.FourLaneDrums.GetMetalColor(useStarPower),
+                GameMode.FiveLaneDrums  => colorProfile.FiveLaneDrums.GetMetalColor(useStarPower),
+                GameMode.ProKeys        => colorProfile.ProKeys.GetMetalColor(useStarPower),
+                _ => colorProfile.FiveFretGuitar.GetMetalColor(false),
+            }).ToUnityColor();
+            _currentNoteGroup.SetMetalColor(metalColor);
 
             // Update height
             transform.localScale = new Vector3(1f, highwayPreset.NoteHeight, 1f);

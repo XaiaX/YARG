@@ -220,9 +220,9 @@ namespace YARG.Settings.Metadata
 
                         // Toggle to preview the star power / energy phrase note colors
                         CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewStarPower",
-                            new ToggleSetting(trackPreviewBuilder.ForceStarPower, value =>
+                            new ToggleSetting(trackPreviewBuilder.ForceStarPowerNotes, value =>
                             {
-                                trackPreviewBuilder.ForceStarPower = value;
+                                trackPreviewBuilder.ForceStarPowerNotes = value;
                                 SettingsMenu.Instance.Refresh();
                             }), false);
                     }

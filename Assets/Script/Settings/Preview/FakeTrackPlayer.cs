@@ -178,15 +178,21 @@ namespace YARG.Settings.Preview
                         // First lane can't have cymbals
                         if (fret == 1)
                         {
-                            noteType = ThemeNoteType.Normal;
+                            noteType = Random.Range(0, 3) switch
+                            {
+                                0 => ThemeNoteType.Normal,
+                                1 => ThemeNoteType.Accent,
+                                _ => ThemeNoteType.Ghost,
+                            };
                         }
                         else
                         {
-                            noteType = Random.Range(0, 2) switch
+                            noteType = Random.Range(0, 4) switch
                             {
                                 0 => ThemeNoteType.Cymbal,
                                 1 => ThemeNoteType.Normal,
-                                _ => throw new Exception("Unreachable.")
+                                2 => ThemeNoteType.Accent,
+                                _ => ThemeNoteType.Ghost,
                             };
                         }
 
@@ -238,10 +244,24 @@ namespace YARG.Settings.Preview
                         }
 
                         // Otherwise, select the correct note type
-                        var noteType = ThemeNoteType.Normal;
+                        ThemeNoteType noteType;
                         if (fret is 2 or 4)
                         {
-                            noteType = ThemeNoteType.Cymbal;
+                            noteType = Random.Range(0, 3) switch
+                            {
+                                0 => ThemeNoteType.Cymbal,
+                                1 => ThemeNoteType.CymbalAccent,
+                                _ => ThemeNoteType.CymbalGhost,
+                            };
+                        }
+                        else
+                        {
+                            noteType = Random.Range(0, 3) switch
+                            {
+                                0 => ThemeNoteType.Normal,
+                                1 => ThemeNoteType.Accent,
+                                _ => ThemeNoteType.Ghost,
+                            };
                         }
 
                         return new FakeNoteData
@@ -314,6 +334,7 @@ namespace YARG.Settings.Preview
         public bool ForceShowHitWindow { get; set; }
         public bool ForceGroove { get; set; }
         public bool ForceStarPower { get; set; }
+        public bool ForceStarPowerNotes { get; set; }
 
         public GameMode SelectedGameMode { get; set; } = GameMode.FiveFretGuitar;
 

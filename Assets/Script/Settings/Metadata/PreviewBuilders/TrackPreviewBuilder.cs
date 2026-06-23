@@ -21,6 +21,7 @@ namespace YARG.Settings.Metadata
         private readonly bool _forceShowHitWindow;
         private readonly bool _forceGroove;
         public bool ForceStarPower { get; set; }
+        public bool ForceStarPowerNotes { get; set; }
 
         public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false, bool forceStarPower = false)
         {
@@ -43,6 +44,7 @@ namespace YARG.Settings.Metadata
             trackPreview.ForceShowHitWindow = _forceShowHitWindow;
             trackPreview.ForceGroove = _forceGroove;
             trackPreview.ForceStarPower = ForceStarPower;
+            trackPreview.ForceStarPowerNotes = ForceStarPowerNotes;
 
             // If null, just use the default value and skip setting it
             if (StartingGameMode is not null)
