@@ -124,13 +124,13 @@ namespace YARG.Menu.ScoreScreen
                 }
             }
 
-            BuildGraph(rootRect, percents, phraseGrades, partyPartResults, awesomeThreshold);
+            BuildGraph(rootRect, percents, phraseGrades, partyPartResults, awesomeThreshold, maxHarmonyParts);
             BuildTally(rootRect, percents, phraseGrades, maxHarmonyParts, labelFactory, accentColor, percussionHits, percussionTotal);
         }
 
         private static void BuildGraph(RectTransform parent, IReadOnlyList<float> percents,
             IReadOnlyList<PhraseGrade> phraseGrades, IReadOnlyList<IReadOnlyList<PartyPartResult>> partyPartResults,
-            double awesomeThreshold)
+            double awesomeThreshold, int maxHarmonyParts)
         {
             var graphObject = new GameObject("Graph", typeof(RectTransform));
             var graphRect = (RectTransform) graphObject.transform;
@@ -254,7 +254,7 @@ namespace YARG.Menu.ScoreScreen
 
                 if (partyBar)
                 {
-                    BuildPartyBar(barRect, partyPartResults[i], phraseGrades[i], awesomeThreshold, isBright, height, onePixel);
+                    BuildPartyBar(barRect, partyPartResults[i], phraseGrades[i], awesomeThreshold, isBright, height, onePixel, maxHarmonyParts);
                     continue;
                 }
 
@@ -321,14 +321,17 @@ namespace YARG.Menu.ScoreScreen
         private static readonly Color STRIPE_LIGHT = new Color(0f, 0f, 0f, 0.3f); // black @ 0.3 — the diagonal hatch lines (subtly darken the field)
 
         private static void BuildPartyBar(RectTransform bar, IReadOnlyList<PartyPartResult> parts,
-            PhraseGrade grade, double awesomeThreshold, bool oddBar, float barHeight, float onePixel)
+            PhraseGrade grade, double awesomeThreshold, bool oddBar, float barHeight, float onePixel,
+            int segmentCount)
         {
-            // Always three segments (HARM1/HARM2/HARM3, bottom -> top). Each fill carries a subtle
-            // vertical gradient (full color -> 20% darker at the bottom). An absent part renders as
-            // a full fill dimmed 75% (a "gap") — exempt from the odd-bar stripe and without a cap.
-            // A not-awesome segment gets a cap line at its fill top; a full (Awesome) segment does
-            // not (so 99% is distinguishable from 100%). Dim percentages are additive (factor = 1 - sum).
-            const int SEGMENTS = 3;
+            // One segment per available harmony part (HARM1/HARM2/HARM3, bottom -> top), so a duet
+            // (2 parts) renders two equal-height bands instead of leaving the top third empty. Each
+            // fill carries a subtle vertical gradient (full color -> 20% darker at the bottom). An
+            // absent part renders as a full fill dimmed 75% (a "gap") — exempt from the odd-bar
+            // stripe and without a cap. A not-awesome segment gets a cap line at its fill top; a full
+            // (Awesome) segment does not (so 99% is distinguishable from 100%). Dim percentages are
+            // additive (factor = 1 - sum).
+            int SEGMENTS = Mathf.Clamp(segmentCount, 1, 3);
             double[] meters = new double[SEGMENTS];
             bool[] available = new bool[SEGMENTS];
             if (parts != null)
