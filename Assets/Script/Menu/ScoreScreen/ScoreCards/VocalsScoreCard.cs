@@ -87,5 +87,9 @@ namespace YARG.Menu.ScoreScreen
         private string GetVocalsIconKey() => $"InstrumentIcons[{GetVocalsPartIconName()}]";
 
         protected override string GetDifficultyRingAsset() => GetVocalsPartIconName();
+
+        // Upstream (#fb8cfd52) hides all advanced stats for vocals with an empty override here.
+        // Our branch intentionally shows a phrase-level histogram as the advanced view instead,
+        // so we deliberately do NOT override SetAdvancedStatsShown.
     }
 }
