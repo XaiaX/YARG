@@ -229,6 +229,18 @@ namespace YARG.Settings.Metadata
                                 // No Refresh()/rebuild needed.
                                 trackPreviewBuilder.ForceStarPowerNotes = value;
                             }), false);
+
+                        // Toggle to preview the lefty-flip layout. Guitar: reverses the
+                        // fret and note color order in place. 4-lane drums: relocates the
+                        // snare from red to green. 5-lane drums / pro keys: no effect.
+                        CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewLeftyFlip",
+                            new ToggleSetting(trackPreviewBuilder.LeftyFlip, value =>
+                            {
+                                // Propagates to the live FakeTrackPlayer; the auto-fired
+                                // SettingsMenu.OnSettingChanged() live-recolors the frets
+                                // and notes. No Refresh()/rebuild needed.
+                                trackPreviewBuilder.LeftyFlip = value;
+                            }), false);
                     }
                     else
                     {

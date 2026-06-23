@@ -175,9 +175,10 @@ namespace YARG.Settings.Preview
                             };
                         }
 
-                        // Red lane: 75% drum, 25% cymbal. Other lanes: 25% drum, 75% cymbal.
-                        // Within each: 75% base, 15% accent, 10% ghost.
-                        bool isCymbal = Random.Range(0, 100) < (fret == 1 ? 25 : 75);
+                        // Red lane (snare): 100% drum, never cymbal. Other lanes: 25% drum, 75% cymbal.
+                        // Within each: 75% base, 15% accent, 10% ghost. Lefty flip relocates the snare
+                        // from red to green via ApplyLeftyToFret (see Update).
+                        bool isCymbal = fret != 1 && Random.Range(0, 100) < 75;
                         int variant = Random.Range(0, 100);
                         if (isCymbal)
                         {
@@ -327,6 +328,7 @@ namespace YARG.Settings.Preview
         public bool ForceGroove { get; set; }
         public bool ForceStarPower { get; set; }
         public bool ForceStarPowerNotes { get; set; }
+        public bool LeftyFlip { get; set; }
 
         public GameMode SelectedGameMode { get; set; } = GameMode.FiveFretGuitar;
 
@@ -406,6 +408,16 @@ namespace YARG.Settings.Preview
             {
                 ((FakeNote)note).OnSettingChanged();
             }
+
+            // Reverse the fret color order for guitar lefty flip. Frets use the default
+            // color profile; reversing their assignment mirrors the layout in place
+            // without moving frets or touching asymmetric theme graphics.
+            if (SelectedGameMode == GameMode.FiveFretGuitar)
+            {
+                _fretArray.RecolorFrets(
+                    CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
+                    FretColorIndexForLefty);
+            }
         }
 
         private void SpawnNote(FakeNoteData note)
@@ -415,6 +427,29 @@ namespace YARG.Settings.Preview
             noteObj.FakeTrackPlayer = this;
             noteObj.EnableFromPool();
         }
+
+        private void ApplyLeftyToFret(FakeNoteData note)
+        {
+            // 4-lane drums: lefty flip relocates the snare from red to green. The
+            // generator treats red (fret 1) as the snare; relabel red<->green so green
+            // becomes the all-drum snare lane and red becomes cymbal-capable. Yellow,
+            // blue, and the kick are unaffected. Other game modes are unaffected.
+            if (!LeftyFlip || SelectedGameMode != GameMode.FourLaneDrums || note.CenterNote)
+            {
+                return;
+            }
+
+            note.Fret = note.Fret switch
+            {
+                1 => 4,
+                4 => 1,
+                _ => note.Fret
+            };
+        }
+
+        // Mirrors the 5-fret color order for guitar lefty flip:
+        // Green(1)<->Orange(5), Red(2)<->Blue(4), Yellow(3) center.
+        private int FretColorIndexForLefty(int noteType) => LeftyFlip ? 6 - noteType : noteType;
 
         private void Update()
         {
@@ -428,6 +463,7 @@ namespace YARG.Settings.Preview
                 _nextSpawnTime = PreviewTime + SPAWN_FREQ;
 
                 var note = CurrentGameModeInfo.CreateFakeNote(spawnTime);
+                ApplyLeftyToFret(note);
                 SpawnNote(note);
 
                 // For drums, sometimes spawn chords (multiple pads/cymbals + kick)
@@ -436,7 +472,9 @@ namespace YARG.Settings.Preview
                     if (note.CenterNote)
                     {
                         // Kick came first; add a pad/cymbal alongside it
-                        SpawnNote(CurrentGameModeInfo.CreateFakeNote(spawnTime));
+                        var alongsideKick = CurrentGameModeInfo.CreateFakeNote(spawnTime);
+                        ApplyLeftyToFret(alongsideKick);
+                        SpawnNote(alongsideKick);
                     }
                     else
                     {
@@ -446,6 +484,7 @@ namespace YARG.Settings.Preview
                             for (int i = 0; i < 3; i++)
                             {
                                 var extra = CurrentGameModeInfo.CreateFakeNote(spawnTime);
+                                ApplyLeftyToFret(extra);
                                 if (!extra.CenterNote && extra.Fret != note.Fret)
                                 {
                                     SpawnNote(extra);

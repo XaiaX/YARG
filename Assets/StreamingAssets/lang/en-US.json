@@ -1767,6 +1767,9 @@
                 "PreviewStarPower": {
                     "Name": "Preview Star Power"
                 },
+                "PreviewLeftyFlip": {
+                    "Name": "Preview Lefty Flip"
+                },
                 "ActivationNote": {
                     "Name": "Activation Note"
                 },

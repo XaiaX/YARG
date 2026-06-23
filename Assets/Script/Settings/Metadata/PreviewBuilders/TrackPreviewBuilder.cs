@@ -42,6 +42,22 @@ namespace YARG.Settings.Metadata
             }
         }
 
+        private bool _leftyFlip;
+        public bool LeftyFlip
+        {
+            get => _leftyFlip;
+            set
+            {
+                _leftyFlip = value;
+
+                // Propagate to the live player (mirrors ForceStarPowerNotes).
+                if (_currentTrackPreview != null)
+                {
+                    _currentTrackPreview.LeftyFlip = value;
+                }
+            }
+        }
+
         public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false, bool forceStarPower = false)
         {
             _forceShowHitWindow = forceShowHitWindow;
@@ -65,6 +81,7 @@ namespace YARG.Settings.Metadata
             trackPreview.ForceGroove = _forceGroove;
             trackPreview.ForceStarPower = ForceStarPower;
             trackPreview.ForceStarPowerNotes = ForceStarPowerNotes;
+            trackPreview.LeftyFlip = LeftyFlip;
 
             // If null, just use the default value and skip setting it
             if (StartingGameMode is not null)

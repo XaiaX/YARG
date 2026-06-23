@@ -91,9 +91,27 @@ namespace YARG.Settings.Preview
             // Update color
             var info = FakeTrackPlayer.CurrentGameModeInfo;
             var useStarPower = FakeTrackPlayer.ForceStarPowerNotes;
+
+            // Guitar lefty flip reverses the color order (Green<->Orange, Red<->Blue)
+            // without moving notes: look up the mirrored fret's color, but keep the
+            // note's own fret (and thus its lane position).
+            FakeNoteData colorRef = NoteRef;
+            if (FakeTrackPlayer.LeftyFlip
+                && FakeTrackPlayer.SelectedGameMode == GameMode.FiveFretGuitar
+                && !NoteRef.CenterNote)
+            {
+                colorRef = new FakeNoteData
+                {
+                    Time = NoteRef.Time,
+                    Fret = 6 - NoteRef.Fret,
+                    CenterNote = NoteRef.CenterNote,
+                    NoteType = NoteRef.NoteType
+                };
+            }
+
             var color = useStarPower && info.NoteStarPowerColorProvider is not null
-                ? info.NoteStarPowerColorProvider(colorProfile, NoteRef)
-                : info.NoteColorProvider(colorProfile, NoteRef);
+                ? info.NoteStarPowerColorProvider(colorProfile, colorRef)
+                : info.NoteColorProvider(colorProfile, colorRef);
             _currentNoteGroup.SetColorWithEmission(color, color);
 
             // Set metal color
