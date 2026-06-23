@@ -58,6 +58,9 @@ namespace YARG.Settings.Metadata
             }
         }
 
+        // Keys section: pro keys is the default; when true, show 5-lane keys instead.
+        public bool ShowFiveLaneKeys { get; set; }
+
         public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false, bool forceStarPower = false)
         {
             _forceShowHitWindow = forceShowHitWindow;
@@ -82,6 +85,7 @@ namespace YARG.Settings.Metadata
             trackPreview.ForceStarPower = ForceStarPower;
             trackPreview.ForceStarPowerNotes = ForceStarPowerNotes;
             trackPreview.LeftyFlip = LeftyFlip;
+            trackPreview.UseFiveLaneKeys = ShowFiveLaneKeys;
 
             // If null, just use the default value and skip setting it
             if (StartingGameMode is not null)

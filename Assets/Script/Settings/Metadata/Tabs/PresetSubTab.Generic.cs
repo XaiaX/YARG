@@ -230,17 +230,32 @@ namespace YARG.Settings.Metadata
                                 trackPreviewBuilder.ForceStarPowerNotes = value;
                             }), false);
 
-                        // Toggle to preview the lefty-flip layout. Guitar: reverses the
-                        // fret and note color order in place. 4-lane drums: relocates the
-                        // snare from red to green. 5-lane drums / pro keys: no effect.
-                        CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewLeftyFlip",
-                            new ToggleSetting(trackPreviewBuilder.LeftyFlip, value =>
-                            {
-                                // Propagates to the live FakeTrackPlayer; the auto-fired
-                                // SettingsMenu.OnSettingChanged() live-recolors the frets
-                                // and notes. No Refresh()/rebuild needed.
-                                trackPreviewBuilder.LeftyFlip = value;
-                            }), false);
+                        // Lefty flip only affects guitar and 4-lane drums (it reverses guitar
+                        // fret/note color order, and relocates the drum snare red->green). It
+                        // does nothing on 5-lane drums or keys, so hide it there.
+                        if (_subSection == nameof(ColorProfile.FiveFretGuitar)
+                            || _subSection == nameof(ColorProfile.FourLaneDrums))
+                        {
+                            CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewLeftyFlip",
+                                new ToggleSetting(trackPreviewBuilder.LeftyFlip, value =>
+                                {
+                                    // Propagates to the live FakeTrackPlayer; the auto-fired
+                                    // SettingsMenu.OnSettingChanged() live-recolors the frets
+                                    // and notes. No Refresh()/rebuild needed.
+                                    trackPreviewBuilder.LeftyFlip = value;
+                                }), false);
+                        }
+                        else if (_subSection == nameof(ColorProfile.ProKeys))
+                        {
+                            // Keys section: pro keys is the default; toggle ON to show 5-lane keys.
+                            // Switching lane layouts requires a preview rebuild.
+                            CreateField(settingContainer, navGroup, typeof(T).Name, "ShowFiveLaneKeys",
+                                new ToggleSetting(trackPreviewBuilder.ShowFiveLaneKeys, value =>
+                                {
+                                    trackPreviewBuilder.ShowFiveLaneKeys = value;
+                                    SettingsMenu.Instance.Refresh();
+                                }), false);
+                        }
                     }
                     else
                     {

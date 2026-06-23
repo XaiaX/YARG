@@ -120,7 +120,9 @@ namespace YARG.Settings.Preview
                 GameMode.FiveFretGuitar => colorProfile.FiveFretGuitar.GetMetalColor(useStarPower),
                 GameMode.FourLaneDrums  => colorProfile.FourLaneDrums.GetMetalColor(useStarPower),
                 GameMode.FiveLaneDrums  => colorProfile.FiveLaneDrums.GetMetalColor(useStarPower),
-                GameMode.ProKeys        => colorProfile.ProKeys.GetMetalColor(useStarPower),
+                GameMode.ProKeys        => FakeTrackPlayer.UseFiveLaneKeys
+                    ? colorProfile.FiveFretGuitar.GetMetalColor(useStarPower)
+                    : colorProfile.ProKeys.GetMetalColor(useStarPower),
                 _ => colorProfile.FiveFretGuitar.GetMetalColor(false),
             }).ToUnityColor();
             _currentNoteGroup.SetMetalColor(metalColor);

@@ -1770,6 +1770,9 @@
                 "PreviewLeftyFlip": {
                     "Name": "Preview Lefty Flip"
                 },
+                "ShowFiveLaneKeys": {
+                    "Name": "Show 5 Lane Keys"
+                },
                 "ActivationNote": {
                     "Name": "Activation Note"
                 },

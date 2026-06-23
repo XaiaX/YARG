@@ -330,6 +330,10 @@ namespace YARG.Settings.Preview
         public bool ForceStarPowerNotes { get; set; }
         public bool LeftyFlip { get; set; }
 
+        // When true (default), the keys (ProKeys) section previews as 5-lane keys
+        // (guitar-style lanes + colors, no HOPO/Tap). When false, full pro keys.
+        public bool UseFiveLaneKeys { get; set; } = true;
+
         public GameMode SelectedGameMode { get; set; } = GameMode.FiveFretGuitar;
 
         public double PreviewTime { get; private set; }
@@ -340,6 +344,48 @@ namespace YARG.Settings.Preview
         private void Start()
         {
             CurrentGameModeInfo = _gameModeInfos[SelectedGameMode];
+
+            // 5-lane keys shares the guitar color section and lane models in-game
+            // (FiveLaneKeysPlayer / FiveLaneKeysNoteElement read ColorProfile.FiveFretGuitar),
+            // so reuse the FiveFretGuitar info but with normal-only notes (no HOPO/Tap),
+            // the keys hit window, and the fret-array rendering path (not the pro-keys array).
+            if (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys)
+            {
+                // Seed from the FiveFretGuitar info: 5-lane keys shares guitar's lane
+                // layout AND color providers in-game (it reads ColorProfile.FiveFretGuitar),
+                // so we must start from guitar's info, not the ProKeys one (whose
+                // FretColorProvider is null and whose note colors read the ProKeys section).
+                var fiveLaneKeys = _gameModeInfos[GameMode.FiveFretGuitar];
+                fiveLaneKeys.UseProKeys = false;
+                fiveLaneKeys.HitWindowProvider = enginePreset => enginePreset.ProKeys.HitWindow;
+                fiveLaneKeys.CreateFakeNote = time =>
+                {
+                    int fret = Random.Range(0, 6);
+
+                    if (fret == 0)
+                    {
+                        return new FakeNoteData
+                        {
+                            Time = time,
+
+                            Fret = (int) FiveFretGuitarFret.Open,
+                            CenterNote = true,
+                            NoteType = ThemeNoteType.Open
+                        };
+                    }
+
+                    // 5-lane keys has no note variations (no HOPO/Tap)
+                    return new FakeNoteData
+                    {
+                        Time = time,
+
+                        Fret = fret,
+                        CenterNote = false,
+                        NoteType = ThemeNoteType.Normal
+                    };
+                };
+                CurrentGameModeInfo = fiveLaneKeys;
+            }
             var theme = ThemePreset.Default;
 
             // If we aren't using Pro Keys, then the passed instrument doesn't really matter; arbitrarily pass Five-Fret Guitar
