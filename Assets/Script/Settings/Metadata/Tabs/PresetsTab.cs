@@ -210,15 +210,19 @@ namespace YARG.Settings.Metadata
             var tab = CurrentSubTab;
             if (tab is null) return;
 
-            if (preset is null || preset.DefaultPreset)
+            if (preset is null)
             {
                 Object.Instantiate(_presetDefaultText, settingContainer);
             }
             else
             {
-                // Create the settings
                 tab.SetPresetReference(SelectedPreset);
+                tab.HideFields = preset.DefaultPreset;
                 tab.BuildSettingTab(settingContainer, navGroup);
+                if (preset.DefaultPreset)
+                {
+                    Object.Instantiate(_presetDefaultText, settingContainer);
+                }
             }
         }
 

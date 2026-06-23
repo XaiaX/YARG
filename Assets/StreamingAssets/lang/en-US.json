@@ -2230,6 +2230,12 @@
                 }
             },
             "HighwayPreset" : {
+                "PreviewStarPower": {
+                    "Name": "Preview Star Power"
+                },
+                "PreviewGroove": {
+                    "Name": "Preview Groove"
+                },
                 "BackgroundBaseColor1": {
                     "Name": "Background Base Color 1"
                 },

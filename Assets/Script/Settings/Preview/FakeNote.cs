@@ -49,11 +49,23 @@ namespace YARG.Settings.Preview
 
             if (!NoteRef.CenterNote)
             {
-                // Set the position
-                int fretCount = FakeTrackPlayer.CurrentGameModeInfo.LaneCount;
-                transform.localPosition = new Vector3(
-                    TrackPlayer.TRACK_WIDTH / fretCount * NoteRef.Fret - TrackPlayer.TRACK_WIDTH / 2f - 1f / fretCount,
-                    0f, 0f);
+                // Set the position. If the game mode provides explicit X positions
+                // (e.g. piano-key spacing for pro keys), use those; otherwise fall
+                // back to the uniform lane formula.
+                var info = FakeTrackPlayer.CurrentGameModeInfo;
+                float x;
+                if (info.NoteXPositions is { Length: > 0 } positions
+                    && NoteRef.Fret >= 0 && NoteRef.Fret < positions.Length)
+                {
+                    x = positions[NoteRef.Fret];
+                }
+                else
+                {
+                    int fretCount = info.LaneCount;
+                    x = TrackPlayer.TRACK_WIDTH / fretCount * NoteRef.Fret
+                        - TrackPlayer.TRACK_WIDTH / 2f - 1f / fretCount;
+                }
+                transform.localPosition = new Vector3(x, 0f, 0f);
             }
             else
             {

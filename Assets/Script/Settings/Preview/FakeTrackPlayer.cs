@@ -29,12 +29,21 @@ namespace YARG.Settings.Preview
 
             public bool UseKickFrets;
             public bool UseProKeys;
+            public bool UseHighwayOverlay;
 
             public Dictionary<int, int> HighwayOrdering;
             public int LaneCount;
+            // When set, notes are positioned at these X coordinates by fret index
+            // instead of the uniform lane formula. Used for piano-key spacing.
+            public float[] NoteXPositions;
             #nullable enable
             public GameObject? FretPrefab;
             public GameObject? KickFretPrefab;
+            // When set, overrides the visual style used for note models (independent
+            // of the fret-array style). Used by the compressed pro-keys keyboard,
+            // which needs guitar fret bars (FiveLaneKeys) but pro-keys note shapes
+            // (White/Black models from the ProKeys style).
+            public VisualStyle? NoteVisualStyle;
             #nullable restore
 
             public FretColorProviderFunc FretColorProvider;
@@ -324,9 +333,40 @@ namespace YARG.Settings.Preview
         [SerializeField]
         private FakeHitWindowDisplay _hitWindow;
 
+        // Renderers for the pro-keys highway overlay quads (5 sections, one per
+        // overlay color group). Stored for live-recoloring on setting change.
+        private readonly List<SpriteRenderer> _proKeysOverlayRenderers = new();
+
         public bool ForceShowHitWindow { get; set; }
-        public bool ForceGroove { get; set; }
-        public bool ForceStarPower { get; set; }
+
+        private bool _forceGroove;
+        public bool ForceGroove
+        {
+            get => _forceGroove;
+            set
+            {
+                _forceGroove = value;
+                if (_trackMaterial != null)
+                {
+                    _trackMaterial.GrooveMode = value;
+                }
+            }
+        }
+
+        private bool _forceStarPower;
+        public bool ForceStarPower
+        {
+            get => _forceStarPower;
+            set
+            {
+                _forceStarPower = value;
+                if (_trackMaterial != null)
+                {
+                    _trackMaterial.StarpowerMode = value;
+                }
+            }
+        }
+
         public bool ForceStarPowerNotes { get; set; }
         public bool LeftyFlip { get; set; }
 
@@ -386,29 +426,89 @@ namespace YARG.Settings.Preview
                 };
                 CurrentGameModeInfo = fiveLaneKeys;
             }
+            else if (SelectedGameMode == GameMode.ProKeys)
+            {
+                // Pro-keys piano-keyboard preview: 10 white keys + 7 black keys
+                // (the LOW_C window, keys 0-16) spread across the highway, with
+                // overlay colors drawn on the highway surface (not as fret bars).
+                // Uses the real pro-keys note models (White/Black piano-key shapes).
+                var info = _gameModeInfos[GameMode.ProKeys];
+                info.UseProKeys = false;
+                info.UseHighwayOverlay = true;
+                info.NoteVisualStyle = VisualStyle.ProKeys;
+
+                // Piano-key note positions: 17 keys at non-uniform spacing, matching
+                // the in-game KeysArray layout (white keys evenly spaced, black keys
+                // offset between them, gaps at E-F and B-C boundaries).
+                info.NoteXPositions = ComputeProKeysNotePositions();
+
+                // Note colors and white/black determination use ProKeysUtilities,
+                // same as the original single-line preview — white/black depends on
+                // the key's position in the chromatic scale, not a random assignment.
+                info.NoteColorProvider = (c, note) => (ProKeysUtilities.IsWhiteKey(note.Fret % 12)
+                    ? c.ProKeys.WhiteNote
+                    : c.ProKeys.BlackNote).ToUnityColor();
+                info.NoteStarPowerColorProvider = (c, note) => (ProKeysUtilities.IsWhiteKey(note.Fret % 12)
+                    ? c.ProKeys.WhiteNoteStarPower
+                    : c.ProKeys.BlackNoteStarPower).ToUnityColor();
+
+                info.HitWindowProvider = enginePreset => enginePreset.ProKeys.HitWindow;
+
+                info.CreateFakeNote = time =>
+                {
+                    int key = Random.Range(0, 17); // keys 0-16 (LOW_C window)
+                    var noteType = ProKeysUtilities.IsBlackKey(key % 12)
+                        ? ThemeNoteType.Black
+                        : ThemeNoteType.White;
+                    return new FakeNoteData
+                    {
+                        Time = time,
+                        Fret = key,
+                        CenterNote = false,
+                        NoteType = noteType
+                    };
+                };
+
+                CurrentGameModeInfo = info;
+            }
             var theme = ThemePreset.Default;
 
             // If we aren't using Pro Keys, then the passed instrument doesn't really matter; arbitrarily pass Five-Fret Guitar
             var style = VisualStyleHelpers.GetVisualStyle(SelectedGameMode, CurrentGameModeInfo.UseProKeys ? Instrument.ProKeys : Instrument.FiveFretGuitar);
 
-            // Create frets and put then on the right layer
+            // Create frets and put them on the right layer
             if (!CurrentGameModeInfo.UseProKeys)
             {
-                _fretArray.UseKickFrets = CurrentGameModeInfo.UseKickFrets;
-                _fretArray.Initialize(
-                    CurrentGameModeInfo.HighwayOrdering,
-                    CurrentGameModeInfo.LaneCount,
-                    CurrentGameModeInfo.KickFretPrefab,
-                    CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
-                    theme,
-                    style
-                );
+                if (CurrentGameModeInfo.UseHighwayOverlay)
+                {
+                    // Pro-keys: initialize the fret array with an EMPTY ordering
+                    // (no visible frets) to trigger the same rendering setup that
+                    // other game modes rely on, then draw the overlay on top.
+                    _fretArray.Initialize(
+                        new Dictionary<int, int>(),
+                        1, null, null,
+                        theme, style);
+                    CreateProKeysOverlay(ColorProfile.Default.ProKeys);
+                }
+                else
+                {
+                    _fretArray.UseKickFrets = CurrentGameModeInfo.UseKickFrets;
+                    _fretArray.Initialize(
+                        CurrentGameModeInfo.HighwayOrdering,
+                        CurrentGameModeInfo.LaneCount,
+                        CurrentGameModeInfo.KickFretPrefab,
+                        CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
+                        theme,
+                        style
+                    );
+                }
                 _fretArray.transform.SetLayerRecursive(LayerMask.NameToLayer("Settings Preview"));
             }
 
             // Create the note prefab (this has to be specially done, because
             // TrackElements need references to the GameManager)
-            var prefab = FakeNote.CreateFakeNoteFromTheme(theme, style);
+            var prefab = FakeNote.CreateFakeNoteFromTheme(theme,
+                CurrentGameModeInfo.NoteVisualStyle ?? style);
             prefab.transform.parent = transform;
             prefab.SetActive(false);
             _notePool.SetPrefabAndReset(prefab);
@@ -463,6 +563,13 @@ namespace YARG.Settings.Preview
                 _fretArray.RecolorFrets(
                     CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
                     FretColorIndexForLefty);
+            }
+            else if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
+            {
+                // Pro-keys: live-recolor the highway overlay sections with the
+                // PRESET's overlay colors (not ColorProfile.Default), so editing
+                // an overlay color live-updates without a rebuild.
+                RecolorProKeysOverlay(colorProfile.ProKeys);
             }
         }
 
@@ -552,6 +659,69 @@ namespace YARG.Settings.Preview
                         }
                     }
                 }
+
+                // For 5-lane keys, sometimes spawn chords (up to 3 additional
+                // notes). Scan lanes upward from the first note: 1/4 chance to
+                // place, halving each time a note is placed (1/8, 1/16, ...).
+                // No chords with open notes.
+                if (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys)
+                {
+                    if (!note.CenterNote) // no chords with open notes
+                    {
+                        int placed = 0;
+                        int denominator = 4; // start at 1/4 probability
+                        for (int pos = note.Fret + 1; pos <= 5 && placed < 3; pos++)
+                        {
+                            if (Random.Range(0, denominator) == 0)
+                            {
+                                SpawnNote(new FakeNoteData
+                                {
+                                    Time = spawnTime,
+                                    Fret = pos,
+                                    CenterNote = false,
+                                    NoteType = ThemeNoteType.Normal
+                                });
+                                placed++;
+                                denominator *= 2; // halve: 1/8 → 1/16 → 1/32...
+                            }
+                        }
+                    }
+                }
+
+                // For pro keys, sometimes spawn chords (up to 4 notes). Scan
+                // positions from the first note: descending probability (1/4,
+                // halving after each placement) with skip-2/skip-1 spacing to
+                // avoid z-fighting between adjacent white/black notes. Capped at
+                // start+8 to avoid unnaturally wide chords.
+                if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
+                {
+                    int noteCount = 1;
+                    int denominator = 4; // start at 1/4 probability
+                    int pos = note.Fret + 2;
+                    int maxPos = Math.Min(note.Fret + 8, 16);
+                    while (noteCount < 4 && pos <= maxPos)
+                    {
+                        if (Random.Range(0, denominator) == 0)
+                        {
+                            SpawnNote(new FakeNoteData
+                            {
+                                Time = spawnTime,
+                                Fret = pos,
+                                CenterNote = false,
+                                NoteType = ProKeysUtilities.IsBlackKey(pos % 12)
+                                    ? ThemeNoteType.Black
+                                    : ThemeNoteType.White
+                            });
+                            noteCount++;
+                            denominator *= 2; // halve: 1/8 → 1/16 → ...
+                            pos += 2; // skip 2 after placing
+                        }
+                        else
+                        {
+                            pos += 1; // skip 1 if not placing
+                        }
+                    }
+                }
             }
 
             _trackMaterial.SetTrackScroll(PreviewTime, NOTE_SPEED);
@@ -560,6 +730,98 @@ namespace YARG.Settings.Preview
         private void OnDestroy()
         {
             SettingsMenu.Instance.SettingChanged -= OnSettingChanged;
+        }
+
+        // --- Pro-keys highway overlay ---
+
+        // X centers for the 5 overlay groups (2 white keys each, left to right).
+        // White key spacing = TRACK_WIDTH / 10 = 0.2, so each group is 0.4 wide.
+        private static readonly float[] PRO_KEYS_OVERLAY_CENTERS = { -0.8f, -0.4f, 0f, 0.4f, 0.8f };
+        private const float PRO_KEYS_OVERLAY_WIDTH   = 0.4f;
+        private const float PRO_KEYS_OVERLAY_LENGTH   = 10f;   // covers the visible highway
+        private const float PRO_KEYS_OVERLAY_Z_CENTER = 0.5f;  // midpoint of z=-4..5
+        private const float PRO_KEYS_OVERLAY_ALPHA    = 0.05f;
+
+        private void CreateProKeysOverlay(ColorProfile.ProKeysColors colors)
+        {
+            _proKeysOverlayRenderers.Clear();
+            var layer = LayerMask.NameToLayer("Settings Preview");
+
+            // Use a SpriteRenderer (not MeshRenderer) so the overlay always
+            // renders transparent with ZWrite Off. A MeshRenderer with URP/Unlit
+            // can't reliably disable ZWrite (the transparent shader variant isn't
+            // compiled unless another material uses it), which occludes the highway.
+            var sprite = Sprite.Create(Texture2D.whiteTexture,
+                new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
+
+            for (int group = 0; group < 5; group++)
+            {
+                var overlay = new GameObject("ProKeysOverlay");
+                overlay.transform.SetParent(transform, false);
+                // Rotate to lie flat on the highway surface (facing up)
+                overlay.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+                overlay.transform.localPosition = new Vector3(
+                    PRO_KEYS_OVERLAY_CENTERS[group], 0.01f, PRO_KEYS_OVERLAY_Z_CENTER);
+                overlay.transform.localScale = new Vector3(
+                    PRO_KEYS_OVERLAY_WIDTH, PRO_KEYS_OVERLAY_LENGTH, 1f);
+
+                var sr = overlay.AddComponent<SpriteRenderer>();
+                sr.sprite = sprite;
+                var oc = colors.GetOverlayColor(group).ToUnityColor();
+                sr.color = new Color(oc.r, oc.g, oc.b, oc.a * PRO_KEYS_OVERLAY_ALPHA);
+
+                overlay.transform.SetLayerRecursive(layer);
+                _proKeysOverlayRenderers.Add(sr);
+            }
+        }
+
+        private void RecolorProKeysOverlay(ColorProfile.ProKeysColors colors)
+        {
+            for (int i = 0; i < _proKeysOverlayRenderers.Count; i++)
+            {
+                var c = colors.GetOverlayColor(i).ToUnityColor();
+                _proKeysOverlayRenderers[i].color = new Color(c.r, c.g, c.b, c.a * PRO_KEYS_OVERLAY_ALPHA);
+            }
+        }
+
+        /// <summary>
+        /// Computes the X positions for the 17 visible pro-keys (keys 0-16, the
+        /// LOW_C window: 10 white + 7 black) using the same algorithm as
+        /// <see cref="KeysArray"/>: white keys evenly spaced, black keys offset
+        /// by half a spacing, with gaps at the E-F and B-C boundaries.
+        /// </summary>
+        private static float[] ComputeProKeysNotePositions()
+        {
+            const int KEY_COUNT = 17; // keys 0-16
+
+            float spacing = TrackPlayer.TRACK_WIDTH / ProKeysPlayer.WHITE_KEY_VISIBLE_COUNT;
+            float whiteOffset = -TrackPlayer.TRACK_WIDTH / 2f + spacing / 2f;
+            float blackOffset = whiteOffset + spacing / 2f;
+
+            var positions = new float[KEY_COUNT];
+            int whitePos = 0;
+            int blackPos = 0;
+
+            for (int i = 0; i < KEY_COUNT; i++)
+            {
+                int noteIndex = i % 12;
+                if (ProKeysUtilities.IsBlackKey(noteIndex))
+                {
+                    positions[i] = blackPos * spacing + blackOffset;
+                    blackPos++;
+                    if (ProKeysUtilities.IsGapOnNextBlackKey(noteIndex))
+                    {
+                        blackPos++; // skip the gap (E-F or B-C boundary)
+                    }
+                }
+                else
+                {
+                    positions[i] = whitePos * spacing + whiteOffset;
+                    whitePos++;
+                }
+            }
+
+            return positions;
         }
     }
 }

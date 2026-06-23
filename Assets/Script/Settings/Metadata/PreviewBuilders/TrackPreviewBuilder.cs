@@ -19,8 +19,34 @@ namespace YARG.Settings.Metadata
         public GameMode? StartingGameMode { get; set; }
 
         private readonly bool _forceShowHitWindow;
-        private readonly bool _forceGroove;
-        public bool ForceStarPower { get; set; }
+
+        private bool _forceGroove;
+        public bool ForceGroove
+        {
+            get => _forceGroove;
+            set
+            {
+                _forceGroove = value;
+                if (_currentTrackPreview != null)
+                {
+                    _currentTrackPreview.ForceGroove = value;
+                }
+            }
+        }
+
+        private bool _forceStarPower;
+        public bool ForceStarPower
+        {
+            get => _forceStarPower;
+            set
+            {
+                _forceStarPower = value;
+                if (_currentTrackPreview != null)
+                {
+                    _currentTrackPreview.ForceStarPower = value;
+                }
+            }
+        }
 
         private FakeTrackPlayer _currentTrackPreview;
         private bool _forceStarPowerNotes;

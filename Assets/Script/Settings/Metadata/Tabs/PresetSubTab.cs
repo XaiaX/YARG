@@ -8,6 +8,11 @@ namespace YARG.Settings.Metadata
 {
     public abstract class PresetSubTab : Tab
     {
+        // When true, BuildSettingTab shows the dropdown and preview toggles but
+        // hides the color/preset editing fields. Used for default/built-in profiles
+        // so the user can still switch instrument previews.
+        public bool HideFields { get; set; }
+
         // Prefabs needed for this tab type
         private static GameObject _headerPrefab;
 

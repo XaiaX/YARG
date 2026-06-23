@@ -264,16 +264,38 @@ namespace YARG.Settings.Metadata
 
                     goto default;
                 }
+                case HighwayPreset:
+                {
+                    if (PreviewBuilder is TrackPreviewBuilder trackPreviewBuilder)
+                    {
+                        CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewStarPower",
+                            new ToggleSetting(trackPreviewBuilder.ForceStarPower, value =>
+                            {
+                                trackPreviewBuilder.ForceStarPower = value;
+                            }), false);
+
+                        CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewGroove",
+                            new ToggleSetting(trackPreviewBuilder.ForceGroove, value =>
+                            {
+                                trackPreviewBuilder.ForceGroove = value;
+                            }), false);
+                    }
+
+                    goto default;
+                }
                 default:
                 {
-                    foreach (var field in _fields)
+                    if (!HideFields)
                     {
-                        if (_subSection is not null && field.ParentField.Name != _subSection)
+                        foreach (var field in _fields)
                         {
-                            continue;
-                        }
+                            if (_subSection is not null && field.ParentField.Name != _subSection)
+                            {
+                                continue;
+                            }
 
-                        BuildField(field, settingContainer, navGroup, _presetRef);
+                            BuildField(field, settingContainer, navGroup, _presetRef);
+                        }
                     }
 
                     break;
