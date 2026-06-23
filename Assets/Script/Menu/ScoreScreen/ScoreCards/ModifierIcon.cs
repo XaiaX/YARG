@@ -19,7 +19,12 @@ namespace YARG.Menu.ScoreScreen
 
         public void InitializeForModifier(Modifier modifier)
         {
-            InitializeCustom(modifier.ToString());
+            // UnpitchedHarm2/3 have no dedicated sprite in the atlas, so map them
+            // to the existing UnpitchedOnly icon to avoid a missing-asset crash.
+            var id = modifier is Modifier.UnpitchedHarm2 or Modifier.UnpitchedHarm3
+                ? nameof(Modifier.UnpitchedOnly)
+                : modifier.ToString();
+            InitializeCustom(id);
         }
 
         public void InitializeCustom(string id)

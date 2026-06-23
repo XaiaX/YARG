@@ -263,9 +263,9 @@ namespace YARG.Gameplay.Player
 
             // Apply the modifiers of the primary player. All players should have the
             // same modifier(s) chosen.
-            foreach (var part in _originalVocalsTrack.Parts)
+            for (int i = 0; i < _originalVocalsTrack.Parts.Count; i++)
             {
-                primaryPlayer.Profile.ApplyVocalModifiers(part);
+                primaryPlayer.Profile.ApplyVocalModifiers(_originalVocalsTrack.Parts[i], i);
             }
 
             _vocalsTrack = _originalVocalsTrack.Clone();

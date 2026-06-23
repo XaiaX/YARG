@@ -182,7 +182,8 @@ namespace YARG.Gameplay.Player
                 selectedPart = multiTrack.Parts[Player.Profile.HarmonyIndex];
             }
 
-            player.Profile.ApplyVocalModifiers(selectedPart);
+            int partIndex = Player.Profile.IsFreeVocals ? 0 : Player.Profile.HarmonyIndex;
+            player.Profile.ApplyVocalModifiers(selectedPart, partIndex);
 
             OriginalNoteTrack = selectedPart.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
