@@ -222,8 +222,12 @@ namespace YARG.Settings.Metadata
                         CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewStarPower",
                             new ToggleSetting(trackPreviewBuilder.ForceStarPowerNotes, value =>
                             {
+                                // Propagates to the live FakeTrackPlayer; the
+                                // AbstractSetting.Value setter auto-fires
+                                // SettingsMenu.OnSettingChanged(), which live-recolors
+                                // existing notes via the SettingChanged event.
+                                // No Refresh()/rebuild needed.
                                 trackPreviewBuilder.ForceStarPowerNotes = value;
-                                SettingsMenu.Instance.Refresh();
                             }), false);
                     }
                     else

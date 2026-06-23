@@ -21,7 +21,26 @@ namespace YARG.Settings.Metadata
         private readonly bool _forceShowHitWindow;
         private readonly bool _forceGroove;
         public bool ForceStarPower { get; set; }
-        public bool ForceStarPowerNotes { get; set; }
+
+        private FakeTrackPlayer _currentTrackPreview;
+        private bool _forceStarPowerNotes;
+        public bool ForceStarPowerNotes
+        {
+            get => _forceStarPowerNotes;
+            set
+            {
+                _forceStarPowerNotes = value;
+
+                // Propagate to the live player so existing notes recolor without a
+                // rebuild. The auto-fired SettingsMenu.OnSettingChanged() drives the
+                // recolor via the SettingChanged event. Use Unity's overloaded !=
+                // (not `is not null`) so a destroyed/old player is treated as null.
+                if (_currentTrackPreview != null)
+                {
+                    _currentTrackPreview.ForceStarPowerNotes = value;
+                }
+            }
+        }
 
         public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false, bool forceStarPower = false)
         {
@@ -40,6 +59,7 @@ namespace YARG.Settings.Metadata
             }
             var trackObj = Object.Instantiate(_trackPreview, worldContainer);
             var trackPreview = trackObj.GetComponentInChildren<FakeTrackPlayer>();
+            _currentTrackPreview = trackPreview;
 
             trackPreview.ForceShowHitWindow = _forceShowHitWindow;
             trackPreview.ForceGroove = _forceGroove;
