@@ -175,26 +175,17 @@ namespace YARG.Settings.Preview
                             };
                         }
 
-                        // First lane can't have cymbals
-                        if (fret == 1)
+                        // All lanes can show any note type in the preview, including
+                        // cymbals on the red lane (normally only seen in lefty flip).
+                        noteType = Random.Range(0, 6) switch
                         {
-                            noteType = Random.Range(0, 3) switch
-                            {
-                                0 => ThemeNoteType.Normal,
-                                1 => ThemeNoteType.Accent,
-                                _ => ThemeNoteType.Ghost,
-                            };
-                        }
-                        else
-                        {
-                            noteType = Random.Range(0, 4) switch
-                            {
-                                0 => ThemeNoteType.Cymbal,
-                                1 => ThemeNoteType.Normal,
-                                2 => ThemeNoteType.Accent,
-                                _ => ThemeNoteType.Ghost,
-                            };
-                        }
+                            0 => ThemeNoteType.Normal,
+                            1 => ThemeNoteType.Accent,
+                            2 => ThemeNoteType.Ghost,
+                            3 => ThemeNoteType.Cymbal,
+                            4 => ThemeNoteType.CymbalAccent,
+                            _ => ThemeNoteType.CymbalGhost,
+                        };
 
                         return new FakeNoteData
                         {
@@ -416,6 +407,14 @@ namespace YARG.Settings.Preview
             }
         }
 
+        private void SpawnNote(FakeNoteData note)
+        {
+            var noteObj = (FakeNote)_notePool.KeyedTakeWithoutEnabling(note);
+            noteObj.NoteRef = note;
+            noteObj.FakeTrackPlayer = this;
+            noteObj.EnableFromPool();
+        }
+
         private void Update()
         {
             // Update the preview notes
@@ -424,16 +423,49 @@ namespace YARG.Settings.Preview
             // Queue the notes
             if (_nextSpawnTime <= PreviewTime)
             {
-                var note = CurrentGameModeInfo.CreateFakeNote(PreviewTime + SpawnTimeOffset);
-
-                // Create note every N seconds
+                double spawnTime = PreviewTime + SpawnTimeOffset;
                 _nextSpawnTime = PreviewTime + SPAWN_FREQ;
 
-                // Spawn note
-                var noteObj = (FakeNote)_notePool.KeyedTakeWithoutEnabling(note);
-                noteObj.NoteRef = note;
-                noteObj.FakeTrackPlayer = this;
-                noteObj.EnableFromPool();
+                var note = CurrentGameModeInfo.CreateFakeNote(spawnTime);
+                SpawnNote(note);
+
+                // For drums, sometimes spawn chords (multiple pads/cymbals + kick)
+                if (SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)
+                {
+                    if (note.CenterNote)
+                    {
+                        // Kick came first; add a pad/cymbal alongside it
+                        SpawnNote(CurrentGameModeInfo.CreateFakeNote(spawnTime));
+                    }
+                    else
+                    {
+                        // Sometimes add a second pad/cymbal on a different lane
+                        if (Random.Range(0, 3) == 0)
+                        {
+                            for (int i = 0; i < 3; i++)
+                            {
+                                var extra = CurrentGameModeInfo.CreateFakeNote(spawnTime);
+                                if (!extra.CenterNote && extra.Fret != note.Fret)
+                                {
+                                    SpawnNote(extra);
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Sometimes add a kick alongside pads/cymbals
+                        if (Random.Range(0, 2) == 0)
+                        {
+                            SpawnNote(new FakeNoteData
+                            {
+                                Time = spawnTime,
+                                Fret = 0,
+                                CenterNote = true,
+                                NoteType = ThemeNoteType.Kick
+                            });
+                        }
+                    }
+                }
             }
 
             _trackMaterial.SetTrackScroll(PreviewTime, NOTE_SPEED);
