@@ -217,6 +217,14 @@ namespace YARG.Settings.Metadata
                             nameof(ColorProfile.ProKeys)        => GameMode.ProKeys,
                             _                                   => throw new Exception("Unreachable.")
                         };
+
+                        // Toggle to preview the star power / energy phrase note colors
+                        CreateField(settingContainer, navGroup, typeof(T).Name, "PreviewStarPower",
+                            new ToggleSetting(trackPreviewBuilder.ForceStarPower, value =>
+                            {
+                                trackPreviewBuilder.ForceStarPower = value;
+                                SettingsMenu.Instance.Refresh();
+                            }), false);
                     }
                     else
                     {

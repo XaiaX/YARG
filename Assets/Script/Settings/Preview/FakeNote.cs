@@ -87,7 +87,10 @@ namespace YARG.Settings.Preview
             var highwayPreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.HighwayPresets);
 
             // Update color
-            var color = FakeTrackPlayer.CurrentGameModeInfo.NoteColorProvider(colorProfile, NoteRef);
+            var info = FakeTrackPlayer.CurrentGameModeInfo;
+            var color = FakeTrackPlayer.ForceStarPower && info.NoteStarPowerColorProvider is not null
+                ? info.NoteStarPowerColorProvider(colorProfile, NoteRef)
+                : info.NoteColorProvider(colorProfile, NoteRef);
             _currentNoteGroup.SetColorWithEmission(color, color);
 
             // Update height

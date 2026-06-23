@@ -20,13 +20,13 @@ namespace YARG.Settings.Metadata
 
         private readonly bool _forceShowHitWindow;
         private readonly bool _forceGroove;
-        private readonly bool _forceStarPower;
+        public bool ForceStarPower { get; set; }
 
         public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false, bool forceStarPower = false)
         {
             _forceShowHitWindow = forceShowHitWindow;
             _forceGroove = forceGroove;
-            _forceStarPower = forceStarPower;
+            ForceStarPower = forceStarPower;
         }
 
         public UniTask BuildPreviewWorld(Transform worldContainer)
@@ -42,7 +42,7 @@ namespace YARG.Settings.Metadata
 
             trackPreview.ForceShowHitWindow = _forceShowHitWindow;
             trackPreview.ForceGroove = _forceGroove;
-            trackPreview.ForceStarPower = _forceStarPower;
+            trackPreview.ForceStarPower = ForceStarPower;
 
             // If null, just use the default value and skip setting it
             if (StartingGameMode is not null)

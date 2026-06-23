@@ -1764,6 +1764,9 @@
                         "ProKeys": "Pro Keys"
                     }
                 },
+                "PreviewStarPower": {
+                    "Name": "Preview Star Power"
+                },
                 "ActivationNote": {
                     "Name": "Activation Note"
                 },

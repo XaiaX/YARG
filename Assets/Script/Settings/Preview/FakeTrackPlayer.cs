@@ -39,6 +39,7 @@ namespace YARG.Settings.Preview
 
             public FretColorProviderFunc FretColorProvider;
             public NoteColorProviderFunc NoteColorProvider;
+            public NoteColorProviderFunc NoteStarPowerColorProvider;
 
             public HitWindowProviderFunc HitWindowProvider;
 
@@ -57,6 +58,9 @@ namespace YARG.Settings.Preview
                     FretColorProvider = (colorProfile) => colorProfile.FiveFretGuitar,
                     NoteColorProvider = (colorProfile, note) => colorProfile.FiveFretGuitar
                         .GetNoteColor(note.Fret)
+                        .ToUnityColor(),
+                    NoteStarPowerColorProvider = (colorProfile, note) => colorProfile.FiveFretGuitar
+                        .GetNoteStarPowerColor(note.Fret)
                         .ToUnityColor(),
 
                     HitWindowProvider = (enginePreset) => enginePreset.FiveFretGuitar.HitWindow,
@@ -130,6 +134,26 @@ namespace YARG.Settings.Preview
                             .GetNoteColor(colorNote)
                             .ToUnityColor();
                     },
+                    NoteStarPowerColorProvider = (colorProfile, note) =>
+                    {
+                        int colorNote = (note.Fret, note.NoteType) switch
+                        {
+                            ((int) ColorProfile.FourLaneDrumsFret.Kick, _)                          => (int) ColorProfile.FourLaneDrumsFret.Kick,
+                            ((int) ColorProfile.FourLaneDrumsFret.RedDrum, ThemeNoteType.Cymbal)    => (int) ColorProfile.FourLaneDrumsFret.RedCymbal,
+                            ((int) ColorProfile.FourLaneDrumsFret.RedDrum, _)                       => (int) ColorProfile.FourLaneDrumsFret.RedDrum,
+                            ((int) ColorProfile.FourLaneDrumsFret.YellowDrum, ThemeNoteType.Cymbal) => (int) ColorProfile.FourLaneDrumsFret.YellowCymbal,
+                            ((int) ColorProfile.FourLaneDrumsFret.YellowDrum, _)                    => (int) ColorProfile.FourLaneDrumsFret.YellowDrum,
+                            ((int) ColorProfile.FourLaneDrumsFret.BlueDrum, ThemeNoteType.Cymbal)   => (int) ColorProfile.FourLaneDrumsFret.BlueCymbal,
+                            ((int) ColorProfile.FourLaneDrumsFret.BlueDrum, _)                      => (int) ColorProfile.FourLaneDrumsFret.BlueDrum,
+                            ((int) ColorProfile.FourLaneDrumsFret.GreenDrum, ThemeNoteType.Cymbal)  => (int) ColorProfile.FourLaneDrumsFret.GreenCymbal,
+                            ((int) ColorProfile.FourLaneDrumsFret.GreenDrum, _)                     => (int) ColorProfile.FourLaneDrumsFret.GreenDrum,
+                            _                                                    => throw new Exception("Unreachable.")
+                        };
+
+                        return colorProfile.FourLaneDrums
+                            .GetNoteStarPowerColor(colorNote)
+                            .ToUnityColor();
+                    },
 
                     HitWindowProvider = (enginePreset) => enginePreset.Drums.HitWindow,
 
@@ -187,6 +211,9 @@ namespace YARG.Settings.Preview
                     NoteColorProvider = (colorProfile, note) => colorProfile.FiveLaneDrums
                         .GetNoteColor(note.Fret)
                         .ToUnityColor(),
+                    NoteStarPowerColorProvider = (colorProfile, note) => colorProfile.FiveLaneDrums
+                        .GetNoteStarPowerColor(note.Fret)
+                        .ToUnityColor(),
 
                     HighwayOrdering = DrumsPlayer.DEFAULT_FIVE_LANE_HIGHWAY_ORDERING,
                     LaneCount = 5,
@@ -238,6 +265,9 @@ namespace YARG.Settings.Preview
                     NoteColorProvider = (colorProfile, note) => (ProKeysUtilities.IsWhiteKey(note.Fret % 12)
                         ? colorProfile.ProKeys.WhiteNote
                         : colorProfile.ProKeys.BlackNote).ToUnityColor(),
+                    NoteStarPowerColorProvider = (colorProfile, note) => (ProKeysUtilities.IsWhiteKey(note.Fret % 12)
+                        ? colorProfile.ProKeys.WhiteNoteStarPower
+                        : colorProfile.ProKeys.BlackNoteStarPower).ToUnityColor(),
 
                     HitWindowProvider = (enginePreset) => enginePreset.ProKeys.HitWindow,
 
