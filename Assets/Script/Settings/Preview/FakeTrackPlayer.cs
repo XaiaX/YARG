@@ -175,17 +175,22 @@ namespace YARG.Settings.Preview
                             };
                         }
 
-                        // All lanes can show any note type in the preview, including
-                        // cymbals on the red lane (normally only seen in lefty flip).
-                        noteType = Random.Range(0, 6) switch
+                        // Red lane: 75% drum, 25% cymbal. Other lanes: 25% drum, 75% cymbal.
+                        // Within each: 75% base, 15% accent, 10% ghost.
+                        bool isCymbal = Random.Range(0, 100) < (fret == 1 ? 25 : 75);
+                        int variant = Random.Range(0, 100);
+                        if (isCymbal)
                         {
-                            0 => ThemeNoteType.Normal,
-                            1 => ThemeNoteType.Accent,
-                            2 => ThemeNoteType.Ghost,
-                            3 => ThemeNoteType.Cymbal,
-                            4 => ThemeNoteType.CymbalAccent,
-                            _ => ThemeNoteType.CymbalGhost,
-                        };
+                            noteType = variant < 75 ? ThemeNoteType.Cymbal
+                                : variant < 90 ? ThemeNoteType.CymbalAccent
+                                : ThemeNoteType.CymbalGhost;
+                        }
+                        else
+                        {
+                            noteType = variant < 75 ? ThemeNoteType.Normal
+                                : variant < 90 ? ThemeNoteType.Accent
+                                : ThemeNoteType.Ghost;
+                        }
 
                         return new FakeNoteData
                         {
@@ -234,25 +239,21 @@ namespace YARG.Settings.Preview
                             };
                         }
 
-                        // Otherwise, select the correct note type
+                        // Cymbal lanes (2, 4): cymbal variants. Other lanes: drum variants.
+                        // Within each: 75% base, 15% accent, 10% ghost.
                         ThemeNoteType noteType;
+                        int variant = Random.Range(0, 100);
                         if (fret is 2 or 4)
                         {
-                            noteType = Random.Range(0, 3) switch
-                            {
-                                0 => ThemeNoteType.Cymbal,
-                                1 => ThemeNoteType.CymbalAccent,
-                                _ => ThemeNoteType.CymbalGhost,
-                            };
+                            noteType = variant < 75 ? ThemeNoteType.Cymbal
+                                : variant < 90 ? ThemeNoteType.CymbalAccent
+                                : ThemeNoteType.CymbalGhost;
                         }
                         else
                         {
-                            noteType = Random.Range(0, 3) switch
-                            {
-                                0 => ThemeNoteType.Normal,
-                                1 => ThemeNoteType.Accent,
-                                _ => ThemeNoteType.Ghost,
-                            };
+                            noteType = variant < 75 ? ThemeNoteType.Normal
+                                : variant < 90 ? ThemeNoteType.Accent
+                                : ThemeNoteType.Ghost;
                         }
 
                         return new FakeNoteData
@@ -454,7 +455,7 @@ namespace YARG.Settings.Preview
                         }
 
                         // Sometimes add a kick alongside pads/cymbals
-                        if (Random.Range(0, 2) == 0)
+                        if (Random.Range(0, 3) == 0)
                         {
                             SpawnNote(new FakeNoteData
                             {
