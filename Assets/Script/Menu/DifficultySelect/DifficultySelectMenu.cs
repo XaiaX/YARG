@@ -309,7 +309,7 @@ namespace YARG.Menu.DifficultySelect
         //   Unknown: [?]
         private static string GetTierDisplay(sbyte tier)
         {
-            if (tier < 0) return "[?]";
+            if (tier < 0) return "\uD83E\uDD37"; // 🤷
 
             var sb = new StringBuilder();
 
