@@ -319,7 +319,7 @@ namespace YARG.Menu.DifficultySelect
             {
                 // All 5 dots burn, plus one extra per tier above 6
                 int count = 5 + (tier - 6); // tier 6 → 5, tier 7 → 6, ...
-                sb.Append("<color=#FF0000>");
+                sb.Append("<color=#F32B37>");
                 for (int i = 0; i < count; i++) sb.Append('\u25CF'); // ●
                 sb.Append("</color>");
             }
