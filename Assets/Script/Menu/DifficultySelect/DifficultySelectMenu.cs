@@ -602,8 +602,8 @@ namespace YARG.Menu.DifficultySelect
 
                 CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "OtherModifiers"));
 
-                AddModifierToggle(profile, Modifier.NoVocalPercussion);
-                AddModifierToggle(profile, Modifier.ManualVocalStarPower);
+                AddModifierToggle(profile, Modifier.NoVocalPercussion, "Percussion");
+                AddModifierToggle(profile, Modifier.ManualVocalStarPower, "Sing to Deploy");
             }
             else
             {
