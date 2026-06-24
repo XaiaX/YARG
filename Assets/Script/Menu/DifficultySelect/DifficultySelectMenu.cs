@@ -534,6 +534,15 @@ namespace YARG.Menu.DifficultySelect
                     modifierText = modifierText.Trim();
                 }
 
+                // Lefty flip is a separate profile flag, not a Modifier enum value,
+                // so append it to the summary manually.
+                if (modifiersSource.LeftyFlip)
+                {
+                    modifierText = modifierText == Modifier.None.ToLocalizedName()
+                        ? "Lefty Flip"
+                        : modifierText + "\nLefty Flip";
+                }
+
                 CreateItem(LocalizeHeader("Modifiers"),
                     modifierText, _lastMenuState == State.Modifiers, () =>
                 {
