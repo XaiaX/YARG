@@ -318,12 +318,6 @@ namespace YARG.Menu.DifficultySelect
                 return "<size=80%><color=#888888>Unknown</color></size>";
             }
 
-            // TEMP: show "Unknown" text on tier 0 for testing
-            if (tier == 0)
-            {
-                return "<size=80%><color=#888888>Unknown (test)</color></size>";
-            }
-
             var sb = new StringBuilder();
 
             if (tier >= 6)
