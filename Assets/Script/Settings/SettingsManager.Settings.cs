@@ -816,7 +816,14 @@ namespace YARG.Settings
             {
                 foreach (var player in PlayerContainer.Players)
                 {
-                    player.Bindings.Microphone?.SetMonitoringLevel(volume);
+                    // Apply to *all* bound microphones, not just the first one.
+                    // PartyVocals profiles may bind up to 7 mics; Microphone
+                    // (singular) only returns the first, leaving the rest at their
+                    // creation-time level.
+                    foreach (var mic in player.Bindings.Microphones)
+                    {
+                        mic.SetMonitoringLevel(volume);
+                    }
                 }
             }
 
