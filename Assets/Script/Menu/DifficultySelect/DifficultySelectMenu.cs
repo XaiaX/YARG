@@ -559,7 +559,7 @@ namespace YARG.Menu.DifficultySelect
                 sbyte tier = GetInstrumentTier(song, instrument);
                 string label = tier >= 0
                     ? $"{instrument.ToLocalizedName()} [{tier}]"
-                    : instrument.ToLocalizedName();
+                    : $"{instrument.ToLocalizedName()} [?]";
 
                 CreateItem(label, selected, () =>
                 {
