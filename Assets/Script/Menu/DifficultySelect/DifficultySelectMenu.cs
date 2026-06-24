@@ -304,23 +304,29 @@ namespace YARG.Menu.DifficultySelect
             return tierValues.Intensity;
         }
 
-        // Build a visual tier indicator using ●/○ (U+25CF / U+25CB) with TMP color tags:
-        //   Tier 0: 5 empty dots (○ dim)
-        //   Tier N (1-5): N filled (● bright) + (5-N) empty (○ dim)
-        //   Tier 6+: all 5 burning (● rose) + (tier-5) extra burning dots
-        //   Unknown: [?]
+        // Build a visual tier indicator using ●/○/◇/◉ with TMP color tags:
+        //   Tier 0: 5 empty dots (○ dim), first is ◇ for testing diamond rendering
+        //   Tier N (1-5): N filled (● bright) + (5-N) empty (○)
+        //   Tier 6+: all 5+ burning (●/◉ red), middle dot is ◉ fisheye for testing
+        //   Unknown (-1): 5 empty diamonds (◇)
         private static string GetTierDisplay(sbyte tier)
         {
-            if (tier < 0) return "[?]";
+            if (tier < 0)
+            {
+                return "<color=#DDDDDD>\u25C7\u25C7\u25C7\u25C7\u25C7</color>"; // ◇◇◇◇◇
+            }
 
             var sb = new StringBuilder();
 
             if (tier >= 6)
             {
-                // All 5 dots burn, plus one extra per tier above 6
                 int count = 5 + (tier - 6); // tier 6 → 5, tier 7 → 6, ...
                 sb.Append("<color=#F32B37>");
-                for (int i = 0; i < count; i++) sb.Append('\u25CF'); // ●
+                for (int i = 0; i < count; i++)
+                {
+                    // Middle dot is fisheye (◉) for testing
+                    sb.Append(i == 2 ? '\u25C9' : '\u25CF'); // ◉ vs ●
+                }
                 sb.Append("</color>");
             }
             else
@@ -333,8 +339,11 @@ namespace YARG.Menu.DifficultySelect
                 for (int i = 0; i < filled; i++) sb.Append('\u25CF'); // ●
                 sb.Append("</color>");
 
-                // Empty dots (same brightness so they're visible on selected rows)
-                for (int i = 0; i < empty; i++) sb.Append('\u25CB'); // ○
+                // Empty dots — tier 0 uses ◇ for the first dot (testing diamond)
+                for (int i = 0; i < empty; i++)
+                {
+                    sb.Append(tier == 0 && i == 0 ? '\u25C7' : '\u25CB'); // ◇ vs ○
+                }
             }
 
             return sb.ToString();
