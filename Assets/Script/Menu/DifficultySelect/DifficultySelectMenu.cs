@@ -315,7 +315,7 @@ namespace YARG.Menu.DifficultySelect
         {
             if (tier < 0)
             {
-                return "\u25CB\u25C7\u25CB\u25C7\u25CB"; // ○◇○◇○
+                return "<size=80%><color=#888888>Unknown</color></size>";
             }
 
             var sb = new StringBuilder();
