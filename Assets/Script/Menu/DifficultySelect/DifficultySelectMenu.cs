@@ -287,6 +287,22 @@ namespace YARG.Menu.DifficultySelect
                 tierValues);
         }
 
+        // Get the charter-rated tier for an instrument, mirroring the fallback
+        // used by SetDifficultyRingForInstrument (Harmony/PartyVocals fall back
+        // to lead vocals on solo-only songs).
+        private static sbyte GetInstrumentTier(SongEntry song, Instrument instrument)
+        {
+            var tierValues = song[instrument];
+
+            if (instrument is Instrument.Harmony or Instrument.PartyVocals
+                && !tierValues.IsActive())
+            {
+                tierValues = song[Instrument.Vocals];
+            }
+
+            return tierValues.Intensity;
+        }
+
         // Resolve the bare Addressable icon name for the ring. Handles the 22-fret
         // pro-instrument gap (ToResourceName returns null for ProGuitar_22Fret /
         // ProBass_22Fret, InstrumentExtensions.cs:95) and selects the part-count mic
@@ -534,10 +550,18 @@ namespace YARG.Menu.DifficultySelect
 
         private void CreateInstrumentMenu()
         {
+            var song = GlobalVariables.State.CurrentSong;
+
             foreach (var instrument in _possibleInstruments)
             {
                 bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
-                CreateItem(instrument.ToLocalizedName(), selected, () =>
+
+                sbyte tier = GetInstrumentTier(song, instrument);
+                string label = tier >= 0
+                    ? $"{instrument.ToLocalizedName()} [{tier}]"
+                    : instrument.ToLocalizedName();
+
+                CreateItem(label, selected, () =>
                 {
                     var preferredInstrument = CurrentPlayer.Profile.PreferredInstrument;
                     CurrentPlayer.Profile.CurrentInstrument = instrument;
