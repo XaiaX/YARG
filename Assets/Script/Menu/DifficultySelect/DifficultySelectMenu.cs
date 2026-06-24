@@ -303,6 +303,30 @@ namespace YARG.Menu.DifficultySelect
             return tierValues.Intensity;
         }
 
+        // Build a visual tier indicator using Unicode dots:
+        //   Tier 0: ⚫⚫⚫⚫⚫   Tier 3: ⚪⚪⚪⚫⚫   Tier 5: ⚪⚪⚪⚪⚪
+        //   Tier 6+: 🔴 x (tier-1) — 5 at tier 6, +1 each
+        //   Unknown: [?]
+        private static string GetTierDisplay(sbyte tier)
+        {
+            if (tier < 0) return "[?]";
+
+            var sb = new StringBuilder();
+
+            if (tier <= 5)
+            {
+                for (int i = 0; i < tier; i++) sb.Append('\u26AA'); // ⚪
+                for (int i = tier; i < 5; i++) sb.Append('\u26AB'); // ⚫
+            }
+            else
+            {
+                int redCount = tier - 1; // tier 6 → 5, tier 7 → 6, ...
+                for (int i = 0; i < redCount; i++) sb.Append("\uD83D\uDD34"); // 🔴
+            }
+
+            return sb.ToString();
+        }
+
         // Resolve the bare Addressable icon name for the ring. Handles the 22-fret
         // pro-instrument gap (ToResourceName returns null for ProGuitar_22Fret /
         // ProBass_22Fret, InstrumentExtensions.cs:95) and selects the part-count mic
@@ -557,9 +581,7 @@ namespace YARG.Menu.DifficultySelect
                 bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
 
                 sbyte tier = GetInstrumentTier(song, instrument);
-                string label = tier >= 0
-                    ? $"{instrument.ToLocalizedName()} [{tier}]"
-                    : $"{instrument.ToLocalizedName()} [?]";
+                string label = $"{instrument.ToLocalizedName()} {GetTierDisplay(tier)}";
 
                 CreateItem(label, selected, () =>
                 {
