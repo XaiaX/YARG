@@ -38,7 +38,8 @@ namespace YARG.Menu.DifficultySelect
             Modifiers,
             Harmony,
             PartyVocalsBotMicCount,
-            PartyVocalsChartChoice
+            PartyVocalsChartChoice,
+            UnpitchedVocals
         }
 
         [SerializeField]
@@ -247,6 +248,9 @@ namespace YARG.Menu.DifficultySelect
                     break;
                 case State.PartyVocalsChartChoice:
                     CreatePartyVocalsChartChoiceMenu();
+                    break;
+                case State.UnpitchedVocals:
+                    CreateUnpitchedVocalsMenu();
                     break;
             }
 
@@ -594,15 +598,14 @@ namespace YARG.Menu.DifficultySelect
 
             if (isVocalMode)
             {
-                // Group the three unpitched modifiers under a "Disable Pitch" header
-                // so they read naturally (Harmony 1/2/3), then put the rest under "Other".
-                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "DisablePitch"));
-
-                AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
-                AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
-                AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
-
-                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "OtherModifiers"));
+                // The three unpitched modifiers live in a sub-menu to keep this
+                // list short enough to avoid scrolling.
+                CreateItem(Localize.Key("Menu.DifficultySelect", "UnpitchedVocals"),
+                    _lastMenuState == State.UnpitchedVocals, () =>
+                {
+                    _menuState = State.UnpitchedVocals;
+                    UpdateForPlayer();
+                });
 
                 AddModifierToggle(profile, Modifier.NoVocalPercussion);
                 AddModifierToggle(profile, Modifier.ManualVocalStarPower);
@@ -626,36 +629,25 @@ namespace YARG.Menu.DifficultySelect
             _navGroup.SelectFirst();
         }
 
-        private void CreateModifierHeader(string text)
+        private void CreateUnpitchedVocalsMenu()
         {
-            var go = new GameObject("ModifierSectionHeader", typeof(RectTransform));
-            go.transform.SetParent(_container, false);
+            var profile = CurrentPlayer.Profile;
 
-            var tmp = go.AddComponent<TextMeshProUGUI>();
+            _modifierItems.Clear();
+            _itemModifiers.Clear();
 
-            // Match the font used by the modifier toggle rows.
-            var refText = _modifierItemPrefab.GetComponentInChildren<TextMeshProUGUI>();
-            if (refText != null)
+            AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
+            AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
+            AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
+
+            // Create done button
+            CreateItem(LocalizeHeader("Done"), _difficultyGreenPrefab, () =>
             {
-                tmp.font = refText.font;
-                tmp.fontSize = refText.fontSize;
-            }
-            else
-            {
-                tmp.font = TMP_Settings.defaultFontAsset;
-                tmp.fontSize = 20;
-            }
+                _menuState = State.Modifiers;
+                UpdateForPlayer();
+            });
 
-            tmp.fontStyle = FontStyles.Bold | FontStyles.UpperCase;
-            tmp.color = new Color(0.55f, 0.55f, 0.6f);
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.text = text;
-
-            // Ensure the layout group measures this element correctly.
-            var fitter = go.AddComponent<ContentSizeFitter>();
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-            // Headers are visual only — not added to _navGroup.
+            _navGroup.SelectFirst();
         }
 
         private void AddModifierToggle(YargProfile profile, Modifier modifier, string labelOverride = null)
