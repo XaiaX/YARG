@@ -673,6 +673,18 @@ namespace YARG.Menu.DifficultySelect
             }
             else
             {
+                // Lefty flip toggle — first item, guitar/drums only.
+                if (profile.GameMode is GameMode.FiveFretGuitar or GameMode.SixFretGuitar
+                    or GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums)
+                {
+                    var leftyBtn = Instantiate(_modifierItemPrefab, _container);
+                    leftyBtn.Initialize("Lefty Flip", profile.LeftyFlip, active =>
+                    {
+                        profile.LeftyFlip = active;
+                    });
+                    _navGroup.AddNavigatable(leftyBtn);
+                }
+
                 // Non-vocal: render in enum order (no grouping needed).
                 foreach (var modifier in _possibleModifiers)
                 {
