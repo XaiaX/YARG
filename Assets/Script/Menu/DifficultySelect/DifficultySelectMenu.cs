@@ -304,29 +304,36 @@ namespace YARG.Menu.DifficultySelect
             return tierValues.Intensity;
         }
 
-        // Build a visual tier indicator using ● (U+25CF) with TMP color tags:
-        //   Tier 0: nothing (no dots)
-        //   Tier 1-5: that many bright dots
-        //   Tier 6+: burning dots (YARG rose), tier-1 count (5 at tier 6, +1 each)
-        //   Unknown: [?]
+        // Build a visual tier indicator using ●/○ (U+25CF / U+25CB) with TMP color tags:
+        //   Always 5 dots. Tier N = N filled (bright) + (5-N) empty (dim).
+        //   Tier 6+: all 5 filled + extra burning (rose) dots (tier-5 total extra).
+        //   Tier 0: 5 empty dots.  Unknown: [?]
         private static string GetTierDisplay(sbyte tier)
         {
             if (tier < 0) return "[?]";
-            if (tier == 0) return "";
 
             var sb = new StringBuilder();
 
-            if (tier <= 5)
+            int filled = tier <= 5 ? tier : 5;
+            int empty = 5 - filled;
+
+            // Filled dots (bright)
+            sb.Append("<color=#DDDDDD>");
+            for (int i = 0; i < filled; i++) sb.Append('\u25CF'); // ●
+            sb.Append("</color>");
+
+            // Empty dots (dim)
+            sb.Append("<color=#555555>");
+            for (int i = 0; i < empty; i++) sb.Append('\u25CB'); // ○
+            sb.Append("</color>");
+
+            // Burning dots for tiers above 5
+            if (tier > 5)
             {
-                sb.Append("<color=#DDDDDD>");
-                for (int i = 0; i < tier; i++) sb.Append('\u25CF'); // ●
-                sb.Append("</color>");
-            }
-            else
-            {
-                int count = tier - 1; // tier 6 → 5, tier 7 → 6, ...
+                int extra = tier - 5;
+                sb.Append(' '); // separator
                 sb.Append("<color=#F70072>");
-                for (int i = 0; i < count; i++) sb.Append('\u25CF'); // ●
+                for (int i = 0; i < extra; i++) sb.Append('\u25CF'); // ●
                 sb.Append("</color>");
             }
 
