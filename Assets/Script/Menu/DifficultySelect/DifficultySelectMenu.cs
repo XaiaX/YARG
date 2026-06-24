@@ -305,27 +305,30 @@ namespace YARG.Menu.DifficultySelect
         }
 
         // Build a visual tier indicator using ●/○/◇/◉ with TMP color tags:
-        //   Tier 0: 5 empty dots (○ dim), first is ◇ for testing diamond rendering
+        //   Tier 0: 5 empty dots (○)
         //   Tier N (1-5): N filled (● bright) + (5-N) empty (○)
-        //   Tier 6+: all 5+ burning (●/◉ red), middle dot is ◉ fisheye for testing
-        //   Unknown (-1): 5 empty diamonds (◇)
+        //   Tier 6: 5 burning red dots (●)
+        //   Tier 7-10: burning dots, replacing one ● with ◉ fisheye per tier
+        //   Tier 11+: clamped to tier 10 (all 5 fisheye)
+        //   Unknown (-1): alternating empty dots/diamonds (○◇○◇○)
         private static string GetTierDisplay(sbyte tier)
         {
             if (tier < 0)
             {
-                return "<color=#DDDDDD>\u25C7\u25C7\u25C7\u25C7\u25C7</color>"; // ◇◇◇◇◇
+                return "\u25CB\u25C7\u25CB\u25C7\u25CB"; // ○◇○◇○
             }
 
             var sb = new StringBuilder();
 
             if (tier >= 6)
             {
-                int count = 5 + (tier - 6); // tier 6 → 5, tier 7 → 6, ...
+                // Tier 6: 5 red ●. Each tier above replaces one ● with ◉ fisheye.
+                // Tier 10 = all 5 ◉. Clamp above that.
+                int fisheye = System.Math.Min(tier - 6, 5); // tier 6→0, 7→1, ... 11+→5
                 sb.Append("<color=#F32B37>");
-                for (int i = 0; i < count; i++)
+                for (int i = 0; i < 5; i++)
                 {
-                    // Middle dot is fisheye (◉) for testing
-                    sb.Append(i == 2 ? '\u25C9' : '\u25CF'); // ◉ vs ●
+                    sb.Append(i < fisheye ? '\u25C9' : '\u25CF'); // ◉ vs ●
                 }
                 sb.Append("</color>");
             }
@@ -334,16 +337,11 @@ namespace YARG.Menu.DifficultySelect
                 int filled = tier;
                 int empty = 5 - filled;
 
-                // Filled dots (bright)
                 sb.Append("<color=#DDDDDD>");
                 for (int i = 0; i < filled; i++) sb.Append('\u25CF'); // ●
                 sb.Append("</color>");
 
-                // Empty dots — tier 0 uses ◇ for the first dot (testing diamond)
-                for (int i = 0; i < empty; i++)
-                {
-                    sb.Append(tier == 0 && i == 0 ? '\u25C7' : '\u25CB'); // ◇ vs ○
-                }
+                for (int i = 0; i < empty; i++) sb.Append('\u25CB'); // ○
             }
 
             return sb.ToString();
