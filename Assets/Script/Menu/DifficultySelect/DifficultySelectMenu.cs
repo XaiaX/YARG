@@ -601,7 +601,7 @@ namespace YARG.Menu.DifficultySelect
                 bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
 
                 sbyte tier = GetInstrumentTier(song, instrument);
-                string label = $"{instrument.ToLocalizedName()}<pos=65%>{GetTierDisplay(tier)}";
+                string label = $"{instrument.ToLocalizedName()}\n{GetTierDisplay(tier)}";
 
                 CreateItem(label, selected, () =>
                 {
