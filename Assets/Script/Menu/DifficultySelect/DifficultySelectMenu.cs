@@ -646,9 +646,9 @@ namespace YARG.Menu.DifficultySelect
                 tmp.fontSize = 20;
             }
 
-            tmp.fontStyle = FontStyles.Bold;
+            tmp.fontStyle = FontStyles.Bold | FontStyles.UpperCase;
             tmp.color = new Color(0.55f, 0.55f, 0.6f);
-            tmp.alignment = TextAlignmentOptions.Left;
+            tmp.alignment = TextAlignmentOptions.Center;
             tmp.text = text;
 
             // Ensure the layout group measures this element correctly.
