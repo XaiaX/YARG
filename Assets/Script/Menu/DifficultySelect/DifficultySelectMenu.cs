@@ -304,25 +304,30 @@ namespace YARG.Menu.DifficultySelect
             return tierValues.Intensity;
         }
 
-        // Build a visual tier indicator using Unicode dots:
-        //   Tier 0: ⚫⚫⚫⚫⚫   Tier 3: ⚪⚪⚪⚫⚫   Tier 5: ⚪⚪⚪⚪⚪
-        //   Tier 6+: 🔴 x (tier-1) — 5 at tier 6, +1 each
+        // Build a visual tier indicator using ● (U+25CF) with TMP color tags:
+        //   Tier 0: nothing (no dots)
+        //   Tier 1-5: that many bright dots
+        //   Tier 6+: burning dots (YARG rose), tier-1 count (5 at tier 6, +1 each)
         //   Unknown: [?]
         private static string GetTierDisplay(sbyte tier)
         {
-            if (tier < 0) return "\uD83E\uDD37"; // 🤷
+            if (tier < 0) return "[?]";
+            if (tier == 0) return "";
 
             var sb = new StringBuilder();
 
             if (tier <= 5)
             {
-                for (int i = 0; i < tier; i++) sb.Append('\u26AA'); // ⚪
-                for (int i = tier; i < 5; i++) sb.Append('\u26AB'); // ⚫
+                sb.Append("<color=#DDDDDD>");
+                for (int i = 0; i < tier; i++) sb.Append('\u25CF'); // ●
+                sb.Append("</color>");
             }
             else
             {
-                int redCount = tier - 1; // tier 6 → 5, tier 7 → 6, ...
-                for (int i = 0; i < redCount; i++) sb.Append("\uD83D\uDD34"); // 🔴
+                int count = tier - 1; // tier 6 → 5, tier 7 → 6, ...
+                sb.Append("<color=#F70072>");
+                for (int i = 0; i < count; i++) sb.Append('\u25CF'); // ●
+                sb.Append("</color>");
             }
 
             return sb.ToString();
