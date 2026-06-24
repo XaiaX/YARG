@@ -278,6 +278,8 @@
             "Free": "Free",
             "PartyVocals": "Party Vocals",
             "VocalChart": "Vocal Chart",
+            "DisablePitch": "Disable Pitch",
+            "OtherModifiers": "Other",
             "WarningPlayerNoInputDevice" : "This player has no input device assigned! Assign one from the Profiles menu.",
             "WarningVocalistNoMicrophone" : "This vocalist has no microphone assigned! Assign one from the Profiles menu."
         },

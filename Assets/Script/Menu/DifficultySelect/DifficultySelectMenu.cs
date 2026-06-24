@@ -79,6 +79,8 @@ namespace YARG.Menu.DifficultySelect
         private DifficultyItem _difficultyItemSmallRedPrefab;
         [SerializeField]
         private ModifierItem _modifierItemPrefab;
+        [SerializeField]
+        private GameObject _modifierHeaderPrefab;
 
         private int _playerIndex;
         private int _vocalModifierSelectIndex = -1;
@@ -96,6 +98,7 @@ namespace YARG.Menu.DifficultySelect
         private int _maxHarmonyIndex = 3;
 
         private readonly List<ModifierItem> _modifierItems = new();
+        private readonly List<Modifier> _itemModifiers = new();
 
         private List<SongEntry> _songList;
 
@@ -587,26 +590,32 @@ namespace YARG.Menu.DifficultySelect
             var profile = CurrentPlayer.Profile;
 
             _modifierItems.Clear();
-            foreach (var modifier in _possibleModifiers)
+            _itemModifiers.Clear();
+
+            bool isVocalMode = profile.GameMode is GameMode.Vocals or GameMode.PartyVocals;
+
+            if (isVocalMode)
             {
-                var btn = Instantiate(_modifierItemPrefab, _container);
-                btn.Initialize(modifier.ToLocalizedName(), profile.IsModifierActive(modifier), active =>
+                // Group the three unpitched modifiers under a "Disable Pitch" header
+                // so they read naturally (Harmony 1/2/3), then put the rest under "Other".
+                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "DisablePitch"));
+
+                AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
+                AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
+                AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
+
+                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "OtherModifiers"));
+
+                AddModifierToggle(profile, Modifier.NoVocalPercussion);
+                AddModifierToggle(profile, Modifier.ManualVocalStarPower);
+            }
+            else
+            {
+                // Non-vocal: render in enum order (no grouping needed).
+                foreach (var modifier in _possibleModifiers)
                 {
-                    // Enable/disable the modifier
-                    if (active)
-                    {
-                        profile.AddSingleModifier(modifier);
-                    }
-                    else
-                    {
-                        profile.RemoveModifiers(modifier);
-                    }
-
-                    UpdateModifierMenu();
-                });
-
-                _navGroup.AddNavigatable(btn);
-                _modifierItems.Add(btn);
+                    AddModifierToggle(profile, modifier);
+                }
             }
 
             // Create done button
@@ -617,6 +626,46 @@ namespace YARG.Menu.DifficultySelect
             });
 
             _navGroup.SelectFirst();
+        }
+
+        private void CreateModifierHeader(string text)
+        {
+            if (_modifierHeaderPrefab == null) return;
+
+            var header = Instantiate(_modifierHeaderPrefab, _container);
+            var label = header.GetComponentInChildren<TextMeshProUGUI>();
+            if (label != null)
+            {
+                label.text = text;
+            }
+            // Headers are visual only — not added to _navGroup.
+        }
+
+        private void AddModifierToggle(YargProfile profile, Modifier modifier, string labelOverride = null)
+        {
+            // Skip modifiers that aren't applicable to this game mode (defensive).
+            if (!_possibleModifiers.Contains(modifier)) return;
+
+            string label = labelOverride ?? modifier.ToLocalizedName();
+
+            var btn = Instantiate(_modifierItemPrefab, _container);
+            btn.Initialize(label, profile.IsModifierActive(modifier), active =>
+            {
+                if (active)
+                {
+                    profile.AddSingleModifier(modifier);
+                }
+                else
+                {
+                    profile.RemoveModifiers(modifier);
+                }
+
+                UpdateModifierMenu();
+            });
+
+            _navGroup.AddNavigatable(btn);
+            _modifierItems.Add(btn);
+            _itemModifiers.Add(modifier);
         }
 
         private void CreateHarmonyMenu()
@@ -689,7 +738,7 @@ namespace YARG.Menu.DifficultySelect
             for (int i = 0; i < _modifierItems.Count; i++)
             {
                 var item = _modifierItems[i];
-                var modifier = _possibleModifiers[i];
+                var modifier = _itemModifiers[i];
 
                 item.Active = profile.IsModifierActive(modifier);
             }
