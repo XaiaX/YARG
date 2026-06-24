@@ -319,7 +319,7 @@ namespace YARG.Menu.DifficultySelect
             {
                 // All 5 dots burn, plus one extra per tier above 6
                 int count = 5 + (tier - 6); // tier 6 → 5, tier 7 → 6, ...
-                sb.Append("<color=#F70072>");
+                sb.Append("<color=#FF0000>");
                 for (int i = 0; i < count; i++) sb.Append('\u25CF'); // ●
                 sb.Append("</color>");
             }
@@ -333,10 +333,8 @@ namespace YARG.Menu.DifficultySelect
                 for (int i = 0; i < filled; i++) sb.Append('\u25CF'); // ●
                 sb.Append("</color>");
 
-                // Empty dots (dim)
-                sb.Append("<color=#555555>");
+                // Empty dots (same brightness so they're visible on selected rows)
                 for (int i = 0; i < empty; i++) sb.Append('\u25CB'); // ○
-                sb.Append("</color>");
             }
 
             return sb.ToString();
@@ -596,7 +594,7 @@ namespace YARG.Menu.DifficultySelect
                 bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
 
                 sbyte tier = GetInstrumentTier(song, instrument);
-                string label = $"{instrument.ToLocalizedName()} {GetTierDisplay(tier)}";
+                string label = $"{instrument.ToLocalizedName()}   {GetTierDisplay(tier)}";
 
                 CreateItem(label, selected, () =>
                 {
