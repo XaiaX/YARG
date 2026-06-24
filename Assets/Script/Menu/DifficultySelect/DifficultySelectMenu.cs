@@ -38,8 +38,7 @@ namespace YARG.Menu.DifficultySelect
             Modifiers,
             Harmony,
             PartyVocalsBotMicCount,
-            PartyVocalsChartChoice,
-            UnpitchedVocals
+            PartyVocalsChartChoice
         }
 
         [SerializeField]
@@ -248,9 +247,6 @@ namespace YARG.Menu.DifficultySelect
                     break;
                 case State.PartyVocalsChartChoice:
                     CreatePartyVocalsChartChoiceMenu();
-                    break;
-                case State.UnpitchedVocals:
-                    CreateUnpitchedVocalsMenu();
                     break;
             }
 
@@ -598,14 +594,13 @@ namespace YARG.Menu.DifficultySelect
 
             if (isVocalMode)
             {
-                // The three unpitched modifiers live in a sub-menu to keep this
-                // list short enough to avoid scrolling.
-                CreateItem(Localize.Key("Menu.DifficultySelect", "UnpitchedVocals"),
-                    _lastMenuState == State.UnpitchedVocals, () =>
-                {
-                    _menuState = State.UnpitchedVocals;
-                    UpdateForPlayer();
-                });
+                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "DisablePitch"));
+
+                AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
+                AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
+                AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
+
+                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "OtherModifiers"));
 
                 AddModifierToggle(profile, Modifier.NoVocalPercussion);
                 AddModifierToggle(profile, Modifier.ManualVocalStarPower);
@@ -619,35 +614,37 @@ namespace YARG.Menu.DifficultySelect
                 }
             }
 
-            // Create done button
-            CreateItem(LocalizeHeader("Done"), _difficultyGreenPrefab, () =>
-            {
-                _menuState = State.Main;
-                UpdateForPlayer();
-            });
-
+            // No "Done" button — the red/back action returns to the main menu.
             _navGroup.SelectFirst();
         }
 
-        private void CreateUnpitchedVocalsMenu()
+        private void CreateModifierHeader(string text)
         {
-            var profile = CurrentPlayer.Profile;
+            var go = new GameObject("ModifierSectionHeader", typeof(RectTransform));
+            go.transform.SetParent(_container, false);
 
-            _modifierItems.Clear();
-            _itemModifiers.Clear();
+            var tmp = go.AddComponent<TextMeshProUGUI>();
 
-            AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
-            AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
-            AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
-
-            // Create done button
-            CreateItem(LocalizeHeader("Done"), _difficultyGreenPrefab, () =>
+            // Match the font used by the modifier toggle rows, but slightly smaller.
+            var refText = _modifierItemPrefab.GetComponentInChildren<TextMeshProUGUI>();
+            if (refText != null)
             {
-                _menuState = State.Modifiers;
-                UpdateForPlayer();
-            });
+                tmp.font = refText.font;
+                tmp.fontSize = refText.fontSize - 4;
+            }
+            else
+            {
+                tmp.font = TMP_Settings.defaultFontAsset;
+                tmp.fontSize = 16;
+            }
 
-            _navGroup.SelectFirst();
+            tmp.fontStyle = FontStyles.Bold | FontStyles.UpperCase;
+            tmp.color = new Color(0.55f, 0.55f, 0.6f);
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.text = text;
+
+            var fitter = go.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         }
 
         private void AddModifierToggle(YargProfile profile, Modifier modifier, string labelOverride = null)
