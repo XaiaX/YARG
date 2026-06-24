@@ -79,8 +79,6 @@ namespace YARG.Menu.DifficultySelect
         private DifficultyItem _difficultyItemSmallRedPrefab;
         [SerializeField]
         private ModifierItem _modifierItemPrefab;
-        [SerializeField]
-        private GameObject _modifierHeaderPrefab;
 
         private int _playerIndex;
         private int _vocalModifierSelectIndex = -1;
@@ -630,14 +628,33 @@ namespace YARG.Menu.DifficultySelect
 
         private void CreateModifierHeader(string text)
         {
-            if (_modifierHeaderPrefab == null) return;
+            var go = new GameObject("ModifierSectionHeader", typeof(RectTransform));
+            go.transform.SetParent(_container, false);
 
-            var header = Instantiate(_modifierHeaderPrefab, _container);
-            var label = header.GetComponentInChildren<TextMeshProUGUI>();
-            if (label != null)
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+
+            // Match the font used by the modifier toggle rows.
+            var refText = _modifierItemPrefab.GetComponentInChildren<TextMeshProUGUI>();
+            if (refText != null)
             {
-                label.text = text;
+                tmp.font = refText.font;
+                tmp.fontSize = refText.fontSize;
             }
+            else
+            {
+                tmp.font = TMP_Settings.defaultFontAsset;
+                tmp.fontSize = 20;
+            }
+
+            tmp.fontStyle = FontStyles.Bold;
+            tmp.color = new Color(0.55f, 0.55f, 0.6f);
+            tmp.alignment = TextAlignmentOptions.Left;
+            tmp.text = text;
+
+            // Ensure the layout group measures this element correctly.
+            var fitter = go.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
             // Headers are visual only — not added to _navGroup.
         }
 
