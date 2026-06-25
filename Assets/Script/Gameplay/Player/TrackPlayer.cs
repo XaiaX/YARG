@@ -165,9 +165,9 @@ namespace YARG.Gameplay.Player
         private const float GEM_GLOW_MAX_Z      = 6f;
         // Default lobe shape, in note pool-local (highway) units. Half-extents.
         // WIDTH ~ one lane; WIDE spans the full track for open/kick/wildcard notes.
-        private const float GEM_GLOW_WIDTH      = 0.25f;
+        private const float GEM_GLOW_WIDTH      = 0.15f;
         private const float GEM_GLOW_WIDE_WIDTH = 1.2f;
-        private const float GEM_GLOW_LENGTH     = 0.6f;
+        private const float GEM_GLOW_LENGTH     = 0.2f;
 
         // _GemGlowPositions: x = localX, y = localZ, z = width, w = length
         // _GemGlowColors:    rgb = resolved color, a = proximity intensity

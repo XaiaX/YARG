@@ -384,7 +384,7 @@ namespace YARG.Settings
             public ToggleSetting UseThreeLaneLyricsInHarmony { get; } = new(true);
             public ToggleSetting EnableTrackEffects { get; } = new(true);
             public ToggleSetting GemHighwayGlow { get; } = new(true);
-            public SliderSetting GemHighwayGlowIntensity { get; } = new(0.7f, 0f, 2f);
+            public SliderSetting GemHighwayGlowIntensity { get; } = new(0.25f, 0f, 2f);
             public ToggleSetting EnableHighwayAnimation { get; } = new(true);
             public SliderSetting KickBounceMultiplier { get; } = new(1f, 0f, 2f);
             public SliderSetting HighwayTiltMultiplier { get; } = new(0.5f, 0f, 0.85f);
