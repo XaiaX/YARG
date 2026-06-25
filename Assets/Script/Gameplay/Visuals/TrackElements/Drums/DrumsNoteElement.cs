@@ -87,6 +87,10 @@ namespace YARG.Gameplay.Visuals
             (NoteRef.Pad == 0 && Player.NumberOfDedicatedKickLanes == 0) ||
             NoteRef.Pad == (int) FourLaneDrumPad.Wildcard;
 
+        // Wildcard (beginner) notes are an animated rainbow; glow white instead.
+        protected override bool UseWhiteGlow =>
+            NoteRef.Pad == (int) FourLaneDrumPad.Wildcard;
+
         protected override void InitializeElement()
         {
             base.InitializeElement();

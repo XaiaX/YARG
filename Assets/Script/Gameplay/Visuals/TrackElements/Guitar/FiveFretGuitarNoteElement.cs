@@ -42,6 +42,10 @@ namespace YARG.Gameplay.Visuals
             NoteRef.Fret == (int) FiveFretGuitarFret.Open ||
             NoteRef.Fret == (int) FiveFretGuitarFret.Wildcard;
 
+        // Wildcard (beginner) notes are an animated rainbow; glow white instead.
+        protected override bool UseWhiteGlow =>
+            NoteRef.Fret == (int) FiveFretGuitarFret.Wildcard;
+
         public override void SetThemeModels(
             Dictionary<ThemeNoteType, GameObject> models,
             Dictionary<ThemeNoteType, GameObject> starPowerModels)

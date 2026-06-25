@@ -151,6 +151,13 @@ namespace YARG.Gameplay.Visuals
         /// </summary>
         protected virtual bool IsWideGlowNote => false;
 
+        /// <summary>
+        /// Whether this note's glow should be white rather than the resolved note
+        /// color. Used for wildcard/beginner notes, whose gem is an animated rainbow
+        /// that a single sampled color cannot match.
+        /// </summary>
+        protected virtual bool UseWhiteGlow => false;
+
         public bool TryGetGemGlowSource(out Vector3 localPosition, out Color glowColor, out bool wide)
         {
             // transform.localPosition already reflects the visual lane position
@@ -164,7 +171,7 @@ namespace YARG.Gameplay.Visuals
             var group = NoteGroup;
             if (group != null && group.gameObject.activeSelf)
             {
-                glowColor = group.GlowColor;
+                glowColor = UseWhiteGlow ? Color.white : group.GlowColor;
                 return true;
             }
 
