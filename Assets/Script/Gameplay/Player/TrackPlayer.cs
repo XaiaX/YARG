@@ -170,7 +170,7 @@ namespace YARG.Gameplay.Player
         private const float GEM_GLOW_LENGTH     = 0.2f;
         // Shift the glow center toward the strikeline/camera (down-track, -Z in pool
         // space) so the sheen leans ahead of the gem rather than sitting centered.
-        private const float GEM_GLOW_FORWARD_SHIFT = 0.12f;
+        private const float GEM_GLOW_FORWARD_SHIFT = 0.04f;
 
         // _GemGlowPositions: x = localX, y = localZ, z = width, w = length
         // _GemGlowColors:    rgb = resolved color, a = proximity intensity
