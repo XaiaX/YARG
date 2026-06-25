@@ -48,6 +48,13 @@ namespace Editor
             BuildMac();
         }
 
+        [MenuItem("File/Prototype Build/Mac + Linux (Mono)", false, 234)]
+        public static void BuildMacLinux()
+        {
+            BuildLinux();
+            BuildMac();
+        }
+
         // IL2CPP backend — better runtime perf, but only builds on a matching host (no
         // cross-compile). Output goes to a separate "<platform>-IL2CPP" folder so it can sit
         // beside the Mono build for an A/B performance comparison.
