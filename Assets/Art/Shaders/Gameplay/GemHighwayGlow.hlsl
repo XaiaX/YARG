@@ -68,10 +68,12 @@ void GemHighwayGlow_float(float3 PositionOS, float Count, float Intensity, out f
         // the object-space travel direction is confirmed.
         float falloff = saturate(1.0 - dx * dx) * saturate(1.0 - dy * dy);
 
-        GlowColor += c.rgb * (falloff * c.a);
+        // TEMP white size-test: full-bright, ignore note color/proximity, so lobe
+        // size is the only variable. Restore the colored line once size is locked.
+        GlowColor += float3(1.0, 1.0, 1.0) * falloff;
     }
 
-    GlowColor *= Intensity;
+    GlowColor = saturate(GlowColor);
 }
 
 // Half-precision variant for graphs compiled at half precision.
