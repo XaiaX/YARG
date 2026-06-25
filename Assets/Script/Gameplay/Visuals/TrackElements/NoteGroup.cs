@@ -46,6 +46,13 @@ namespace YARG.Gameplay.Visuals
         private MaterialInfo[] _allColoredCache;
         private MaterialInfo[] _coloredMetalMaterialCache;
 
+        /// <summary>
+        /// The resolved, star-power-aware color last applied to this note group.
+        /// Cached so highway-glow source collection can read it without reaching
+        /// into the per-material caches. See the shader-stamped gem glow design.
+        /// </summary>
+        public Color GlowColor { get; private set; }
+
         public void Initialize()
         {
             _coloredMaterialCache ??= _themeNote.ColoredMaterials.Select(MaterialInfo.From).ToArray();
@@ -74,6 +81,9 @@ namespace YARG.Gameplay.Visuals
 
         public void SetColorWithEmission(Color color, Color colorNoStarPower)
         {
+            // Cache the resolved (star-power-aware) color for highway glow collection.
+            GlowColor = color;
+
             // Deal with color (with star power)
 
             foreach (var info in _coloredMaterialCache)

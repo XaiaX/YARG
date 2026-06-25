@@ -1681,6 +1681,14 @@
                 "Name": "Enable Track Effects",
                 "Description": "If enabled, the game will display track effects for unison, solo, and drum SP activation phrases."
             },
+            "GemHighwayGlow": {
+                "Name": "Gem Highway Glow",
+                "Description": "If enabled, approaching notes cast a soft colored glow onto the highway near the strikeline."
+            },
+            "GemHighwayGlowIntensity": {
+                "Name": "Gem Highway Glow Intensity",
+                "Description": "Controls how strong the colored gem glow on the highway appears."
+            },
             "EnableHighwayAnimation": {
                 "Name": "Enable Highway Animation",
                 "Description": "If enabled, the highway will animate at the beginning and end of the song and based on performance."

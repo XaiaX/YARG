@@ -154,6 +154,8 @@ namespace YARG.Settings
                 nameof(Settings.StaticVocalsMode),
                 new FieldMetadata(nameof(Settings.UseThreeLaneLyricsInHarmony), isAdvanced: true),
                 nameof(Settings.EnableTrackEffects),
+                nameof(Settings.GemHighwayGlow),
+                new FieldMetadata(nameof(Settings.GemHighwayGlowIntensity), isAdvanced: true),
                 nameof(Settings.EnableHighwayAnimation),
                 new FieldMetadata(nameof(Settings.KickBounceMultiplier), isAdvanced: true),
                 new FieldMetadata(nameof(Settings.HighwayTiltMultiplier), isAdvanced: true),

@@ -25,6 +25,13 @@ namespace YARG.Gameplay.Visuals
 
         private static readonly int _starPowerColorProperty = Shader.PropertyToID("_Starpower_Color");
 
+        // Shader-stamped gem highway glow. Bound per-highway-material so each highway
+        // only reads its own notes (never via Shader.SetGlobalVectorArray).
+        private static readonly int _gemGlowCountProperty     = Shader.PropertyToID("_GemGlowCount");
+        private static readonly int _gemGlowIntensityProperty = Shader.PropertyToID("_GemGlowIntensity");
+        private static readonly int _gemGlowPositionsProperty = Shader.PropertyToID("_GemGlowPositions");
+        private static readonly int _gemGlowColorsProperty    = Shader.PropertyToID("_GemGlowColors");
+
         private static readonly int _baseTextureProperty = Shader.PropertyToID("_Layer_2_Texture");
         private static readonly int _baseParallaxProperty = Shader.PropertyToID("_Layer_2_Parallax");
         private static readonly int _baseWavinessProperty = Shader.PropertyToID("_Layer_2_Wavy_Amount");
@@ -232,6 +239,35 @@ namespace YARG.Gameplay.Visuals
         {
             float position = (float) time * noteSpeed / 4f;
             _material.SetFloat(_scrollProperty, position);
+        }
+
+        /// <summary>
+        /// Uploads this frame's gem glow sources to this highway's material instance.
+        /// The arrays are fixed-size buffers owned by the caller; only the first
+        /// <paramref name="count"/> entries are meaningful, and the shader loops only
+        /// up to that count, so stale tail entries do not render.
+        /// </summary>
+        public void SetGemGlowSources(int count, Vector4[] positions, Vector4[] colors, float intensity)
+        {
+            _material.SetFloat(_gemGlowCountProperty, count);
+            _material.SetFloat(_gemGlowIntensityProperty, intensity);
+
+            if (count > 0)
+            {
+                // SetVectorArray binds to this material instance only — never global.
+                _material.SetVectorArray(_gemGlowPositionsProperty, positions);
+                _material.SetVectorArray(_gemGlowColorsProperty, colors);
+            }
+        }
+
+        /// <summary>
+        /// Cheap zero path: the shader early-outs on a zero count/intensity, so no
+        /// array upload happens while the effect is disabled.
+        /// </summary>
+        public void DisableGemGlow()
+        {
+            _material.SetFloat(_gemGlowCountProperty, 0f);
+            _material.SetFloat(_gemGlowIntensityProperty, 0f);
         }
 
         // TODO: Integrate this with CustomContentManager so it can be managed in settings

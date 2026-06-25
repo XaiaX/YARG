@@ -21,7 +21,22 @@ namespace YARG.Gameplay.Visuals
         void OnRewind();
     }
 
-    public abstract class NoteElement<TNote, TPlayer> : TrackElement<TPlayer>, IThemeNoteCreator, INoteElement
+    /// <summary>
+    /// Exposes a note's current highway-local position and resolved glow color so
+    /// <see cref="YARG.Gameplay.Player.TrackPlayer"/> can collect shader-stamped
+    /// gem glow sources without reaching through private note state.
+    /// </summary>
+    public interface IGemGlowSource
+    {
+        /// <summary>
+        /// Returns this element's highway-local position and resolved glow color
+        /// when it currently has an active, colored note group. Returns
+        /// <c>false</c> when no glow should be contributed.
+        /// </summary>
+        bool TryGetGemGlowSource(out Vector3 localPosition, out Color glowColor);
+    }
+
+    public abstract class NoteElement<TNote, TPlayer> : TrackElement<TPlayer>, IThemeNoteCreator, INoteElement, IGemGlowSource
         where TNote : Note<TNote>
         where TPlayer : TrackPlayer
     {
@@ -126,6 +141,26 @@ namespace YARG.Gameplay.Visuals
             {
                 ParentPool.Return(this);
             }
+        }
+
+        public bool TryGetGemGlowSource(out Vector3 localPosition, out Color glowColor)
+        {
+            // transform.localPosition already reflects the visual lane position
+            // (lefty flip and custom lane orders included), so the glow lands under
+            // the note the player actually sees.
+            localPosition = transform.localPosition;
+
+            // Only contribute glow for an active, colored note group. Hit/missed
+            // notes whose group is disabled fall through to no source.
+            var group = NoteGroup;
+            if (group != null && group.gameObject.activeSelf)
+            {
+                glowColor = group.GlowColor;
+                return true;
+            }
+
+            glowColor = default;
+            return false;
         }
 
         /// <summary>

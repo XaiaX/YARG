@@ -150,6 +150,119 @@ namespace YARG.Gameplay.Player
 
             HitWindowDisplay.SetHitWindowSize();
         }
+
+        #region Gem highway glow
+
+        // Shader-stamped gem glow. See docs/design-plans/2026-06-25-shader-stamped-gem-highway-glow.md.
+        // Collection is a hot per-frame path, so everything here is GC-free: fixed
+        // preallocated buffers and a partial nearest-to-strikeline selection, no LINQ
+        // or temporary lists.
+
+        private const int   GEM_GLOW_SOURCE_CAP = 16;
+        // Notes only contribute glow inside this highway-local Z window near the
+        // strikeline. Notes past removal or far up the track are skipped.
+        private const float GEM_GLOW_MIN_Z      = -3f;
+        private const float GEM_GLOW_MAX_Z      = 6f;
+        // Default lobe shape, in highway-local units. Tunable later from art.
+        private const float GEM_GLOW_WIDTH      = 0.55f;
+        private const float GEM_GLOW_LENGTH     = 2.5f;
+
+        // _GemGlowPositions: x = localX, y = localZ, z = width, w = length
+        // _GemGlowColors:    rgb = resolved color, a = proximity intensity
+        private readonly Vector4[] _gemGlowPositions = new Vector4[GEM_GLOW_SOURCE_CAP];
+        private readonly Vector4[] _gemGlowColors     = new Vector4[GEM_GLOW_SOURCE_CAP];
+        private readonly float[]   _gemGlowDistances  = new float[GEM_GLOW_SOURCE_CAP];
+
+        protected void UpdateGemHighwayGlow()
+        {
+            if (TrackMaterial == null)
+            {
+                return;
+            }
+
+            // Cheap zero path when disabled — no array upload, no source iteration.
+            if (!SettingsManager.Settings.GemHighwayGlow.Value)
+            {
+                TrackMaterial.DisableGemGlow();
+                return;
+            }
+
+            float intensity = SettingsManager.Settings.GemHighwayGlowIntensity.Value;
+            if (intensity <= 0f)
+            {
+                TrackMaterial.DisableGemGlow();
+                return;
+            }
+
+            int   count         = 0;
+            float worstDistance  = 0f;
+            int   worstIndex     = -1;
+
+            var spawned = NotePool.AllSpawned;
+            for (int i = 0; i < spawned.Count; i++)
+            {
+                if (spawned[i] is not IGemGlowSource source)
+                {
+                    continue;
+                }
+
+                if (!source.TryGetGemGlowSource(out var localPosition, out var color))
+                {
+                    continue;
+                }
+
+                float z = localPosition.z;
+                if (z < GEM_GLOW_MIN_Z || z > GEM_GLOW_MAX_Z)
+                {
+                    continue;
+                }
+
+                // Nearest-to-strikeline wins when more notes are visible than the cap,
+                // so the most visible notes are the ones that glow.
+                float distance = Mathf.Abs(z - STRIKE_LINE_POS);
+
+                int slot;
+                if (count < GEM_GLOW_SOURCE_CAP)
+                {
+                    slot = count++;
+                }
+                else if (distance < worstDistance)
+                {
+                    slot = worstIndex;
+                }
+                else
+                {
+                    continue;
+                }
+
+                // Strongest near the strikeline, fading to nothing at the far edge.
+                float proximity = Mathf.Clamp01(
+                    (GEM_GLOW_MAX_Z - z) / (GEM_GLOW_MAX_Z - STRIKE_LINE_POS));
+
+                _gemGlowPositions[slot] = new Vector4(localPosition.x, z, GEM_GLOW_WIDTH, GEM_GLOW_LENGTH);
+                _gemGlowColors[slot]    = new Vector4(color.r, color.g, color.b, proximity);
+                _gemGlowDistances[slot] = distance;
+
+                // Recompute the farthest retained source once the buffer is full.
+                if (count == GEM_GLOW_SOURCE_CAP)
+                {
+                    worstDistance = _gemGlowDistances[0];
+                    worstIndex = 0;
+                    for (int j = 1; j < GEM_GLOW_SOURCE_CAP; j++)
+                    {
+                        if (_gemGlowDistances[j] > worstDistance)
+                        {
+                            worstDistance = _gemGlowDistances[j];
+                            worstIndex = j;
+                        }
+                    }
+                }
+            }
+
+            TrackMaterial.SetGemGlowSources(count, _gemGlowPositions, _gemGlowColors, intensity);
+        }
+
+        #endregion
     }
 
     public abstract class TrackPlayer<TEngine, TNote> : TrackPlayer
@@ -434,6 +547,10 @@ namespace YARG.Gameplay.Player
             TrackMaterial.SetTrackScroll(visualTime, NoteSpeed);
             TrackMaterial.GrooveMode = groove;
             TrackMaterial.StarpowerMode = stats.IsStarPowerActive;
+
+            // Collect this frame's near-strikeline notes and upload them as gem glow
+            // sources to this highway's material.
+            UpdateGemHighwayGlow();
 
             // In multiplayer, don't double the score multiplier in the strikeline element
             // Otherwise, it looks like the band multiplier applies on top of the score multiplier
