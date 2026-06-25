@@ -163,14 +163,8 @@ namespace YARG.Gameplay.Player
         // strikeline. Notes past removal or far up the track are skipped.
         private const float GEM_GLOW_MIN_Z      = -3f;
         private const float GEM_GLOW_MAX_Z      = 6f;
-        // Default lobe shape, in note pool-local (highway) units. Half-extents.
-        // WIDTH ~ one lane; WIDE spans the full track for open/kick/wildcard notes.
-        private const float GEM_GLOW_WIDTH      = 0.18f;
-        private const float GEM_GLOW_WIDE_WIDTH = 1.2f;
-        private const float GEM_GLOW_LENGTH     = 0.2f;
-        // Shift the glow center toward the strikeline/camera (down-track, -Z in pool
-        // space) so the sheen leans ahead of the gem rather than sitting centered.
-        private const float GEM_GLOW_FORWARD_SHIFT = 0.04f;
+        // Lobe shape (half-extents) and forward shift are live prototype sliders —
+        // see GemHighwayGlow* in settings. Read per frame in UpdateGemHighwayGlow.
 
         // _GemGlowPositions: x = localX, y = localZ, z = width, w = length
         // _GemGlowColors:    rgb = resolved color, a = proximity intensity
@@ -203,11 +197,17 @@ namespace YARG.Gameplay.Player
             // space, which does not share the note pool-local frame. Convert note
             // positions (and the lobe extents) into that object space on the CPU so
             // the comparison happens in one consistent frame.
+            // Live prototype tuning values.
+            float glowWidth     = SettingsManager.Settings.GemHighwayGlowWidth.Value;
+            float glowWideWidth = SettingsManager.Settings.GemHighwayGlowWideWidth.Value;
+            float glowLength    = SettingsManager.Settings.GemHighwayGlowLength.Value;
+            float forwardShift  = SettingsManager.Settings.GemHighwayGlowForwardShift.Value;
+
             var poolToObject = TrackMaterial.GetObjectSpaceMatrix(NotePool.transform);
             // Pool->object scale per axis (across lanes = X, along track = Z).
             float scaleAcross = poolToObject.MultiplyVector(Vector3.right).magnitude;
             float scaleAlong  = poolToObject.MultiplyVector(Vector3.forward).magnitude;
-            float objLength   = GEM_GLOW_LENGTH * scaleAlong;
+            float objLength   = glowLength * scaleAlong;
 
             int   count         = 0;
             float worstDistance  = 0f;
@@ -260,11 +260,11 @@ namespace YARG.Gameplay.Player
                 // Z = the zero-thickness normal — so the falloff uses X/Y. Shift the
                 // center toward the strikeline so the sheen leans ahead of the gem.
                 var glowLocal = localPosition;
-                glowLocal.z -= GEM_GLOW_FORWARD_SHIFT;
+                glowLocal.z -= forwardShift;
                 var objPos = poolToObject.MultiplyPoint3x4(glowLocal);
 
                 // Full-width notes (open/kick/wildcard) glow across the whole track.
-                float objWidth = (wide ? GEM_GLOW_WIDE_WIDTH : GEM_GLOW_WIDTH) * scaleAcross;
+                float objWidth = (wide ? glowWideWidth : glowWidth) * scaleAcross;
 
                 _gemGlowPositions[slot] = new Vector4(objPos.x, objPos.y, objWidth, objLength);
                 _gemGlowColors[slot]    = new Vector4(color.r, color.g, color.b, proximity);

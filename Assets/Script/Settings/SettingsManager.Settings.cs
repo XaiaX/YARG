@@ -385,6 +385,12 @@ namespace YARG.Settings
             public ToggleSetting EnableTrackEffects { get; } = new(true);
             public ToggleSetting GemHighwayGlow { get; } = new(true);
             public SliderSetting GemHighwayGlowIntensity { get; } = new(0.15f, 0f, 2f);
+            // Prototype tuning sliders — likely collapse to baked constants if this
+            // becomes a real feature.
+            public SliderSetting GemHighwayGlowWidth { get; } = new(0.18f, 0f, 1f);
+            public SliderSetting GemHighwayGlowWideWidth { get; } = new(1.2f, 0f, 2f);
+            public SliderSetting GemHighwayGlowLength { get; } = new(0.2f, 0f, 2f);
+            public SliderSetting GemHighwayGlowForwardShift { get; } = new(0.04f, -0.5f, 0.5f);
             public ToggleSetting EnableHighwayAnimation { get; } = new(true);
             public SliderSetting KickBounceMultiplier { get; } = new(1f, 0f, 2f);
             public SliderSetting HighwayTiltMultiplier { get; } = new(0.5f, 0f, 0.85f);

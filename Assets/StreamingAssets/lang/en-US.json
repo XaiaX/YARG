@@ -1689,6 +1689,22 @@
                 "Name": "Gem Highway Glow Intensity",
                 "Description": "Controls how strong the colored gem glow on the highway appears."
             },
+            "GemHighwayGlowWidth": {
+                "Name": "Gem Glow Width",
+                "Description": "How wide the gem glow is across the lanes (prototype tuning)."
+            },
+            "GemHighwayGlowWideWidth": {
+                "Name": "Gem Glow Width (Full-Width Notes)",
+                "Description": "Glow width for full-width notes such as open, kick, and beginner notes (prototype tuning)."
+            },
+            "GemHighwayGlowLength": {
+                "Name": "Gem Glow Length",
+                "Description": "How far the gem glow stretches along the track (prototype tuning)."
+            },
+            "GemHighwayGlowForwardShift": {
+                "Name": "Gem Glow Forward Shift",
+                "Description": "Shifts the gem glow toward the strikeline; negative leans it up-track (prototype tuning)."
+            },
             "EnableHighwayAnimation": {
                 "Name": "Enable Highway Animation",
                 "Description": "If enabled, the highway will animate at the beginning and end of the song and based on performance."
