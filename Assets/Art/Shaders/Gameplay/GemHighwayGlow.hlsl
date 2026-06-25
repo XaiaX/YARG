@@ -67,7 +67,6 @@ void GemHighwayGlow_float(float3 PositionOS, float Count, float Intensity, out f
         // Symmetric lobe for now; asymmetric forward bias can be reintroduced once
         // the object-space travel direction is confirmed.
         float falloff = saturate(1.0 - dx * dx) * saturate(1.0 - dy * dy);
-        falloff *= falloff; // sharpen so adjacent lanes don't wash together
 
         GlowColor += c.rgb * (falloff * c.a);
     }

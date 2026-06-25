@@ -163,9 +163,11 @@ namespace YARG.Gameplay.Player
         // strikeline. Notes past removal or far up the track are skipped.
         private const float GEM_GLOW_MIN_Z      = -3f;
         private const float GEM_GLOW_MAX_Z      = 6f;
-        // Default lobe shape, in highway-local units. Tunable later from art.
-        private const float GEM_GLOW_WIDTH      = 0.55f;
-        private const float GEM_GLOW_LENGTH     = 2.5f;
+        // Default lobe shape, in note pool-local (highway) units. Half-extents.
+        // WIDTH ~ one lane; WIDE spans the full track for open/kick/wildcard notes.
+        private const float GEM_GLOW_WIDTH      = 0.22f;
+        private const float GEM_GLOW_WIDE_WIDTH = 1.2f;
+        private const float GEM_GLOW_LENGTH     = 1.2f;
 
         // _GemGlowPositions: x = localX, y = localZ, z = width, w = length
         // _GemGlowColors:    rgb = resolved color, a = proximity intensity
@@ -199,8 +201,10 @@ namespace YARG.Gameplay.Player
             // positions (and the lobe extents) into that object space on the CPU so
             // the comparison happens in one consistent frame.
             var poolToObject = TrackMaterial.GetObjectSpaceMatrix(NotePool.transform);
-            float objWidth  = GEM_GLOW_WIDTH  * poolToObject.MultiplyVector(Vector3.right).magnitude;
-            float objLength = GEM_GLOW_LENGTH * poolToObject.MultiplyVector(Vector3.forward).magnitude;
+            // Pool->object scale per axis (across lanes = X, along track = Z).
+            float scaleAcross = poolToObject.MultiplyVector(Vector3.right).magnitude;
+            float scaleAlong  = poolToObject.MultiplyVector(Vector3.forward).magnitude;
+            float objLength   = GEM_GLOW_LENGTH * scaleAlong;
 
             int   count         = 0;
             float worstDistance  = 0f;
@@ -214,7 +218,7 @@ namespace YARG.Gameplay.Player
                     continue;
                 }
 
-                if (!source.TryGetGemGlowSource(out var localPosition, out var color))
+                if (!source.TryGetGemGlowSource(out var localPosition, out var color, out bool wide))
                 {
                     continue;
                 }
@@ -252,6 +256,9 @@ namespace YARG.Gameplay.Player
                 // whose object space has X = across lanes, Y = along the track, and
                 // Z = the zero-thickness normal — so the falloff uses X/Y.
                 var objPos = poolToObject.MultiplyPoint3x4(localPosition);
+
+                // Full-width notes (open/kick/wildcard) glow across the whole track.
+                float objWidth = (wide ? GEM_GLOW_WIDE_WIDTH : GEM_GLOW_WIDTH) * scaleAcross;
 
                 _gemGlowPositions[slot] = new Vector4(objPos.x, objPos.y, objWidth, objLength);
                 _gemGlowColors[slot]    = new Vector4(color.r, color.g, color.b, proximity);

@@ -36,6 +36,12 @@ namespace YARG.Gameplay.Visuals
         // Make sure the remove it later if it has a sustain
         protected override float RemovePointOffset => (float) NoteRef.TimeLength * Player.NoteSpeed;
 
+        // Open and wildcard notes render as full-width bars, so their glow should
+        // span the highway rather than sit in a single lane.
+        protected override bool IsWideGlowNote =>
+            NoteRef.Fret == (int) FiveFretGuitarFret.Open ||
+            NoteRef.Fret == (int) FiveFretGuitarFret.Wildcard;
+
         public override void SetThemeModels(
             Dictionary<ThemeNoteType, GameObject> models,
             Dictionary<ThemeNoteType, GameObject> starPowerModels)

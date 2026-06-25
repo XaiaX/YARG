@@ -80,6 +80,13 @@ namespace YARG.Gameplay.Visuals
             return (int) (isCymbal ? NoteType.Cymbal : NoteType.Normal);
         }
 
+        // Kick (non-dedicated-lane) and wildcard notes render as full-width bars, so
+        // their glow should span the highway rather than sit in a single lane. Mirror
+        // of the lane-vs-full-width condition used for note scaling below.
+        protected override bool IsWideGlowNote =>
+            (NoteRef.Pad == 0 && Player.NumberOfDedicatedKickLanes == 0) ||
+            NoteRef.Pad == (int) FourLaneDrumPad.Wildcard;
+
         protected override void InitializeElement()
         {
             base.InitializeElement();

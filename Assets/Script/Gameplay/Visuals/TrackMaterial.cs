@@ -258,20 +258,6 @@ namespace YARG.Gameplay.Visuals
                 _material.SetVectorArray(_gemGlowPositionsProperty, positions);
                 _material.SetVectorArray(_gemGlowColorsProperty, colors);
             }
-
-#if UNITY_EDITOR
-            // TEMP gem-glow diagnostic: compare source[0] object coords + lobe size
-            // against the highway mesh's object-space extent. Remove once tuned.
-            if (count > 0 && Time.frameCount % 60 == 0)
-            {
-                var mf = _trackMesh.GetComponent<MeshFilter>();
-                var ob = mf != null && mf.sharedMesh != null ? mf.sharedMesh.bounds : new Bounds();
-                Debug.Log(
-                    $"[GEMGLOW] src0 obj=({positions[0].x:F2},{positions[0].y:F2}) " +
-                    $"wl=({positions[0].z:F3},{positions[0].w:F3}) count={count} | " +
-                    $"meshObjBounds X[{ob.min.x:F2}..{ob.max.x:F2}] Y[{ob.min.y:F2}..{ob.max.y:F2}] Z[{ob.min.z:F2}..{ob.max.z:F2}]");
-            }
-#endif
         }
 
         /// <summary>

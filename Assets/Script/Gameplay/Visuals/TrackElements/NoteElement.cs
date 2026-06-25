@@ -31,9 +31,11 @@ namespace YARG.Gameplay.Visuals
         /// <summary>
         /// Returns this element's highway-local position and resolved glow color
         /// when it currently has an active, colored note group. Returns
-        /// <c>false</c> when no glow should be contributed.
+        /// <c>false</c> when no glow should be contributed. <paramref name="wide"/>
+        /// is set for full-width notes (open/kick/wildcard) so their glow spans the
+        /// highway instead of a single lane.
         /// </summary>
-        bool TryGetGemGlowSource(out Vector3 localPosition, out Color glowColor);
+        bool TryGetGemGlowSource(out Vector3 localPosition, out Color glowColor, out bool wide);
     }
 
     public abstract class NoteElement<TNote, TPlayer> : TrackElement<TPlayer>, IThemeNoteCreator, INoteElement, IGemGlowSource
@@ -143,12 +145,19 @@ namespace YARG.Gameplay.Visuals
             }
         }
 
-        public bool TryGetGemGlowSource(out Vector3 localPosition, out Color glowColor)
+        /// <summary>
+        /// Whether this note's glow should span the full highway width rather than a
+        /// single lane. Overridden by full-width note types (open/kick/wildcard).
+        /// </summary>
+        protected virtual bool IsWideGlowNote => false;
+
+        public bool TryGetGemGlowSource(out Vector3 localPosition, out Color glowColor, out bool wide)
         {
             // transform.localPosition already reflects the visual lane position
             // (lefty flip and custom lane orders included), so the glow lands under
             // the note the player actually sees.
             localPosition = transform.localPosition;
+            wide = IsWideGlowNote;
 
             // Only contribute glow for an active, colored note group. Hit/missed
             // notes whose group is disabled fall through to no source.
