@@ -259,7 +259,11 @@ namespace YARG.Gameplay.Player
                 }
             }
 
-            TrackMaterial.SetGemGlowSources(count, _gemGlowPositions, _gemGlowColors, intensity);
+            // Notes are children of the note pool, so their localPosition (which the
+            // sources above are built from) is in pool-local space. Pass that frame's
+            // world->local matrix so the shader can map highway pixels into it.
+            var worldToTrack = NotePool.transform.worldToLocalMatrix;
+            TrackMaterial.SetGemGlowSources(count, _gemGlowPositions, _gemGlowColors, intensity, worldToTrack);
         }
 
         #endregion

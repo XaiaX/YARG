@@ -31,6 +31,7 @@ namespace YARG.Gameplay.Visuals
         private static readonly int _gemGlowIntensityProperty = Shader.PropertyToID("_GemGlowIntensity");
         private static readonly int _gemGlowPositionsProperty = Shader.PropertyToID("_GemGlowPositions");
         private static readonly int _gemGlowColorsProperty    = Shader.PropertyToID("_GemGlowColors");
+        private static readonly int _gemGlowObjectToTrackProperty = Shader.PropertyToID("_GemGlowObjectToTrack");
 
         private static readonly int _baseTextureProperty = Shader.PropertyToID("_Layer_2_Texture");
         private static readonly int _baseParallaxProperty = Shader.PropertyToID("_Layer_2_Parallax");
@@ -247,10 +248,19 @@ namespace YARG.Gameplay.Visuals
         /// <paramref name="count"/> entries are meaningful, and the shader loops only
         /// up to that count, so stale tail entries do not render.
         /// </summary>
-        public void SetGemGlowSources(int count, Vector4[] positions, Vector4[] colors, float intensity)
+        public void SetGemGlowSources(int count, Vector4[] positions, Vector4[] colors, float intensity,
+            Matrix4x4 worldToTrack)
         {
             _material.SetFloat(_gemGlowCountProperty, count);
             _material.SetFloat(_gemGlowIntensityProperty, intensity);
+
+            // The shader samples the highway pixel in mesh OBJECT space; convert that
+            // to the note (pool-local) track frame the glow sources are expressed in.
+            // worldToTrack maps world -> pool-local; localToWorldMatrix maps the
+            // highway mesh's object space -> world. Recomputed each frame so highway
+            // tilt/animation stays consistent.
+            var objectToTrack = worldToTrack * _trackMesh.transform.localToWorldMatrix;
+            _material.SetMatrix(_gemGlowObjectToTrackProperty, objectToTrack);
 
             if (count > 0)
             {
