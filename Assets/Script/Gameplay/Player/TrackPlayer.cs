@@ -194,6 +194,14 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
+            // The shader samples each highway pixel in the highway mesh's OBJECT
+            // space, which does not share the note pool-local frame. Convert note
+            // positions (and the lobe extents) into that object space on the CPU so
+            // the comparison happens in one consistent frame.
+            var poolToObject = TrackMaterial.GetObjectSpaceMatrix(NotePool.transform);
+            float objWidth  = GEM_GLOW_WIDTH  * poolToObject.MultiplyVector(Vector3.right).magnitude;
+            float objLength = GEM_GLOW_LENGTH * poolToObject.MultiplyVector(Vector3.forward).magnitude;
+
             int   count         = 0;
             float worstDistance  = 0f;
             int   worstIndex     = -1;
@@ -239,7 +247,11 @@ namespace YARG.Gameplay.Player
                 float proximity = Mathf.Clamp01(
                     (GEM_GLOW_MAX_Z - z) / (GEM_GLOW_MAX_Z - STRIKE_LINE_POS));
 
-                _gemGlowPositions[slot] = new Vector4(localPosition.x, z, GEM_GLOW_WIDTH, GEM_GLOW_LENGTH);
+                // Note position -> highway mesh object space, the frame the shader
+                // compares against. Only X/Z are used by the falloff.
+                var objPos = poolToObject.MultiplyPoint3x4(localPosition);
+
+                _gemGlowPositions[slot] = new Vector4(objPos.x, objPos.z, objWidth, objLength);
                 _gemGlowColors[slot]    = new Vector4(color.r, color.g, color.b, proximity);
                 _gemGlowDistances[slot] = distance;
 
@@ -259,11 +271,7 @@ namespace YARG.Gameplay.Player
                 }
             }
 
-            // Notes are children of the note pool, so their localPosition (which the
-            // sources above are built from) is in pool-local space. Pass that frame's
-            // world->local matrix so the shader can map highway pixels into it.
-            var worldToTrack = NotePool.transform.worldToLocalMatrix;
-            TrackMaterial.SetGemGlowSources(count, _gemGlowPositions, _gemGlowColors, intensity, worldToTrack);
+            TrackMaterial.SetGemGlowSources(count, _gemGlowPositions, _gemGlowColors, intensity);
         }
 
         #endregion
