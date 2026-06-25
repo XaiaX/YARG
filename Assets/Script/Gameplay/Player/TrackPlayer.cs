@@ -165,9 +165,12 @@ namespace YARG.Gameplay.Player
         private const float GEM_GLOW_MAX_Z      = 6f;
         // Default lobe shape, in note pool-local (highway) units. Half-extents.
         // WIDTH ~ one lane; WIDE spans the full track for open/kick/wildcard notes.
-        private const float GEM_GLOW_WIDTH      = 0.15f;
+        private const float GEM_GLOW_WIDTH      = 0.18f;
         private const float GEM_GLOW_WIDE_WIDTH = 1.2f;
         private const float GEM_GLOW_LENGTH     = 0.2f;
+        // Shift the glow center toward the strikeline/camera (down-track, -Z in pool
+        // space) so the sheen leans ahead of the gem rather than sitting centered.
+        private const float GEM_GLOW_FORWARD_SHIFT = 0.12f;
 
         // _GemGlowPositions: x = localX, y = localZ, z = width, w = length
         // _GemGlowColors:    rgb = resolved color, a = proximity intensity
@@ -254,8 +257,11 @@ namespace YARG.Gameplay.Player
                 // Note position -> highway mesh object space, the frame the shader
                 // compares against. The highway mesh (Track.fbx) is a flat plane
                 // whose object space has X = across lanes, Y = along the track, and
-                // Z = the zero-thickness normal — so the falloff uses X/Y.
-                var objPos = poolToObject.MultiplyPoint3x4(localPosition);
+                // Z = the zero-thickness normal — so the falloff uses X/Y. Shift the
+                // center toward the strikeline so the sheen leans ahead of the gem.
+                var glowLocal = localPosition;
+                glowLocal.z -= GEM_GLOW_FORWARD_SHIFT;
+                var objPos = poolToObject.MultiplyPoint3x4(glowLocal);
 
                 // Full-width notes (open/kick/wildcard) glow across the whole track.
                 float objWidth = (wide ? GEM_GLOW_WIDE_WIDTH : GEM_GLOW_WIDTH) * scaleAcross;
