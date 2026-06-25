@@ -248,10 +248,12 @@ namespace YARG.Gameplay.Player
                     (GEM_GLOW_MAX_Z - z) / (GEM_GLOW_MAX_Z - STRIKE_LINE_POS));
 
                 // Note position -> highway mesh object space, the frame the shader
-                // compares against. Only X/Z are used by the falloff.
+                // compares against. The highway mesh (Track.fbx) is a flat plane
+                // whose object space has X = across lanes, Y = along the track, and
+                // Z = the zero-thickness normal — so the falloff uses X/Y.
                 var objPos = poolToObject.MultiplyPoint3x4(localPosition);
 
-                _gemGlowPositions[slot] = new Vector4(objPos.x, objPos.z, objWidth, objLength);
+                _gemGlowPositions[slot] = new Vector4(objPos.x, objPos.y, objWidth, objLength);
                 _gemGlowColors[slot]    = new Vector4(color.r, color.g, color.b, proximity);
                 _gemGlowDistances[slot] = distance;
 

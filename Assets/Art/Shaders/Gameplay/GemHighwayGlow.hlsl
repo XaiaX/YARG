@@ -8,9 +8,14 @@
 // Track.shadergraph. Gameplay code (TrackMaterial.SetGemGlowSources) uploads per
 // highway material instance each frame:
 //
-//   _GemGlowPositions[i] : x = objX, y = objZ, z = width, w = length  (all in
-//                          highway-mesh OBJECT space; gameplay converts from the
-//                          note pool-local frame on the CPU)
+//   _GemGlowPositions[i] : x = objX (across lanes), y = objY (along track),
+//                          z = width, w = length  (all in highway-mesh OBJECT
+//                          space; gameplay converts from the note pool-local frame
+//                          on the CPU)
+//
+// Axis note: the highway mesh (Track.fbx) is a flat plane whose object space has
+// X = across lanes, Y = along the track, and Z = the (zero-thickness) normal. So
+// the falloff runs over object X/Y, not X/Z.
 //   _GemGlowColors[i]    : rgb = resolved note color, a = proximity intensity
 //
 // Both arrays are bound per-material (material.SetVectorArray), so each highway
@@ -42,26 +47,26 @@ void GemHighwayGlow_float(float3 PositionOS, float Count, float Intensity, out f
         return;
     }
 
-    float px = PositionOS.x;
-    float pz = PositionOS.z;
+    float px = PositionOS.x;   // across lanes
+    float py = PositionOS.y;   // along the track
 
     int count = (int) min(Count, (float) GEM_GLOW_MAX_SOURCES);
 
     [loop]
     for (int i = 0; i < count; i++)
     {
-        float4 p = _GemGlowPositions[i];   // objX, objZ, width, length
+        float4 p = _GemGlowPositions[i];   // objX, objY, width, length
         float4 c = _GemGlowColors[i];      // rgb, intensity
 
         float width  = max(p.z, 1e-4);
         float length = max(p.w, 1e-4);
 
         float dx = (px - p.x) / width;
-        float dz = (pz - p.y) / length;
+        float dy = (py - p.y) / length;
 
         // Symmetric lobe for now; asymmetric forward bias can be reintroduced once
         // the object-space travel direction is confirmed.
-        float falloff = saturate(1.0 - dx * dx) * saturate(1.0 - dz * dz);
+        float falloff = saturate(1.0 - dx * dx) * saturate(1.0 - dy * dy);
         falloff *= falloff; // sharpen so adjacent lanes don't wash together
 
         GlowColor += c.rgb * (falloff * c.a);
