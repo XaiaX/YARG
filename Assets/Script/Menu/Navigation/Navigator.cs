@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using YARG.Core.Input;
 using YARG.Input;
 using YARG.Menu.Persistent;
@@ -104,6 +106,7 @@ namespace YARG.Menu.Navigation
         public bool MusicPlayerActive => HelpBar.Instance.MusicPlayer.isActiveAndEnabled;
 
         private bool _disableMenuInputs;
+        private NavigationInputBlockState _inputBlockState;
 
         public bool DisableMenuInputs
         {
@@ -125,16 +128,48 @@ namespace YARG.Menu.Navigation
 
             if (_disableMenuInputs)
             {
-                _repeatInputs.Clear();
-
-                for (int i = _holdInputs.Count - 1; i >= 0; i--)
-                {
-                    _holdInputs[i].Tracker.StopHolding();
-                    _holdInputs[i].Tracker.ClearEvents();
-                }
-
-                _holdInputs.Clear();
+                ClearTrackedInputs();
             }
+        }
+
+        public IDisposable PushInputBlocker()
+        {
+            _inputBlockState = _inputBlockState.AddBlocker();
+            ClearTrackedInputs();
+
+            return new InputBlocker(() =>
+            {
+                _inputBlockState = _inputBlockState.RemoveBlocker();
+            });
+        }
+
+        private sealed class InputBlocker : IDisposable
+        {
+            private Action _release;
+
+            public InputBlocker(Action release)
+            {
+                _release = release;
+            }
+
+            public void Dispose()
+            {
+                _release?.Invoke();
+                _release = null;
+            }
+        }
+
+        private void ClearTrackedInputs()
+        {
+            _repeatInputs.Clear();
+
+            for (int i = _holdInputs.Count - 1; i >= 0; i--)
+            {
+                _holdInputs[i].Tracker.StopHolding();
+                _holdInputs[i].Tracker.ClearEvents();
+            }
+
+            _holdInputs.Clear();
         }
 
         private void Start()
@@ -147,16 +182,7 @@ namespace YARG.Menu.Navigation
         {
             if (ShouldBlockInputs())
             {
-                if (_repeatInputs.Count > 0 || _holdInputs.Count > 0)
-                {
-                    _repeatInputs.Clear();
-                    for (int i = _holdInputs.Count - 1; i >= 0; i--)
-                    {
-                        _holdInputs[i].Tracker.StopHolding();
-                        _holdInputs[i].Tracker.ClearEvents();
-                    }
-                    _holdInputs.Clear();
-                }
+                ClearTrackedInputs();
                 return;
             }
 
@@ -331,6 +357,19 @@ namespace YARG.Menu.Navigation
             UpdateHelpBar().Forget();
         }
 
+        /// <summary>
+        /// Pushes a scheme immediately, without waiting for any open dialog to
+        /// close. Use this for schemes that must be active *while* a dialog is
+        /// open (e.g. the color picker's slider-edit scheme). The async
+        /// <see cref="PushScheme"/> would otherwise delay the push until the
+        /// dialog closes — by which point the dialog's objects are destroyed.
+        /// </summary>
+        public void PushSchemeImmediate(NavigationScheme scheme)
+        {
+            _schemeStack.Push(scheme);
+            UpdateHelpBar().Forget();
+        }
+
         public void PopScheme()
         {
             var scheme = _schemeStack.Pop();
@@ -368,7 +407,14 @@ namespace YARG.Menu.Navigation
 
         private bool ShouldBlockInputs()
         {
-            return DisableMenuInputs || LoadingScreen.IsActive;
+            return DisableMenuInputs || _inputBlockState.IsBlocked || LoadingScreen.IsActive || IsTextInputFocused();
+        }
+
+        private static bool IsTextInputFocused()
+        {
+            var selectedGameObject = EventSystem.current?.currentSelectedGameObject;
+            return selectedGameObject != null &&
+                selectedGameObject.GetComponentInParent<TMP_InputField>()?.isFocused == true;
         }
     }
 }

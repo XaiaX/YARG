@@ -16,6 +16,8 @@ using YARG.Settings.Metadata;
 using YARG.Themes;
 using Random = UnityEngine.Random;
 
+// pattern: Mixed (needs refactoring)
+
 namespace YARG.Settings.Preview
 {
     public class FakeTrackPlayer : MonoBehaviour
@@ -25,7 +27,6 @@ namespace YARG.Settings.Preview
             public delegate ColorProfile.IFretColorProvider FretColorProviderFunc(ColorProfile c);
             public delegate Color NoteColorProviderFunc(ColorProfile c, FakeNoteData note);
             public delegate EnginePreset.HitWindowPreset HitWindowProviderFunc(EnginePreset e);
-            public delegate FakeNoteData CreateFakeNoteFunc(double time);
 
             public bool UseKickFrets;
             public bool UseProKeys;
@@ -52,8 +53,18 @@ namespace YARG.Settings.Preview
 
             public HitWindowProviderFunc HitWindowProvider;
 
-            public CreateFakeNoteFunc CreateFakeNote;
+            public IFakeNoteGenerator Generator;
         }
+
+        /// <summary>
+        /// Accent and ghost are dynamics modifiers, so all cymbal variants
+        /// (CymbalAccent, CymbalGhost) use the cymbal color — matching real
+        /// gameplay, where the note model (not its color) encodes accent/ghost.
+        /// </summary>
+        private static ThemeNoteType FourLaneDrumsColorType(ThemeNoteType type) =>
+            type is ThemeNoteType.CymbalAccent or ThemeNoteType.CymbalGhost
+                ? ThemeNoteType.Cymbal
+                : type;
 
         private static readonly Dictionary<GameMode, Info> _gameModeInfos = new()
         {
@@ -73,44 +84,7 @@ namespace YARG.Settings.Preview
                         .ToUnityColor(),
 
                     HitWindowProvider = (enginePreset) => enginePreset.FiveFretGuitar.HitWindow,
-
-                    CreateFakeNote = (time) =>
-                    {
-                        // Here we use 0 as open as it's easier to visualize.
-                        // We convert this into the correct value in the if below.
-                        int fret = Random.Range(0, 6);
-
-                        // Open notes have different models
-                        if (fret == 0)
-                        {
-                            return new FakeNoteData
-                            {
-                                Time = time,
-
-                                Fret = (int) FiveFretGuitarFret.Open,
-                                CenterNote = true,
-                                NoteType = ThemeNoteType.Open
-                            };
-                        }
-
-                        // Otherwise, select a random note type
-                        var noteType = Random.Range(0, 3) switch
-                        {
-                            0 => ThemeNoteType.Normal,
-                            1 => ThemeNoteType.HOPO,
-                            2 => ThemeNoteType.Tap,
-                            _ => throw new Exception("Unreachable.")
-                        };
-
-                        return new FakeNoteData
-                        {
-                            Time = time,
-
-                            Fret = fret,
-                            CenterNote = false,
-                            NoteType = noteType
-                        };
-                    }
+                    Generator = new FiveFretGuitarFakeNoteGenerator()
                 }
             },
             {
@@ -125,7 +99,7 @@ namespace YARG.Settings.Preview
                     FretColorProvider = (colorProfile) => colorProfile.FourLaneDrums,
                     NoteColorProvider = (colorProfile, note) =>
                     {
-                        int colorNote = (note.Fret, note.NoteType) switch
+                        int colorNote = (note.Fret, FourLaneDrumsColorType(note.NoteType)) switch
                         {
                             ((int) ColorProfile.FourLaneDrumsFret.Kick, _)                          => (int) ColorProfile.FourLaneDrumsFret.Kick,
                             ((int) ColorProfile.FourLaneDrumsFret.RedDrum, ThemeNoteType.Cymbal)    => (int) ColorProfile.FourLaneDrumsFret.RedCymbal,
@@ -145,7 +119,7 @@ namespace YARG.Settings.Preview
                     },
                     NoteStarPowerColorProvider = (colorProfile, note) =>
                     {
-                        int colorNote = (note.Fret, note.NoteType) switch
+                        int colorNote = (note.Fret, FourLaneDrumsColorType(note.NoteType)) switch
                         {
                             ((int) ColorProfile.FourLaneDrumsFret.Kick, _)                          => (int) ColorProfile.FourLaneDrumsFret.Kick,
                             ((int) ColorProfile.FourLaneDrumsFret.RedDrum, ThemeNoteType.Cymbal)    => (int) ColorProfile.FourLaneDrumsFret.RedCymbal,
@@ -165,52 +139,7 @@ namespace YARG.Settings.Preview
                     },
 
                     HitWindowProvider = (enginePreset) => enginePreset.Drums.HitWindow,
-
-                    CreateFakeNote = (time) =>
-                    {
-                        int fret = Random.Range(0, 5);
-                        ThemeNoteType noteType;
-
-                        // Kick notes have different models
-                        if (fret == 0)
-                        {
-                            return new FakeNoteData
-                            {
-                                Time = time,
-
-                                Fret = fret,
-                                CenterNote = true,
-                                NoteType = ThemeNoteType.Kick
-                            };
-                        }
-
-                        // Red lane (snare): 100% drum, never cymbal. Other lanes: 25% drum, 75% cymbal.
-                        // Within each: 75% base, 15% accent, 10% ghost. Lefty flip relocates the snare
-                        // from red to green via ApplyLeftyToFret (see Update).
-                        bool isCymbal = fret != 1 && Random.Range(0, 100) < 75;
-                        int variant = Random.Range(0, 100);
-                        if (isCymbal)
-                        {
-                            noteType = variant < 75 ? ThemeNoteType.Cymbal
-                                : variant < 90 ? ThemeNoteType.CymbalAccent
-                                : ThemeNoteType.CymbalGhost;
-                        }
-                        else
-                        {
-                            noteType = variant < 75 ? ThemeNoteType.Normal
-                                : variant < 90 ? ThemeNoteType.Accent
-                                : ThemeNoteType.Ghost;
-                        }
-
-                        return new FakeNoteData
-                        {
-                            Time = time,
-
-                            Fret = fret,
-                            CenterNote = false,
-                            NoteType = noteType
-                        };
-                    }
+                    Generator = new DrumFakeNoteGenerator(fiveLane: false)
                 }
             },
             {
@@ -231,50 +160,7 @@ namespace YARG.Settings.Preview
                     LaneCount = 5,
 
                     HitWindowProvider = (enginePreset) => enginePreset.Drums.HitWindow,
-
-                    CreateFakeNote = (time) =>
-                    {
-                        int fret = Random.Range(0, 6);
-
-                        // Kick notes have different models
-                        if (fret == 0)
-                        {
-                            return new FakeNoteData
-                            {
-                                Time = time,
-
-                                Fret = fret,
-                                CenterNote = true,
-                                NoteType = ThemeNoteType.Kick
-                            };
-                        }
-
-                        // Cymbal lanes (2, 4): cymbal variants. Other lanes: drum variants.
-                        // Within each: 75% base, 15% accent, 10% ghost.
-                        ThemeNoteType noteType;
-                        int variant = Random.Range(0, 100);
-                        if (fret is 2 or 4)
-                        {
-                            noteType = variant < 75 ? ThemeNoteType.Cymbal
-                                : variant < 90 ? ThemeNoteType.CymbalAccent
-                                : ThemeNoteType.CymbalGhost;
-                        }
-                        else
-                        {
-                            noteType = variant < 75 ? ThemeNoteType.Normal
-                                : variant < 90 ? ThemeNoteType.Accent
-                                : ThemeNoteType.Ghost;
-                        }
-
-                        return new FakeNoteData
-                        {
-                            Time = time,
-
-                            Fret = fret,
-                            CenterNote = false,
-                            NoteType = noteType
-                        };
-                    }
+                    Generator = new DrumFakeNoteGenerator(fiveLane: true)
                 }
             },
             {
@@ -292,27 +178,7 @@ namespace YARG.Settings.Preview
                         : colorProfile.ProKeys.BlackNoteStarPower).ToUnityColor(),
 
                     HitWindowProvider = (enginePreset) => enginePreset.ProKeys.HitWindow,
-
-                    CreateFakeNote = (time) =>
-                    {
-                        int fret = Random.Range(0, 17);
-
-                        // Otherwise, select the correct note type
-                        var noteType = ThemeNoteType.White;
-                        if (ProKeysUtilities.IsBlackKey(fret % 12))
-                        {
-                            noteType = ThemeNoteType.Black;
-                        }
-
-                        return new FakeNoteData
-                        {
-                            Time = time,
-
-                            Fret = fret,
-                            CenterNote = true,
-                            NoteType = noteType
-                        };
-                    }
+                    Generator = new ProKeysFakeNoteGenerator()
                 }
             }
         };
@@ -332,10 +198,12 @@ namespace YARG.Settings.Preview
         private KeyedPool _notePool;
         [SerializeField]
         private FakeHitWindowDisplay _hitWindow;
+        [SerializeField]
+        private Texture2D _proKeysEdgeTexture;
 
-        // Renderers for the pro-keys highway overlay quads (5 sections, one per
-        // overlay color group). Stored for live-recoloring on setting change.
-        private readonly List<SpriteRenderer> _proKeysOverlayRenderers = new();
+        // Renderers for the pro-keys highway overlay quads. Stored for live
+        // recoloring on setting change.
+        private readonly List<ProKeysOverlayRenderer> _proKeysOverlayRenderers = new();
 
         public bool ForceShowHitWindow { get; set; }
 
@@ -370,63 +238,49 @@ namespace YARG.Settings.Preview
         public bool ForceStarPowerNotes { get; set; }
         public bool LeftyFlip { get; set; }
 
-        // When true (default), the keys (ProKeys) section previews as 5-lane keys
-        // (guitar-style lanes + colors, no HOPO/Tap). When false, full pro keys.
-        public bool UseFiveLaneKeys { get; set; } = true;
-
         public GameMode SelectedGameMode { get; set; } = GameMode.FiveFretGuitar;
 
         public double PreviewTime { get; private set; }
         private double _nextSpawnTime;
 
+        // Lane spotlight: while > 0, spawns come from a single lane (set via
+        // SpotlightLane) instead of the random generator, so the user can see
+        // the note type whose color they're editing. Chord extras are
+        // suppressed for the duration.
+        public const int SPOTLIGHT_NOTE_COUNT = 16;
+
+        private int _spotlightRemaining;
+        private int _spotlightFret;
+        private bool _spotlightCenterNote;
+        private bool _spotlightCymbal;
+        private bool _spotlightStarPower;
+
+        private int _spotlightTypeRemaining;
+        private ThemeNoteType _spotlightNoteType;
+        private bool? _spotlightTypeStarPower;
+
+        private int _spotlightMissRemaining;
+
+        private int _spotlightStarPowerRemaining;
+
         public Info CurrentGameModeInfo { get; private set; }
+
+        private sealed class UnityFakeNoteRandom : IFakeNoteRandom
+        {
+            public int Range(int minInclusive, int maxExclusive) => Random.Range(minInclusive, maxExclusive);
+        }
+
+        private readonly IFakeNoteRandom _random = new UnityFakeNoteRandom();
 
         private void Start()
         {
             CurrentGameModeInfo = _gameModeInfos[SelectedGameMode];
 
-            // 5-lane keys shares the guitar color section and lane models in-game
-            // (FiveLaneKeysPlayer / FiveLaneKeysNoteElement read ColorProfile.FiveFretGuitar),
-            // so reuse the FiveFretGuitar info but with normal-only notes (no HOPO/Tap),
-            // the keys hit window, and the fret-array rendering path (not the pro-keys array).
-            if (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys)
-            {
-                // Seed from the FiveFretGuitar info: 5-lane keys shares guitar's lane
-                // layout AND color providers in-game (it reads ColorProfile.FiveFretGuitar),
-                // so we must start from guitar's info, not the ProKeys one (whose
-                // FretColorProvider is null and whose note colors read the ProKeys section).
-                var fiveLaneKeys = _gameModeInfos[GameMode.FiveFretGuitar];
-                fiveLaneKeys.UseProKeys = false;
-                fiveLaneKeys.HitWindowProvider = enginePreset => enginePreset.ProKeys.HitWindow;
-                fiveLaneKeys.CreateFakeNote = time =>
-                {
-                    int fret = Random.Range(0, 6);
-
-                    if (fret == 0)
-                    {
-                        return new FakeNoteData
-                        {
-                            Time = time,
-
-                            Fret = (int) FiveFretGuitarFret.Open,
-                            CenterNote = true,
-                            NoteType = ThemeNoteType.Open
-                        };
-                    }
-
-                    // 5-lane keys has no note variations (no HOPO/Tap)
-                    return new FakeNoteData
-                    {
-                        Time = time,
-
-                        Fret = fret,
-                        CenterNote = false,
-                        NoteType = ThemeNoteType.Normal
-                    };
-                };
-                CurrentGameModeInfo = fiveLaneKeys;
-            }
-            else if (SelectedGameMode == GameMode.ProKeys)
+            // Pro-keys piano-keyboard preview: 10 white keys + 7 black keys
+            // (the LOW_C window, keys 0-16) spread across the highway, with
+            // overlay colors drawn on the highway surface (not as fret bars).
+            // Uses the real pro-keys note models (White/Black piano-key shapes).
+            if (SelectedGameMode == GameMode.ProKeys)
             {
                 // Pro-keys piano-keyboard preview: 10 white keys + 7 black keys
                 // (the LOW_C window, keys 0-16) spread across the highway, with
@@ -453,21 +307,6 @@ namespace YARG.Settings.Preview
                     : c.ProKeys.BlackNoteStarPower).ToUnityColor();
 
                 info.HitWindowProvider = enginePreset => enginePreset.ProKeys.HitWindow;
-
-                info.CreateFakeNote = time =>
-                {
-                    int key = Random.Range(0, 17); // keys 0-16 (LOW_C window)
-                    var noteType = ProKeysUtilities.IsBlackKey(key % 12)
-                        ? ThemeNoteType.Black
-                        : ThemeNoteType.White;
-                    return new FakeNoteData
-                    {
-                        Time = time,
-                        Fret = key,
-                        CenterNote = false,
-                        NoteType = noteType
-                    };
-                };
 
                 CurrentGameModeInfo = info;
             }
@@ -564,13 +403,104 @@ namespace YARG.Settings.Preview
                     CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
                     FretColorIndexForLefty);
             }
-            else if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
+            else if (SelectedGameMode == GameMode.ProKeys)
             {
                 // Pro-keys: live-recolor the highway overlay sections with the
                 // PRESET's overlay colors (not ColorProfile.Default), so editing
                 // an overlay color live-updates without a rebuild.
                 RecolorProKeysOverlay(colorProfile.ProKeys);
             }
+        }
+
+        /// <summary>
+        /// Clears all active spotlight modes so a new one starts fresh.
+        /// </summary>
+        private void ClearSpotlights()
+        {
+            _spotlightRemaining = 0;
+            _spotlightTypeRemaining = 0;
+            _spotlightMissRemaining = 0;
+            _spotlightStarPowerRemaining = 0;
+        }
+
+        /// <summary>
+        /// Makes the next <see cref="SPOTLIGHT_NOTE_COUNT"/> spawned notes all come
+        /// from the given lane. <paramref name="fret"/> uses the same indices as the
+        /// mode's generator (guitar: 1-5 + FiveFretGuitarFret.Open; drums: 0 = kick,
+        /// then lanes left to right). <paramref name="cymbal"/> selects the cymbal
+        /// note models on drums; <paramref name="starPower"/> overrides the star
+        /// power notes toggle in both directions, so the spotlighted notes render
+        /// with star power colors when editing a star power field and regular
+        /// colors otherwise, regardless of the toggle.
+        /// </summary>
+        public void SpotlightLane(int fret, bool centerNote, bool cymbal, bool starPower)
+        {
+            ClearSpotlights();
+            _spotlightFret = fret;
+            _spotlightCenterNote = centerNote;
+            _spotlightCymbal = cymbal;
+            _spotlightStarPower = starPower;
+            _spotlightRemaining = SPOTLIGHT_NOTE_COUNT;
+        }
+
+        /// <summary>
+        /// Makes the next <see cref="SPOTLIGHT_NOTE_COUNT"/> notes all use the
+        /// specified note type (e.g. all taps, all ghosts), preserving random
+        /// lane variation. Used when editing strip emission settings so the user
+        /// can see the effect on the relevant note type. A null starPower value
+        /// follows the preview's Star Power Notes toggle.
+        /// </summary>
+        public void SpotlightNoteType(ThemeNoteType noteType, bool? starPower = null)
+        {
+            ClearSpotlights();
+            _spotlightNoteType = noteType;
+            _spotlightTypeStarPower = starPower;
+            _spotlightTypeRemaining = SPOTLIGHT_NOTE_COUNT;
+        }
+
+        /// <summary>
+        /// Makes the next preview notes use only the requested Pro Keys color
+        /// class, preserving the normal or Star Power color selection.
+        /// </summary>
+        public void SpotlightProKeysNoteType(bool black, bool starPower)
+        {
+            if (SelectedGameMode != GameMode.ProKeys)
+            {
+                return;
+            }
+
+            SpotlightNoteType(black ? ThemeNoteType.Black : ThemeNoteType.White, starPower);
+        }
+
+        /// <summary>
+        /// Makes the next <see cref="SPOTLIGHT_NOTE_COUNT"/> notes render with
+        /// the Miss color, preserving their normal note type and lane. Used when
+        /// editing the Miss color field.
+        /// </summary>
+        public void SpotlightMiss()
+        {
+            ClearSpotlights();
+            _spotlightMissRemaining = SPOTLIGHT_NOTE_COUNT;
+        }
+
+        /// <summary>
+        /// Makes the next <see cref="SPOTLIGHT_NOTE_COUNT"/> notes render with
+        /// star power colors, preserving their normal note type and lane. Used
+        /// when editing the MetalStarPower color field.
+        /// </summary>
+        public void SpotlightStarPower()
+        {
+            ClearSpotlights();
+            _spotlightStarPowerRemaining = SPOTLIGHT_NOTE_COUNT;
+        }
+
+        private FakeNoteData CreateSpotlightNote(double time)
+        {
+            var note = CurrentGameModeInfo.Generator.CreateSpotlightNote(time,
+                new FakeNoteSpotlight(_spotlightFret, _spotlightCenterNote, _spotlightCymbal,
+                    LeftyFlip), _random);
+            note.ForceStarPower = _spotlightStarPower;
+            return note;
         }
 
         private void SpawnNote(FakeNoteData note)
@@ -615,113 +545,56 @@ namespace YARG.Settings.Preview
                 double spawnTime = PreviewTime + SpawnTimeOffset;
                 _nextSpawnTime = PreviewTime + SPAWN_FREQ;
 
-                var note = CurrentGameModeInfo.CreateFakeNote(spawnTime);
+                bool spotlightType = _spotlightTypeRemaining > 0;
+                bool spotlight = _spotlightRemaining > 0;
+                bool spotlightMiss = _spotlightMissRemaining > 0;
+                FakeNoteData note;
+                if (spotlightType)
+                {
+                    _spotlightTypeRemaining--;
+                    note = CurrentGameModeInfo.Generator.CreateTypeSpotlightNote(
+                        spawnTime, _spotlightNoteType, _random);
+                    ApplyLeftyToFret(note);
+
+                    // Apply SP override (false = force non-SP even if toggle is on)
+                    note.ForceStarPower = _spotlightTypeStarPower;
+                }
+                else if (spotlight)
+                {
+                    _spotlightRemaining--;
+                    note = CreateSpotlightNote(spawnTime);
+                }
+                else
+                {
+                    note = CurrentGameModeInfo.Generator.CreateNote(spawnTime, _random);
+                }
+
+                if (spotlightMiss)
+                {
+                    _spotlightMissRemaining--;
+                    note.ForceMiss = true;
+                }
+
+                if (_spotlightStarPowerRemaining > 0)
+                {
+                    _spotlightStarPowerRemaining--;
+                    note.ForceStarPower = true;
+                }
+
+                // Generate chord extras before lefty so fret comparisons
+                // are in the same (non-transformed) space.
+                if (!spotlight && !spotlightType)
+                {
+                    foreach (var chordNote in CurrentGameModeInfo.Generator.CreateChordNotes(
+                        spawnTime, note, _random))
+                    {
+                        ApplyLeftyToFret(chordNote);
+                        SpawnNote(chordNote);
+                    }
+                }
+
                 ApplyLeftyToFret(note);
                 SpawnNote(note);
-
-                // For drums, sometimes spawn chords (multiple pads/cymbals + kick)
-                if (SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)
-                {
-                    if (note.CenterNote)
-                    {
-                        // Kick came first; add a pad/cymbal alongside it
-                        var alongsideKick = CurrentGameModeInfo.CreateFakeNote(spawnTime);
-                        ApplyLeftyToFret(alongsideKick);
-                        SpawnNote(alongsideKick);
-                    }
-                    else
-                    {
-                        // Sometimes add a second pad/cymbal on a different lane
-                        if (Random.Range(0, 3) == 0)
-                        {
-                            for (int i = 0; i < 3; i++)
-                            {
-                                var extra = CurrentGameModeInfo.CreateFakeNote(spawnTime);
-                                ApplyLeftyToFret(extra);
-                                if (!extra.CenterNote && extra.Fret != note.Fret)
-                                {
-                                    SpawnNote(extra);
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Sometimes add a kick alongside pads/cymbals
-                        if (Random.Range(0, 3) == 0)
-                        {
-                            SpawnNote(new FakeNoteData
-                            {
-                                Time = spawnTime,
-                                Fret = 0,
-                                CenterNote = true,
-                                NoteType = ThemeNoteType.Kick
-                            });
-                        }
-                    }
-                }
-
-                // For 5-lane keys, sometimes spawn chords (up to 3 additional
-                // notes). Scan lanes upward from the first note: 1/4 chance to
-                // place, halving each time a note is placed (1/8, 1/16, ...).
-                // No chords with open notes.
-                if (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys)
-                {
-                    if (!note.CenterNote) // no chords with open notes
-                    {
-                        int placed = 0;
-                        int denominator = 4; // start at 1/4 probability
-                        for (int pos = note.Fret + 1; pos <= 5 && placed < 3; pos++)
-                        {
-                            if (Random.Range(0, denominator) == 0)
-                            {
-                                SpawnNote(new FakeNoteData
-                                {
-                                    Time = spawnTime,
-                                    Fret = pos,
-                                    CenterNote = false,
-                                    NoteType = ThemeNoteType.Normal
-                                });
-                                placed++;
-                                denominator *= 2; // halve: 1/8 → 1/16 → 1/32...
-                            }
-                        }
-                    }
-                }
-
-                // For pro keys, sometimes spawn chords (up to 4 notes). Scan
-                // positions from the first note: descending probability (1/4,
-                // halving after each placement) with skip-2/skip-1 spacing to
-                // avoid z-fighting between adjacent white/black notes. Capped at
-                // start+8 to avoid unnaturally wide chords.
-                if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
-                {
-                    int noteCount = 1;
-                    int denominator = 4; // start at 1/4 probability
-                    int pos = note.Fret + 2;
-                    int maxPos = Math.Min(note.Fret + 8, 16);
-                    while (noteCount < 4 && pos <= maxPos)
-                    {
-                        if (Random.Range(0, denominator) == 0)
-                        {
-                            SpawnNote(new FakeNoteData
-                            {
-                                Time = spawnTime,
-                                Fret = pos,
-                                CenterNote = false,
-                                NoteType = ProKeysUtilities.IsBlackKey(pos % 12)
-                                    ? ThemeNoteType.Black
-                                    : ThemeNoteType.White
-                            });
-                            noteCount++;
-                            denominator *= 2; // halve: 1/8 → 1/16 → ...
-                            pos += 2; // skip 2 after placing
-                        }
-                        else
-                        {
-                            pos += 1; // skip 1 if not placing
-                        }
-                    }
-                }
             }
 
             _trackMaterial.SetTrackScroll(PreviewTime, NOTE_SPEED);
@@ -734,53 +607,91 @@ namespace YARG.Settings.Preview
 
         // --- Pro-keys highway overlay ---
 
-        // X centers for the 5 overlay groups (2 white keys each, left to right).
-        // White key spacing = TRACK_WIDTH / 10 = 0.2, so each group is 0.4 wide.
-        private static readonly float[] PRO_KEYS_OVERLAY_CENTERS = { -0.8f, -0.4f, 0f, 0.4f, 0.8f };
-        private const float PRO_KEYS_OVERLAY_WIDTH   = 0.4f;
-        private const float PRO_KEYS_OVERLAY_LENGTH   = 10f;   // covers the visible highway
-        private const float PRO_KEYS_OVERLAY_Z_CENTER = 0.5f;  // midpoint of z=-4..5
+        private const float PRO_KEYS_OVERLAY_LENGTH   = 10f;
+        private const float PRO_KEYS_OVERLAY_Z_CENTER = 0.5f;
         private const float PRO_KEYS_OVERLAY_ALPHA    = 0.05f;
+        private const float PRO_KEYS_LANE_GAP         = 0.015f;
+
+        private readonly struct ProKeysOverlayRenderer
+        {
+            public ProKeysOverlayRenderer(SpriteRenderer renderer, int colorGroup)
+            {
+                Renderer = renderer;
+                ColorGroup = colorGroup;
+            }
+
+            public SpriteRenderer Renderer { get; }
+            public int ColorGroup { get; }
+        }
 
         private void CreateProKeysOverlay(ColorProfile.ProKeysColors colors)
         {
             _proKeysOverlayRenderers.Clear();
-            var layer = LayerMask.NameToLayer("Settings Preview");
+            var layerMask = LayerMask.NameToLayer("Settings Preview");
 
-            // Use a SpriteRenderer (not MeshRenderer) so the overlay always
-            // renders transparent with ZWrite Off. A MeshRenderer with URP/Unlit
-            // can't reliably disable ZWrite (the transparent shader variant isn't
-            // compiled unless another material uses it), which occludes the highway.
-            var sprite = Sprite.Create(Texture2D.whiteTexture,
-                new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
+            // Use SpriteRenderers so the transparent overlays do not occlude the
+            // highway. The gameplay overlay uses the same per-key geometry and
+            // edge texture, but its material also depends on gameplay fade state.
+            var whiteSprite = CreateOverlaySprite(Texture2D.whiteTexture);
+            var edgeSprite = _proKeysEdgeTexture != null
+                ? CreateOverlaySprite(_proKeysEdgeTexture)
+                : null;
 
-            for (int group = 0; group < 5; group++)
+            foreach (var overlayLayer in ProKeysPreviewLayout.CreateOverlayLayers(
+                TrackPlayer.TRACK_WIDTH, PRO_KEYS_LANE_GAP))
             {
-                var overlay = new GameObject("ProKeysOverlay");
+                if (overlayLayer.IsEdge && edgeSprite == null)
+                {
+                    continue;
+                }
+
+                var overlay = new GameObject(overlayLayer.IsEdge
+                    ? "ProKeysOverlayEdge"
+                    : "ProKeysOverlayFill");
                 overlay.transform.SetParent(transform, false);
-                // Rotate to lie flat on the highway surface (facing up)
                 overlay.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
                 overlay.transform.localPosition = new Vector3(
-                    PRO_KEYS_OVERLAY_CENTERS[group], 0.01f, PRO_KEYS_OVERLAY_Z_CENTER);
-                overlay.transform.localScale = new Vector3(
-                    PRO_KEYS_OVERLAY_WIDTH, PRO_KEYS_OVERLAY_LENGTH, 1f);
+                    overlayLayer.Band.Center, 0.01f, PRO_KEYS_OVERLAY_Z_CENTER);
 
                 var sr = overlay.AddComponent<SpriteRenderer>();
-                sr.sprite = sprite;
-                var oc = colors.GetOverlayColor(group).ToUnityColor();
+                sr.sprite = overlayLayer.IsEdge ? edgeSprite : whiteSprite;
+                sr.flipX = overlayLayer.FlipX;
+                sr.sortingOrder = overlayLayer.IsEdge ? 1 : 0;
+                var spriteSize = sr.sprite.bounds.size;
+                overlay.transform.localScale = new Vector3(
+                    overlayLayer.Band.Width / spriteSize.x,
+                    PRO_KEYS_OVERLAY_LENGTH / spriteSize.y,
+                    1f);
+
+                var oc = colors.GetOverlayColor(overlayLayer.Band.Group).ToUnityColor();
                 sr.color = new Color(oc.r, oc.g, oc.b, oc.a * PRO_KEYS_OVERLAY_ALPHA);
 
-                overlay.transform.SetLayerRecursive(layer);
-                _proKeysOverlayRenderers.Add(sr);
+                overlay.transform.SetLayerRecursive(layerMask);
+                _proKeysOverlayRenderers.Add(new ProKeysOverlayRenderer(
+                    sr,
+                    overlayLayer.Band.Group));
             }
+        }
+
+        private static Sprite CreateOverlaySprite(Texture2D texture)
+        {
+            return Sprite.Create(
+                texture,
+                new Rect(0, 0, texture.width, texture.height),
+                new Vector2(0.5f, 0.5f),
+                texture.width);
         }
 
         private void RecolorProKeysOverlay(ColorProfile.ProKeysColors colors)
         {
             for (int i = 0; i < _proKeysOverlayRenderers.Count; i++)
             {
-                var c = colors.GetOverlayColor(i).ToUnityColor();
-                _proKeysOverlayRenderers[i].color = new Color(c.r, c.g, c.b, c.a * PRO_KEYS_OVERLAY_ALPHA);
+                var c = colors.GetOverlayColor(_proKeysOverlayRenderers[i].ColorGroup).ToUnityColor();
+                _proKeysOverlayRenderers[i].Renderer.color = new Color(
+                    c.r,
+                    c.g,
+                    c.b,
+                    c.a * PRO_KEYS_OVERLAY_ALPHA);
             }
         }
 

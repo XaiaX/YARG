@@ -7,6 +7,9 @@ using YARG.Helpers;
 using YARG.Helpers.Extensions;
 using YARG.Menu.Settings;
 using YARG.Settings.Preview;
+using YARG.Themes;
+
+// pattern: Imperative Shell
 
 namespace YARG.Settings.Metadata
 {
@@ -84,8 +87,63 @@ namespace YARG.Settings.Metadata
             }
         }
 
-        // Keys section: pro keys is the default; when true, show 5-lane keys instead.
-        public bool ShowFiveLaneKeys { get; set; }
+        /// <summary>
+        /// Forwards a lane spotlight request to the live preview (see
+        /// <see cref="Preview.FakeTrackPlayer.SpotlightLane"/>). No-op when no
+        /// preview is currently alive.
+        /// </summary>
+        public void SpotlightLane(int fret, bool centerNote, bool cymbal, bool starPower)
+        {
+            if (_currentTrackPreview != null)
+            {
+                _currentTrackPreview.SpotlightLane(fret, centerNote, cymbal, starPower);
+            }
+        }
+
+        /// <summary>
+        /// Forwards to <see cref="FakeTrackPlayer.SpotlightNoteType"/>.
+        /// No-op when no preview is currently alive.
+        /// </summary>
+        public void SpotlightNoteType(ThemeNoteType noteType, bool? starPower = null)
+        {
+            if (_currentTrackPreview != null)
+            {
+                _currentTrackPreview.SpotlightNoteType(noteType, starPower);
+            }
+        }
+
+        /// <summary>
+        /// Forwards a Pro Keys white/black note spotlight to the live preview.
+        /// </summary>
+        public void SpotlightProKeysNoteType(bool black, bool starPower)
+        {
+            if (_currentTrackPreview != null)
+            {
+                _currentTrackPreview.SpotlightProKeysNoteType(black, starPower);
+            }
+        }
+
+        /// <summary>
+        /// Forwards to <see cref="FakeTrackPlayer.SpotlightMiss"/>.
+        /// </summary>
+        public void SpotlightMiss()
+        {
+            if (_currentTrackPreview != null)
+            {
+                _currentTrackPreview.SpotlightMiss();
+            }
+        }
+
+        /// <summary>
+        /// Forwards to <see cref="FakeTrackPlayer.SpotlightStarPower"/>.
+        /// </summary>
+        public void SpotlightStarPower()
+        {
+            if (_currentTrackPreview != null)
+            {
+                _currentTrackPreview.SpotlightStarPower();
+            }
+        }
 
         public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false, bool forceStarPower = false)
         {
@@ -111,7 +169,6 @@ namespace YARG.Settings.Metadata
             trackPreview.ForceStarPower = ForceStarPower;
             trackPreview.ForceStarPowerNotes = ForceStarPowerNotes;
             trackPreview.LeftyFlip = LeftyFlip;
-            trackPreview.UseFiveLaneKeys = ShowFiveLaneKeys;
 
             // If null, just use the default value and skip setting it
             if (StartingGameMode is not null)
