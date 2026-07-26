@@ -543,26 +543,43 @@ namespace YARG.Menu.DifficultySelect
 
                 // Show every available instrument's tier wheel on its own row
                 // within the item (localized instrument names can be long, so a
-                // ring column beside the text doesn't reliably fit). The selected
-                // instrument gets a solid nav-yellow circle behind its ring
-                // (rimming it and filling the wheel gaps); the rest are dimmed.
+                // ring column beside the text doesn't reliably fit). Party Vocals
+                // gets one wheel for Solo and one for Harmony when both charts are
+                // available, matching the separate chart choices below.
                 if (_difficultyRing != null && _possibleInstruments.Count > 0)
                 {
                     const float ringSize = 40f;
 
                     var song = GlobalVariables.State.CurrentSong;
-                    var rings = instrumentItem.AttachRingRow(_difficultyRing,
-                        _possibleInstruments.Count, ringSize);
+                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
+                    bool hasHarmony = song.HasInstrument(Instrument.Harmony);
+                    bool showPartyVocalsCharts = instrumentItem != null
+                        && player.Profile.GameMode == GameMode.PartyVocals
+                        && hasSolo && hasHarmony;
+                    int ringCount = showPartyVocalsCharts ? 2 : _possibleInstruments.Count;
+                    var rings = instrumentItem.AttachRingRow(_difficultyRing, ringCount, ringSize);
 
-                    for (int i = 0; i < _possibleInstruments.Count; i++)
+                    bool selectedSolo = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
+                        ? hasSolo
+                        : !hasHarmony;
+                    Instrument selectedPartyVocalsChart = selectedSolo
+                        ? Instrument.Vocals
+                        : Instrument.Harmony;
+
+                    for (int i = 0; i < ringCount; i++)
                     {
-                        var instrument = _possibleInstruments[i];
+                        Instrument ringInstrument = showPartyVocalsCharts
+                            ? i == 0 ? Instrument.Vocals : Instrument.Harmony
+                            : _possibleInstruments[i];
                         rings[i].SetInfo(
-                            GetInstrumentRingAsset(instrument, song.VocalsCount),
-                            instrument,
-                            GetTierValues(song, instrument));
+                            GetInstrumentRingAsset(ringInstrument, song.VocalsCount),
+                            ringInstrument,
+                            GetTierValues(song, ringInstrument));
 
-                        if (instrument == player.Profile.CurrentInstrument)
+                        bool selected = showPartyVocalsCharts
+                            ? ringInstrument == selectedPartyVocalsChart
+                            : ringInstrument == player.Profile.CurrentInstrument;
+                        if (selected)
                         {
                             // Extra size is in the ring's native units; scale it
                             // so the circle extends four *screen* pixels per
@@ -760,6 +777,13 @@ namespace YARG.Menu.DifficultySelect
                 5    => $"<color=#FF8400>{text}</color>",
                 _    => text,
             };
+        }
+
+        private static string GetPartyVocalsChartLabel(SongEntry song, Instrument instrument)
+        {
+            string chartName = instrument == Instrument.Vocals ? "Solo" : "Harmony";
+            return chartName
+                + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(song[instrument])}</color></size>";
         }
 
         private void CreateInstrumentMenu()
@@ -1252,14 +1276,18 @@ namespace YARG.Menu.DifficultySelect
             var profile = CurrentPlayer.Profile;
             var current = profile.PartyVocalsChartPreference;
 
-            CreateItem("Harmony", current == PartyVocalsChartPreference.Harmony, () =>
+            var song = GlobalVariables.State.CurrentSong;
+
+            CreateItem(GetPartyVocalsChartLabel(song, Instrument.Harmony),
+                current == PartyVocalsChartPreference.Harmony, () =>
             {
                 profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Harmony;
                 _menuState = State.Main;
                 UpdateForPlayer();
             });
 
-            CreateItem("Solo", current == PartyVocalsChartPreference.Solo, () =>
+            CreateItem(GetPartyVocalsChartLabel(song, Instrument.Vocals),
+                current == PartyVocalsChartPreference.Solo, () =>
             {
                 profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Solo;
                 _menuState = State.Main;
