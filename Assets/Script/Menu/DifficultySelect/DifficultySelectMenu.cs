@@ -688,13 +688,6 @@ namespace YARG.Menu.DifficultySelect
                         : modifierText + "\nLefty Flip";
                 }
 
-                CreateItem(LocalizeHeader("Modifiers"),
-                    modifierText, _lastMenuState == State.Modifiers, () =>
-                {
-                    _menuState = State.Modifiers;
-                    UpdateForPlayer();
-                },
-                interactable: !modifiersLocked);
             }
 
             // Only show if there is more than one play, only if there is instruments available
