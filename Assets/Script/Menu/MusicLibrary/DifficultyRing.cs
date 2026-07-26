@@ -163,6 +163,88 @@ namespace YARG.Menu.MusicLibrary
             UpdateIconColor();
         }
 
+        /// <summary>
+        /// Tints the instrument icon (not the ring). Menus use this to dim or
+        /// highlight instruments. Call after <see cref="SetInfo"/>, which resets
+        /// the icon color.
+        /// </summary>
+        public void SetIconColor(Color color)
+        {
+            _instrumentIcon.color = color;
+        }
+
+        /// <summary>
+        /// Dims the filled ring segments (not the base or icon). Menus use this
+        /// to de-emphasize non-selected instruments. Call after
+        /// <see cref="SetInfo"/>, which resets the segment opacity.
+        /// </summary>
+        public void SetRingOpacity(float alpha)
+        {
+            _ringSprite.color = _ringSprite.color.WithAlpha(alpha);
+        }
+
+        /// <summary>
+        /// Draws a solid circle behind the whole ring, <paramref name="extraSize"/>
+        /// units larger than the ring rect, so it rims the outside and shows
+        /// through the gaps between wheel segments and around the icon. Menus use
+        /// it to mark the selected instrument.
+        /// </summary>
+        public void ShowSelectionBackdrop(Color color, float extraSize = 2f)
+        {
+            var backdrop = new GameObject("SelectionBackdrop", typeof(RectTransform), typeof(Image));
+            backdrop.layer = gameObject.layer;
+
+            var rt = (RectTransform) backdrop.transform;
+            rt.SetParent(transform, false);
+            // First sibling renders behind the ring, icon, and intensity number.
+            rt.SetAsFirstSibling();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.sizeDelta = new Vector2(extraSize, extraSize);
+
+            var image = backdrop.GetComponent<Image>();
+            image.sprite = GetCircleSprite();
+            image.color = color;
+            image.raycastTarget = false;
+        }
+
+        private static Sprite _circleSprite;
+
+        // A plain filled circle, generated once at runtime — the project has no
+        // solid-circle UI sprite, and Unity's builtin UI sprites aren't reliably
+        // loadable, which renders as a square.
+        private static Sprite GetCircleSprite()
+        {
+            if (_circleSprite != null)
+            {
+                return _circleSprite;
+            }
+
+            const int SIZE = 64;
+            float radius = SIZE / 2f - 1f;
+            float center = (SIZE - 1) / 2f;
+
+            var pixels = new Color32[SIZE * SIZE];
+            for (int y = 0; y < SIZE; y++)
+            {
+                for (int x = 0; x < SIZE; x++)
+                {
+                    float distance = Mathf.Sqrt((x - center) * (x - center) + (y - center) * (y - center));
+                    // One-pixel antialiased falloff at the rim
+                    byte alpha = (byte) (Mathf.Clamp01(radius - distance + 0.5f) * 255f);
+                    pixels[y * SIZE + x] = new Color32(255, 255, 255, alpha);
+                }
+            }
+
+            var texture = new Texture2D(SIZE, SIZE, TextureFormat.RGBA32, false);
+            texture.SetPixels32(pixels);
+            texture.Apply();
+
+            _circleSprite = Sprite.Create(texture, new Rect(0f, 0f, SIZE, SIZE),
+                new Vector2(0.5f, 0.5f));
+            return _circleSprite;
+        }
+
         private static Sprite GetIcon(string assetName)
         {
             string assetKey = $"InstrumentIcons[{assetName}]";

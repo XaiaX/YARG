@@ -1659,7 +1659,9 @@ namespace YARG.Menu.Filters
             return GetIntensityLabelByIndex(intensity);
         }
 
-        private static string GetIntensityLabelByIndex(int index)
+        // Public so other menus (e.g. difficulty select) can reuse the same
+        // intensity-tier naming.
+        public static string GetIntensityLabelByIndex(int index)
         {
             if (index < 0) return null;
             if (index >= IntensityLabelKeys.Length) index = IntensityLabelKeys.Length - 1;
