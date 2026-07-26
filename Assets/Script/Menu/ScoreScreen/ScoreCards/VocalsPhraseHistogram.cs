@@ -81,11 +81,39 @@ namespace YARG.Menu.ScoreScreen
         public static void Build(RectTransform parent, IReadOnlyList<float> percents,
             Func<Transform, string, TextAlignmentOptions, TextMeshProUGUI> labelFactory, Color accentColor,
             int percussionHits, int percussionTotal, IReadOnlyList<PhraseGrade> phraseGrades = null,
-            IReadOnlyList<IReadOnlyList<PartyPartResult>> partyPartResults = null, double awesomeThreshold = 0)
+            IReadOnlyList<IReadOnlyList<PartyPartResult>> partyPartResults = null, double awesomeThreshold = 0,
+            int harmonyPartIndex = 0)
         {
             if (parent == null || percents == null || percents.Count == 0)
             {
                 return;
+            }
+
+            // Legacy Solo/traditional Harmony captures only aggregate phrase percentages. Synthesize
+            // the one selected HARM result at the display boundary so those summaries use the same
+            // Party renderer as the per-part path, without changing scoring or gameplay capture.
+            bool partyMode = phraseGrades != null && phraseGrades.Count > 0;
+            bool synthesizedLegacySummary = !partyMode;
+            if (synthesizedLegacySummary)
+            {
+                int partIndex = Mathf.Clamp(harmonyPartIndex, 0, 2);
+                var displayGrades = new List<PhraseGrade>(percents.Count);
+                var displayPartResults = new List<IReadOnlyList<PartyPartResult>>(percents.Count);
+                for (int i = 0; i < percents.Count; i++)
+                {
+                    double normalized = Mathf.Clamp01(percents[i]);
+                    double meter = normalized * awesomeThreshold;
+                    displayGrades.Add(awesomeThreshold > 0 && meter >= awesomeThreshold
+                        ? PhraseGrade.Awesome
+                        : PhraseGrade.Miss);
+                    // Legacy summaries are one-band displays. Keep the selected HARM index separate
+                    // as a color choice rather than using it as the segment index; otherwise HARM2/3
+                    // would create empty lower bands just to reach their color.
+                    displayPartResults.Add(new[] { new PartyPartResult(0, meter) });
+                }
+
+                phraseGrades = displayGrades;
+                partyPartResults = displayPartResults;
             }
 
             // Force a layout pass so the bars' world positions are final before we snap 1px elements
@@ -124,13 +152,14 @@ namespace YARG.Menu.ScoreScreen
                 }
             }
 
-            BuildGraph(rootRect, percents, phraseGrades, partyPartResults, awesomeThreshold, maxHarmonyParts);
+            BuildGraph(rootRect, percents, phraseGrades, partyPartResults, awesomeThreshold, maxHarmonyParts,
+                harmonyPartIndex, synthesizedLegacySummary);
             BuildTally(rootRect, percents, phraseGrades, maxHarmonyParts, labelFactory, accentColor, percussionHits, percussionTotal);
         }
 
         private static void BuildGraph(RectTransform parent, IReadOnlyList<float> percents,
             IReadOnlyList<PhraseGrade> phraseGrades, IReadOnlyList<IReadOnlyList<PartyPartResult>> partyPartResults,
-            double awesomeThreshold, int maxHarmonyParts)
+            double awesomeThreshold, int maxHarmonyParts, int harmonyPartIndex, bool synthesizedLegacySummary)
         {
             var graphObject = new GameObject("Graph", typeof(RectTransform));
             var graphRect = (RectTransform) graphObject.transform;
@@ -254,7 +283,8 @@ namespace YARG.Menu.ScoreScreen
 
                 if (partyBar)
                 {
-                    BuildPartyBar(barRect, partyPartResults[i], phraseGrades[i], awesomeThreshold, isBright, height, onePixel, maxHarmonyParts);
+                    BuildPartyBar(barRect, partyPartResults[i], phraseGrades[i], awesomeThreshold, isBright, height, onePixel,
+                        maxHarmonyParts, harmonyPartIndex, synthesizedLegacySummary);
                     continue;
                 }
 
@@ -322,8 +352,12 @@ namespace YARG.Menu.ScoreScreen
 
         private static void BuildPartyBar(RectTransform bar, IReadOnlyList<PartyPartResult> parts,
             PhraseGrade grade, double awesomeThreshold, bool oddBar, float barHeight, float onePixel,
-            int segmentCount)
+            int segmentCount, int harmonyPartIndex, bool synthesizedLegacySummary)
         {
+            // Legacy synthesized bars use one visual segment regardless of the selected HARM lane;
+            // Party bars retain their actual segment count and per-part colors.
+            int colorOffset = synthesizedLegacySummary ? Mathf.Clamp(harmonyPartIndex, 0, 2) : 0;
+
             // One segment per available harmony part (HARM1/HARM2/HARM3, bottom -> top), so a duet
             // (2 parts) renders two equal-height bands instead of leaving the top third empty. Each
             // fill carries a subtle vertical gradient (full color -> 20% darker at the bottom). An
@@ -379,7 +413,7 @@ namespace YARG.Menu.ScoreScreen
                 float bandBottom = SnapToScreenPixel(bar, y + gapH);
                 float bandTop = (p == SEGMENTS - 1) ? barHeight : SnapToScreenPixel(bar, bandBottom + bandHAvg);
                 float bandH = bandTop - bandBottom;
-                Color lineColor = HarmonyColor(p);
+                Color lineColor = HarmonyColor(p + colorOffset);
 
                 if (!available[p])
                 {

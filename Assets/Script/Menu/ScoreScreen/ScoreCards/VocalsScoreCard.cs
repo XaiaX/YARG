@@ -53,7 +53,8 @@ namespace YARG.Menu.ScoreScreen
             // Build the phrase histogram + tally into the Advanced view (advanced-only automatically).
             // Renders nothing if the list is null/empty.
             VocalsPhraseHistogram.Build(AdvancedStatsRect, _phrasePercents, CreateStatLabel, AdvancedAccentColor,
-                _percussionHits, _percussionTotal, _phraseGrades, _phrasePartResults, _awesomeThreshold);
+                _percussionHits, _percussionTotal, _phraseGrades, _phrasePartResults, _awesomeThreshold,
+                Player.Profile.HarmonyIndex);
         }
 
         // Bare harmony part-count icon name (vocals/twoVocals/harmVocals) for party vocals, based
