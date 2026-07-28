@@ -40,6 +40,7 @@ namespace YARG.Menu.DifficultySelect
             Modifiers,
             OpenLane,
             Accessibility,
+            Highway,
             Harmony,
             PartyVocalsBotMicCount,
             PartyVocalsChartChoice
@@ -47,6 +48,9 @@ namespace YARG.Menu.DifficultySelect
 
         // Modifiers relocated from the Modifiers menu to the Accessibility menu.
         // RangeCompress is folded into the "No Range Shifts" toggle there.
+        private const Modifier PARTY_VOCALS_UNPITCHED_MODIFIERS =
+            Modifier.UnpitchedOnly | Modifier.UnpitchedHarm2 | Modifier.UnpitchedHarm3;
+
         private const Modifier ACCESSIBILITY_MODIFIERS =
             Modifier.OpensToGreens | Modifier.NoKicks | Modifier.UnpitchedOnly | Modifier.RangeCompress;
 
@@ -57,6 +61,16 @@ namespace YARG.Menu.DifficultySelect
         // Non-selected instrument icons in the main menu's ring row are dimmed
         // so the selected one stands out.
         private static readonly Color UNSELECTED_INSTRUMENT_ICON_COLOR = new Color(1f, 1f, 1f, 0.33f);
+
+        private const string PROFILE_NUMBER_FORMAT = "0.0";
+        private const float DEFAULT_HIGHWAY_SPEED = 5f;
+        private const float DEFAULT_HIGHWAY_LENGTH = 1f;
+        private const float HIGHWAY_VALUE_STEP = 0.1f;
+        private const float HIGHWAY_REPEAT_STEP = 1f;
+        private const float HIGHWAY_REPEAT_INTERVAL = 0.15f;
+
+        private float _lastHighwayRepeatTime;
+        private bool _editingHighwayValue;
 
         // Done buttons get the Ready treatment in the menu's pale blue instead
         // of green: tinted text that darkens while the row is highlighted (the
@@ -103,6 +117,8 @@ namespace YARG.Menu.DifficultySelect
         private DifficultyItem _difficultyItemSmallRedPrefab;
         [SerializeField]
         private ModifierItem _modifierItemPrefab;
+        [SerializeField]
+        private ValueSlider _valueSliderPrefab;
 
         private int _playerIndex;
         private int _vocalModifierSelectIndex = -1;
@@ -160,6 +176,7 @@ namespace YARG.Menu.DifficultySelect
                         _menuState = _menuState switch
                         {
                             State.OpenLane => State.Modifiers,
+                            State.Highway => State.Accessibility,
                             State.Modifiers or State.Accessibility => State.Adjustments,
                             _ => State.Main,
                         };
@@ -291,6 +308,9 @@ namespace YARG.Menu.DifficultySelect
                     break;
                 case State.Accessibility:
                     CreateAccessibilityMenu();
+                    break;
+                case State.Highway:
+                    CreateHighwayMenu();
                     break;
                 case State.Harmony:
                     CreateHarmonyMenu();
@@ -644,7 +664,7 @@ namespace YARG.Menu.DifficultySelect
 
                 var adjustmentsItem = CreateItem(LocalizeHeader("Adjustments"),
                     BuildAdjustmentsSummary(player.Profile, out int optionCount),
-                    _lastMenuState is State.Adjustments or State.Modifiers or State.Accessibility, () =>
+                    _lastMenuState is State.Adjustments or State.Modifiers or State.Accessibility or State.Highway, () =>
                 {
                     _menuState = State.Adjustments;
                     UpdateForPlayer();
@@ -853,13 +873,13 @@ namespace YARG.Menu.DifficultySelect
 
             CreateItem(LocalizeHeader("Modifiers"),
                 BuildModifierSummary(profile),
-                _lastMenuState != State.Accessibility, () =>
+                _lastMenuState is not (State.Accessibility or State.Highway), () =>
             {
                 _menuState = State.Modifiers;
                 UpdateForPlayer();
             });
 
-            if (HasAccessibilityOptions(profile))
+            if (HasAccessibilityOptions())
             {
                 CreateItem(LocalizeHeader("Accessibility"),
                     BuildAccessibilitySummary(profile),
@@ -895,12 +915,6 @@ namespace YARG.Menu.DifficultySelect
 
             if (isVocalMode)
             {
-                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "DisablePitch"));
-
-                AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
-                AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
-                AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
-
                 CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "OtherModifiers"));
 
                 AddModifierToggle(profile, Modifier.NoVocalPercussion, "Percussion");
@@ -911,7 +925,7 @@ namespace YARG.Menu.DifficultySelect
                 // Accessibility-relocated modifiers live in the Accessibility menu.
                 foreach (var modifier in _possibleModifiers)
                 {
-                    if ((modifier & ACCESSIBILITY_MODIFIERS) != 0) continue;
+                    if (IsAccessibilityModifier(profile.GameMode, modifier)) continue;
                     AddModifierToggle(profile, modifier);
                 }
 
@@ -1029,6 +1043,24 @@ namespace YARG.Menu.DifficultySelect
             _modifierItems.Clear();
             _itemModifiers.Clear();
 
+            if (SupportsHighwaySettings(profile.GameMode))
+            {
+                CreateItem(LocalizeHeader("Highway"), FormatHighwayValues(profile),
+                    _lastMenuState == State.Highway, () =>
+                {
+                    _menuState = State.Highway;
+                    UpdateForPlayer();
+                });
+            }
+
+            if (profile.GameMode == GameMode.PartyVocals)
+            {
+                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "DisablePitch"));
+                AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
+                AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
+                AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
+            }
+
             if (SupportsLeftyFlip(profile.GameMode))
             {
                 // Takes effect at track build time since this menu precedes gameplay.
@@ -1067,8 +1099,10 @@ namespace YARG.Menu.DifficultySelect
 
             foreach (var modifier in _possibleModifiers)
             {
-                if ((modifier & ACCESSIBILITY_MODIFIERS) == 0) continue;
+                if (!IsAccessibilityModifier(profile.GameMode, modifier)) continue;
                 if (modifier == Modifier.RangeCompress) continue; // folded in above
+                if (profile.GameMode == GameMode.PartyVocals
+                    && (modifier & PARTY_VOCALS_UNPITCHED_MODIFIERS) != 0) continue; // granular rows above
 
                 AddModifierToggle(profile, modifier);
             }
@@ -1091,6 +1125,98 @@ namespace YARG.Menu.DifficultySelect
             btn.Initialize(label, active, onChanged);
             _navGroup.AddNavigatable(btn);
             return btn;
+        }
+
+        private void CreateHighwayMenu()
+        {
+            var profile = CurrentPlayer.Profile;
+            if (!SupportsHighwaySettings(profile.GameMode))
+            {
+                _menuState = State.Accessibility;
+                UpdateForPlayer();
+                return;
+            }
+
+            CreateHighwayValueItem(LocalizeHeader("HighwaySpeed"), 0f, 100f,
+                () => profile.NoteSpeed, value => profile.NoteSpeed = value);
+            CreateHighwayValueItem(LocalizeHeader("HighwayLength"), 0.1f, 10f,
+                () => profile.HighwayLength, value => profile.HighwayLength = value);
+
+            CreateDoneItem(() =>
+            {
+                _menuState = State.Accessibility;
+                UpdateForPlayer();
+            });
+
+            _navGroup.SelectFirst();
+        }
+
+        private void CreateHighwayValueItem(string label, float minValue, float maxValue,
+            Func<float> getValue, Action<float> setValue)
+        {
+            DifficultyItem item = null;
+            ValueSlider slider = null;
+
+            item = CreateItem(label, "", false, () => StartHighwayValueEdit(slider));
+            slider = item.AttachValueSlider(_valueSliderPrefab);
+            slider.MinimumValue = minValue;
+            slider.MaximumValue = maxValue;
+            slider.FormatString = PROFILE_NUMBER_FORMAT;
+            slider.ValueChanged = new UnityEvent<float>();
+            slider.ValueChanged.AddListener(value =>
+            {
+                value = Mathf.Clamp(value, minValue, maxValue);
+                value = Mathf.Round(value / HIGHWAY_VALUE_STEP) * HIGHWAY_VALUE_STEP;
+                setValue(value);
+                slider.SetValueWithoutNotify(value);
+            });
+            slider.SetValueWithoutNotify(getValue());
+        }
+
+        private void StartHighwayValueEdit(ValueSlider slider)
+        {
+            _lastHighwayRepeatTime = 0f;
+            _editingHighwayValue = true;
+
+            void Adjust(float direction, bool isRepeat)
+            {
+                if (isRepeat && Time.unscaledTime - _lastHighwayRepeatTime < HIGHWAY_REPEAT_INTERVAL)
+                {
+                    return;
+                }
+
+                _lastHighwayRepeatTime = Time.unscaledTime;
+                float step = isRepeat ? HIGHWAY_REPEAT_STEP : HIGHWAY_VALUE_STEP;
+                slider.Value += direction * step;
+            }
+
+            Navigator.Instance.PushSchemeImmediate(new NavigationScheme(new()
+            {
+                new NavigationScheme.Entry(MenuAction.Up, "Menu.Common.Increase",
+                    context => Adjust(1f, context.IsRepeat)),
+                new NavigationScheme.Entry(MenuAction.Down, "Menu.Common.Decrease",
+                    context => Adjust(-1f, context.IsRepeat)),
+                new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back",
+                    () => Navigator.Instance.PopScheme()),
+            }, null, () => _editingHighwayValue = false));
+        }
+
+        private static string FormatProfileNumber(float value)
+            => value.ToString(PROFILE_NUMBER_FORMAT, CultureInfo.CurrentCulture);
+
+        private static string FormatHighwayValues(YargProfile profile)
+            => $"{FormatProfileNumber(profile.NoteSpeed)} / {FormatProfileNumber(profile.HighwayLength)}";
+
+        private static string FormatHighwayDelta(string label, float value, float defaultValue)
+        {
+            float delta = value - defaultValue;
+            if (Mathf.Abs(delta) < HIGHWAY_VALUE_STEP / 2f)
+            {
+                return "";
+            }
+
+            string sign = delta > 0f ? "+" : "";
+            return $"{label} {sign}{FormatProfileNumber(delta)}\n";
         }
 
         private void AddModifierToggle(YargProfile profile, Modifier modifier)
@@ -1122,10 +1248,18 @@ namespace YARG.Menu.DifficultySelect
         private static bool SupportsRangeShifts(GameMode mode)
             => mode is GameMode.FiveFretGuitar or GameMode.ProKeys;
 
-        private bool HasAccessibilityOptions(YargProfile profile)
-            => SupportsLeftyFlip(profile.GameMode)
-                || SupportsRangeShifts(profile.GameMode)
-                || _possibleModifiers.Any(m => (m & ACCESSIBILITY_MODIFIERS) != 0);
+        private static bool SupportsHighwaySettings(GameMode mode)
+            => mode is not (GameMode.Vocals or GameMode.PartyVocals);
+
+        private static bool IsAccessibilityModifier(GameMode mode, Modifier modifier)
+            => (modifier & ACCESSIBILITY_MODIFIERS) != 0
+                || (mode == GameMode.PartyVocals && (modifier & PARTY_VOCALS_UNPITCHED_MODIFIERS) != 0);
+
+        private bool HasAccessibilityOptions()
+            => SupportsHighwaySettings(CurrentPlayer.Profile.GameMode)
+                || SupportsLeftyFlip(CurrentPlayer.Profile.GameMode)
+                || SupportsRangeShifts(CurrentPlayer.Profile.GameMode)
+                || _possibleModifiers.Any(modifier => IsAccessibilityModifier(CurrentPlayer.Profile.GameMode, modifier));
 
         // Summary body for the main menu's Adjustments row: the active options
         // from both nested menus (Modifiers and Accessibility) combined.
@@ -1141,7 +1275,7 @@ namespace YARG.Menu.DifficultySelect
                 text += modifierSummary + "\n";
             }
 
-            if (HasAccessibilityOptions(profile))
+            if (HasAccessibilityOptions())
             {
                 string accessibilitySummary = BuildAccessibilitySummary(profile);
                 if (accessibilitySummary != none)
@@ -1174,7 +1308,7 @@ namespace YARG.Menu.DifficultySelect
             {
                 foreach (var modifier in _possibleModifiers)
                 {
-                    if ((modifier & ACCESSIBILITY_MODIFIERS) != 0) continue;
+                    if (IsAccessibilityModifier(profile.GameMode, modifier)) continue;
                     if (!profile.IsModifierActive(modifier)) continue;
 
                     text += modifier.ToLocalizedName() + "\n";
@@ -1203,6 +1337,11 @@ namespace YARG.Menu.DifficultySelect
         private string BuildAccessibilitySummary(YargProfile profile)
         {
             string text = "";
+            if (SupportsHighwaySettings(profile.GameMode))
+            {
+                text += FormatHighwayDelta(LocalizeHeader("HighwaySpeed"), profile.NoteSpeed, DEFAULT_HIGHWAY_SPEED)
+                    + FormatHighwayDelta(LocalizeHeader("HighwayLength"), profile.HighwayLength, DEFAULT_HIGHWAY_LENGTH);
+            }
 
             if (SupportsLeftyFlip(profile.GameMode) && profile.LeftyFlip)
             {
@@ -1215,13 +1354,30 @@ namespace YARG.Menu.DifficultySelect
                 text += LocalizeHeader("NoRangeShifts") + "\n";
             }
 
+            if (profile.GameMode == GameMode.PartyVocals)
+            {
+                AppendActiveModifier(Modifier.UnpitchedOnly, "Harmony 1");
+                AppendActiveModifier(Modifier.UnpitchedHarm2, "Harmony 2");
+                AppendActiveModifier(Modifier.UnpitchedHarm3, "Harmony 3");
+            }
+
             foreach (var modifier in _possibleModifiers)
             {
-                if ((modifier & ACCESSIBILITY_MODIFIERS) == 0) continue;
+                if (!IsAccessibilityModifier(profile.GameMode, modifier)) continue;
                 if (modifier == Modifier.RangeCompress) continue; // covered above
+                if (profile.GameMode == GameMode.PartyVocals
+                    && (modifier & PARTY_VOCALS_UNPITCHED_MODIFIERS) != 0) continue; // granular labels above
                 if (!profile.IsModifierActive(modifier)) continue;
 
                 text += modifier.ToLocalizedName() + "\n";
+            }
+
+            void AppendActiveModifier(Modifier modifier, string label)
+            {
+                if (_possibleModifiers.Contains(modifier) && profile.IsModifierActive(modifier))
+                {
+                    text += label + "\n";
+                }
             }
 
             text = text.Trim();
@@ -1511,6 +1667,11 @@ namespace YARG.Menu.DifficultySelect
 
         private void OnDisable()
         {
+            if (_editingHighwayValue)
+            {
+                Navigator.Instance.PopScheme();
+            }
+
             Navigator.Instance.PopScheme();
         }
 

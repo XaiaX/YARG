@@ -505,6 +505,8 @@ MonoBehaviour:
     type: 3}
   _modifierItemPrefab: {fileID: 3419815060514877507, guid: 6c928df38839ed24eaa659f76c62da6b,
     type: 3}
+  _valueSliderPrefab: {fileID: 7665292889178861594, guid: dbdf67b69820732439f61d5a3cd2b4fd,
+    type: 3}
 --- !u!1 &2177612344681018170
 GameObject:
   m_ObjectHideFlags: 0

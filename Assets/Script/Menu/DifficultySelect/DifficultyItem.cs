@@ -34,6 +34,34 @@ namespace YARG.Menu.DifficultySelect
             Button.SetOnClickEvent(action);
         }
 
+        public void SetBody(string body)
+        {
+            _body.text = body;
+        }
+
+        public ValueSlider AttachValueSlider(ValueSlider prefab)
+        {
+            // Keep the existing body row in the item's VerticalLayoutGroup and
+            // stretch the mixed slider/text control inside it. Adding the slider
+            // directly to the item lets the layout group collapse its width.
+            _body.text = "";
+            _body.enabled = false;
+
+            var layout = _body.gameObject.AddComponent<LayoutElement>();
+            layout.minHeight = layout.preferredHeight = 75f;
+
+            var slider = Instantiate(prefab, _body.rectTransform);
+            var rect = (RectTransform) slider.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = Vector2.zero;
+            rect.localScale = Vector3.one;
+
+            return slider;
+        }
+
         /// <summary>
         /// Tints the header/body text, switching to a darker accent while the
         /// item is selected (the same treatment DifficultyItemGreen gets from
