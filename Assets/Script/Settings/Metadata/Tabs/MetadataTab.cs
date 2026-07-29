@@ -42,6 +42,13 @@ namespace YARG.Settings.Metadata
                     continue;
                 }
 
+                if (settingMetadata is ButtonRowMetadata buttonMetadata &&
+                    buttonMetadata.VisibilityPredicate != null &&
+                    !buttonMetadata.VisibilityPredicate())
+                {
+                    continue;
+                }
+
                 switch (settingMetadata)
                 {
                     case HeaderMetadata header:

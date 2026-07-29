@@ -10,6 +10,7 @@ using YARG.Core.Song;
 using YARG.Gameplay.HUD;
 using YARG.Helpers;
 using YARG.Integration;
+using YARG.Integration.Maestro;
 using YARG.Integration.RB3E;
 using YARG.Integration.Sacn;
 using YARG.Integration.StageKit;
@@ -588,6 +589,22 @@ namespace YARG.Settings
             #region Experimental
 
             public ToggleSetting DataStreamEnable { get; } = new(false, DataStreamEnableCallback );
+            public ToggleSetting MaestroEnable { get; } = new(false, MaestroEnableCallback);
+
+            public void ShowMaestroPairingPin()
+            {
+                var maestro = MaestroController.Instance;
+                if (maestro == null || !maestro.IsEnabled || string.IsNullOrEmpty(maestro.PairingToken))
+                {
+                    DialogManager.Instance.ShowMessage("Maestro Unavailable",
+                        "Enable Maestro first to generate a pairing PIN.");
+                    return;
+                }
+
+                DialogManager.Instance.ShowMessage("Maestro Pairing PIN",
+                    $"{maestro.PairingToken}\n\nDo not show this PIN to anyone you do not trust.");
+            }
+
             public DropdownSetting<BandComboType> BandComboTypeSetting { get; } = new(BandComboType.Off)
             {
                 BandComboType.Off,
@@ -710,6 +727,28 @@ namespace YARG.Settings
                     return;
                 }
                 DataStreamController.Instance.HandleEnabledChanged(value);
+            }
+
+            private static void MaestroEnableCallback(bool value)
+            {
+                if (!IsInitialized || MaestroController.Instance == null)
+                {
+                    return;
+                }
+
+                if (value)
+                {
+                    MaestroController.Instance.StartHost();
+                }
+                else
+                {
+                    MaestroController.Instance.StopHost();
+                }
+
+                if (SettingsMenu.Instance != null)
+                {
+                    SettingsMenu.Instance.RefreshAndKeepPosition();
+                }
             }
 
             private static void FontScalingCallback(float value)

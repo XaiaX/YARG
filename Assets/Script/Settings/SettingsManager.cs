@@ -7,6 +7,7 @@ using UnityEngine;
 using YARG.Core.Logging;
 using YARG.Core.Utility;
 using YARG.Helpers;
+using YARG.Integration.Maestro;
 using YARG.Settings.Metadata;
 using YARG.Settings.Types;
 
@@ -243,6 +244,10 @@ namespace YARG.Settings
                 nameof(Settings.BandComboTypeSetting),
                 nameof(Settings.CustomVocalsCharacter),
                 nameof(Settings.DataStreamEnable),
+                nameof(Settings.MaestroEnable),
+                new ButtonRowMetadata(nameof(Settings.ShowMaestroPairingPin),
+                    visibilityPredicate: () => MaestroController.Instance != null &&
+                                               MaestroController.Instance.IsEnabled),
                 nameof(Settings.SaveScoresWithBots),
                 new HeaderMetadata("Accessibility"),
                 nameof(Settings.FontScaling),

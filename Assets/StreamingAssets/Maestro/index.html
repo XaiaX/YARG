@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>YARG Maestro</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0e1116;
+      --panel: #161b22;
+      --accent: #00DDFB;
+      --rose: #F70072;
+      --amber: #FFB636;
+      --text: #e6edf3;
+      --muted: #8b949e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.4;
+      -webkit-text-size-adjust: 100%;
+    }
+    header {
+      padding: 16px;
+      border-bottom: 1px solid #30363d;
+      background: var(--panel);
+    }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header .status { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+    main { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+    .pair {
+      background: var(--panel);
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .pair label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    .pair input {
+      width: 100%;
+      padding: 12px;
+      font-size: 1.1rem;
+      border-radius: 8px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: var(--text);
+    }
+    .pair button {
+      margin-top: 12px;
+      width: 100%;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #04222b;
+    }
+    .pair button:disabled { opacity: 0.5; }
+    .note { font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
+    .error { color: var(--rose); }
+    .ok { color: var(--accent); }
+    .players { display: flex; flex-direction: column; gap: 12px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .card h3 { margin: 0 0 8px; font-size: 1rem; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .pending { color: var(--amber); font-size: 0.75rem; margin-left: 8px; }
+    .vols { display: flex; flex-direction: column; gap: 14px; }
+    .vol label { display: flex; justify-content: space-between; font-size: 0.85rem; }
+    .vol input[type=range] { width: 100%; accent-color: var(--accent); }
+    #disconnected { display:none; color: var(--rose); padding: 8px; }
+    /* touch sizing */
+    @media (max-width: 640px) {
+      input[type=range] { height: 36px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>YARG Maestro</h1>
+    <div class="status" id="status">Not connected</div>
+  </header>
+
+  <main>
+    <div id="disconnected">Disconnected. Reconnecting…</div>
+
+    <section class="pair" id="pairSection">
+      <label for="token">Pairing Token</label>
+      <input id="token" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit PIN" autocomplete="off" />
+      <button id="pairBtn">Pair</button>
+      <p class="note">Enter the PIN shown in YARG. Token is sent only on your local network.</p>
+    </section>
+
+    <section>
+      <h2 class="muted">Live Audio (applies now)</h2>
+      <div class="vols" id="volumes"></div>
+    </section>
+
+    <section>
+      <h2 class="muted">Players (next song)</h2>
+      <div class="players" id="players"></div>
+    </section>
+  </main>
+
+  <script>
+    // ---- Minimal dependency-free Maestro client ----
+    // Token + revision-aware polling over the HTTP/1.1 transport.
+    const TOKEN_KEY = 'maestro_token';
+    let token = localStorage.getItem(TOKEN_KEY) || '';
+    let revision = 0;
+    let pollTimer = null;
+    let connected = false;
+
+    const $ = (id) => document.getElementById(id);
+
+    function setStatus(text, cls) {
+      const el = $('status');
+      el.textContent = text;
+      el.className = 'status ' + (cls || '');
+    }
+
+    async function api(path, method, body) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const opts = { method: method || 'GET', headers };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      if (res.status === 401 || res.status === 403) {
+        connected = false;
+        setStatus('Not paired', 'error');
+        showPair(true);
+        throw new Error('unauthorized');
+      }
+      const text = await res.text();
+      return text ? JSON.parse(text) : null;
+    }
+
+    function showPair(show) {
+      $('pairSection').style.display = show ? '' : 'none';
+    }
+
+    async function pair() {
+      token = $('token').value.trim();
+      if (!token) return;
+      localStorage.setItem(TOKEN_KEY, token);
+      try {
+        await fetch('/api/v1/hello');
+        startPolling();
+      } catch (e) {
+        setStatus('Connection failed', 'error');
+      }
+    }
+
+    async function poll() {
+      try {
+        const snap = await api('/api/v1/state?since=' + revision, 'GET');
+        if (snap) {
+          if (snap.revision !== undefined) revision = snap.revision;
+          connected = true;
+          $('disconnected').style.display = 'none';
+          showPair(false);
+          setStatus('Connected · ' + (snap.connection && snap.connection.mode), 'ok');
+          render(snap);
+        }
+      } catch (e) {
+        $('disconnected').style.display = connected ? '' : 'none';
+        connected = false;
+        stopPolling();
+        setTimeout(startPolling, 2000);
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      poll();
+      pollTimer = setInterval(poll, 1500);
+    }
+    function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+    function render(snap) {
+      // Volumes
+      const volWrap = $('volumes');
+      volWrap.innerHTML = '';
+      const vols = snap.volumes || {};
+      const order = ['Vocals','Master','Song','Guitar','Bass','Rhythm','Keys','Drums','Crowd','Sfx','DrumSfx','Metronome','VocalMonitoring'];
+      for (const k of order) {
+        if (!(k in vols)) continue;
+        const row = document.createElement('div');
+        row.className = 'vol';
+        row.innerHTML = '<label><span>' + k + '</span><span>' + Math.round(vols[k]*100) + '%</span></label>';
+        const range = document.createElement('input');
+        range.type = 'range'; range.min = 0; range.max = 1; range.step = 0.01; range.value = vols[k];
+        range.onchange = () => setVolume(k, parseFloat(range.value));
+        row.appendChild(range);
+        volWrap.appendChild(row);
+      }
+
+      // Players
+      const plWrap = $('players');
+      plWrap.innerHTML = '';
+      for (const p of (snap.players || [])) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        let html = '<h3>' + esc(p.name) +
+          (p.isBot ? ' <span class="muted">(bot)</span>' : '') +
+          (p.sittingOut ? ' <span class="muted">(sitting out)</span>' : '') +
+          (p.pending && p.pending.hasPending ? ' <span class="pending">pending</span>' : '') +
+          '</h3>';
+        html += '<div class="muted">' + esc(p.instrument) + ' · ' + esc(p.difficulty) + ' · ' + esc(p.gameMode) + '</div>';
+        if (p.highway && p.highway.visible) {
+          html += '<div class="muted">Highway speed ' + esc(p.highway.noteSpeed) +
+            ' · length ' + esc(p.highway.highwayLength) + '</div>';
+        }
+        if (p.pending && p.pending.hasPending) {
+          html += '<div class="pending">Next-song draft queued</div>';
+        }
+        html += '<button class="draft-btn" data-profile="' + esc(p.id) + '">Discard draft</button>';
+        card.innerHTML = html;
+        const discard = card.querySelector('.draft-btn');
+        discard.onclick = () => sendProfileCommand('discardPending', p.id);
+        plWrap.appendChild(card);
+      }
+      if (!snap.players || snap.players.length === 0) {
+        plWrap.innerHTML = '<div class="muted">No active players.</div>';
+      }
+    }
+
+    async function setVolume(key, value) {
+      try {
+        const r = await api('/api/v1/commands', 'POST', {
+          id: 'vol-' + Date.now(), type: 'setVolume',
+          payload: { key: key, value: value }
+        });
+        if (r && r.ok) { setStatus(key + ' applies now', 'ok'); }
+        else { setStatus((r && r.error && r.error.message) || 'Volume command failed', 'error'); }
+      } catch (e) { /* unauthorized handled in api() */ }
+    }
+
+    async function sendProfileCommand(type, profileId) {
+      try {
+        const r = await api('/api/v1/commands', 'POST', {
+          id: type + '-' + Date.now(), type: type,
+          payload: { profileId: profileId }
+        });
+        if (r && r.ok) setStatus('Draft command acknowledged for next song', 'ok');
+        else setStatus((r && r.error && r.error.message) || 'Draft command failed', 'error');
+      } catch (e) { /* unauthorized handled in api() */ }
+    }
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+    $('pairBtn').onclick = pair;
+    $('token').value = token;
+    // Kick off: hello is unauthenticated.
+    fetch('/api/v1/hello').then(() => { if (token) startPolling(); else setStatus('Ready to pair'); }).catch(() => setStatus('Cannot reach YARG', 'error'));
+  </script>
+</body>
+</html>

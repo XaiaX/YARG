@@ -104,12 +104,27 @@ namespace YARG
             SettingsManager.LoadSettings();
             InputManager.Initialize();
 
+            // Spawn the persistent Maestro controller on this GameObject so it survives
+            // Menu/Gameplay/Score scene transitions. The host is disabled by default;
+            // it only starts when explicitly enabled (Phase 4 toggle / future setting).
+            if (GetComponent<Integration.Maestro.MaestroController>() == null)
+            {
+                gameObject.AddComponent<Integration.Maestro.MaestroController>();
+            }
+
             LoadScene(SceneIndex.Menu);
         }
 
         // Tracks whether audio was muted because the window lost focus,
         // so it can be restored when focus returns.
         private bool _mutedFromFocusLoss;
+
+        /// <summary>
+        /// Read-only query for whether the master bus is muted due to focus loss.
+        /// Maestro uses this to reject master-volume commands that would unmute YARG
+        /// while <see cref="SettingsManager.Settings.MuteOnFocusLoss"/> is active.
+        /// </summary>
+        public bool IsMutedFromFocusLoss => _mutedFromFocusLoss;
 
         private void OnApplicationFocus(bool hasFocus)
         {
