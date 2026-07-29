@@ -190,12 +190,15 @@
       const volWrap = $('volumes');
       volWrap.innerHTML = '';
       const vols = snap.volumes || {};
-      const order = ['Vocals','Master','Song','Guitar','Bass','Rhythm','Keys','Drums','Crowd','Sfx','DrumSfx','Metronome','VocalMonitoring'];
+      // Match the in-game Audio settings order. The protocol calls the backing
+      // stem "Song", but the operator-facing label is "Backing".
+      const order = ['Master','Guitar','Rhythm','Bass','Keys','Drums','Vocals','Song','Crowd','Sfx','DrumSfx','VocalMonitoring','Metronome'];
+      const labels = { Song: 'Backing', Sfx: 'SFX', DrumSfx: 'Drum SFX', VocalMonitoring: 'Vocal Monitoring' };
       for (const k of order) {
         if (!(k in vols)) continue;
         const row = document.createElement('div');
         row.className = 'vol';
-        row.innerHTML = '<label><span>' + k + '</span><span>' + Math.round(vols[k]*100) + '%</span></label>';
+        row.innerHTML = '<label><span>' + (labels[k] || k) + '</span><span>' + Math.round(vols[k]*100) + '%</span></label>';
         const range = document.createElement('input');
         range.type = 'range'; range.min = 0; range.max = 1; range.step = 0.01; range.value = vols[k];
         range.onchange = () => setVolume(k, parseFloat(range.value));
