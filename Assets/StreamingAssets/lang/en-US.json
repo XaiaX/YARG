@@ -1582,6 +1582,14 @@
                 "Name": "Enable UDP data stream",
                 "Description": "Enables sending of UDP information packets over the network, for software such as YALCY."
             },
+            "MaestroEnable": {
+                "Name": "Enable Maestro",
+                "Description": "Hosts the Maestro browser companion on this computer. Profile changes apply at the next safe song boundary, while supported volume controls apply immediately."
+            },
+            "ShowMaestroPairingPin": {
+                "Name": "Show Maestro Pairing PIN",
+                "Description": "Displays the current pairing PIN required to authorize Maestro commands."
+            },
             "RB3EEnabled": {
                 "Name": "Enable RB3E Stage Kit data stream",
                 "Description": "Enables sending of RB3E style stage kit information packets over the network, for hardware such as StageKitPied."
