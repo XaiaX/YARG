@@ -1004,7 +1004,8 @@
             "AddFolder": "Add Folder",
             "RefreshCache": "Scan Songs",
             "OpenExecutablePath": "Open Executable Path",
-            "OpenPersistentDataPath": "Open Persistent Data Path"
+            "OpenPersistentDataPath": "Open Persistent Data Path",
+            "ShowMaestroPairingPin": "Show Maestro Pairing PIN"
         },
         "Setting": {
             "AllowDuplicateSongs": {

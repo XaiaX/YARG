@@ -59,6 +59,7 @@ namespace YARG.Integration.Maestro
         private string _currentSceneName = "Persistent";
         private bool _paused;
         private SongEntry _currentSong;
+        private bool _startupSettingApplied;
 
         // Transport lifecycle. Set in StartHost, cleared in StopHost.
         private IMaestroTransport _transport;
@@ -137,6 +138,18 @@ namespace YARG.Integration.Maestro
 
         private void Update()
         {
+            // Settings may finish loading before or after this persistent controller is created.
+            // Reconcile once on the main thread so a saved enabled value starts the host without
+            // requiring the operator to toggle Maestro off and back on.
+            if (!_startupSettingApplied && SettingsManager.SettingContainer.IsInitialized)
+            {
+                _startupSettingApplied = true;
+                if (SettingsManager.Settings.MaestroEnable.Value)
+                {
+                    StartHost();
+                }
+            }
+
             // 1. Drain and process queued commands on the main thread.
             var dispatches = _commandQueue.Drain();
             if (dispatches.Count > 0)

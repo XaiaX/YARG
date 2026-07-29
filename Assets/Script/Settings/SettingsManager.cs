@@ -246,8 +246,7 @@ namespace YARG.Settings
                 nameof(Settings.DataStreamEnable),
                 nameof(Settings.MaestroEnable),
                 new ButtonRowMetadata(nameof(Settings.ShowMaestroPairingPin),
-                    visibilityPredicate: () => MaestroController.Instance != null &&
-                                               MaestroController.Instance.IsEnabled),
+                    visibilityPredicate: () => Settings.MaestroEnable.Value),
                 nameof(Settings.SaveScoresWithBots),
                 new HeaderMetadata("Accessibility"),
                 nameof(Settings.FontScaling),
