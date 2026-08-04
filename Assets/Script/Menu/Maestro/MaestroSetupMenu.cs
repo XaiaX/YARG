@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Extensions;
@@ -34,13 +35,13 @@ namespace YARG.Menu.Maestro
         [SerializeField] private TMP_Text _instrumentText;
         [SerializeField] private TMP_Text _difficultyText;
         [SerializeField] private TMP_Text _modifierText;
-        [SerializeField] private NavigatableButton _gameModeButton;
-        [SerializeField] private NavigatableButton _instrumentButton;
-        [SerializeField] private NavigatableButton _difficultyButton;
-        [SerializeField] private NavigatableButton _modifierButton;
-        [SerializeField] private NavigatableButton _controllerLockButton;
-        [SerializeField] private NavigatableButton _backButton;
-        [SerializeField] private NavigatableButton _continueButton;
+        [SerializeField] private NavigatableUnityButton _gameModeButton;
+        [SerializeField] private NavigatableUnityButton _instrumentButton;
+        [SerializeField] private NavigatableUnityButton _difficultyButton;
+        [SerializeField] private NavigatableUnityButton _modifierButton;
+        [SerializeField] private NavigatableUnityButton _controllerLockButton;
+        [SerializeField] private NavigatableUnityButton _backButton;
+        [SerializeField] private NavigatableUnityButton _continueButton;
 
         private readonly Dictionary<Guid, MaestroPlayerRow> _rows = new();
         private Guid _selectedProfileId;
@@ -120,13 +121,26 @@ namespace YARG.Menu.Maestro
 
         private void ConfigureButtons()
         {
-            _gameModeButton?.SetOnClickEvent(CycleGameMode);
-            _instrumentButton?.SetOnClickEvent(CycleInstrument);
-            _difficultyButton?.SetOnClickEvent(CycleDifficulty);
-            _modifierButton?.SetOnClickEvent(CycleModifier);
-            _controllerLockButton?.SetOnClickEvent(ToggleControllerLock);
-            _backButton?.SetOnClickEvent(Back);
-            _continueButton?.SetOnClickEvent(Continue);
+            ConfigureButton(_gameModeButton, CycleGameMode);
+            ConfigureButton(_instrumentButton, CycleInstrument);
+            ConfigureButton(_difficultyButton, CycleDifficulty);
+            ConfigureButton(_modifierButton, CycleModifier);
+            ConfigureButton(_controllerLockButton, ToggleControllerLock);
+            ConfigureButton(_backButton, Back);
+            ConfigureButton(_continueButton, Continue);
+        }
+
+        private static void ConfigureButton(NavigatableUnityButton button, UnityAction action)
+        {
+            if (button == null)
+                return;
+
+            var unityButton = button.GetComponent<Button>();
+            if (unityButton == null)
+                return;
+
+            unityButton.onClick.RemoveAllListeners();
+            unityButton.onClick.AddListener(action);
         }
 
         private void PushNavigationScheme()
