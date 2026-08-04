@@ -26,22 +26,25 @@ namespace YARG.Menu.Navigation
         /// Whether or not this action is a repeat.
         /// </summary>
         public readonly bool IsRepeat;
+        public readonly MenuInputSource Source;
 
-        public NavigationContext(MenuAction action, YargPlayer player, bool repeat = false)
+        public NavigationContext(MenuAction action, YargPlayer player,
+            MenuInputSource source = MenuInputSource.Unknown, bool repeat = false)
         {
             Action = action;
             Player = player;
+            Source = source;
             IsRepeat = repeat;
         }
 
         public bool IsSameAs(NavigationContext other)
         {
-            return other.Action == Action && other.Player == Player;
+            return other.Action == Action && other.Player == Player && other.Source == Source;
         }
 
         public NavigationContext AsRepeat()
         {
-            return new NavigationContext(Action, Player, true);
+            return new NavigationContext(Action, Player, Source, true);
         }
     }
 
@@ -104,6 +107,10 @@ namespace YARG.Menu.Navigation
         public bool MusicPlayerActive => HelpBar.Instance.MusicPlayer.isActiveAndEnabled;
 
         private bool _disableMenuInputs;
+        private int _nextControllerLockToken;
+        private readonly HashSet<int> _controllerLockTokens = new();
+
+        public bool ControllerLockEnabled => _controllerLockTokens.Count > 0;
 
         public bool DisableMenuInputs
         {
@@ -125,15 +132,57 @@ namespace YARG.Menu.Navigation
 
             if (_disableMenuInputs)
             {
-                _repeatInputs.Clear();
+                ClearHeldInputs();
+            }
+        }
 
-                for (int i = _holdInputs.Count - 1; i >= 0; i--)
-                {
-                    _holdInputs[i].Tracker.StopHolding();
-                    _holdInputs[i].Tracker.ClearEvents();
-                }
+        private void ClearHeldInputs()
+        {
+            _repeatInputs.Clear();
 
-                _holdInputs.Clear();
+            for (int i = _holdInputs.Count - 1; i >= 0; i--)
+            {
+                _holdInputs[i].Tracker.StopHolding();
+                _holdInputs[i].Tracker.ClearEvents();
+            }
+
+            _holdInputs.Clear();
+        }
+
+        public System.IDisposable AcquireControllerLock()
+        {
+            int token = ++_nextControllerLockToken;
+            bool wasEnabled = ControllerLockEnabled;
+            _controllerLockTokens.Add(token);
+            if (!wasEnabled)
+            {
+                ClearHeldInputs();
+            }
+
+            return new ControllerLockScope(this, token);
+        }
+
+        private void ReleaseControllerLock(int token)
+        {
+            _controllerLockTokens.Remove(token);
+        }
+
+        private sealed class ControllerLockScope : System.IDisposable
+        {
+            private Navigator _owner;
+            private readonly int _token;
+
+            public ControllerLockScope(Navigator owner, int token)
+            {
+                _owner = owner;
+                _token = token;
+            }
+
+            public void Dispose()
+            {
+                if (_owner == null) return;
+                _owner.ReleaseControllerLock(_token);
+                _owner = null;
             }
         }
 
@@ -149,15 +198,28 @@ namespace YARG.Menu.Navigation
             {
                 if (_repeatInputs.Count > 0 || _holdInputs.Count > 0)
                 {
-                    _repeatInputs.Clear();
-                    for (int i = _holdInputs.Count - 1; i >= 0; i--)
-                    {
-                        _holdInputs[i].Tracker.StopHolding();
-                        _holdInputs[i].Tracker.ClearEvents();
-                    }
-                    _holdInputs.Clear();
+                    ClearHeldInputs();
                 }
                 return;
+            }
+
+            if (ControllerLockEnabled)
+            {
+                for (int i = _repeatInputs.Count - 1; i >= 0; i--)
+                {
+                    if (_repeatInputs[i].Context.Source == MenuInputSource.Controller)
+                        _repeatInputs.RemoveAt(i);
+                }
+
+                for (int i = _holdInputs.Count - 1; i >= 0; i--)
+                {
+                    if (_holdInputs[i].Context.Source != MenuInputSource.Controller)
+                        continue;
+
+                    _holdInputs[i].Tracker.StopHolding();
+                    _holdInputs[i].Tracker.ClearEvents();
+                    _holdInputs.RemoveAt(i);
+                }
             }
 
             foreach (var hold in _holdInputs)
@@ -177,9 +239,11 @@ namespace YARG.Menu.Navigation
             }
         }
 
-        private void ProcessInput(YargPlayer player, ref GameInput input)
+        private void ProcessInput(YargPlayer player, UnityEngine.InputSystem.InputDevice device,
+            MenuInputSource source, ref GameInput input)
         {
-            if (ShouldBlockInputs()) return;
+            if (ShouldBlockInputs() || (ControllerLockEnabled && source == MenuInputSource.Controller))
+                return;
 
             var action = (MenuAction) input.Action;
 
@@ -196,7 +260,7 @@ namespace YARG.Menu.Navigation
                 };
             }
 
-            var context = new NavigationContext(action, player);
+            var context = new NavigationContext(action, player, source);
 
             if (input.Button)
             {
@@ -286,7 +350,7 @@ namespace YARG.Menu.Navigation
 
         private void InvokeNavigationEvent(NavigationContext ctx)
         {
-            if (ShouldBlockInputs())
+            if (ShouldBlockContext(ctx))
             {
                 return;
             }
@@ -301,7 +365,7 @@ namespace YARG.Menu.Navigation
 
         private void InvokeHoldOffEvent(NavigationContext ctx)
         {
-            if (ShouldBlockInputs())
+            if (ShouldBlockContext(ctx))
             {
                 return;
             }
@@ -314,7 +378,7 @@ namespace YARG.Menu.Navigation
 
         private void InvokeHoldEvent(NavigationContext ctx)
         {
-            if (ShouldBlockInputs())
+            if (ShouldBlockContext(ctx))
             {
                 return;
             }
@@ -330,6 +394,9 @@ namespace YARG.Menu.Navigation
             _schemeStack.Push(scheme);
             UpdateHelpBar().Forget();
         }
+
+        public bool IsTopScheme(NavigationScheme scheme) =>
+            scheme != null && _schemeStack.Count > 0 && ReferenceEquals(_schemeStack.Peek(), scheme);
 
         public void PopScheme()
         {
@@ -369,6 +436,12 @@ namespace YARG.Menu.Navigation
         private bool ShouldBlockInputs()
         {
             return DisableMenuInputs || LoadingScreen.IsActive;
+        }
+
+        private bool ShouldBlockContext(NavigationContext context)
+        {
+            return ShouldBlockInputs() ||
+                (ControllerLockEnabled && context.Source == MenuInputSource.Controller);
         }
     }
 }

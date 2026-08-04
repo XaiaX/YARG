@@ -42,7 +42,7 @@ namespace YARG.Input
             return Math.Abs(value - previousValue) >= settings.IntegerDeltaThreshold;
         }
 
-        protected override void OnStateChanged(SingleIntegerBinding _, double time)
+        protected override void OnStateChanged(SingleIntegerBinding _, InputControl source, double time)
         {
             int max = 0;
             foreach (var binding in _bindings)
@@ -57,7 +57,7 @@ namespace YARG.Input
                 return;
 
             State = max;
-            FireInputEvent(time, max);
+            FireInputEvent(source, time, max);
         }
 
         protected override SingleIntegerBinding CreateBinding(ActuationSettings settings, InputControl<int> control)

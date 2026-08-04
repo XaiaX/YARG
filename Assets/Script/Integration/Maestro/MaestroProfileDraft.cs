@@ -11,8 +11,8 @@ namespace YARG.Integration.Maestro
     /// <para>
     /// <b>This class never mutates the real <see cref="YargProfile"/>.</b>
     /// It holds nullable overrides separately from the serialized profile fields.
-    /// The safe-boundary apply (DifficultySelectMenu finalization, not yet wired)
-    /// will read these overrides; until then they are display-only pending state.
+    /// The in-game Maestro page reads these overrides into its staged snapshot; Continue
+    /// validates the complete player set and clears them only after a successful commit.
     /// </para>
     /// </summary>
     public sealed class MaestroProfileDraft
@@ -106,7 +106,7 @@ namespace YARG.Integration.Maestro
         public void ClearModifiers() => PendingModifiers = null;
 
         /// <summary>
-        /// Clears the draft after the DifficultySelect boundary has consumed it.
+        /// Clears the draft after the in-game Maestro Continue boundary has consumed it.
         /// </summary>
         public void MarkApplied()
         {

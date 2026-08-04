@@ -1,4 +1,5 @@
 ﻿using System;
+using UnityEngine.InputSystem;
 using YARG.Core;
 using YARG.Core.Engine;
 using YARG.Core.Game;
@@ -165,9 +166,10 @@ namespace YARG.Player
             InputsEnabled = false;
         }
 
-        private void OnMenuInput(ref GameInput input)
+        private void OnMenuInput(InputControl control, ref GameInput input)
         {
-            MenuInput?.Invoke(this, ref input);
+            InputDevice device = control?.device;
+            MenuInput?.Invoke(this, device, InputManager.ClassifyMenuInput(device), ref input);
         }
 
         public void Dispose()

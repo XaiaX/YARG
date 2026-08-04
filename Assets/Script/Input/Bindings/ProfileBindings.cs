@@ -76,10 +76,10 @@ namespace YARG.Input
             }
         }
 
-        public event GameInputProcessed MenuInputProcessed
+        public event MenuInputProcessed MenuInputProcessed
         {
-            add    => MenuBindings.InputProcessed += value;
-            remove => MenuBindings.InputProcessed -= value;
+            add    => MenuBindings.MenuInputProcessed += value;
+            remove => MenuBindings.MenuInputProcessed -= value;
         }
 
         public ProfileBindings(YargProfile profile)

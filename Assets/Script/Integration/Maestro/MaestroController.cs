@@ -49,6 +49,8 @@ namespace YARG.Integration.Maestro
         private readonly Dictionary<Guid, MaestroProfileDraft> _drafts = new();
 
         private long _revision;
+        private long _successfulCommitGeneration;
+        private long _acknowledgedCommitGeneration;
         private volatile MaestroSnapshot _latestSnapshot;
         private bool _snapshotDirty = true;
 
@@ -93,6 +95,23 @@ namespace YARG.Integration.Maestro
         /// from any thread because the returned object is immutable once published.
         /// </summary>
         public MaestroSnapshot GetSnapshot() => _latestSnapshot;
+
+        /// <summary>
+        /// Marks the published snapshot stale after an in-game Maestro commit. The page
+        /// owns the atomic boundary; the controller only publishes the resulting state.
+        /// </summary>
+        public void MarkSnapshotDirty() => _snapshotDirty = true;
+
+        /// <summary>
+        /// Records that the in-game Maestro page completed a full atomic Continue. The
+        /// next ApplyPending acknowledgement may report Applied once; this method never
+        /// mutates drafts and is intentionally called only after the commit succeeds.
+        /// </summary>
+        public void MarkPendingApplied()
+        {
+            _successfulCommitGeneration++;
+            _snapshotDirty = true;
+        }
 
         public MaestroDispatch EnqueueCommand(MaestroCommand command)
         {
@@ -362,8 +381,8 @@ namespace YARG.Integration.Maestro
         }
 
         /// <summary>
-        /// Reads a pending profile draft from the Unity main thread. The caller must apply it
-        /// only at the authoritative DifficultySelect finalization boundary.
+        /// Reads a pending profile draft from the Unity main thread. The caller must stage it
+        /// and clear it only after the authoritative in-game Maestro Continue boundary.
         /// </summary>
         public bool TryGetPendingDraft(Guid profileId, out MaestroProfileDraft draft)
         {
@@ -468,10 +487,17 @@ namespace YARG.Integration.Maestro
 
         private MaestroCommandResponse HandleApplyPending(MaestroCommand cmd)
         {
-            // The safe boundary (DifficultySelectMenu all-players-finalized) is not yet wired.
-            // Acknowledge as queued and report the target boundary; never pretend it applied.
+            // ApplyPending is a passive acknowledgement request. It never opens the page,
+            // validates drafts, mutates profiles, or clears drafts itself.
+            if (_successfulCommitGeneration > _acknowledgedCommitGeneration)
+            {
+                _acknowledgedCommitGeneration = _successfulCommitGeneration;
+                return Ok(cmd.Id, MaestroCommandStatus.Applied, null,
+                    "Applied by the in-game Maestro Continue boundary.");
+            }
+
             return Ok(cmd.Id, MaestroCommandStatus.Queued, null,
-                "Queued for DifficultySelect all-players-finalized boundary (not yet wired).");
+                "Queued for the in-game Maestro Continue boundary.");
         }
 
         private MaestroCommandResponse HandleDiscardPending(MaestroCommand cmd)

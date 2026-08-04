@@ -18,7 +18,16 @@ namespace YARG.Input
 {
     using Enumerate = InputControlExtensions.Enumerate;
 
-    public delegate void MenuInputEvent(YargPlayer player, ref GameInput input);
+    public enum MenuInputSource
+    {
+        DefaultKeyboard,
+        Keyboard,
+        Controller,
+        Unknown,
+    }
+
+    public delegate void MenuInputEvent(YargPlayer player, InputDevice device, MenuInputSource source,
+        ref GameInput input);
 
     public static class InputManager
     {
@@ -181,12 +190,23 @@ namespace YARG.Input
         public static void OnMenuAction(MenuAction action, bool pressed)
         {
             var input = new GameInput(CurrentInputTime, (int)action, pressed);
-            MenuInput?.Invoke(null, ref input);
+            MenuInput?.Invoke(null, null, MenuInputSource.DefaultKeyboard, ref input);
         }
 
-        private static void OnMenuInput(YargPlayer player, ref GameInput input)
+        private static void OnMenuInput(YargPlayer player, InputDevice device, MenuInputSource source,
+            ref GameInput input)
         {
-            MenuInput?.Invoke(player, ref input);
+            MenuInput?.Invoke(player, device, source, ref input);
+        }
+
+        public static MenuInputSource ClassifyMenuInput(InputDevice device)
+        {
+            if (device is Keyboard)
+                return MenuInputSource.Keyboard;
+            if (device != null)
+                return MenuInputSource.Controller;
+
+            return MenuInputSource.Unknown;
         }
 
         private static void OnBeforeUpdate()

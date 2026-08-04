@@ -70,7 +70,8 @@ namespace YARG.Menu.Calibrator
             _mixer?.Dispose();
         }
 
-        private void OnMenuInput(YargPlayer player, ref GameInput input)
+        private void OnMenuInput(YargPlayer player, UnityEngine.InputSystem.InputDevice device,
+            MenuInputSource source, ref GameInput input)
         {
             // Only detect button downs
             if (!input.Button) return;

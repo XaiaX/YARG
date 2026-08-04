@@ -220,7 +220,7 @@ namespace YARG.Input
             return Math.Abs(value - previousValue) >= settings.AxisDeltaThreshold;
         }
 
-        protected override void OnStateChanged(SingleAxisBinding _, double time)
+        protected override void OnStateChanged(SingleAxisBinding _, InputControl source, double time)
         {
             float max = 0f;
             foreach (var binding in _bindings)
@@ -235,7 +235,7 @@ namespace YARG.Input
                 return;
 
             State = max;
-            FireInputEvent(time, max);
+            FireInputEvent(source, time, max);
         }
 
         protected override SingleAxisBinding CreateBinding(ActuationSettings settings, InputControl<float> control)

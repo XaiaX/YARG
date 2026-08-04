@@ -1,0 +1,84 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &2000000000000000000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2000000000000000001}
+  - component: {fileID: 2000000000000000002}
+  - component: {fileID: 2000000000000000003}
+  m_Layer: 5
+  m_Name: MaestroSetupMenu
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!224 &2000000000000000001
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000000000000000000}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+  m_ConstrainProportionsScale: 0
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2000000000000000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000000000000000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8ace06a29e24742a57e7063a7345cf9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: YARG.Menu::MenuObject
+  <Menu>k__BackingField: 8
+  <HideBelow>k__BackingField: 1
+--- !u!114 &2000000000000000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000000000000000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddd840787f164b448a4c5997bf1000a1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: YARG.Menu.Maestro::MaestroSetupMenu
+  _songTitle: {fileID: 0}
+  _errorText: {fileID: 0}
+  _controllerLockText: {fileID: 0}
+  _playerRowContainer: {fileID: 0}
+  _playerRowPrefab: {fileID: 1000000000000000003, guid: 5b3e090e31e7e480f8427c90fde429c4, type: 3}
+  _playerScroll: {fileID: 0}
+  _navigationGroup: {fileID: 0}
+  _selectedPlayerText: {fileID: 0}
+  _gameModeText: {fileID: 0}
+  _instrumentText: {fileID: 0}
+  _difficultyText: {fileID: 0}
+  _modifierText: {fileID: 0}
+  _gameModeButton: {fileID: 0}
+  _instrumentButton: {fileID: 0}
+  _difficultyButton: {fileID: 0}
+  _modifierButton: {fileID: 0}
+  _controllerLockButton: {fileID: 0}
+  _backButton: {fileID: 0}
+  _continueButton: {fileID: 0}

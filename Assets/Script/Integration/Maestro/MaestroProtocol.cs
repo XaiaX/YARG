@@ -143,9 +143,9 @@ namespace YARG.Integration.Maestro
     /// </summary>
     public static class MaestroCommandStatus
     {
-        public const string Queued = "queued";       // accepted, will be applied on the main thread
+        public const string Queued = "queued";       // pending at an in-game or main-thread boundary
         public const string Accepted = "accepted";
-        public const string Applied = "applied";     // applied now (reserved for Phase 2 live path)
+        public const string Applied = "applied";     // committed at the authoritative page boundary
     }
 
     /// <summary>

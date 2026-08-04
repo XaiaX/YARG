@@ -20,6 +20,7 @@ using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Menu.Filters;
 using YARG.Menu.MusicLibrary;
+using YARG.Menu.Maestro;
 using YARG.Player;
 using YARG.Song;
 
@@ -107,6 +108,7 @@ namespace YARG.Menu.DifficultySelect
 
         private int _playerIndex;
         private int _vocalModifierSelectIndex = -1;
+        private Guid _vocalModifierPrimaryProfileId;
 
         private State _lastMenuState;
         private State _menuState;
@@ -134,6 +136,12 @@ namespace YARG.Menu.DifficultySelect
         {
             string subHeaderKey = GlobalVariables.State.IsPractice ? "Practice" : "Quickplay";
             _subHeader.text = Localize.Key("Menu.Main.Options", subHeaderKey);
+
+            // Maestro Back returns to the completed-player boundary instead of starting a
+            // fresh song setup session. The page has already popped its own scheme before
+            // reactivating this menu, so this menu owns the restored Difficulty Select scheme.
+            var pageSession = MaestroSetupSession.Active;
+            bool returningFromMaestro = pageSession?.ReturningToDifficultySelect == true;
 
             // Set navigation scheme
             Navigator.Instance.PushScheme(new NavigationScheme(new()
@@ -182,18 +190,44 @@ namespace YARG.Menu.DifficultySelect
                 _songList = new List<SongEntry> { GlobalVariables.State.CurrentSong };
             }
 
-            // Starting a fresh selection session: discard any session-scoped modifiers
-            // imposed by a previous song (see ApplySessionModifiers) so each player's
-            // own saved selection is what shows and is edited here.
-            foreach (var player in PlayerContainer.Players)
+            if (returningFromMaestro)
             {
-                player.Profile.RestoreSavedModifiers();
-            }
+                _playerIndex = Mathf.Clamp(pageSession.CompletedPlayerBoundary - 1, 0,
+                    Mathf.Max(0, PlayerContainer.Players.Count - 1));
+                _vocalModifierPrimaryProfileId = pageSession.VocalPrimaryProfileId;
+                _vocalModifierSelectIndex = -1;
+                if (_vocalModifierPrimaryProfileId != default)
+                {
+                    for (int i = 0; i < PlayerContainer.Players.Count; i++)
+                    {
+                        if (PlayerContainer.Players[i].Profile.Id == _vocalModifierPrimaryProfileId)
+                        {
+                            _vocalModifierSelectIndex = i;
+                            break;
+                        }
+                    }
+                }
 
-            // ChangePlayer(0) will update for the current player
-            _playerIndex = 0;
-            _vocalModifierSelectIndex = -1;
-            ChangePlayer(0);
+                // Rebuild the current player's view without advancing to the next player.
+                ChangePlayer(0);
+                pageSession.ClearReturningToDifficultySelect();
+            }
+            else
+            {
+                // Starting a fresh selection session: discard any session-scoped modifiers
+                // imposed by a previous song (see ApplySessionModifiers) so each player's
+                // own saved selection is what shows and is edited here.
+                foreach (var player in PlayerContainer.Players)
+                {
+                    player.Profile.RestoreSavedModifiers();
+                }
+
+                // ChangePlayer(0) will update for the current player
+                _playerIndex = 0;
+                _vocalModifierSelectIndex = -1;
+                _vocalModifierPrimaryProfileId = default;
+                ChangePlayer(0);
+            }
 
             _loadingPhrase.text = RichTextUtils.StripRichTextTags(
                 GlobalVariables.State.CurrentSong.LoadingPhrase, RichTextTags.BadTags);
@@ -483,6 +517,7 @@ namespace YARG.Menu.DifficultySelect
                         _vocalModifierSelectIndex == -1)
                     {
                         _vocalModifierSelectIndex = _playerIndex;
+                        _vocalModifierPrimaryProfileId = player.Profile.Id;
                     }
 
                     ChangePlayer(1);
@@ -1343,242 +1378,6 @@ namespace YARG.Menu.DifficultySelect
 
         }
 
-        private void ApplyMaestroPendingScalars()
-        {
-            var maestro = MaestroController.Instance;
-            if (maestro == null)
-            {
-                return;
-            }
-
-            foreach (var player in PlayerContainer.Players)
-            {
-                if (player?.Profile == null || player.SittingOut ||
-                    !maestro.TryGetPendingDraft(player.Profile.Id, out var draft))
-                {
-                    continue;
-                }
-
-                var profile = player.Profile;
-                var targetGameMode = draft.PendingGameMode ?? profile.GameMode;
-                if (draft.PendingGameMode.HasValue &&
-                    IsMaestroModeAvailable(targetGameMode))
-                {
-                    profile.GameMode = targetGameMode;
-                    draft.ClearGameMode();
-                }
-                else
-                {
-                    targetGameMode = profile.GameMode;
-                }
-
-                var targetInstrument = draft.PendingInstrument ?? profile.CurrentInstrument;
-                if (IsMaestroInstrumentAvailable(player, targetGameMode, targetInstrument))
-                {
-                    profile.PreferredInstrument = targetInstrument;
-                    profile.CurrentInstrument = targetInstrument;
-                    if (draft.PendingInstrument.HasValue)
-                    {
-                        draft.ClearInstrument();
-                    }
-                }
-                else if (!draft.PendingInstrument.HasValue)
-                {
-                    var fallback = targetGameMode.PossibleInstrumentsForSong(GlobalVariables.State.CurrentSong)
-                        .FirstOrDefault(instrument => IsMaestroInstrumentAvailable(player, targetGameMode, instrument));
-                    if (IsMaestroInstrumentAvailable(player, targetGameMode, fallback))
-                    {
-                        profile.CurrentInstrument = fallback;
-                    }
-                }
-
-                if (draft.PendingDifficulty.HasValue &&
-                    IsMaestroDifficultyAvailable(profile.CurrentInstrument, draft.PendingDifficulty.Value))
-                {
-                    profile.DifficultyFallback = draft.PendingDifficulty.Value;
-                    profile.CurrentDifficulty = draft.PendingDifficulty.Value;
-                    draft.ClearDifficulty();
-                }
-                else if (!draft.PendingDifficulty.HasValue)
-                {
-                    profile.CurrentDifficulty = ResolveMaestroDifficulty(profile);
-                }
-
-                if (draft.PendingNoteSpeed.HasValue &&
-                    targetGameMode != GameMode.Vocals && targetGameMode != GameMode.PartyVocals)
-                {
-                    profile.NoteSpeed = draft.PendingNoteSpeed.Value;
-                    draft.ClearNoteSpeed();
-                }
-
-                if (draft.PendingHighwayLength.HasValue &&
-                    targetGameMode != GameMode.Vocals && targetGameMode != GameMode.PartyVocals)
-                {
-                    profile.HighwayLength = draft.PendingHighwayLength.Value;
-                    draft.ClearHighwayLength();
-                }
-
-                if (draft.PendingHarmonyIndex.HasValue &&
-                    (profile.CurrentInstrument == Instrument.Harmony ||
-                     profile.CurrentInstrument == Instrument.PartyVocals))
-                {
-                    profile.HarmonyIndex = draft.PendingHarmonyIndex.Value;
-                    profile.ResolveHarmonyIndex(_maxHarmonyIndex);
-                    draft.ClearHarmonyIndex();
-                }
-            }
-        }
-
-        private bool IsMaestroModeAvailable(GameMode mode)
-        {
-            try
-            {
-                return mode.PossibleInstrumentsForSong(GlobalVariables.State.CurrentSong)
-                    .Any(instrument => _songList.All(song => HasPlayableInstrumentWithoutPlayerLock(song, instrument)));
-            }
-            catch (NotImplementedException)
-            {
-                return false;
-            }
-        }
-
-        private bool IsMaestroInstrumentAvailable(YargPlayer targetPlayer, GameMode mode, Instrument instrument)
-        {
-            try
-            {
-                if (!mode.PossibleInstrumentsForSong(GlobalVariables.State.CurrentSong).Contains(instrument) ||
-                    !_songList.All(song => HasPlayableInstrumentWithoutPlayerLock(song, instrument)))
-                {
-                    return false;
-                }
-
-                if (instrument is Instrument.Vocals or Instrument.Harmony)
-                {
-                    int targetIndex = -1;
-                    for (int i = 0; i < PlayerContainer.Players.Count; i++)
-                    {
-                        if (ReferenceEquals(PlayerContainer.Players[i], targetPlayer))
-                        {
-                            targetIndex = i;
-                            break;
-                        }
-                    }
-
-                    for (int i = 0; i < targetIndex; i++)
-                    {
-                        var prior = PlayerContainer.Players[i];
-                        if (!prior.SittingOut &&
-                            (prior.Profile.CurrentInstrument is Instrument.Vocals or Instrument.Harmony))
-                        {
-                            return prior.Profile.CurrentInstrument == instrument;
-                        }
-                    }
-                }
-
-                return true;
-            }
-            catch (NotImplementedException)
-            {
-                return false;
-            }
-        }
-
-        private static bool HasPlayableInstrumentWithoutPlayerLock(SongEntry entry, Instrument instrument)
-        {
-            if (instrument == Instrument.PartyVocals)
-            {
-                return entry.HasInstrument(Instrument.Vocals) || entry.HasInstrument(Instrument.Harmony);
-            }
-
-            if (entry.HasInstrument(instrument))
-            {
-                return true;
-            }
-
-            return instrument switch
-            {
-                Instrument.FourLaneDrums or Instrument.ProDrums => entry.HasInstrument(Instrument.FiveLaneDrums),
-                Instrument.FiveLaneDrums => entry.HasInstrument(Instrument.ProDrums),
-                _ => false,
-            };
-        }
-
-        private bool IsMaestroDifficultyAvailable(Instrument instrument, Difficulty difficulty)
-        {
-            return _songList.All(song => HasPlayableDifficulty(song, instrument, difficulty));
-        }
-
-        private Difficulty ResolveMaestroDifficulty(YargProfile profile)
-        {
-            var available = EnumExtensions<Difficulty>.Values
-                .Where(difficulty => IsMaestroDifficultyAvailable(profile.CurrentInstrument, difficulty))
-                .ToList();
-            if (available.Count == 0)
-            {
-                return profile.CurrentDifficulty;
-            }
-
-            int fallback = (int) profile.DifficultyFallback;
-            for (int diff = fallback; diff >= (int) Difficulty.Beginner; diff--)
-            {
-                if (available.Contains((Difficulty) diff))
-                {
-                    return (Difficulty) diff;
-                }
-            }
-
-            for (int diff = fallback + 1; diff <= (int) Difficulty.ExpertPlus; diff++)
-            {
-                if (available.Contains((Difficulty) diff))
-                {
-                    return (Difficulty) diff;
-                }
-            }
-
-            return available[0];
-        }
-
-        private void ApplyMaestroPendingModifiers()
-        {
-            var maestro = MaestroController.Instance;
-            if (maestro == null)
-            {
-                return;
-            }
-
-            foreach (var player in PlayerContainer.Players)
-            {
-                if (player?.Profile == null || player.SittingOut ||
-                    !maestro.TryGetPendingDraft(player.Profile.Id, out var draft) ||
-                    !draft.PendingModifiers.HasValue)
-                {
-                    continue;
-                }
-
-                var profile = player.Profile;
-                var scratch = new YargProfile
-                {
-                    CurrentInstrument = profile.CurrentInstrument,
-                    GameMode = profile.GameMode,
-                };
-                foreach (Modifier modifier in Enum.GetValues(typeof(Modifier)))
-                {
-                    if (modifier == Modifier.None ||
-                        (draft.PendingModifiers.Value & modifier) == 0)
-                    {
-                        continue;
-                    }
-
-                    scratch.AddSingleModifier(modifier);
-                }
-
-                // This updates only the session-scoped CurrentModifiers value on the real
-                // profile; the saved modifier selection remains unchanged.
-                profile.ApplySessionModifiers(scratch);
-                draft.ClearModifiers();
-            }
-        }
-
         private void ChangePlayer(int add)
         {
             _playerIndex += add;
@@ -1598,43 +1397,32 @@ namespace YARG.Menu.DifficultySelect
                     return;
                 }
 
-                // Scalar Maestro setup overrides are consumed after the normal menu has
-                // resolved each player, but before the vocal session-modifier synchronization.
-                ApplyMaestroPendingScalars();
-
-                // Ensure all vocal players have the same modifiers active
-                if (_vocalModifierSelectIndex != -1)
+                // The existing Difficulty Select boundary still owns song speed. Setup
+                // values are captured here and finalized by Maestro Continue, so page
+                // edits and remote drafts remain non-mutating until that explicit action.
+                string speedText = _speedInput.text.TrimEnd('%').Trim();
+                if (!float.TryParse(speedText, NumberStyles.Number, CultureInfo.CurrentCulture,
+                        out float speedPercent))
                 {
-                    // Call the player with the selected modifiers, the "primary player"
-                    var primaryPlayer = PlayerContainer.Players[_vocalModifierSelectIndex];
-
-                    // Apply the primary player's modifiers to the other vocal players
-                    // for this session only, so their own saved selections survive
-                    foreach (var player in PlayerContainer.Players)
-                    {
-                        if (player.SittingOut) continue;
-                        if (player == primaryPlayer) continue;
-
-                        if (player.Profile.GameMode == GameMode.Vocals ||
-                            player.Profile.GameMode == GameMode.PartyVocals)
-                        {
-                            player.Profile.ApplySessionModifiers(primaryPlayer.Profile);
-                        }
-                    }
+                    speedPercent = 100f;
                 }
 
-                // Maestro modifier drafts are applied after the normal vocal session
-                // synchronization so non-primary vocal profiles are not overwritten.
-                ApplyMaestroPendingModifiers();
-
-                // This will always work (as it's set up in the input field)
-                // The max speed that the game can keep up with is 5000%
-                float speed = float.Parse(_speedInput.text.TrimEnd('%')) / 100f;
-                speed = Mathf.Clamp(speed, 0.1f, 50.0f);
+                float speed = Mathf.Clamp(speedPercent / 100f, 0.1f, 50.0f);
                 _songSpeed = speed;
                 GlobalVariables.State.SongSpeed = speed;
 
-                GlobalVariables.Instance.LoadScene(SceneIndex.Gameplay);
+                var songs = GlobalVariables.State.PlayingAShow
+                    ? GlobalVariables.State.ShowSongs
+                    : new List<SongEntry> { GlobalVariables.State.CurrentSong };
+                var vocalId = _vocalModifierPrimaryProfileId;
+                if (vocalId == default && _vocalModifierSelectIndex >= 0 &&
+                    _vocalModifierSelectIndex < PlayerContainer.Players.Count)
+                {
+                    vocalId = PlayerContainer.Players[_vocalModifierSelectIndex].Profile.Id;
+                }
+
+                MaestroSetupSession.Begin(PlayerContainer.Players, songs, _playerIndex, vocalId);
+                MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
                 return;
             }
 
