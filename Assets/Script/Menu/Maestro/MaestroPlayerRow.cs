@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using YARG.Core.Game;
 using YARG.Localization;
+using YARG.Menu.Navigation;
 
 namespace YARG.Menu.Maestro
 {
@@ -11,13 +12,12 @@ namespace YARG.Menu.Maestro
     /// Compact, stable-ID keyed overview row for one staged Maestro player.
     /// The row has no profile mutation responsibilities; selection is reported to the page.
     /// </summary>
-    public sealed class MaestroPlayerRow : MonoBehaviour, IPointerClickHandler
+    public sealed class MaestroPlayerRow : NavigatableBehaviour, IPointerClickHandler
     {
         [SerializeField] private TMP_Text _name;
         [SerializeField] private TMP_Text _status;
         [SerializeField] private TMP_Text _setup;
         [SerializeField] private TMP_Text _modifiers;
-        [SerializeField] private GameObject _selectedVisual;
 
         public Guid ProfileId { get; private set; }
         public event Action<Guid> Clicked;
@@ -50,14 +50,17 @@ namespace YARG.Menu.Maestro
                     : player.Modifiers.ToLocalizedName();
                 _modifiers.text = modifierText;
             }
-            if (_selectedVisual != null)
-                _selectedVisual.SetActive(selected);
+            SetSelected(selected, SelectionOrigin.Programmatically);
         }
 
         public void SetSelected(bool selected)
         {
-            if (_selectedVisual != null)
-                _selectedVisual.SetActive(selected);
+            SetSelected(selected, SelectionOrigin.Programmatically);
+        }
+
+        public override void Confirm()
+        {
+            Clicked?.Invoke(ProfileId);
         }
 
         public void OnPointerClick(PointerEventData eventData)

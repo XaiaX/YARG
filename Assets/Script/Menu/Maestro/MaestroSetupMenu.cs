@@ -49,6 +49,7 @@ namespace YARG.Menu.Maestro
         private NavigationScheme _scheme;
         private bool _leaving;
         private bool _controllerLockEnabled = true;
+        private bool _staticNavigationConfigured;
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
@@ -63,14 +64,19 @@ namespace YARG.Menu.Maestro
             _leaving = false;
             _controllerLockEnabled = true;
             AcquireControllerLock();
+            if (_navigationGroup != null)
+                _navigationGroup.SelectionChanged += OnNavigationSelectionChanged;
             BuildRows();
             ConfigureButtons();
+            ConfigureNavigation();
             PushNavigationScheme();
             RefreshView();
         }
 
         private void OnDisable()
         {
+            if (_navigationGroup != null)
+                _navigationGroup.SelectionChanged -= OnNavigationSelectionChanged;
             ReleaseControllerLock();
             if (_scheme != null && Navigator.Instance != null &&
                 Navigator.Instance.IsTopScheme(_scheme))
@@ -143,6 +149,43 @@ namespace YARG.Menu.Maestro
             unityButton.onClick.AddListener(action);
         }
 
+        private void ConfigureNavigation()
+        {
+            if (_navigationGroup == null)
+                return;
+
+            if (!_staticNavigationConfigured)
+            {
+                AddNavigatableIfPresent(_gameModeButton);
+                AddNavigatableIfPresent(_instrumentButton);
+                AddNavigatableIfPresent(_difficultyButton);
+                AddNavigatableIfPresent(_modifierButton);
+                AddNavigatableIfPresent(_controllerLockButton);
+                AddNavigatableIfPresent(_backButton);
+                AddNavigatableIfPresent(_continueButton);
+                _staticNavigationConfigured = true;
+            }
+
+            foreach (var row in _rows.Values)
+                _navigationGroup.AddNavigatable(row);
+
+            if (_navigationGroup.SelectedBehaviour == null)
+                _navigationGroup.SelectFirst();
+        }
+
+        private void AddNavigatableIfPresent(NavigatableBehaviour navigatable)
+        {
+            if (navigatable != null)
+                _navigationGroup.AddNavigatable(navigatable);
+        }
+
+        private void OnNavigationSelectionChanged(NavigatableBehaviour selected,
+            SelectionOrigin selectionOrigin)
+        {
+            if (selected is MaestroPlayerRow row)
+                SelectPlayer(row.ProfileId);
+        }
+
         private void PushNavigationScheme()
         {
             _scheme = new NavigationScheme(new()
@@ -151,7 +194,6 @@ namespace YARG.Menu.Maestro
                 NavigationScheme.Entry.NavigateDown,
                 NavigationScheme.Entry.NavigateSelect,
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back", Back),
-                new NavigationScheme.Entry(MenuAction.Green, "Menu.Common.Confirm", Continue),
             }, false);
             Navigator.Instance.PushScheme(_scheme);
         }

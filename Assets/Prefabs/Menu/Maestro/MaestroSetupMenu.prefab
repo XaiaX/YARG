@@ -387,7 +387,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::YARG.Menu.Navigation.NavigationGroup
   _defaultGroup: 1
   _canBeCurrent: 1
-  _addAllChildrenOnAwake: 1
+  _addAllChildrenOnAwake: 0
   _selectFirst: 0
 --- !u!1 &2647275080326098843
 GameObject:
