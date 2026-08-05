@@ -1,3 +1,5 @@
+// pattern: Imperative Shell
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,10 +8,11 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using YARG.Core;
-using YARG.Core.Extensions;
 using YARG.Core.Game;
 using YARG.Core.Input;
+using YARG.Localization;
 using YARG.Menu.Navigation;
+using YARG.Menu.Persistent;
 using YARG.Player;
 
 namespace YARG.Menu.Maestro
@@ -31,17 +34,11 @@ namespace YARG.Menu.Maestro
 
         [Header("Selected player editor")]
         [SerializeField] private TMP_Text _selectedPlayerText;
-        [SerializeField] private TMP_Text _gameModeText;
-        [SerializeField] private TMP_Text _instrumentText;
-        [SerializeField] private TMP_Text _difficultyText;
-        [SerializeField] private TMP_Text _modifierText;
-        [SerializeField] private NavigatableUnityButton _gameModeButton;
-        [SerializeField] private NavigatableUnityButton _instrumentButton;
-        [SerializeField] private NavigatableUnityButton _difficultyButton;
+        [SerializeField] private TMP_Dropdown _gameModeDropdown;
+        [SerializeField] private TMP_Dropdown _instrumentDropdown;
+        [SerializeField] private TMP_Dropdown _difficultyDropdown;
         [SerializeField] private NavigatableUnityButton _modifierButton;
         [SerializeField] private NavigatableUnityButton _controllerLockButton;
-        [SerializeField] private NavigatableUnityButton _backButton;
-        [SerializeField] private NavigatableUnityButton _continueButton;
 
         private readonly Dictionary<Guid, MaestroPlayerRow> _rows = new();
         private Guid _selectedProfileId;
@@ -50,6 +47,12 @@ namespace YARG.Menu.Maestro
         private bool _leaving;
         private bool _controllerLockEnabled = true;
         private bool _staticNavigationConfigured;
+        private GameMode[] _gameModeOptions = Array.Empty<GameMode>();
+        private Instrument[] _instrumentOptions = Array.Empty<Instrument>();
+        private Difficulty[] _difficultyOptions = Array.Empty<Difficulty>();
+        private MaestroDropdownNavigatable _gameModeNavigation;
+        private MaestroDropdownNavigatable _instrumentNavigation;
+        private MaestroDropdownNavigatable _difficultyNavigation;
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
@@ -67,6 +70,7 @@ namespace YARG.Menu.Maestro
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged += OnNavigationSelectionChanged;
             BuildRows();
+            ConfigureDropdowns();
             ConfigureButtons();
             ConfigureNavigation();
             PushNavigationScheme();
@@ -75,17 +79,20 @@ namespace YARG.Menu.Maestro
 
         private void OnDisable()
         {
+            CloseDropdowns();
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged -= OnNavigationSelectionChanged;
             ReleaseControllerLock();
-            if (_scheme != null && Navigator.Instance != null &&
-                Navigator.Instance.IsTopScheme(_scheme))
-            {
-                // MenuManager deactivation normally follows PopMenu, but scene transitions
-                // can disable this object directly. Pop only when this page still owns top.
-                Navigator.Instance.PopScheme();
-            }
+            if (_scheme != null && Navigator.Instance != null)
+                Navigator.Instance.RemoveScheme(_scheme);
             _scheme = null;
+        }
+
+        private void CloseDropdowns()
+        {
+            _gameModeNavigation?.CloseDropdown();
+            _instrumentNavigation?.CloseDropdown();
+            _difficultyNavigation?.CloseDropdown();
         }
 
         private void AcquireControllerLock()
@@ -127,13 +134,46 @@ namespace YARG.Menu.Maestro
 
         private void ConfigureButtons()
         {
-            ConfigureButton(_gameModeButton, CycleGameMode);
-            ConfigureButton(_instrumentButton, CycleInstrument);
-            ConfigureButton(_difficultyButton, CycleDifficulty);
-            ConfigureButton(_modifierButton, CycleModifier);
+            ConfigureButton(_modifierButton, ShowModifierPicker);
             ConfigureButton(_controllerLockButton, ToggleControllerLock);
-            ConfigureButton(_backButton, Back);
-            ConfigureButton(_continueButton, Continue);
+        }
+
+        private void ConfigureDropdowns()
+        {
+            _gameModeNavigation = MaestroDropdownNavigatable.Attach(_gameModeDropdown);
+            _instrumentNavigation = MaestroDropdownNavigatable.Attach(_instrumentDropdown);
+            _difficultyNavigation = MaestroDropdownNavigatable.Attach(_difficultyDropdown);
+
+            if (_gameModeDropdown != null)
+            {
+                _gameModeDropdown.onValueChanged.RemoveAllListeners();
+                _gameModeDropdown.onValueChanged.AddListener(index =>
+                {
+                    if (index >= 0 && index < _gameModeOptions.Length)
+                        Session.StageGameMode(_selectedProfileId, _gameModeOptions[index]);
+                    RefreshView();
+                });
+            }
+            if (_instrumentDropdown != null)
+            {
+                _instrumentDropdown.onValueChanged.RemoveAllListeners();
+                _instrumentDropdown.onValueChanged.AddListener(index =>
+                {
+                    if (index >= 0 && index < _instrumentOptions.Length)
+                        Session.StageInstrument(_selectedProfileId, _instrumentOptions[index]);
+                    RefreshView();
+                });
+            }
+            if (_difficultyDropdown != null)
+            {
+                _difficultyDropdown.onValueChanged.RemoveAllListeners();
+                _difficultyDropdown.onValueChanged.AddListener(index =>
+                {
+                    if (index >= 0 && index < _difficultyOptions.Length)
+                        Session.StageDifficulty(_selectedProfileId, _difficultyOptions[index]);
+                    RefreshView();
+                });
+            }
         }
 
         private static void ConfigureButton(NavigatableUnityButton button, UnityAction action)
@@ -156,13 +196,11 @@ namespace YARG.Menu.Maestro
 
             if (!_staticNavigationConfigured)
             {
-                AddNavigatableIfPresent(_gameModeButton);
-                AddNavigatableIfPresent(_instrumentButton);
-                AddNavigatableIfPresent(_difficultyButton);
+                AddNavigatableIfPresent(_gameModeNavigation);
+                AddNavigatableIfPresent(_instrumentNavigation);
+                AddNavigatableIfPresent(_difficultyNavigation);
                 AddNavigatableIfPresent(_modifierButton);
                 AddNavigatableIfPresent(_controllerLockButton);
-                AddNavigatableIfPresent(_backButton);
-                AddNavigatableIfPresent(_continueButton);
                 _staticNavigationConfigured = true;
             }
 
@@ -232,60 +270,73 @@ namespace YARG.Menu.Maestro
 
             if (_selectedPlayerText != null)
                 _selectedPlayerText.text = selected.Name;
-            if (_gameModeText != null)
-                _gameModeText.text = $"Game mode: {selected.GameMode}";
-            if (_instrumentText != null)
-                _instrumentText.text = $"Instrument: {selected.Instrument}";
-            if (_difficultyText != null)
-                _difficultyText.text = $"Difficulty: {selected.Difficulty}";
-            if (_modifierText != null)
-                _modifierText.text = $"Modifiers: {selected.Modifiers}";
+
+            _gameModeOptions = Session.GetAvailableGameModes().ToArray();
+            _instrumentOptions = Session.GetAvailableInstruments(_selectedProfileId).ToArray();
+            _difficultyOptions = Session.GetAvailableDifficulties(_selectedProfileId).ToArray();
+            PopulateDropdown(_gameModeDropdown, _gameModeOptions, selected.GameMode,
+                mode => mode.ToLocalizedName());
+            PopulateDropdown(_instrumentDropdown, _instrumentOptions, selected.Instrument,
+                instrument => instrument.ToLocalizedName());
+            PopulateDropdown(_difficultyDropdown, _difficultyOptions, selected.Difficulty,
+                difficulty => difficulty.ToLocalizedName());
         }
 
-        private void CycleGameMode()
+        private static void PopulateDropdown<T>(TMP_Dropdown dropdown, IReadOnlyList<T> options,
+            T selected, Func<T, string> getLabel)
         {
-            if (!Session.TryGetPlayer(_selectedProfileId, out var player)) return;
-            var values = EnumExtensions<GameMode>.Values.ToArray();
-            int index = Array.IndexOf(values, player.GameMode);
-            Session.StageGameMode(_selectedProfileId, values[(index + 1) % values.Length]);
-            RefreshView();
+            if (dropdown == null)
+                return;
+
+            dropdown.ClearOptions();
+            dropdown.AddOptions(options.Select(option => new TMP_Dropdown.OptionData(getLabel(option))).ToList());
+            int index = options.ToList().IndexOf(selected);
+            dropdown.SetValueWithoutNotify(Math.Max(index, 0));
+            dropdown.interactable = options.Count > 0;
+            dropdown.RefreshShownValue();
         }
 
-        private void CycleInstrument()
+        private void ShowModifierPicker()
         {
-            if (!Session.TryGetPlayer(_selectedProfileId, out var player)) return;
-            var values = player.GameMode.PossibleInstrumentsForSong(GlobalVariables.State.CurrentSong);
-            if (values == null || values.Length == 0) return;
-            int index = Array.IndexOf(values, player.Instrument);
-            if (index < 0) index = -1;
-            Session.StageInstrument(_selectedProfileId, values[(index + 1) % values.Length]);
-            RefreshView();
+            if (!Session.TryGetPlayer(_selectedProfileId, out var player) ||
+                DialogManager.Instance == null || DialogManager.Instance.IsDialogShowing)
+                return;
+
+            var modifiers = Session.GetAvailableModifiers(_selectedProfileId);
+            if (modifiers.Count == 0)
+            {
+                DialogManager.Instance.ShowMessage("Modifiers",
+                    "No modifiers are available for this instrument.");
+                return;
+            }
+
+            var dialog = DialogManager.Instance.ShowList($"Modifiers — {player.Name}");
+            dialog.ClearButtons();
+            var buttons = new Dictionary<Modifier, YARG.Menu.ColoredButton>();
+            foreach (var modifier in modifiers)
+            {
+                var option = modifier;
+                YARG.Menu.ColoredButton button = null;
+                button = dialog.AddListButton(GetModifierPickerLabel(player.Modifiers, option), () =>
+                {
+                    if (!Session.TryGetPlayer(_selectedProfileId, out var current))
+                        return;
+
+                    bool enabled = (current.Modifiers & option) == 0;
+                    Session.StageModifier(_selectedProfileId, option, enabled);
+                    foreach (var pair in buttons)
+                        pair.Value.Text.text = GetModifierPickerLabel(current.Modifiers, pair.Key);
+                    RefreshView();
+                }, false);
+                buttons.Add(option, button);
+            }
+            dialog.AddDialogButton("Menu.Common.Confirm", DialogManager.Instance.ClearDialog);
         }
 
-        private void CycleDifficulty()
+        private static string GetModifierPickerLabel(Modifier selected, Modifier option)
         {
-            if (!Session.TryGetPlayer(_selectedProfileId, out var player)) return;
-            var values = EnumExtensions<Difficulty>.Values.ToArray();
-            int index = Array.IndexOf(values, player.Difficulty);
-            Session.StageDifficulty(_selectedProfileId, values[(index + 1) % values.Length]);
-            RefreshView();
-        }
-
-        private void CycleModifier()
-        {
-            if (!Session.TryGetPlayer(_selectedProfileId, out var player)) return;
-            var (possible, _) = player.GameMode.PossibleModifiers(player.Instrument);
-            var values = EnumExtensions<Modifier>.Values
-                .Where(modifier => modifier != Modifier.None && (possible & modifier) != 0)
-                .ToArray();
-            if (values.Length == 0) return;
-            Modifier next = values.FirstOrDefault(modifier => (player.Modifiers & modifier) == 0);
-            if (next == Modifier.None)
-                next = values[0];
-            else
-                next |= player.Modifiers;
-            Session.StageModifiers(_selectedProfileId, next);
-            RefreshView();
+            string marker = (selected & option) != 0 ? "☑" : "☐";
+            return $"{marker} {option.ToLocalizedName()}";
         }
 
         private void ToggleControllerLock()
@@ -300,13 +351,11 @@ namespace YARG.Menu.Maestro
             if (_leaving || Session == null) return;
             _leaving = true;
             Session.MarkReturningToDifficultySelect();
+            CloseDropdowns();
             ReleaseControllerLock();
-            if (_scheme != null && Navigator.Instance != null &&
-                Navigator.Instance.IsTopScheme(_scheme))
-            {
-                Navigator.Instance.PopScheme();
-                _scheme = null;
-            }
+            if (_scheme != null && Navigator.Instance != null)
+                Navigator.Instance.RemoveScheme(_scheme);
+            _scheme = null;
             MenuManager.Instance.PopMenu();
         }
 
@@ -322,12 +371,10 @@ namespace YARG.Menu.Maestro
             }
 
             _leaving = true;
+            CloseDropdowns();
             ReleaseControllerLock();
-            if (_scheme != null && Navigator.Instance != null &&
-                Navigator.Instance.IsTopScheme(_scheme))
-            {
-                Navigator.Instance.PopScheme();
-            }
+            if (_scheme != null && Navigator.Instance != null)
+                Navigator.Instance.RemoveScheme(_scheme);
             _scheme = null;
             MaestroSetupSession.ClearActive();
             GlobalVariables.Instance.LoadScene(SceneIndex.Gameplay);

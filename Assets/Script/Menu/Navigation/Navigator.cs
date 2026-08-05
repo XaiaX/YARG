@@ -1,3 +1,5 @@
+// pattern: Imperative Shell
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -403,6 +405,38 @@ namespace YARG.Menu.Navigation
             var scheme = _schemeStack.Pop();
             scheme.PopCallback?.Invoke();
             UpdateHelpBar().Forget();
+        }
+
+        public bool RemoveScheme(NavigationScheme scheme)
+        {
+            if (!RemoveSchemeFromStack(_schemeStack, scheme))
+                return false;
+
+            UpdateHelpBar().Forget();
+            return true;
+        }
+
+        private static bool RemoveSchemeFromStack(Stack<NavigationScheme> stack,
+            NavigationScheme scheme)
+        {
+            if (scheme == null)
+                return false;
+
+            var schemes = stack.ToArray();
+            int removeIndex = Array.FindIndex(schemes,
+                candidate => ReferenceEquals(candidate, scheme));
+            if (removeIndex < 0)
+                return false;
+
+            stack.Clear();
+            for (int index = schemes.Length - 1; index >= 0; index--)
+            {
+                if (index != removeIndex)
+                    stack.Push(schemes[index]);
+            }
+
+            scheme.PopCallback?.Invoke();
+            return true;
         }
 
         public void PopAllSchemes()

@@ -1,5 +1,8 @@
 // pattern: Imperative Shell
 
+using System;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -54,12 +57,10 @@ namespace YARG.Tests.EditMode
             Assert.That(prefab, Is.Not.Null, $"Could not load {path}.");
             var header = FindRequired(prefab.transform, "Header").GetComponent<RectTransform>();
             var body = FindRequired(prefab.transform, "Body").GetComponent<RectTransform>();
-            var footer = FindRequired(prefab.transform, "Footer").GetComponent<RectTransform>();
             var listImage = FindRequired(prefab.transform, "Body/PlayerScroll").GetComponent<Image>();
 
             Assert.That(header.anchoredPosition.y, Is.LessThanOrEqualTo(-40f));
             Assert.That(body.sizeDelta.y, Is.LessThanOrEqualTo(-240f));
-            Assert.That(footer.anchoredPosition.y, Is.GreaterThanOrEqualTo(80f));
             Assert.That(listImage.color.r, Is.LessThanOrEqualTo(0.1f));
             Assert.That(listImage.color.a, Is.LessThanOrEqualTo(0.3f));
         }
@@ -96,6 +97,163 @@ namespace YARG.Tests.EditMode
                 Assert.That(fontSize.floatValue, Is.LessThanOrEqualTo(24f),
                     $"{component.name} is too large for a 72px row.");
             }
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_Explicit_Option_Pickers()
+        {
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            const string scriptPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath);
+
+            Assert.That(prefab, Is.Not.Null, $"Could not load {prefabPath}.");
+            Assert.That(script, Is.Not.Null, $"Could not load {scriptPath}.");
+
+            var dropdownNames = prefab.GetComponentsInChildren<Component>(true)
+                .Where(component => component.GetType().FullName == "TMPro.TMP_Dropdown")
+                .Select(component => component.transform.parent.name)
+                .ToArray();
+
+            Assert.That(dropdownNames, Is.EquivalentTo(new[]
+            {
+                "GameModeDropdown",
+                "InstrumentDropdown",
+                "DifficultyDropdown",
+            }));
+
+            var menu = prefab.GetComponents<Component>()
+                .Single(component => component.GetType().FullName ==
+                    "YARG.Menu.Maestro.MaestroSetupMenu");
+            var serializedMenu = new SerializedObject(menu);
+            Assert.That(serializedMenu.FindProperty("_gameModeDropdown").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(serializedMenu.FindProperty("_instrumentDropdown").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(serializedMenu.FindProperty("_difficultyDropdown").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeButton"), Is.Null);
+            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/InstrumentButton"), Is.Null);
+            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/DifficultyButton"), Is.Null);
+            Assert.That(script.text, Does.Not.Contain("CycleGameMode"));
+            Assert.That(script.text, Does.Not.Contain("CycleInstrument"));
+            Assert.That(script.text, Does.Not.Contain("CycleDifficulty"));
+            Assert.That(script.text, Does.Contain("ShowModifierPicker"));
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_Global_Confirm_Back_And_Clear_Modifier_Label()
+        {
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            const string scriptPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath);
+
+            Assert.That(prefab, Is.Not.Null);
+            Assert.That(script, Is.Not.Null);
+            Assert.That(prefab.transform.Find("Footer"), Is.Null,
+                "Maestro should use the global confirm/back help bar.");
+            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/ModifierButton/Label"),
+                Is.Not.Null);
+            var modifierLabel = prefab.transform
+                .Find("Body/SelectedPlayerEditor/ModifierButton/Label")
+                .GetComponents<Component>()
+                .Single(component => component.GetType().FullName == "TMPro.TextMeshProUGUI");
+            Assert.That(new SerializedObject(modifierLabel).FindProperty("m_text").stringValue,
+                Is.EqualTo("Modifiers"));
+            Assert.That(script.text, Does.Not.Contain("_backButton"));
+            Assert.That(script.text, Does.Not.Contain("_continueButton"));
+            Assert.That(script.text, Does.Not.Contain("_modifierText"));
+        }
+
+        [Test]
+        public void Modifier_Picker_Replaces_Conflicting_Choice()
+        {
+            var rulesType = Type.GetType("YARG.Menu.Maestro.MaestroSelectionRules, Assembly-CSharp");
+            Assert.That(rulesType, Is.Not.Null, "Maestro selection rules are missing.");
+            var toggle = rulesType.GetMethod("ToggleModifier");
+            Assert.That(toggle, Is.Not.Null, "Maestro modifier toggle rule is missing.");
+            var modifierType = toggle.GetParameters()[0].ParameterType;
+
+            var allStrums = Enum.Parse(modifierType, "AllStrums");
+            var allHopos = Enum.Parse(modifierType, "AllHopos");
+            var result = toggle.Invoke(null, new[] { allStrums, allHopos, true });
+            ulong resultBits = Convert.ToUInt64(result);
+
+            Assert.That(resultBits & Convert.ToUInt64(allHopos), Is.Not.Zero);
+            Assert.That(resultBits & Convert.ToUInt64(allStrums), Is.Zero);
+        }
+
+        [Test]
+        public void Difficulty_Normalization_Prefers_The_Nearest_Lower_Available_Value()
+        {
+            var rulesType = Type.GetType("YARG.Menu.Maestro.MaestroSelectionRules, Assembly-CSharp");
+            var normalize = rulesType?.GetMethod("SelectDifficultyFallback");
+            Assert.That(normalize, Is.Not.Null, "Maestro difficulty normalization rule is missing.");
+            var difficultyType = normalize.GetParameters()[0].ParameterType;
+            var available = Array.CreateInstance(difficultyType, 2);
+            available.SetValue(Enum.Parse(difficultyType, "Easy"), 0);
+            available.SetValue(Enum.Parse(difficultyType, "Hard"), 1);
+
+            var result = normalize.Invoke(null, new[]
+            {
+                Enum.Parse(difficultyType, "Medium"),
+                available,
+            });
+
+            Assert.That(result.ToString(), Is.EqualTo("Easy"));
+        }
+
+        [Test]
+        public void Dropdown_Navigation_Removes_Only_Its_Own_Scheme()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            Assert.That(menu.text, Does.Contain("CloseDropdowns()"));
+
+            var navigatorType = Type.GetType("YARG.Menu.Navigation.Navigator, Assembly-CSharp");
+            var schemeType = Type.GetType("YARG.Menu.Navigation.NavigationScheme, Assembly-CSharp");
+            Assert.That(navigatorType, Is.Not.Null);
+            Assert.That(schemeType, Is.Not.Null);
+            var remove = navigatorType.GetMethod("RemoveSchemeFromStack",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(remove, Is.Not.Null, "The navigation stack removal rule is missing.");
+
+            var entryType = schemeType.GetNestedType("Entry");
+            var entriesType = typeof(System.Collections.Generic.List<>).MakeGenericType(entryType);
+            var constructor = schemeType.GetConstructors().Single(candidate =>
+            {
+                var parameters = candidate.GetParameters();
+                return parameters.Length == 3 && parameters[2].ParameterType == typeof(Action);
+            });
+            object NewScheme(Action onPop = null) => constructor.Invoke(new[]
+            {
+                Activator.CreateInstance(entriesType),
+                null,
+                onPop,
+            });
+
+            int dropdownPops = 0;
+            var page = NewScheme();
+            var dropdown = NewScheme(() => dropdownPops++);
+            var overlay = NewScheme();
+            var stackType = typeof(System.Collections.Generic.Stack<>).MakeGenericType(schemeType);
+            var stack = Activator.CreateInstance(stackType);
+            var push = stackType.GetMethod("Push");
+            push.Invoke(stack, new[] { page });
+            push.Invoke(stack, new[] { dropdown });
+            push.Invoke(stack, new[] { overlay });
+
+            bool removed = (bool) remove.Invoke(null, new[] { stack, dropdown });
+            var remaining = (Array) stackType.GetMethod("ToArray").Invoke(stack, null);
+
+            Assert.That(removed, Is.True);
+            Assert.That(dropdownPops, Is.EqualTo(1));
+            Assert.That(remaining.Length, Is.EqualTo(2));
+            Assert.That(remaining.GetValue(0), Is.SameAs(overlay));
+            Assert.That(remaining.GetValue(1), Is.SameAs(page));
+            Assert.That((bool) remove.Invoke(null, new[] { stack, dropdown }), Is.False);
+            Assert.That(dropdownPops, Is.EqualTo(1));
         }
 
         private static Transform FindRequired(Transform root, string path)

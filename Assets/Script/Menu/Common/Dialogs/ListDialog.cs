@@ -1,3 +1,5 @@
+// pattern: Imperative Shell
+
 using UnityEngine;
 using UnityEngine.Events;
 using YARG.Helpers.Extensions;
@@ -16,6 +18,7 @@ namespace YARG.Menu.Dialogs
         public ColoredButton AddListButton(string text, UnityAction handler, bool closeOnClick = true)
         {
             var button = AddListEntry(_listButtonPrefab);
+            RegisterNavigatable(button);
 
             button.Text.text = text;
             if (closeOnClick)

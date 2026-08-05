@@ -1,3 +1,5 @@
+// pattern: Imperative Shell
+
 using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
@@ -50,18 +52,19 @@ namespace YARG.Menu.Dialogs
         public ColoredButton AddDialogButton(string localizeKey, UnityAction action)
         {
             var button = Instantiate(_dialogButtonPrefab, _dialogButtonContainer);
-
-            // Add the navigatable button, and select it
-            var nav = button.GetComponentInChildren<NavigatableUnityButton>();
-            if (nav != null)
-            {
-                _navigationGroup.AddNavigatable(nav);
-            }
+            RegisterNavigatable(button);
 
             button.Text.text = Localize.Key(localizeKey);
             button.OnClick.AddListener(action);
 
             return button;
+        }
+
+        protected void RegisterNavigatable(Component root)
+        {
+            var navigatable = root.GetComponentInChildren<NavigatableBehaviour>();
+            if (navigatable != null)
+                _navigationGroup.AddNavigatable(navigatable);
         }
 
         public virtual ColoredButton AddDialogButton(string localizeKey, Color backgroundColor, UnityAction action)

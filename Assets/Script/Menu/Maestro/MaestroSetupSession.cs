@@ -1,3 +1,5 @@
+// pattern: Mixed (needs refactoring)
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -118,33 +120,102 @@ namespace YARG.Menu.Maestro
         public bool TryGetPlayer(Guid profileId, out MaestroStagedPlayer player) =>
             _players.TryGetValue(profileId, out player);
 
+        public IReadOnlyList<GameMode> GetAvailableGameModes()
+        {
+            return EnumExtensions<GameMode>.Values
+                .Where(IsModeAvailable)
+                .ToArray();
+        }
+
+        public IReadOnlyList<Instrument> GetAvailableInstruments(Guid profileId)
+        {
+            if (!_players.TryGetValue(profileId, out var player) || _songs.Count == 0)
+                return Array.Empty<Instrument>();
+
+            try
+            {
+                return player.GameMode.PossibleInstrumentsForSong(_songs[0])
+                    .Where(instrument => IsInstrumentAvailable(player, player.GameMode, instrument))
+                    .ToArray();
+            }
+            catch (NotImplementedException)
+            {
+                return Array.Empty<Instrument>();
+            }
+        }
+
+        public IReadOnlyList<Difficulty> GetAvailableDifficulties(Guid profileId)
+        {
+            if (!_players.TryGetValue(profileId, out var player))
+                return Array.Empty<Difficulty>();
+
+            return EnumExtensions<Difficulty>.Values
+                .Where(difficulty => IsDifficultyAvailable(player.Instrument, difficulty))
+                .ToArray();
+        }
+
+        public IReadOnlyList<Modifier> GetAvailableModifiers(Guid profileId)
+        {
+            if (!_players.TryGetValue(profileId, out var player))
+                return Array.Empty<Modifier>();
+
+            try
+            {
+                var (possible, _) = player.GameMode.PossibleModifiers(player.Instrument);
+                return EnumExtensions<Modifier>.Values
+                    .Where(modifier => modifier != Modifier.None && (possible & modifier) != 0)
+                    .ToArray();
+            }
+            catch (NotImplementedException)
+            {
+                return Array.Empty<Modifier>();
+            }
+        }
+
         public void StageGameMode(Guid profileId, GameMode gameMode)
         {
-            if (_players.TryGetValue(profileId, out var player))
-            {
-                player.GameMode = gameMode;
-                // A mode change invalidates the old instrument/difficulty until the
-                // caller selects a dependent value; deterministic fallback is used at
-                // validation time when the existing value is no longer playable.
-            }
+            if (!_players.TryGetValue(profileId, out var player) || !IsModeAvailable(gameMode))
+                return;
+
+            player.GameMode = gameMode;
+            NormalizeDependentSelections(player);
         }
 
         public void StageInstrument(Guid profileId, Instrument instrument)
         {
-            if (_players.TryGetValue(profileId, out var player))
-                player.Instrument = instrument;
+            if (!_players.TryGetValue(profileId, out var player) ||
+                !IsInstrumentAvailable(player, player.GameMode, instrument))
+                return;
+
+            player.Instrument = instrument;
+            NormalizeDependentSelections(player);
         }
 
         public void StageDifficulty(Guid profileId, Difficulty difficulty)
         {
-            if (_players.TryGetValue(profileId, out var player))
+            if (_players.TryGetValue(profileId, out var player) &&
+                IsDifficultyAvailable(player.Instrument, difficulty))
                 player.Difficulty = difficulty;
         }
 
         public void StageModifiers(Guid profileId, Modifier modifiers)
         {
             if (_players.TryGetValue(profileId, out var player))
+            {
                 player.Modifiers = modifiers;
+                NormalizeModifiers(player);
+            }
+        }
+
+        public void StageModifier(Guid profileId, Modifier modifier, bool enabled)
+        {
+            if (!_players.TryGetValue(profileId, out var player) ||
+                !GetAvailableModifiers(profileId).Contains(modifier))
+                return;
+
+            player.Modifiers = MaestroSelectionRules.ToggleModifier(
+                player.Modifiers, modifier, enabled);
+            NormalizeModifiers(player);
         }
 
         private sealed class ProfileSnapshot
@@ -341,33 +412,74 @@ namespace YARG.Menu.Maestro
         private void OverlayPendingDrafts()
         {
             var maestro = MaestroController.Instance;
-            if (maestro == null)
-                return;
+            if (maestro != null)
+            {
+                foreach (var staged in _players.Values)
+                {
+                    if (!maestro.TryGetPendingDraft(staged.ProfileId, out var draft))
+                        continue;
+
+                    if (draft.PendingGameMode.HasValue)
+                        staged.GameMode = draft.PendingGameMode.Value;
+                    if (draft.PendingInstrument.HasValue)
+                        staged.Instrument = draft.PendingInstrument.Value;
+                    if (draft.PendingDifficulty.HasValue)
+                        staged.Difficulty = draft.PendingDifficulty.Value;
+                    if (draft.PendingModifiers.HasValue)
+                        staged.Modifiers = draft.PendingModifiers.Value;
+                    if (draft.PendingNoteSpeed.HasValue)
+                        staged.NoteSpeed = draft.PendingNoteSpeed.Value;
+                    if (draft.PendingHighwayLength.HasValue)
+                        staged.HighwayLength = draft.PendingHighwayLength.Value;
+                    if (draft.PendingHarmonyIndex.HasValue)
+                        staged.HarmonyIndex = draft.PendingHarmonyIndex.Value;
+                }
+            }
 
             foreach (var staged in _players.Values)
-            {
-                if (!maestro.TryGetPendingDraft(staged.ProfileId, out var draft))
-                    continue;
+                NormalizeDependentSelections(staged);
+        }
 
-                if (draft.PendingGameMode.HasValue)
-                    staged.GameMode = draft.PendingGameMode.Value;
-                if (draft.PendingInstrument.HasValue)
-                    staged.Instrument = draft.PendingInstrument.Value;
-                if (draft.PendingDifficulty.HasValue)
-                    staged.Difficulty = draft.PendingDifficulty.Value;
-                if (draft.PendingModifiers.HasValue)
-                    staged.Modifiers = draft.PendingModifiers.Value;
-                if (draft.PendingNoteSpeed.HasValue)
-                    staged.NoteSpeed = draft.PendingNoteSpeed.Value;
-                if (draft.PendingHighwayLength.HasValue)
-                    staged.HighwayLength = draft.PendingHighwayLength.Value;
-                if (draft.PendingHarmonyIndex.HasValue)
-                    staged.HarmonyIndex = draft.PendingHarmonyIndex.Value;
+        private void NormalizeDependentSelections(MaestroStagedPlayer player)
+        {
+            if (!IsModeAvailable(player.GameMode))
+            {
+                var gameMode = GetAvailableGameModes().FirstOrDefault();
+                if (!IsModeAvailable(gameMode))
+                    return;
+                player.GameMode = gameMode;
+            }
+
+            var instruments = GetAvailableInstruments(player.ProfileId);
+            if (!instruments.Contains(player.Instrument) && instruments.Count > 0)
+                player.Instrument = instruments[0];
+
+            var difficulties = GetAvailableDifficulties(player.ProfileId);
+            if (!difficulties.Contains(player.Difficulty) && difficulties.Count > 0)
+                player.Difficulty = MaestroSelectionRules.SelectDifficultyFallback(
+                    player.Difficulty, difficulties);
+
+            NormalizeModifiers(player);
+        }
+
+        private static void NormalizeModifiers(MaestroStagedPlayer player)
+        {
+            try
+            {
+                var (possible, excusable) = player.GameMode.PossibleModifiers(player.Instrument);
+                player.Modifiers &= possible | excusable;
+            }
+            catch (NotImplementedException)
+            {
+                player.Modifiers = Modifier.None;
             }
         }
 
         private bool IsModeAvailable(GameMode mode)
         {
+            if (_songs.Count == 0)
+                return false;
+
             try
             {
                 return mode.PossibleInstrumentsForSong(_songs[0])
