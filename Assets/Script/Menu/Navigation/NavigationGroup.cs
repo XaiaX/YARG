@@ -256,6 +256,18 @@ namespace YARG.Menu.Navigation
             }
         }
 
+        public static void RemoveFromNavigationStack(NavigationGroup navigationGroup)
+        {
+            if (navigationGroup == null)
+                return;
+
+            for (int index = _navGroupsStack.Count - 1; index >= 0; index--)
+            {
+                if (_navGroupsStack[index] == navigationGroup)
+                    _navGroupsStack.RemoveAt(index);
+            }
+        }
+
         public void SelectLastNavGroup()
         {
             if (CurrentNavigationGroup != this)

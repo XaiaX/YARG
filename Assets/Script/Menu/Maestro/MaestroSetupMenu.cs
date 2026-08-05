@@ -61,6 +61,8 @@ namespace YARG.Menu.Maestro
         private Difficulty[] _difficultyOptions = Array.Empty<Difficulty>();
         private MaestroDropdownNavigatable _instrumentNavigation;
         private MaestroDropdownNavigatable _difficultyNavigation;
+        private CanvasGroup _playerPanelCanvasGroup;
+        private CanvasGroup _selectedPlayerCanvasGroup;
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
@@ -75,10 +77,13 @@ namespace YARG.Menu.Maestro
             _leaving = false;
             _editingPlayer = false;
             _controllerLockEnabled = true;
-            SetEditorVisible(false);
+            SetEditorVisible(true);
+            EnsureFocusCanvasGroups();
             AcquireControllerLock();
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged += OnNavigationSelectionChanged;
+            if (_rightNavigationGroup != null)
+                _rightNavigationGroup.SelectionChanged += OnRightNavigationSelectionChanged;
 
             BuildRows();
             ConfigureDropdowns();
@@ -94,7 +99,8 @@ namespace YARG.Menu.Maestro
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged -= OnNavigationSelectionChanged;
             if (_rightNavigationGroup != null)
-                _rightNavigationGroup.SelectLastNavGroup();
+                _rightNavigationGroup.SelectionChanged -= OnRightNavigationSelectionChanged;
+            ResetMaestroNavigationStack();
             ReleaseControllerLock();
             if (_scheme != null && Navigator.Instance != null)
                 Navigator.Instance.RemoveScheme(_scheme);
@@ -105,6 +111,32 @@ namespace YARG.Menu.Maestro
         {
             if (_selectedPlayerEditor != null)
                 _selectedPlayerEditor.SetActive(visible);
+        }
+
+        private void EnsureFocusCanvasGroups()
+        {
+            if (_playerScroll != null)
+                _playerPanelCanvasGroup = _playerScroll.GetComponent<CanvasGroup>() ??
+                    _playerScroll.gameObject.AddComponent<CanvasGroup>();
+            if (_selectedPlayerEditor != null)
+                _selectedPlayerCanvasGroup = _selectedPlayerEditor.GetComponent<CanvasGroup>() ??
+                    _selectedPlayerEditor.AddComponent<CanvasGroup>();
+        }
+
+        private void UpdateFocusVisual()
+        {
+            EnsureFocusCanvasGroups();
+            bool editorFocused = _editingPlayer;
+            if (_playerPanelCanvasGroup != null)
+                _playerPanelCanvasGroup.alpha = editorFocused ? 0.55f : 1f;
+            if (_selectedPlayerCanvasGroup != null)
+                _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.55f;
+        }
+
+        private void ResetMaestroNavigationStack()
+        {
+            NavigationGroup.RemoveFromNavigationStack(_navigationGroup);
+            NavigationGroup.RemoveFromNavigationStack(_rightNavigationGroup);
         }
 
         private void CloseDropdowns()
@@ -142,7 +174,7 @@ namespace YARG.Menu.Maestro
             {
                 var row = Instantiate(_playerRowPrefab, _playerRowContainer);
                 row.Initialize(player);
-                row.Clicked += BeginEditingPlayer;
+                row.Confirmed += BeginEditingPlayer;
                 _rows.Add(player.ProfileId, row);
             }
 
@@ -191,7 +223,7 @@ namespace YARG.Menu.Maestro
             if (button == null)
                 return;
 
-            var unityButton = button.GetComponent<Button>();
+            var unityButton = button.GetComponent<Button>() ?? button.GetComponentInChildren<Button>(true);
             if (unityButton == null)
                 return;
 
@@ -216,6 +248,8 @@ namespace YARG.Menu.Maestro
             AddNavigatableIfPresent(_rightNavigationGroup, _modifierButton);
             AddNavigatableIfPresent(_rightNavigationGroup, _readyButton);
 
+            ResetMaestroNavigationStack();
+            _navigationGroup.PushNavGroupToStack();
             if (_navigationGroup.SelectedBehaviour == null)
                 _navigationGroup.SelectFirst();
         }
@@ -231,21 +265,53 @@ namespace YARG.Menu.Maestro
             SelectionOrigin selectionOrigin)
         {
             if (selected is MaestroPlayerRow row)
+            {
+                if (selectionOrigin == SelectionOrigin.Mouse && _editingPlayer)
+                    FinishEditingPlayer();
                 SelectPlayer(row.ProfileId);
+            }
+        }
+
+        private void OnRightNavigationSelectionChanged(NavigatableBehaviour selected,
+            SelectionOrigin selectionOrigin)
+        {
+            if (selected == null || selectionOrigin != SelectionOrigin.Mouse || _editingPlayer)
+                return;
+
+            _editingPlayer = true;
+            SetEditorVisible(true);
+            ResetMaestroNavigationStack();
+            _navigationGroup?.PushNavGroupToStack();
+            _rightNavigationGroup?.PushNavGroupToStack();
+            UpdateFocusVisual();
         }
 
         private void PushNavigationScheme()
         {
-            _scheme = new NavigationScheme(new()
+            _scheme = CreateNavigationScheme();
+            Navigator.Instance?.PushScheme(_scheme);
+        }
+
+        private NavigationScheme CreateNavigationScheme()
+        {
+            string controllerKey = _controllerLockEnabled
+                ? "Menu.Common.ControllersLocked"
+                : "Menu.Common.ControllersUnlocked";
+            return new NavigationScheme(new()
             {
                 NavigationScheme.Entry.NavigateUp,
                 NavigationScheme.Entry.NavigateDown,
                 NavigationScheme.Entry.NavigateSelect,
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back", Back),
-                new NavigationScheme.Entry(MenuAction.Blue, "Menu.Common.Toggle",
+                new NavigationScheme.Entry(MenuAction.Blue, controllerKey,
                     ToggleControllerLock),
             }, false);
-            Navigator.Instance.PushScheme(_scheme);
+        }
+
+        private void UpdateControllerLockHelpBar()
+        {
+            if (HelpBar.Instance != null)
+                HelpBar.Instance.SetInfoFromScheme(CreateNavigationScheme());
         }
 
         private void SelectPlayer(Guid profileId)
@@ -273,6 +339,8 @@ namespace YARG.Menu.Maestro
             SelectPlayer(profileId);
             _editingPlayer = true;
             SetEditorVisible(true);
+            ResetMaestroNavigationStack();
+            _navigationGroup?.PushNavGroupToStack();
             _rightNavigationGroup?.PushNavGroupToStack();
             _rightNavigationGroup?.SelectFirst();
             RefreshView();
@@ -285,8 +353,8 @@ namespace YARG.Menu.Maestro
 
             CloseDropdowns();
             _editingPlayer = false;
-            _rightNavigationGroup?.SelectLastNavGroup();
-            SetEditorVisible(false);
+            ResetMaestroNavigationStack();
+            SetEditorVisible(true);
             _navigationGroup?.PushNavGroupToStack();
             RefreshView();
         }
@@ -323,6 +391,7 @@ namespace YARG.Menu.Maestro
                 instrument => GetInstrumentOptionLabel(song, instrument), GetInstrumentIcon);
             PopulateDropdown(_difficultyDropdown, _difficultyOptions, selected.Difficulty,
                 difficulty => difficulty.ToLocalizedName());
+            UpdateFocusVisual();
         }
 
         private static void PopulateDropdown<T>(TMP_Dropdown dropdown, IReadOnlyList<T> options,
@@ -354,8 +423,7 @@ namespace YARG.Menu.Maestro
             if (song == null)
                 return chartName;
 
-            return chartName
-                + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(GetTierValues(song, instrument))}</color></size>";
+            return chartName + " - " + GetTierLabel(GetTierValues(song, instrument));
         }
 
         private static string GetPartyVocalsChartLabel(SongEntry song, Instrument instrument)
@@ -363,8 +431,7 @@ namespace YARG.Menu.Maestro
             string chartName = instrument == Instrument.Vocals ? "Solo" : "Harmony";
             return song == null
                 ? chartName
-                : chartName
-                    + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(GetTierValues(song, instrument))}</color></size>";
+                : chartName + " - " + GetTierLabel(GetTierValues(song, instrument));
         }
 
         private static PartValues GetTierValues(SongEntry song, Instrument instrument)
@@ -441,6 +508,7 @@ namespace YARG.Menu.Maestro
             _controllerLockEnabled = !_controllerLockEnabled;
             AcquireControllerLock();
             RefreshView();
+            UpdateControllerLockHelpBar();
         }
 
         private void Back()

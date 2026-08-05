@@ -1,6 +1,7 @@
 // pattern: Imperative Shell
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -167,7 +168,7 @@ namespace YARG.Tests.EditMode
             Assert.That(prefab, Is.Not.Null);
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("player.GameMode"));
-            Assert.That(script.text, Does.Contain("GameMode.ToResourceName"));
+            Assert.That(script.text, Does.Contain("player.GameMode.ToResourceName"));
             Assert.That(icon.sizeDelta.y, Is.GreaterThanOrEqualTo(48f),
                 "The 512px source icon sheet supports a larger row icon without upscaling.");
         }
@@ -196,15 +197,14 @@ namespace YARG.Tests.EditMode
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
             const string languagePath = "Assets/StreamingAssets/lang/en-US.json";
             var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
-            var language = AssetDatabase.LoadAssetAtPath<TextAsset>(languagePath);
+            var language = File.ReadAllText(languagePath);
 
             Assert.That(menu, Is.Not.Null);
-            Assert.That(language, Is.Not.Null);
             Assert.That(menu.text, Does.Contain("ControllersLocked"));
             Assert.That(menu.text, Does.Contain("ControllersUnlocked"));
             Assert.That(menu.text, Does.Contain("UpdateControllerLockHelpBar"));
-            Assert.That(language.text, Does.Contain("\"ControllersLocked\""));
-            Assert.That(language.text, Does.Contain("\"ControllersUnlocked\""));
+            Assert.That(language, Does.Contain("\"ControllersLocked\""));
+            Assert.That(language, Does.Contain("\"ControllersUnlocked\""));
         }
 
         [Test]

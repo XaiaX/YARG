@@ -137,6 +137,8 @@
             "Confirm": "Confirm",
             "Continue": "Continue",
             "Toggle": "Toggle",
+            "ControllersLocked": "CONTROLLERS (LOCKED)",
+            "ControllersUnlocked": "CONTROLLERS (UNLOCKED)",
             "On": "On",
             "Off": "Off",
             "Start": "Start",

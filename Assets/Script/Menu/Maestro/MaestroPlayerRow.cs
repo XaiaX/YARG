@@ -7,7 +7,6 @@ using UnityEngine.EventSystems;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 using YARG.Core;
-using YARG.Core.Game;
 using YARG.Core.Extensions;
 using YARG.Helpers.Extensions;
 using YARG.Localization;
@@ -24,12 +23,14 @@ namespace YARG.Menu.Maestro
         private static readonly Dictionary<string, Sprite> IconCache = new();
 
         [SerializeField] private TMP_Text _name;
-        [SerializeField] private Image _instrumentIcon;
+        [SerializeField] private Image _gameModeIcon;
         [SerializeField] private TMP_Text _setup;
         [SerializeField] private TMP_Text _modifiers;
 
+        private bool _wasSelectedOnPointerDown;
+
         public Guid ProfileId { get; private set; }
-        public event Action<Guid> Clicked;
+        public event Action<Guid> Confirmed;
 
         public void Initialize(MaestroStagedPlayer player)
         {
@@ -44,7 +45,7 @@ namespace YARG.Menu.Maestro
 
             if (_name != null)
                 _name.text = player.IsBot ? $"* {player.Name}" : player.Name;
-            SetInstrumentIcon(player.Instrument);
+            SetGameModeIcon(player.GameMode);
             if (_setup != null)
                 _setup.text = $"{player.GameMode} · {player.Instrument} · {player.Difficulty}";
             if (_modifiers != null)
@@ -60,16 +61,16 @@ namespace YARG.Menu.Maestro
             SetSelected(selected, SelectionOrigin.Programmatically);
         }
 
-        private void SetInstrumentIcon(Instrument instrument)
+        private void SetGameModeIcon(GameMode gameMode)
         {
-            if (_instrumentIcon == null)
+            if (_gameModeIcon == null)
                 return;
 
-            string resourceName = instrument.ToResourceName();
+            string resourceName = gameMode.ToResourceName();
             if (string.IsNullOrEmpty(resourceName))
             {
-                _instrumentIcon.sprite = null;
-                _instrumentIcon.enabled = false;
+                _gameModeIcon.sprite = null;
+                _gameModeIcon.enabled = false;
                 return;
             }
 
@@ -80,8 +81,8 @@ namespace YARG.Menu.Maestro
                 IconCache[assetKey] = icon;
             }
 
-            _instrumentIcon.sprite = icon;
-            _instrumentIcon.enabled = icon != null;
+            _gameModeIcon.sprite = icon;
+            _gameModeIcon.enabled = icon != null;
         }
 
         public void SetSelected(bool selected)
@@ -91,12 +92,21 @@ namespace YARG.Menu.Maestro
 
         public override void Confirm()
         {
-            Clicked?.Invoke(ProfileId);
+            Confirmed?.Invoke(ProfileId);
+        }
+
+        public override void OnPointerDown(PointerEventData eventData)
+        {
+            _wasSelectedOnPointerDown = Selected;
+            base.OnPointerDown(eventData);
         }
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            Clicked?.Invoke(ProfileId);
+            // The first click selects a different profile and leaves the right-side
+            // editor unfocused. Clicking the already-selected row acts as mouse confirm.
+            if (_wasSelectedOnPointerDown)
+                Confirm();
         }
     }
 }
