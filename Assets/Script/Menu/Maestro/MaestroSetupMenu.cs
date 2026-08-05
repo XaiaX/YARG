@@ -21,6 +21,7 @@ using YARG.Menu.Filters;
 using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Player;
+using YARG.Settings;
 
 namespace YARG.Menu.Maestro
 {
