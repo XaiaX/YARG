@@ -66,7 +66,7 @@ namespace YARG.Menu.Maestro
                 rt.offsetMin = new Vector2(-4, 12);
                 rt.offsetMax = new Vector2(4, -12);
                 var img = borderGo.AddComponent<Image>();
-                img.sprite = SpriteHelper.GetRoundedRect(12, 2);
+                img.sprite = SpriteHelper.GetRoundedRect(16, 2);
                 img.type = Image.Type.Sliced;
                 img.color = new Color(1f, 0.83137256f, 0.22745098f, 1f);
                 img.raycastTarget = false;

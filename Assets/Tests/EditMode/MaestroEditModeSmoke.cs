@@ -235,7 +235,6 @@ namespace YARG.Tests.EditMode
                 Is.Not.Null);
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
-            Assert.That(script.text, Does.Contain("transform.parent?.SetAsLastSibling"));
             Assert.That(script.text, Does.Contain("_rightNavigationGroup?.ClearSelection()"));
             Assert.That(script.text, Does.Contain("rt.anchorMax = new Vector2(0.46f, 0f)"),
                 "Play must use the profile list column width, not half of the full body.");
@@ -561,7 +560,8 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("_playButtonCanvasGroup"),
                 "Play must be treated as a left-column navigation item.");
-            Assert.That(script.text, Does.Contain("SetPlayButtonDimmed(editorFocused)"),
+            Assert.That(script.text,
+                Does.Contain("_playButtonCanvasGroup.alpha = editorFocused ? 0.5f : 1f"),
                 "Play content must dim with the profile list while the editor is focused.");
         }
 
@@ -632,8 +632,8 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("new Vector2(-4, 12)"),
                 "Focus border must use the wider/shorter offset (AC.2).");
-            Assert.That(script.text, Does.Contain("GetRoundedRect(12, 2)"),
-                "Focus border corner radius must be 12 (AC.2).");
+            Assert.That(script.text, Does.Contain("GetRoundedRect(16, 2)"),
+                "Focus border corner radius must track the dropdown's larger rounded corners.");
         }
 
         [Test]

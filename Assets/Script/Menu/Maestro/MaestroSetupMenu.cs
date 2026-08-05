@@ -78,6 +78,7 @@ namespace YARG.Menu.Maestro
         private MaestroDropdownNavigatable _difficultyNavigation;
         private CanvasGroup _playerPanelCanvasGroup;
         private CanvasGroup _selectedPlayerCanvasGroup;
+        private CanvasGroup _playButtonCanvasGroup;
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
@@ -136,6 +137,9 @@ namespace YARG.Menu.Maestro
             if (_selectedPlayerEditor != null)
                 _selectedPlayerCanvasGroup = _selectedPlayerEditor.GetComponent<CanvasGroup>() ??
                     _selectedPlayerEditor.AddComponent<CanvasGroup>();
+            if (_playButton != null)
+                _playButtonCanvasGroup = _playButton.GetComponent<CanvasGroup>() ??
+                    _playButton.gameObject.AddComponent<CanvasGroup>();
         }
 
         private void UpdateFocusVisual()
@@ -147,19 +151,20 @@ namespace YARG.Menu.Maestro
             if (_selectedPlayerCanvasGroup != null)
                 _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.5f;
 
-            // When the editor is active, dim the entire profile panel to 80%.
-            // When the profile list is the active focus, the panel stays at 100%
-            // and non-selected rows are individually dimmed to 50%.
+            // Keep the profile panel background at full opacity. The visible
+            // navigation content is dimmed item-by-item so the selected row
+            // remains fully visible while the editor has focus.
             if (_playerPanelCanvasGroup != null)
-                _playerPanelCanvasGroup.alpha = editorFocused ? 0.8f : 1f;
+                _playerPanelCanvasGroup.alpha = 1f;
+
+            if (_playButtonCanvasGroup != null)
+                _playButtonCanvasGroup.alpha = editorFocused ? 0.5f : 1f;
 
             foreach (var pair in _rows)
             {
                 if (pair.Value == null) continue;
                 bool isNotSelected = pair.Key != _selectedProfileId;
-                // Only per-row dim when the profile list is the active focus
-                // (not when editing — the panel-level dim handles that case).
-                pair.Value.SetEditorDimmed(!editorFocused && isNotSelected);
+                pair.Value.SetEditorDimmed(editorFocused && isNotSelected);
             }
         }
 
@@ -232,21 +237,28 @@ namespace YARG.Menu.Maestro
             if (targetParent == null)
                 return;
 
-            // Already reparented — skip.
-            if (container.parent == targetParent)
-                return;
-
-            container.SetParent(targetParent, false);
+            if (container.parent != targetParent)
+                container.SetParent(targetParent, false);
 
             if (container is RectTransform rt)
             {
-                // Anchor to the bottom of the left half, matching the scroll
-                // view's horizontal footprint.
+                // Match the profile panel's 46% body-column footprint, then
+                // inset Play by 10px on both sides so its focus ring stays
+                // inside the panel.
                 rt.anchorMin = new Vector2(0f, 0f);
-                rt.anchorMax = new Vector2(0.5f, 0f);
+                rt.anchorMax = new Vector2(0.46f, 0f);
                 rt.pivot = new Vector2(0.5f, 0f);
-                rt.anchoredPosition = new Vector2(0f, 10f);
-                rt.sizeDelta = new Vector2(0f, 72f);
+                rt.anchoredPosition = new Vector2(20f, 10f);
+                rt.sizeDelta = new Vector2(-60f, 72f);
+            }
+
+            if (_playerScroll.transform is RectTransform scrollRectTransform)
+            {
+                // The scroll view uses a 20px bottom inset. Reserve the Play
+                // row plus a 12px gap so the two rounded rectangles do not
+                // overlap.
+                scrollRectTransform.offsetMin = new Vector2(
+                    scrollRectTransform.offsetMin.x, 94f);
             }
         }
 
