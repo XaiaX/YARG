@@ -590,7 +590,7 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void Setup_Menu_Uses_50_Editor_Alpha_When_Reflecting()
+        public void Setup_Menu_Dims_Editor_Content_When_Profile_List_Is_Focused()
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
