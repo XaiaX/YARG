@@ -45,7 +45,7 @@ namespace YARG.Menu.Maestro
 
         private static readonly Dictionary<string, Sprite> InstrumentIconCache = new();
         private const float FocusedPaneBackgroundAlpha = 0.9f;
-        private const float UnfocusedPaneBackgroundAlpha = 0.1f;
+        private const float UnfocusedPaneBackgroundAlpha = 0.2f;
 
         [Header("Page")]
         [SerializeField] private TMP_Text _songTitle;
@@ -326,11 +326,14 @@ namespace YARG.Menu.Maestro
 
             if (backgroundColor.HasValue)
             {
-                // Override the green RoundButton background with the specified color.
-                foreach (var img in button.GetComponentsInChildren<Image>(true))
+                // NavigatableUnityButton is attached to the nested Button child;
+                // the RoundButton background and selection ring live on its root.
+                var visualRoot = button.transform.parent != null
+                    ? button.transform.parent
+                    : button.transform;
+                foreach (var img in visualRoot.GetComponentsInChildren<Image>(true))
                 {
-                    if (img.color.g > 0.7f && img.color.b < 0.6f && img.color.a > 0.5f)
-                        img.color = backgroundColor.Value;
+                    img.color = backgroundColor.Value;
                 }
             }
         }
@@ -352,6 +355,11 @@ namespace YARG.Menu.Maestro
             AddNavigatableIfPresent(_rightNavigationGroup, _modifierButton);
             AddNavigatableIfPresent(_rightNavigationGroup, _accessibilityButton);
 
+            SetRightNavigationHoverSelection(_instrumentNavigation);
+            SetRightNavigationHoverSelection(_difficultyNavigation);
+            SetRightNavigationHoverSelection(_modifierButton);
+            SetRightNavigationHoverSelection(_accessibilityButton);
+
             ResetMaestroNavigationStack();
             _navigationGroup.PushNavGroupToStack();
             if (_navigationGroup.SelectedBehaviour == null)
@@ -363,6 +371,11 @@ namespace YARG.Menu.Maestro
         {
             if (group != null && navigatable != null)
                 group.AddNavigatable(navigatable);
+        }
+
+        private static void SetRightNavigationHoverSelection(NavigatableBehaviour navigatable)
+        {
+            navigatable?.SetSelectOnHover(true);
         }
 
         private void OnNavigationSelectionChanged(NavigatableBehaviour selected,
@@ -377,17 +390,24 @@ namespace YARG.Menu.Maestro
         }
 
         private void OnRightNavigationSelectionChanged(NavigatableBehaviour selected,
-            SelectionOrigin selectionOrigin)
+            SelectionOrigin _)
         {
-            if (selected == null || selectionOrigin != SelectionOrigin.Mouse || _editingPlayer)
+            if (selected == null)
                 return;
 
+            if (!_editingPlayer)
+                EnterEditorNavigation();
+
+            UpdateFocusVisual();
+        }
+
+        private void EnterEditorNavigation()
+        {
             _editingPlayer = true;
             SetEditorVisible(true);
             ResetMaestroNavigationStack();
             _navigationGroup?.PushNavGroupToStack();
             _rightNavigationGroup?.PushNavGroupToStack();
-            UpdateFocusVisual();
         }
 
         private void PushNavigationScheme()
@@ -441,11 +461,7 @@ namespace YARG.Menu.Maestro
                 FinishEditingPlayer();
 
             SelectPlayer(profileId);
-            _editingPlayer = true;
-            SetEditorVisible(true);
-            ResetMaestroNavigationStack();
-            _navigationGroup?.PushNavGroupToStack();
-            _rightNavigationGroup?.PushNavGroupToStack();
+            EnterEditorNavigation();
             _rightNavigationGroup?.SelectFirst();
             RefreshView();
         }
@@ -681,6 +697,7 @@ namespace YARG.Menu.Maestro
 
             dialog.AddDialogButton("Menu.DifficultySelect.Done", MenuData.Colors.BrightButton,
                 DialogManager.Instance.ClearDialog);
+            dialog.SelectLast();
         }
 
         private IReadOnlyList<Modifier> GetModifierOptions(MaestroStagedPlayer player)

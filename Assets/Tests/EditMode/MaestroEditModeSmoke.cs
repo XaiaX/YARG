@@ -654,7 +654,7 @@ namespace YARG.Tests.EditMode
             var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
             Assert.That(menu, Is.Not.Null);
-            int handler = menu.text.IndexOf("OnRightNavigationSelectionChanged",
+            int handler = menu.text.IndexOf("private void OnRightNavigationSelectionChanged",
                 StringComparison.Ordinal);
             Assert.That(handler, Is.GreaterThanOrEqualTo(0));
             var handlerText = menu.text.Substring(handler);

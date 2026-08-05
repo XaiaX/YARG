@@ -21,6 +21,11 @@ namespace YARG.Menu.Navigation
 
         public event Action<NavigatableBehaviour, bool, SelectionOrigin> SelectionStateChanged;
 
+        public void SetSelectOnHover(bool selectOnHover)
+        {
+            _selectOnHover = selectOnHover;
+        }
+
         protected virtual void Awake()
         {
             _selectedVisual.SetActive(Selected);

@@ -71,6 +71,11 @@ namespace YARG.Menu.Dialogs
                 _navigationGroup.AddNavigatable(navigatable);
         }
 
+        public void SelectLast()
+        {
+            _navigationGroup.SelectLast();
+        }
+
         public virtual ColoredButton AddDialogButton(string localizeKey, Color backgroundColor, UnityAction action)
         {
             var button = AddDialogButton(localizeKey, action);
