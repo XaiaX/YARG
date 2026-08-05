@@ -141,6 +141,10 @@ namespace YARG.Tests.EditMode
                 Is.Not.Null);
             Assert.That(serializedMenu.FindProperty("_modifierButton").objectReferenceValue,
                 Is.Not.Null, "The Modifiers button must reference its navigatable component.");
+            var modifierItemPrefab = serializedMenu.FindProperty("_modifierItemPrefab").objectReferenceValue;
+            Assert.That(modifierItemPrefab,
+                Is.TypeOf<YARG.Menu.DifficultySelect.ModifierItem>(),
+                "The Modifiers dialog must reference a ModifierItem component prefab.");
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/SelectedPlayerName"), Is.Not.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeDropdown"), Is.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeButton"), Is.Null);
@@ -154,6 +158,17 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("Controller Navigation Disabled"));
             Assert.That(script.text, Does.Contain("FinishEditingPlayer"));
             Assert.That(script.text, Does.Contain("BeginEditingPlayer"));
+        }
+
+        [Test]
+        public void Modifier_Picker_Has_A_Closable_Dialog()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("Menu.Common.Close"));
+            Assert.That(menu.text, Does.Contain("dialog.AddDialogButton"));
         }
 
         [Test]
