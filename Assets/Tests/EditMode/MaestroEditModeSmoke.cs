@@ -86,9 +86,14 @@ namespace YARG.Tests.EditMode
             Assert.That(background.color.a, Is.LessThanOrEqualTo(0.3f));
             Assert.That(prefab.transform.Find("Status"), Is.Null,
                 "Bot state should be an inline marker, not a full-width column.");
-            Assert.That(name.anchorMin.x, Is.LessThan(icon.anchorMin.x));
-            Assert.That(icon.anchorMin.x, Is.LessThan(setup.anchorMin.x));
+            // Icon is now the first column
+            Assert.That(icon.anchorMin.x, Is.LessThan(name.anchorMin.x));
+            Assert.That(name.anchorMin.x, Is.LessThan(setup.anchorMin.x));
             Assert.That(setup.anchorMin.x, Is.LessThan(modifiers.anchorMin.x));
+            // Column width checks (AC.4): icon ~8%, name ~20%, setup ~29%, modifiers ~39%
+            Assert.That(name.anchorMax.x - name.anchorMin.x, Is.EqualTo(0.20f).Within(0.03f));
+            Assert.That(setup.anchorMax.x - setup.anchorMin.x, Is.EqualTo(0.29f).Within(0.03f));
+            Assert.That(modifiers.anchorMax.x - modifiers.anchorMin.x, Is.GreaterThan(0.35f));
             Assert.That(selected.anchorMin, Is.EqualTo(Vector2.zero));
             Assert.That(selected.anchorMax, Is.EqualTo(Vector2.one));
             Assert.That(selected.GetComponent<Image>().color.r, Is.GreaterThan(0.9f));
@@ -223,7 +228,7 @@ namespace YARG.Tests.EditMode
             var playLabel = play.GetComponentsInChildren<Component>(true)
                 .Single(component => component.GetType().FullName == "TMPro.TextMeshProUGUI");
             Assert.That(new SerializedObject(playLabel).FindProperty("m_text").stringValue,
-                Is.EqualTo("Play"), "Play must have visible label text.");
+                Is.EqualTo("Play Song"), "Play button must read 'Play Song'.");
             Assert.That(serializedMenu.FindProperty("_modifierButton").objectReferenceValue,
                 Is.Not.Null);
             Assert.That(serializedMenu.FindProperty("_accessibilityButton").objectReferenceValue,
@@ -485,6 +490,114 @@ namespace YARG.Tests.EditMode
             Assert.That(remaining.GetValue(1), Is.SameAs(page));
             Assert.That((bool) remove.Invoke(null, new[] { stack, dropdown }), Is.False);
             Assert.That(dropdownPops, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Player_Row_Hover_Select_Is_Enabled()
+        {
+            const string path = "Assets/Prefabs/Menu/Maestro/MaestroPlayerRow.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            Assert.That(prefab, Is.Not.Null);
+            var row = prefab.GetComponents<Component>()
+                .Single(c => c.GetType().FullName == "YARG.Menu.Maestro.MaestroPlayerRow");
+            Assert.That(new SerializedObject(row).FindProperty("_selectOnHover").boolValue,
+                Is.True, "Player rows must select on mouse hover (AC.6).");
+        }
+
+        [Test]
+        public void Player_Row_Shows_Tier_Label_On_Second_Line()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("\\n<size="),
+                "Row setup text must support a second-line tier label (AC.1).");
+            Assert.That(script.text, Does.Contain("tierLabel"),
+                "Refresh must accept a tierLabel parameter.");
+        }
+
+        [Test]
+        public void Setup_Menu_Dims_NonSelected_Rows_When_Editing()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("SetEditorDimmed"),
+                "Menu must call per-row dimming when editor is focused (AC.7).");
+            var rowScript = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs");
+            Assert.That(rowScript.text, Does.Contain("0.5f"),
+                "Non-selected rows must dim to 50% alpha.");
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_075_Editor_Alpha_When_Reflecting()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text,
+                Does.Contain("_selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.75f"),
+                "Editor must be at 75% when reflecting, 100% when active (AC.8).");
+        }
+
+        [Test]
+        public void Dropdown_Navigatable_Has_Focus_Border_Field()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroDropdownNavigatable.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("_focusBorder"),
+                "Dropdown navigatable must have a focus border field (AC.9).");
+            Assert.That(script.text, Does.Contain("SpriteHelper.GetRoundedRect"),
+                "Focus border must use SpriteHelper for procedural rounded-rect sprite.");
+        }
+
+        [Test]
+        public void Adjustment_Buttons_Are_Side_By_Side()
+        {
+            const string path = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            Assert.That(prefab, Is.Not.Null);
+            var row = prefab.transform.Find("Body/SelectedPlayerEditor/AdjustmentButtonsRow");
+            Assert.That(row, Is.Not.Null,
+                "Both buttons must be in a shared horizontal container (AC.5).");
+            Assert.That(row.GetComponent<HorizontalLayoutGroup>(), Is.Not.Null,
+                "The button container must use a HorizontalLayoutGroup.");
+            Assert.That(row.Find("ModifierButton"), Is.Not.Null);
+            Assert.That(row.Find("AccessibilityButton"), Is.Not.Null);
+        }
+
+        [Test]
+        public void Adjustment_Buttons_Use_Blue_Not_Green()
+        {
+            const string path = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            Assert.That(prefab, Is.Not.Null);
+
+            foreach (var buttonName in new[] { "ModifierButton", "AccessibilityButton" })
+            {
+                var button = prefab.transform.Find(
+                    $"Body/SelectedPlayerEditor/AdjustmentButtonsRow/{buttonName}");
+                Assert.That(button, Is.Not.Null, $"{buttonName} must exist.");
+                var images = button.GetComponentsInChildren<Image>(true)
+                    .Where(img => img.color.a > 0.5f && img.color != Color.white)
+                    .ToList();
+                Assert.That(images.Any(img => img.color.b > 0.9f && img.color.r < 0.5f), Is.True,
+                    $"{buttonName} background should be BrightButton blue (b ≈ 1.0, r < 0.5), not green (AC.5).");
+                Assert.That(images.Any(img => img.color.g > 0.7f && img.color.b < 0.6f), Is.False,
+                    $"{buttonName} should not use ConfirmButton green.");
+            }
+        }
+
+        [Test]
+        public void GameMode_PartyVocals_Maps_To_HarmVocals()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Helpers/Extensions/GameModeExtensions.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("PartyVocals    => \"harmVocals\""),
+                "Party Vocals must map to the harmony icon, not solo vocals (AC.3).");
         }
 
         private static Transform FindRequired(Transform root, string path)

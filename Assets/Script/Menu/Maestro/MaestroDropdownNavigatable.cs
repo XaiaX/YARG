@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using YARG.Core.Input;
+using YARG.Helpers.UI;
 using YARG.Menu.Navigation;
 
 namespace YARG.Menu.Maestro
@@ -15,6 +16,8 @@ namespace YARG.Menu.Maestro
     {
         private static readonly Color SELECTED_TEXT_COLOR =
             new(1f, 0.83137256f, 0.22745098f, 1f);
+
+        [SerializeField] private Image _focusBorder;
 
         private TMP_Dropdown _dropdown;
         private Color _defaultCaptionColor;
@@ -53,6 +56,23 @@ namespace YARG.Menu.Maestro
             if (forwarder == null)
                 forwarder = _dropdown.gameObject.AddComponent<MaestroDropdownClickForwarder>();
             forwarder.Target = this;
+
+            if (_focusBorder == null)
+            {
+                var borderGo = new GameObject("FocusBorder");
+                borderGo.transform.SetParent(_dropdown.transform.parent, false);
+                var rt = borderGo.AddComponent<RectTransform>();
+                rt.anchorMin = Vector2.zero;
+                rt.anchorMax = Vector2.one;
+                rt.offsetMin = new Vector2(-2, -2);
+                rt.offsetMax = new Vector2(2, 2);
+                var img = borderGo.AddComponent<Image>();
+                img.sprite = SpriteHelper.GetRoundedRect(8, 2);
+                img.type = Image.Type.Sliced;
+                img.color = new Color(1f, 0.83137256f, 0.22745098f, 1f);
+                _focusBorder = img;
+                borderGo.SetActive(false);
+            }
         }
 
         protected override void OnSelectionChanged(bool selected)
@@ -70,6 +90,9 @@ namespace YARG.Menu.Maestro
             {
                 _dropdown.captionText.color = _defaultCaptionColor;
             }
+
+            if (_focusBorder != null)
+                _focusBorder.gameObject.SetActive(selected);
         }
 
         public override void Confirm()

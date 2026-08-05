@@ -31,6 +31,7 @@ namespace YARG.Menu.Maestro
         [SerializeField] private TMP_Text _modifiers;
 
         private bool _wasSelectedOnPointerDown;
+        private CanvasGroup _rowCanvasGroup;
 
         public Guid ProfileId { get; private set; }
         public event Action<Guid> Confirmed;
@@ -41,7 +42,7 @@ namespace YARG.Menu.Maestro
             Refresh(player, false);
         }
 
-        public void Refresh(MaestroStagedPlayer player, bool selected)
+        public void Refresh(MaestroStagedPlayer player, bool selected, string tierLabel = null)
         {
             if (player.ProfileId != ProfileId)
                 return;
@@ -50,8 +51,13 @@ namespace YARG.Menu.Maestro
                 _name.text = player.IsBot ? $"* {player.Name}" : player.Name;
             SetGameModeIcon(player.GameMode);
             if (_setup != null)
-                _setup.text = $"{player.Instrument.ToLocalizedName()} · " +
+            {
+                string line1 = $"{player.Instrument.ToLocalizedName()} · " +
                     player.Difficulty.ToLocalizedName();
+                _setup.text = string.IsNullOrEmpty(tierLabel)
+                    ? line1
+                    : $"{line1}\n<size=14>{tierLabel}</size>";
+            }
             if (_modifiers != null)
             {
                 var activeAdjustments = EnumExtensions<Modifier>.Values
@@ -129,6 +135,20 @@ namespace YARG.Menu.Maestro
         public void SetSelected(bool selected)
         {
             SetSelected(selected, SelectionOrigin.Programmatically);
+        }
+
+        public void SetEditorDimmed(bool dimmed)
+        {
+            EnsureRowCanvasGroup();
+            if (_rowCanvasGroup != null)
+                _rowCanvasGroup.alpha = dimmed ? 0.5f : 1f;
+        }
+
+        private void EnsureRowCanvasGroup()
+        {
+            if (_rowCanvasGroup == null)
+                _rowCanvasGroup = GetComponent<CanvasGroup>() ??
+                    gameObject.AddComponent<CanvasGroup>();
         }
 
         public override void Confirm()

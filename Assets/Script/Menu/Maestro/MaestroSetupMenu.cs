@@ -142,10 +142,21 @@ namespace YARG.Menu.Maestro
         {
             EnsureFocusCanvasGroups();
             bool editorFocused = _editingPlayer;
-            if (_playerPanelCanvasGroup != null)
-                _playerPanelCanvasGroup.alpha = editorFocused ? 0.55f : 1f;
+
+            // Editor at 0.75 when reflecting, 1.0 when active
             if (_selectedPlayerCanvasGroup != null)
-                _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.55f;
+                _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.75f;
+
+            // Per-row dimming replaces panel-level dimming
+            if (_playerPanelCanvasGroup != null)
+                _playerPanelCanvasGroup.alpha = 1f;
+
+            foreach (var pair in _rows)
+            {
+                if (pair.Value == null) continue;
+                bool isNotSelected = pair.Key != _selectedProfileId;
+                pair.Value.SetEditorDimmed(editorFocused && isNotSelected);
+            }
         }
 
         private void ResetMaestroNavigationStack()
@@ -393,7 +404,10 @@ namespace YARG.Menu.Maestro
             foreach (var staged in Session.Players)
             {
                 if (_rows.TryGetValue(staged.ProfileId, out var row))
-                    row.Refresh(staged, staged.ProfileId == _selectedProfileId);
+                {
+                    string tierLabel = GetRowTierLabel(song, staged);
+                    row.Refresh(staged, staged.ProfileId == _selectedProfileId, tierLabel);
+                }
             }
 
             if (!Session.TryGetPlayer(_selectedProfileId, out var selected))
@@ -450,6 +464,13 @@ namespace YARG.Menu.Maestro
             return song == null
                 ? chartName
                 : chartName + " - " + GetTierLabel(GetTierValues(song, instrument));
+        }
+
+        private static string GetRowTierLabel(SongEntry song, MaestroStagedPlayer player)
+        {
+            if (song == null) return null;
+            var values = GetTierValues(song, player.Instrument);
+            return GetTierLabel(values);
         }
 
         private static PartValues GetTierValues(SongEntry song, Instrument instrument)
