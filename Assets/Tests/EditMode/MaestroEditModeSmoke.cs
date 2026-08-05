@@ -244,6 +244,12 @@ namespace YARG.Tests.EditMode
                 "Play must be narrower than the profile panel so its focus ring has padding.");
             Assert.That(script.text, Does.Contain("scrollRectTransform.offsetMin"),
                 "The profile list must reserve vertical space for Play and its focus ring.");
+            int repositionIndex = script.text.IndexOf("RepositionPlayButton();",
+                StringComparison.Ordinal);
+            int playerLoopIndex = script.text.IndexOf(
+                "foreach (var player in Session.Players)", StringComparison.Ordinal);
+            Assert.That(repositionIndex, Is.GreaterThanOrEqualTo(0).And.LessThan(playerLoopIndex),
+                "Play must be removed before dynamic rows are created so no empty row remains.");
         }
 
         [Test]
@@ -539,6 +545,43 @@ namespace YARG.Tests.EditMode
                 "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs");
             Assert.That(rowScript.text, Does.Contain("0.5f"),
                 "Non-selected rows must dim to 50% alpha.");
+        }
+
+        [Test]
+        public void Player_Row_Dims_Text_And_Icon_Without_Dimming_Background()
+        {
+            const string path = "Assets/Prefabs/Menu/Maestro/MaestroPlayerRow.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            Assert.That(prefab, Is.Not.Null);
+
+            var instance = UnityEngine.Object.Instantiate(prefab);
+            try
+            {
+                var row = instance.GetComponents<Component>()
+                    .Single(component => component.GetType().FullName ==
+                        "YARG.Menu.Maestro.MaestroPlayerRow");
+                var setup = instance.transform.Find("Setup").GetComponent<Graphic>();
+                var icon = instance.transform.Find("InstrumentIcon").GetComponent<Graphic>();
+                var background = instance.transform.Find("SelectedBackground").GetComponent<Graphic>();
+                var setupColor = setup.color;
+                var iconColor = icon.color;
+                var backgroundColor = background.color;
+
+                row.GetType().GetMethod("SetEditorDimmed")?.Invoke(row, new object[] { true });
+
+                Assert.That(setup.color.a, Is.EqualTo(setupColor.a * 0.5f).Within(0.01f));
+                Assert.That(icon.color.a, Is.EqualTo(iconColor.a * 0.5f).Within(0.01f));
+                Assert.That(background.color, Is.EqualTo(backgroundColor),
+                    "The row background should remain unchanged while its contents dim.");
+
+                row.GetType().GetMethod("SetEditorDimmed")?.Invoke(row, new object[] { false });
+                Assert.That(setup.color, Is.EqualTo(setupColor));
+                Assert.That(icon.color, Is.EqualTo(iconColor));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(instance);
+            }
         }
 
         [Test]
