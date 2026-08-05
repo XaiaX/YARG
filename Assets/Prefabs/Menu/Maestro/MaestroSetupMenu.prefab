@@ -394,7 +394,7 @@ MonoBehaviour:
   _selectedPlayerText: {fileID: 8156543100250323066}
   _instrumentDropdown: {fileID: 900200000000000002}
   _difficultyDropdown: {fileID: 900300000000000002}
-  _modifierItemPrefab: {fileID: 2176243544762969456, guid: 6c928df38839ed24eaa659f76c62da6b, type: 3}
+  _modifierItemPrefab: {fileID: 3419815060514877507, guid: 6c928df38839ed24eaa659f76c62da6b, type: 3}
   _modifierButton: {fileID: 3318590168316452258}
   _readyButton: {fileID: 9200000000000000005}
   _playButton: {fileID: 9200000000000000006}

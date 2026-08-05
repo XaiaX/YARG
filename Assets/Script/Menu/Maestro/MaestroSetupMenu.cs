@@ -14,6 +14,7 @@ using YARG.Core.Input;
 using YARG.Core.Song;
 using YARG.Helpers.Extensions;
 using YARG.Localization;
+using YARG.Menu.Data;
 using YARG.Menu.DifficultySelect;
 using YARG.Menu.Filters;
 using YARG.Menu.Navigation;
@@ -486,6 +487,13 @@ namespace YARG.Menu.Maestro
                 return;
             }
 
+            if (_modifierItemPrefab == null)
+            {
+                DialogManager.Instance.ShowMessage("Modifiers",
+                    "Modifier controls are unavailable for this menu.");
+                return;
+            }
+
             var dialog = DialogManager.Instance.ShowList($"Modifiers — {player.Name}");
             dialog.ClearButtons();
             dialog.ClearList();
@@ -500,7 +508,10 @@ namespace YARG.Menu.Maestro
                         RefreshView();
                     });
             }
-            dialog.AddDialogButton("Menu.Common.Confirm", DialogManager.Instance.ClearDialog);
+            dialog.AddDialogButton("Menu.Common.Close", MenuData.Colors.CancelButton,
+                DialogManager.Instance.ClearDialog);
+            dialog.AddDialogButton("Menu.Common.Confirm", MenuData.Colors.ConfirmButton,
+                DialogManager.Instance.ClearDialog);
         }
 
         private void ToggleControllerLock()
