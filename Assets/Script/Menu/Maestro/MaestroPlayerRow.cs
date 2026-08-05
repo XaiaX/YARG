@@ -151,7 +151,7 @@ namespace YARG.Menu.Maestro
         public void SetEditorDimmed(bool dimmed)
         {
             CaptureContentColors();
-            float alpha = dimmed ? 0.5f : 1f;
+            float alpha = dimmed ? 0.2f : 1f;
             SetGraphicAlpha(_name, _nameColor, alpha);
             SetGraphicAlpha(_setup, _setupColor, alpha);
             SetGraphicAlpha(_modifiers, _modifiersColor, alpha);

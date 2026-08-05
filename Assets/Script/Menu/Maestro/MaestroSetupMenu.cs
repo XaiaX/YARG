@@ -44,6 +44,8 @@ namespace YARG.Menu.Maestro
         };
 
         private static readonly Dictionary<string, Sprite> InstrumentIconCache = new();
+        private const float FocusedPaneBackgroundAlpha = 0.9f;
+        private const float UnfocusedPaneBackgroundAlpha = 0.1f;
 
         [Header("Page")]
         [SerializeField] private TMP_Text _songTitle;
@@ -52,10 +54,12 @@ namespace YARG.Menu.Maestro
         [SerializeField] private Transform _playerRowContainer;
         [SerializeField] private MaestroPlayerRow _playerRowPrefab;
         [SerializeField] private ScrollRect _playerScroll;
+        [SerializeField] private Image _playerPanelBackground;
         [SerializeField] private NavigationGroup _navigationGroup;
 
         [Header("Selected player editor")]
         [SerializeField] private GameObject _selectedPlayerEditor;
+        [SerializeField] private Image _selectedPlayerBackground;
         [SerializeField] private NavigationGroup _rightNavigationGroup;
         [SerializeField] private TMP_Text _selectedPlayerText;
         [SerializeField] private TMP_Dropdown _instrumentDropdown;
@@ -76,9 +80,8 @@ namespace YARG.Menu.Maestro
         private Difficulty[] _difficultyOptions = Array.Empty<Difficulty>();
         private MaestroDropdownNavigatable _instrumentNavigation;
         private MaestroDropdownNavigatable _difficultyNavigation;
-        private CanvasGroup _playerPanelCanvasGroup;
-        private CanvasGroup _selectedPlayerCanvasGroup;
         private CanvasGroup _playButtonCanvasGroup;
+        private readonly Dictionary<Graphic, float> _selectedEditorGraphicAlphas = new();
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
@@ -93,6 +96,7 @@ namespace YARG.Menu.Maestro
             _leaving = false;
             _editingPlayer = false;
             _controllerLockEnabled = true;
+            _selectedEditorGraphicAlphas.Clear();
             SetEditorVisible(true);
             EnsureFocusCanvasGroups();
             AcquireControllerLock();
@@ -131,12 +135,10 @@ namespace YARG.Menu.Maestro
 
         private void EnsureFocusCanvasGroups()
         {
-            if (_playerScroll != null)
-                _playerPanelCanvasGroup = _playerScroll.GetComponent<CanvasGroup>() ??
-                    _playerScroll.gameObject.AddComponent<CanvasGroup>();
-            if (_selectedPlayerEditor != null)
-                _selectedPlayerCanvasGroup = _selectedPlayerEditor.GetComponent<CanvasGroup>() ??
-                    _selectedPlayerEditor.AddComponent<CanvasGroup>();
+            if (_playerPanelBackground == null && _playerScroll != null)
+                _playerPanelBackground = _playerScroll.GetComponent<Image>();
+            if (_selectedPlayerBackground == null && _selectedPlayerEditor != null)
+                _selectedPlayerBackground = _selectedPlayerEditor.GetComponent<Image>();
             if (_playButton != null)
                 _playButtonCanvasGroup = _playButton.GetComponent<CanvasGroup>() ??
                     _playButton.gameObject.AddComponent<CanvasGroup>();
@@ -147,18 +149,14 @@ namespace YARG.Menu.Maestro
             EnsureFocusCanvasGroups();
             bool editorFocused = _editingPlayer;
 
-            // Editor at 50% when profile list is active, 100% when editing.
-            if (_selectedPlayerCanvasGroup != null)
-                _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.5f;
-
-            // Keep the profile panel background at full opacity. The visible
-            // navigation content is dimmed item-by-item so the selected row
-            // remains fully visible while the editor has focus.
-            if (_playerPanelCanvasGroup != null)
-                _playerPanelCanvasGroup.alpha = 1f;
+            SetGraphicAlpha(_playerPanelBackground,
+                editorFocused ? UnfocusedPaneBackgroundAlpha : FocusedPaneBackgroundAlpha);
+            SetGraphicAlpha(_selectedPlayerBackground,
+                editorFocused ? FocusedPaneBackgroundAlpha : UnfocusedPaneBackgroundAlpha);
+            SetSelectedEditorContentAlpha(editorFocused ? 1f : 0.2f);
 
             if (_playButtonCanvasGroup != null)
-                _playButtonCanvasGroup.alpha = editorFocused ? 0.5f : 1f;
+                _playButtonCanvasGroup.alpha = editorFocused ? 0.2f : 1f;
 
             foreach (var pair in _rows)
             {
@@ -218,7 +216,18 @@ namespace YARG.Menu.Maestro
             }
 
             if (_playerRowContainer is RectTransform contentRect)
+            {
+                contentRect.anchorMin = new Vector2(0f, 1f);
+                contentRect.anchorMax = new Vector2(1f, 1f);
+                contentRect.pivot = new Vector2(0.5f, 1f);
+                contentRect.anchoredPosition = Vector2.zero;
+                contentRect.offsetMin = new Vector2(contentRect.offsetMin.x, 0f);
+                contentRect.offsetMax = new Vector2(contentRect.offsetMax.x, 0f);
                 LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
+            }
+
+            if (_playerScroll != null)
+                _playerScroll.verticalNormalizedPosition = 1f;
 
             if (Session.Players.FirstOrDefault() is { } first)
                 SelectPlayer(first.ProfileId);
@@ -491,6 +500,38 @@ namespace YARG.Menu.Maestro
             PopulateDropdown(_difficultyDropdown, _difficultyOptions, selected.Difficulty,
                 difficulty => difficulty.ToLocalizedName());
             UpdateFocusVisual();
+        }
+
+        private void SetSelectedEditorContentAlpha(float alpha)
+        {
+            if (_selectedPlayerEditor == null)
+                return;
+
+            foreach (var graphic in _selectedPlayerEditor.GetComponentsInChildren<Graphic>(true))
+            {
+                if (graphic == null || graphic == _selectedPlayerBackground)
+                    continue;
+
+                if (!_selectedEditorGraphicAlphas.TryGetValue(graphic, out float baseAlpha))
+                {
+                    baseAlpha = graphic.color.a;
+                    _selectedEditorGraphicAlphas.Add(graphic, baseAlpha);
+                }
+
+                var color = graphic.color;
+                color.a = baseAlpha * alpha;
+                graphic.color = color;
+            }
+        }
+
+        private static void SetGraphicAlpha(Graphic graphic, float alpha)
+        {
+            if (graphic == null)
+                return;
+
+            var color = graphic.color;
+            color.a = alpha;
+            graphic.color = color;
         }
 
         private static void PopulateDropdown<T>(TMP_Dropdown dropdown, IReadOnlyList<T> options,

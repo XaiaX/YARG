@@ -63,10 +63,10 @@ namespace YARG.Menu.Maestro
                 var rt = borderGo.AddComponent<RectTransform>();
                 rt.anchorMin = Vector2.zero;
                 rt.anchorMax = Vector2.one;
-                rt.offsetMin = new Vector2(-4, 12);
-                rt.offsetMax = new Vector2(4, -12);
+                rt.offsetMin = new Vector2(-6, 12);
+                rt.offsetMax = new Vector2(6, -12);
                 var img = borderGo.AddComponent<Image>();
-                img.sprite = SpriteHelper.GetRoundedRect(16, 2);
+                img.sprite = SpriteHelper.GetRoundedRect(18, 2);
                 img.type = Image.Type.Sliced;
                 img.color = new Color(1f, 0.83137256f, 0.22745098f, 1f);
                 img.raycastTarget = false;

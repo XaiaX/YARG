@@ -388,8 +388,10 @@ MonoBehaviour:
   _playerRowContainer: {fileID: 5943659903682765017}
   _playerRowPrefab: {fileID: 1000000000000000003, guid: 5b3e090e31e7e480f8427c90fde429c4, type: 3}
   _playerScroll: {fileID: 1794152416195370733}
+  _playerPanelBackground: {fileID: 2738194568420127640}
   _navigationGroup: {fileID: 8051049429205357975}
   _selectedPlayerEditor: {fileID: 9168029929358687883}
+  _selectedPlayerBackground: {fileID: 9200000000000000015}
   _rightNavigationGroup: {fileID: 9200000000000000001}
   _selectedPlayerText: {fileID: 8156543100250323066}
   _instrumentDropdown: {fileID: 900200000000000002}
@@ -1335,6 +1337,8 @@ GameObject:
   m_Component:
   - component: {fileID: 8350824210748644199}
   - component: {fileID: 4194394763053282259}
+  - component: {fileID: 9200000000000000014}
+  - component: {fileID: 9200000000000000015}
   - component: {fileID: 9200000000000000001}
   m_Layer: 0
   m_Name: SelectedPlayerEditor
@@ -1392,6 +1396,44 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
+--- !u!222 &9200000000000000014
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9168029929358687883}
+  m_CullTransparentMesh: 1
+--- !u!114 &9200000000000000015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9168029929358687883}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 0.01, g: 0.03, b: 0.07, a: 0.9}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 21300000, guid: 36717c2e41881f044a47d90af9204ed0, type: 3}
+  m_Type: 1
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
 --- !u!1001 &1261448438787892825
 PrefabInstance:
   m_ObjectHideFlags: 0
