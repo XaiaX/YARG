@@ -205,6 +205,10 @@ namespace YARG.Menu.Maestro
             if (_playerRowContainer == null || _playerRowPrefab == null)
                 return;
 
+            // Remove the authored Play placeholder before adding dynamic rows;
+            // otherwise the vertical layout group leaves an empty row at the top.
+            RepositionPlayButton();
+
             foreach (var player in Session.Players)
             {
                 var row = Instantiate(_playerRowPrefab, _playerRowContainer);
@@ -213,10 +217,8 @@ namespace YARG.Menu.Maestro
                 _rows.Add(player.ProfileId, row);
             }
 
-            // Move the Play button out of the scroll content and position it
-            // as a fixed element below the profile list, so it doesn't scroll
-            // with the rows and always appears at the bottom of the left column.
-            RepositionPlayButton();
+            if (_playerRowContainer is RectTransform contentRect)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
 
             if (Session.Players.FirstOrDefault() is { } first)
                 SelectPlayer(first.ProfileId);

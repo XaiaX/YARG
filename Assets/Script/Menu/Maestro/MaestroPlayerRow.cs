@@ -31,7 +31,11 @@ namespace YARG.Menu.Maestro
         [SerializeField] private TMP_Text _modifiers;
 
         private bool _wasSelectedOnPointerDown;
-        private CanvasGroup _rowCanvasGroup;
+        private Color _nameColor;
+        private Color _setupColor;
+        private Color _modifiersColor;
+        private Color _gameModeIconColor;
+        private bool _contentColorsCaptured;
 
         public Guid ProfileId { get; private set; }
         public event Action<Guid> Confirmed;
@@ -146,16 +150,34 @@ namespace YARG.Menu.Maestro
 
         public void SetEditorDimmed(bool dimmed)
         {
-            EnsureRowCanvasGroup();
-            if (_rowCanvasGroup != null)
-                _rowCanvasGroup.alpha = dimmed ? 0.5f : 1f;
+            CaptureContentColors();
+            float alpha = dimmed ? 0.5f : 1f;
+            SetGraphicAlpha(_name, _nameColor, alpha);
+            SetGraphicAlpha(_setup, _setupColor, alpha);
+            SetGraphicAlpha(_modifiers, _modifiersColor, alpha);
+            SetGraphicAlpha(_gameModeIcon, _gameModeIconColor, alpha);
         }
 
-        private void EnsureRowCanvasGroup()
+        private void CaptureContentColors()
         {
-            if (_rowCanvasGroup == null)
-                _rowCanvasGroup = GetComponent<CanvasGroup>() ??
-                    gameObject.AddComponent<CanvasGroup>();
+            if (_contentColorsCaptured)
+                return;
+
+            _nameColor = _name != null ? _name.color : Color.white;
+            _setupColor = _setup != null ? _setup.color : Color.white;
+            _modifiersColor = _modifiers != null ? _modifiers.color : Color.white;
+            _gameModeIconColor = _gameModeIcon != null ? _gameModeIcon.color : Color.white;
+            _contentColorsCaptured = true;
+        }
+
+        private static void SetGraphicAlpha(Graphic graphic, Color baseColor, float alpha)
+        {
+            if (graphic == null)
+                return;
+
+            var color = baseColor;
+            color.a = baseColor.a * alpha;
+            graphic.color = color;
         }
 
         public override void Confirm()
