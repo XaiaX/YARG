@@ -137,7 +137,7 @@ namespace YARG.Tests.EditMode
                 Is.Not.Null);
             Assert.That(serializedMenu.FindProperty("_playButton").objectReferenceValue,
                 Is.Not.Null);
-            Assert.That(serializedMenu.FindProperty("_readyButton").objectReferenceValue,
+            Assert.That(serializedMenu.FindProperty("_accessibilityButton").objectReferenceValue,
                 Is.Not.Null);
             Assert.That(serializedMenu.FindProperty("_modifierButton").objectReferenceValue,
                 Is.Not.Null, "The Modifiers button must reference its navigatable component.");
@@ -163,14 +163,16 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void Modifier_Picker_Has_A_Closable_Dialog()
+        public void Adjustment_Picker_Uses_A_Single_Done_Button()
         {
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
             var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
 
             Assert.That(menu, Is.Not.Null);
-            Assert.That(menu.text, Does.Contain("Menu.Common.Close"));
-            Assert.That(menu.text, Does.Contain("dialog.AddDialogButton"));
+            Assert.That(menu.text, Does.Contain("ShowAdjustmentPicker"));
+            Assert.That(menu.text, Does.Contain("Menu.DifficultySelect.Done"));
+            Assert.That(menu.text, Does.Not.Contain("Menu.Common.Close"));
+            Assert.That(menu.text, Does.Not.Contain("Menu.Common.Confirm"));
         }
 
         [Test]
@@ -202,9 +204,20 @@ namespace YARG.Tests.EditMode
 
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor").gameObject.activeSelf,
                 Is.True, "The editor must remain visible while the left profile list has focus.");
-            var play = prefab.transform.Find("Body/PlayerScroll/Viewport/PlayerContent/PlayButton");
+            var play = prefab.transform.Find(
+                "Body/PlayerScroll/Viewport/PlayerContent/PlayButtonContainer/PlayButton");
+            var playContainer = prefab.transform.Find(
+                "Body/PlayerScroll/Viewport/PlayerContent/PlayButtonContainer");
             Assert.That(play,
                 Is.Not.Null, "Play must be a visible scroll-content entry.");
+            Assert.That(playContainer,
+                Is.Not.Null, "Play must be inside its own centered layout wrapper.");
+            Assert.That(playContainer.GetComponent<HorizontalLayoutGroup>(), Is.Not.Null,
+                "Play needs a centered wrapper so its highlight does not touch the panel edges.");
+            Assert.That(playContainer.GetComponent<LayoutElement>(), Is.Not.Null,
+                "Play's wrapper needs an explicit row height in the scroll layout.");
+            Assert.That(play.GetComponent<RectTransform>().sizeDelta.x,
+                Is.LessThanOrEqualTo(300f), "Play should not inherit the full profile-panel width.");
             Assert.That(play.GetComponent<RectTransform>().sizeDelta.y,
                 Is.LessThanOrEqualTo(72f), "Play must fit inside a profile row.");
             var playLabel = play.GetComponentsInChildren<Component>(true)
@@ -212,6 +225,8 @@ namespace YARG.Tests.EditMode
             Assert.That(new SerializedObject(playLabel).FindProperty("m_text").stringValue,
                 Is.EqualTo("Play"), "Play must have visible label text.");
             Assert.That(serializedMenu.FindProperty("_modifierButton").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(serializedMenu.FindProperty("_accessibilityButton").objectReferenceValue,
                 Is.Not.Null);
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
@@ -330,6 +345,53 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Not.Contain("_backButton"));
             Assert.That(script.text, Does.Not.Contain("_continueButton"));
             Assert.That(script.text, Does.Not.Contain("_modifierText"));
+        }
+
+        [Test]
+        public void Player_Row_Uses_Localized_Instrument_And_Difficulty_Summary()
+        {
+            const string rowPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
+            var row = AssetDatabase.LoadAssetAtPath<MonoScript>(rowPath);
+
+            Assert.That(row, Is.Not.Null);
+            Assert.That(row.text, Does.Contain("player.Instrument.ToLocalizedName()"));
+            Assert.That(row.text, Does.Contain("player.Difficulty.ToLocalizedName()"));
+            Assert.That(row.text, Does.Not.Contain("player.GameMode} · {player.Instrument}"));
+        }
+
+        [Test]
+        public void Maestro_Stages_Accessibility_Settings_With_Active_Summaries()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(session, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("StageLeftyFlip"));
+            Assert.That(menu.text, Does.Contain("StageRangeEnabled"));
+            Assert.That(menu.text, Does.Contain("StageOpenLaneDisplayType"));
+            Assert.That(menu.text, Does.Contain("BuildAccessibilitySummary"));
+            Assert.That(session.text, Does.Contain("LeftyFlip"));
+            Assert.That(session.text, Does.Contain("RangeEnabled"));
+            Assert.That(session.text, Does.Contain("OpenLaneDisplayType"));
+        }
+
+        [Test]
+        public void Vocal_Adjustments_Keep_Unpitched_Parts_Adjacent()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+
+            Assert.That(menu, Is.Not.Null);
+            int part1 = menu.text.IndexOf("Modifier.UnpitchedOnly", StringComparison.Ordinal);
+            int part2 = menu.text.IndexOf("Modifier.UnpitchedHarm2", StringComparison.Ordinal);
+            int part3 = menu.text.IndexOf("Modifier.UnpitchedHarm3", StringComparison.Ordinal);
+            Assert.That(part1, Is.GreaterThanOrEqualTo(0));
+            Assert.That(part2, Is.GreaterThan(part1));
+            Assert.That(part3, Is.GreaterThan(part2));
+            Assert.That(menu.text, Does.Contain("GetVocalModifierOptions"));
         }
 
         [Test]
