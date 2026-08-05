@@ -69,6 +69,7 @@ namespace YARG.Menu.Maestro
                 img.sprite = SpriteHelper.GetRoundedRect(12, 2);
                 img.type = Image.Type.Sliced;
                 img.color = new Color(1f, 0.83137256f, 0.22745098f, 1f);
+                img.raycastTarget = false;
                 _focusBorder = img;
                 borderGo.SetActive(false);
             }
@@ -226,11 +227,15 @@ namespace YARG.Menu.Maestro
         public void OnPointerDown(PointerEventData eventData)
         {
             Target?.SetSelected(true, SelectionOrigin.Mouse);
+            // Open the dropdown on pointer-down rather than waiting for the
+            // click event. IPointerClickHandler can fail to fire when the
+            // navigation state changes between press and release.
+            Target?.Confirm();
         }
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            Target?.Confirm();
+            // Handled in OnPointerDown to avoid timing issues.
         }
     }
 }

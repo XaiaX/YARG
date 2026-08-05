@@ -147,15 +147,19 @@ namespace YARG.Menu.Maestro
             if (_selectedPlayerCanvasGroup != null)
                 _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.75f;
 
-            // Per-row dimming replaces panel-level dimming
+            // When the editor is active, dim the entire profile panel to 80%.
+            // When the profile list is the active focus, the panel stays at 100%
+            // and non-selected rows are individually dimmed to 50%.
             if (_playerPanelCanvasGroup != null)
-                _playerPanelCanvasGroup.alpha = 1f;
+                _playerPanelCanvasGroup.alpha = editorFocused ? 0.8f : 1f;
 
             foreach (var pair in _rows)
             {
                 if (pair.Value == null) continue;
                 bool isNotSelected = pair.Key != _selectedProfileId;
-                pair.Value.SetEditorDimmed(editorFocused && isNotSelected);
+                // Only per-row dim when the profile list is the active focus
+                // (not when editing — the panel-level dim handles that case).
+                pair.Value.SetEditorDimmed(!editorFocused && isNotSelected);
             }
         }
 

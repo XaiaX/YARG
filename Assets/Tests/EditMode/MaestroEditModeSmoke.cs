@@ -627,15 +627,14 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void Dialog_ListDialog_Has_Red_Cancel_Entry()
+        public void Dialog_Base_Has_Red_Cancel_Entry()
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
-                "Assets/Script/Menu/Common/Dialogs/ListDialog.cs");
+                "Assets/Script/Menu/Common/Dialogs/Dialog.cs");
             Assert.That(script, Is.Not.Null);
-            Assert.That(script.text, Does.Contain("GetNavigationScheme"),
-                "ListDialog must override GetNavigationScheme (AC.5).");
             Assert.That(script.text, Does.Contain("MenuAction.Red"),
-                "ListDialog must have a Red/Cancel entry to close the dialog (AC.5).");
+                "Base Dialog must have a Red/Cancel entry so all dialogs " +
+                "(including MessageDialog popups) can be closed with Back/Esc (AC.5).");
         }
 
         private static Transform FindRequired(Transform root, string path)

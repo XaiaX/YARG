@@ -52,7 +52,14 @@ namespace YARG.Menu.Maestro
             SetGameModeIcon(player.GameMode);
             if (_setup != null)
             {
-                string line1 = $"{player.Instrument.ToLocalizedName()} · " +
+                // For Party Vocals, show "Solo"/"Harmony" to match the dropdown
+                // labels instead of the raw instrument names "Vocals"/"Harmony".
+                string instrumentLabel =
+                    player.GameMode == GameMode.PartyVocals &&
+                    player.Instrument is Instrument.Vocals or Instrument.Harmony
+                        ? (player.Instrument == Instrument.Vocals ? "Solo" : "Harmony")
+                        : player.Instrument.ToLocalizedName();
+                string line1 = $"{instrumentLabel} · " +
                     player.Difficulty.ToLocalizedName();
                 _setup.text = string.IsNullOrEmpty(tierLabel)
                     ? line1

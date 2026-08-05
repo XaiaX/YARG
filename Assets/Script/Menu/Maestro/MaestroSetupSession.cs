@@ -45,9 +45,10 @@ namespace YARG.Menu.Maestro
             GameMode = player.Profile.GameMode;
             Instrument = player.Profile.CurrentInstrument;
             // Party Vocals profiles store Instrument.PartyVocals, but the Maestro
-            // dropdown uses {Vocals, Harmony}. Map based on HarmonyIndex.
+            // dropdown uses {Vocals, Harmony}. Map based on PartyVocalsChartPreference,
+            // which is how Difficulty Select tracks the Solo/Harmony choice.
             if (GameMode == GameMode.PartyVocals && Instrument == Instrument.PartyVocals)
-                Instrument = player.Profile.HarmonyIndex > 0
+                Instrument = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Harmony
                     ? Instrument.Harmony
                     : Instrument.Vocals;
             Difficulty = player.Profile.CurrentDifficulty;
@@ -213,12 +214,6 @@ namespace YARG.Menu.Maestro
                 return;
 
             player.Instrument = instrument;
-            // When selecting Harmony, ensure HarmonyIndex > 0 if it was 0
-            if (instrument == Instrument.Harmony && player.HarmonyIndex == 0)
-                player.HarmonyIndex = 1;
-            // When selecting Vocals (Solo), reset HarmonyIndex to 0
-            if (instrument == Instrument.Vocals)
-                player.HarmonyIndex = 0;
             NormalizeDependentSelections(player);
         }
 
@@ -357,6 +352,9 @@ namespace YARG.Menu.Maestro
                     {
                         profile.CurrentInstrument = Instrument.PartyVocals;
                         profile.PreferredInstrument = Instrument.PartyVocals;
+                        profile.PartyVocalsChartPreference = staged.Instrument == Instrument.Harmony
+                            ? PartyVocalsChartPreference.Harmony
+                            : PartyVocalsChartPreference.Solo;
                         profile.HarmonyIndex = staged.HarmonyIndex;
                         profile.ResolveHarmonyIndex(MaxHarmonyParts());
                     }
@@ -511,9 +509,11 @@ namespace YARG.Menu.Maestro
                         if (staged.GameMode == GameMode.PartyVocals &&
                             staged.Instrument == Instrument.PartyVocals)
                         {
-                            byte harmonyIndex =
-                                draft.PendingHarmonyIndex ?? staged.HarmonyIndex;
-                            staged.Instrument = harmonyIndex > 0
+                            // Map based on chart preference (same logic as the
+                            // constructor) or the draft's harmony index.
+                            bool preferHarmony =
+                                player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Harmony;
+                            staged.Instrument = preferHarmony
                                 ? Instrument.Harmony
                                 : Instrument.Vocals;
                         }
@@ -548,15 +548,6 @@ namespace YARG.Menu.Maestro
             var instruments = GetAvailableInstruments(player.ProfileId);
             if (!instruments.Contains(player.Instrument) && instruments.Count > 0)
                 player.Instrument = instruments[0];
-
-            // Keep HarmonyIndex consistent with the selected instrument.
-            // Normalization may change the instrument (e.g., switching game
-            // modes), so the HarmonyIndex must be kept in sync to avoid a
-            // stale value that would misrepresent Solo as Harmony on commit.
-            if (player.Instrument == Instrument.Vocals)
-                player.HarmonyIndex = 0;
-            else if (player.Instrument == Instrument.Harmony && player.HarmonyIndex == 0)
-                player.HarmonyIndex = 1;
 
             var difficulties = GetAvailableDifficulties(player.ProfileId);
             if (!difficulties.Contains(player.Difficulty) && difficulties.Count > 0)

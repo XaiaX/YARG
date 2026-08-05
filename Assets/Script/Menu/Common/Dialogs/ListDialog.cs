@@ -2,9 +2,7 @@
 
 using UnityEngine;
 using UnityEngine.Events;
-using YARG.Core.Input;
 using YARG.Helpers.Extensions;
-using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 
 namespace YARG.Menu.Dialogs
@@ -58,18 +56,6 @@ namespace YARG.Menu.Dialogs
             base.ClearDialog();
 
             ClearList();
-        }
-
-        protected override NavigationScheme GetNavigationScheme()
-        {
-            return new NavigationScheme(new()
-            {
-                NavigationScheme.Entry.NavigateSelect,
-                NavigationScheme.Entry.NavigateUp,
-                NavigationScheme.Entry.NavigateDown,
-                new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Cancel",
-                    () => DialogManager.Instance.ClearDialog()),
-            }, null);
         }
     }
 }
