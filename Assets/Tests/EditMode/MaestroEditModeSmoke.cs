@@ -214,14 +214,14 @@ namespace YARG.Tests.EditMode
 
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor").gameObject.activeSelf,
                 Is.True, "The editor must remain visible while the left profile list has focus.");
-            var play = prefab.transform.Find(
-                "Body/PlayerScroll/Viewport/PlayerContent/PlayButtonContainer/PlayButton");
-            var playContainer = prefab.transform.Find(
-                "Body/PlayerScroll/Viewport/PlayerContent/PlayButtonContainer");
+            var play = prefab.transform.Find("Body/PlayButtonContainer/PlayButton");
+            var playContainer = prefab.transform.Find("Body/PlayButtonContainer");
             Assert.That(play,
-                Is.Not.Null, "Play must be a visible scroll-content entry.");
+                Is.Not.Null, "Play must be a visible sibling of the profile list.");
             Assert.That(playContainer,
                 Is.Not.Null, "Play must be inside its own centered layout wrapper.");
+            Assert.That(prefab.transform.Find("Body/PlayerScroll/Viewport/PlayerContent/PlayButtonContainer"),
+                Is.Null, "PlayerContent must not contain an authored Play placeholder.");
             Assert.That(playContainer.GetComponent<HorizontalLayoutGroup>(), Is.Not.Null,
                 "Play needs a centered wrapper so its highlight does not touch the panel edges.");
             Assert.That(playContainer.GetComponent<LayoutElement>(), Is.Not.Null,
@@ -254,7 +254,7 @@ namespace YARG.Tests.EditMode
             int playerLoopIndex = script.text.IndexOf(
                 "foreach (var player in Session.Players)", StringComparison.Ordinal);
             Assert.That(repositionIndex, Is.GreaterThanOrEqualTo(0).And.LessThan(playerLoopIndex),
-                "Play must be removed before dynamic rows are created so no empty row remains.");
+                "Play positioning must happen before dynamic rows are created.");
         }
 
         [Test]
@@ -622,7 +622,61 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("_playerPanelBackground"));
             Assert.That(script.text, Does.Contain("_selectedPlayerBackground"));
             Assert.That(script.text, Does.Contain("FocusedPaneBackgroundAlpha = 0.9f"));
-            Assert.That(script.text, Does.Contain("UnfocusedPaneBackgroundAlpha = 0.1f"));
+            Assert.That(script.text, Does.Contain("UnfocusedPaneBackgroundAlpha = 0.2f"));
+        }
+
+        [Test]
+        public void Setup_Menu_Pads_Editor_And_Enables_Right_Side_Hover_Focus()
+        {
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string navigationPath = "Assets/Script/Menu/Navigation/NavigatableBehaviour.cs";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            var navigation = AssetDatabase.LoadAssetAtPath<MonoScript>(navigationPath);
+            var editor = FindRequired(prefab.transform, "Body/SelectedPlayerEditor");
+            var layout = editor.GetComponent<VerticalLayoutGroup>();
+
+            Assert.That(layout, Is.Not.Null);
+            Assert.That(layout.padding.left, Is.EqualTo(20));
+            Assert.That(layout.padding.right, Is.EqualTo(20));
+            Assert.That(layout.padding.top, Is.EqualTo(20));
+            Assert.That(layout.padding.bottom, Is.EqualTo(20));
+            Assert.That(menu.text, Does.Contain("SetSelectOnHover(true)"),
+                "Right-side controls must select when the pointer hovers them.");
+            Assert.That(navigation.text, Does.Contain("SetSelectOnHover"),
+                "NavigatableBehaviour needs a runtime hover-selection setter.");
+        }
+
+        [Test]
+        public void Setup_Menu_Updates_Editor_Focus_Visuals_For_All_Right_Selections()
+        {
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(menu, Is.Not.Null);
+            int handler = menu.text.IndexOf("OnRightNavigationSelectionChanged",
+                StringComparison.Ordinal);
+            Assert.That(handler, Is.GreaterThanOrEqualTo(0));
+            var handlerText = menu.text.Substring(handler);
+            Assert.That(handlerText, Does.Contain("UpdateFocusVisual()"),
+                "Moving between right-side controls must immediately restore the editor alpha state.");
+            Assert.That(handlerText, Does.Not.Contain(
+                "selectionOrigin != SelectionOrigin.Mouse || _editingPlayer"),
+                "Right-side focus must not ignore keyboard or already-editing selection changes.");
+        }
+
+        [Test]
+        public void Adjustment_Picker_Defaults_To_Done()
+        {
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            var dialog = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Common/Dialogs/Dialog.cs");
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(dialog, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("dialog.SelectLast();"),
+                "Done must be the initial selection in adjustment dialogs.");
+            Assert.That(dialog.text, Does.Contain("public void SelectLast()"));
         }
 
         [Test]
@@ -672,6 +726,10 @@ namespace YARG.Tests.EditMode
                 Does.Contain("MenuData.Colors.BrightButton"),
                 "Modifier and Accessibility buttons must pass BrightButton blue " +
                 "to ConfigureButton (AC.3).");
+            Assert.That(script.text, Does.Contain("button.transform.parent"),
+                "Recoloring must start at the RoundButton root so it reaches the background and ring.");
+            Assert.That(script.text, Does.Contain("img.color = backgroundColor.Value"),
+                "The background and selection ring must both use the requested blue color.");
         }
 
         [Test]
