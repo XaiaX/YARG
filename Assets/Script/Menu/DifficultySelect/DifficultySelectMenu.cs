@@ -193,13 +193,6 @@ namespace YARG.Menu.DifficultySelect
                 _songList = new List<SongEntry> { GlobalVariables.State.CurrentSong };
             }
 
-            if (!returningFromMaestro && SettingsManager.Settings.MaestroEnable.Value &&
-                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value)
-            {
-                OpenMaestroSummaryDirectly();
-                return;
-            }
-
             if (returningFromMaestro)
             {
                 _playerIndex = Mathf.Clamp(pageSession.CompletedPlayerBoundary - 1, 0,
@@ -255,6 +248,15 @@ namespace YARG.Menu.DifficultySelect
             _scrollRect = GetComponentInChildren<ScrollRect>();
             _scrollbar = GetComponentInChildren<Scrollbar>();
             _navGroup.SelectionChanged += UpdateForSelectionChanged;
+
+            // Open Maestro only after this page has initialized its current-player view.
+            // Pushing it from the middle of OnEnable leaves the stale/default Difficulty
+            // Select UI visible underneath the summary and breaks the Back path.
+            if (!returningFromMaestro && SettingsManager.Settings.MaestroEnable.Value &&
+                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value)
+            {
+                OpenMaestroSummaryDirectly();
+            }
         }
 
         private void OpenMaestroSummaryDirectly()

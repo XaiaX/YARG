@@ -47,6 +47,8 @@ namespace YARG.Menu.Maestro
         private static readonly Dictionary<string, Sprite> InstrumentIconCache = new();
         private const float FocusedPaneBackgroundAlpha = 0.9f;
         private const float UnfocusedPaneBackgroundAlpha = 0.2f;
+        private const float UnfocusedEditorBackgroundAlpha = 0.5f;
+        private const float UnfocusedEditorContentAlpha = 0.5f;
 
         [Header("Page")]
         [SerializeField] private TMP_Text _songTitle;
@@ -82,6 +84,7 @@ namespace YARG.Menu.Maestro
         private MaestroDropdownNavigatable _instrumentNavigation;
         private MaestroDropdownNavigatable _difficultyNavigation;
         private CanvasGroup _playButtonCanvasGroup;
+        private int? _lastRightSelectionIndex;
         private readonly Dictionary<Graphic, float> _selectedEditorGraphicAlphas = new();
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
@@ -104,6 +107,7 @@ namespace YARG.Menu.Maestro
             _controllerLockEnabled = true;
             SetEditorVisible(true);
             EnsureFocusCanvasGroups();
+            ConfigurePaneHoverTargets();
             AcquireControllerLock();
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged += OnNavigationSelectionChanged;
@@ -173,8 +177,8 @@ namespace YARG.Menu.Maestro
             SetGraphicAlpha(_playerPanelBackground,
                 editorFocused ? UnfocusedPaneBackgroundAlpha : FocusedPaneBackgroundAlpha);
             SetGraphicAlpha(_selectedPlayerBackground,
-                editorFocused ? FocusedPaneBackgroundAlpha : UnfocusedPaneBackgroundAlpha);
-            SetSelectedEditorContentAlpha(editorFocused ? 1f : 0.2f);
+                editorFocused ? FocusedPaneBackgroundAlpha : UnfocusedEditorBackgroundAlpha);
+            SetSelectedEditorContentAlpha(editorFocused ? 1f : UnfocusedEditorContentAlpha);
 
             if (_playButtonCanvasGroup != null)
                 _playButtonCanvasGroup.alpha = editorFocused ? 0.2f : 1f;
@@ -191,6 +195,42 @@ namespace YARG.Menu.Maestro
         {
             NavigationGroup.RemoveFromNavigationStack(_navigationGroup);
             NavigationGroup.RemoveFromNavigationStack(_rightNavigationGroup);
+        }
+
+        private void ConfigurePaneHoverTargets()
+        {
+            AttachPaneHoverTarget(_playerPanelBackground, FocusProfileList);
+            AttachPaneHoverTarget(_selectedPlayerBackground, FocusProfileEditor);
+        }
+
+        private static void AttachPaneHoverTarget(Image background, Action callback)
+        {
+            if (background == null)
+                return;
+
+            background.raycastTarget = true;
+            var hoverTarget = background.GetComponent<MaestroPaneHoverTarget>() ??
+                background.gameObject.AddComponent<MaestroPaneHoverTarget>();
+            hoverTarget.SetCallback(callback);
+        }
+
+        private void FocusProfileList()
+        {
+            if (_editingPlayer)
+                FinishEditingPlayer();
+            else
+                _navigationGroup?.PushNavGroupToStack();
+
+            UpdateFocusVisual();
+        }
+
+        private void FocusProfileEditor()
+        {
+            if (!_editingPlayer)
+                EnterEditorNavigation();
+
+            SelectRememberedRightControl();
+            UpdateFocusVisual();
         }
 
         private void CloseDropdowns()
@@ -410,8 +450,9 @@ namespace YARG.Menu.Maestro
         {
             if (selected is MaestroPlayerRow row)
             {
-                if (selectionOrigin == SelectionOrigin.Mouse && _editingPlayer)
+                if (_editingPlayer)
                     FinishEditingPlayer();
+                _playButton?.SetSelected(false, SelectionOrigin.Programmatically);
                 SelectPlayer(row.ProfileId);
             }
         }
@@ -421,6 +462,8 @@ namespace YARG.Menu.Maestro
         {
             if (selected == null)
                 return;
+
+            _lastRightSelectionIndex = _rightNavigationGroup?.SelectedIndex;
 
             if (!_editingPlayer)
                 EnterEditorNavigation();
@@ -454,15 +497,15 @@ namespace YARG.Menu.Maestro
                 NavigationScheme.Entry.NavigateDown,
                 NavigationScheme.Entry.NavigateSelect,
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back", Back),
+                new NavigationScheme.Entry(MenuAction.Yellow,
+                    "Settings.Button.ShowMaestroPairingPin", ShowMaestroPin),
                 new NavigationScheme.Entry(MenuAction.Blue, controllerKey,
                     ToggleControllerLock),
                 new NavigationScheme.Entry(MenuAction.Orange,
                     SettingsManager.Settings.MaestroGoDirectlyToSummary.Value
-                        ? "Menu.Button.SkipToMaestroOn"
-                        : "Menu.Button.SkipToMaestroOff",
+                        ? "Settings.Button.SkipToMaestroOn"
+                        : "Settings.Button.SkipToMaestroOff",
                     ToggleDirectSummary),
-                new NavigationScheme.Entry(MenuAction.Yellow,
-                    "Menu.Button.ShowMaestroPairingPin", ShowMaestroPin),
             }, false);
         }
 
@@ -496,8 +539,21 @@ namespace YARG.Menu.Maestro
 
             SelectPlayer(profileId);
             EnterEditorNavigation();
-            _rightNavigationGroup?.SelectFirst();
+            SelectRememberedRightControl();
             RefreshView();
+        }
+
+        private void SelectRememberedRightControl()
+        {
+            if (_rightNavigationGroup == null || _rightNavigationGroup.Count == 0)
+                return;
+
+            if (_rightNavigationGroup.SelectedBehaviour != null)
+                return;
+
+            int index = Mathf.Clamp(_lastRightSelectionIndex ?? 0, 0,
+                _rightNavigationGroup.Count - 1);
+            _rightNavigationGroup.SelectAt(index);
         }
 
         private void FinishEditingPlayer()
@@ -507,6 +563,8 @@ namespace YARG.Menu.Maestro
 
             CloseDropdowns();
             _editingPlayer = false;
+            if (_rightNavigationGroup?.SelectedIndex is { } selectedIndex)
+                _lastRightSelectionIndex = selectedIndex;
             _rightNavigationGroup?.ClearSelection();
             ResetMaestroNavigationStack();
             SetEditorVisible(true);
