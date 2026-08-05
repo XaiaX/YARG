@@ -198,7 +198,7 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void Setup_Menu_Shows_Editor_And_Puts_Play_In_Scroll_Content()
+        public void Setup_Menu_Shows_Editor_And_Repositions_Play_Below_List()
         {
             const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
@@ -237,6 +237,14 @@ namespace YARG.Tests.EditMode
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
             Assert.That(script.text, Does.Contain("transform.parent?.SetAsLastSibling"));
             Assert.That(script.text, Does.Contain("_rightNavigationGroup?.ClearSelection()"));
+            Assert.That(script.text, Does.Contain("rt.anchorMax = new Vector2(0.46f, 0f)"),
+                "Play must use the profile list column width, not half of the full body.");
+            Assert.That(script.text, Does.Contain("rt.anchoredPosition = new Vector2(20f, 10f)"),
+                "Play must retain the profile panel's horizontal inset and bottom margin.");
+            Assert.That(script.text, Does.Contain("rt.sizeDelta = new Vector2(-60f, 72f)"),
+                "Play must be narrower than the profile panel so its focus ring has padding.");
+            Assert.That(script.text, Does.Contain("scrollRectTransform.offsetMin"),
+                "The profile list must reserve vertical space for Play and its focus ring.");
         }
 
         [Test]
@@ -339,10 +347,12 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null);
             Assert.That(prefab.transform.Find("Footer"), Is.Null,
                 "Maestro should use the global confirm/back help bar.");
-            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/ModifierButton/Label"),
+            const string modifierLabelPath =
+                "Body/SelectedPlayerEditor/AdjustmentButtonsRow/ModifierButton/Label";
+            Assert.That(prefab.transform.Find(modifierLabelPath),
                 Is.Not.Null);
             var modifierLabel = prefab.transform
-                .Find("Body/SelectedPlayerEditor/ModifierButton/Label")
+                .Find(modifierLabelPath)
                 .GetComponents<Component>()
                 .Single(component => component.GetType().FullName == "TMPro.TextMeshProUGUI");
             Assert.That(new SerializedObject(modifierLabel).FindProperty("m_text").stringValue,
@@ -524,6 +534,8 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("SetEditorDimmed"),
                 "Menu must call per-row dimming when editor is focused (AC.7).");
+            Assert.That(script.text, Does.Contain("SetEditorDimmed(editorFocused && isNotSelected)"),
+                "Only non-selected rows should dim while the editor has focus.");
             var rowScript = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs");
             Assert.That(rowScript.text, Does.Contain("0.5f"),
@@ -531,14 +543,26 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void Setup_Menu_Uses_075_Editor_Alpha_When_Reflecting()
+        public void Setup_Menu_Uses_50_Editor_Alpha_When_Reflecting()
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text,
-                Does.Contain("_selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.75f"),
-                "Editor must be at 75% when reflecting, 100% when active (AC.8).");
+                Does.Contain("_selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.5f"),
+                "Editor content must be at 50% when the profile list is focused.");
+        }
+
+        [Test]
+        public void Setup_Menu_Dims_Play_Content_When_Editor_Is_Focused()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("_playButtonCanvasGroup"),
+                "Play must be treated as a left-column navigation item.");
+            Assert.That(script.text, Does.Contain("SetPlayButtonDimmed(editorFocused)"),
+                "Play content must dim with the profile list while the editor is focused.");
         }
 
         [Test]
