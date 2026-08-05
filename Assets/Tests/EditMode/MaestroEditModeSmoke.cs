@@ -168,7 +168,7 @@ namespace YARG.Tests.EditMode
             Assert.That(prefab, Is.Not.Null);
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("player.GameMode"));
-            Assert.That(script.text, Does.Contain("player.GameMode.ToResourceName"));
+            Assert.That(script.text, Does.Contain("gameMode.ToResourceName"));
             Assert.That(icon.sizeDelta.y, Is.GreaterThanOrEqualTo(48f),
                 "The 512px source icon sheet supports a larger row icon without upscaling.");
         }

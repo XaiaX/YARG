@@ -1502,6 +1502,11 @@ PrefabInstance:
     m_AddedGameObjects: []
   m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
+--- !u!1 &6226158610568675920 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5373295246384972792, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
+  m_PrefabInstance: {fileID: 1261448438787892825}
+  m_PrefabAsset: {fileID: 0}
 --- !u!224 &5446505134578104720 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 6490900081354612681, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
@@ -1540,9 +1545,14 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
+  m_AddedGameObjects: []
+  m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
+--- !u!1 &9200000000000000008 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5373295246384972792, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
+  m_PrefabInstance: {fileID: 9200000000000000002}
+  m_PrefabAsset: {fileID: 0}
 --- !u!224 &9200000000000000003 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 6490900081354612681, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
@@ -1581,9 +1591,14 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
+  m_AddedGameObjects: []
+  m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
+--- !u!1 &9200000000000000009 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5373295246384972792, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
+  m_PrefabInstance: {fileID: 9200000000000000007}
+  m_PrefabAsset: {fileID: 0}
 --- !u!224 &9200000000000000004 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 6490900081354612681, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
