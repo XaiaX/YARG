@@ -143,7 +143,7 @@ namespace YARG.Tests.EditMode
                 Is.Not.Null, "The Modifiers button must reference its navigatable component.");
             var modifierItemPrefab = serializedMenu.FindProperty("_modifierItemPrefab").objectReferenceValue;
             Assert.That(modifierItemPrefab,
-                Is.TypeOf<YARG.Menu.DifficultySelect.ModifierItem>(),
+                Is.TypeOf<global::YARG.Menu.DifficultySelect.ModifierItem>(),
                 "The Modifiers dialog must reference a ModifierItem component prefab.");
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/SelectedPlayerName"), Is.Not.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeDropdown"), Is.Null);
