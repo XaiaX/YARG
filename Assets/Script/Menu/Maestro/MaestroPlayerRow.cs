@@ -7,6 +7,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 using YARG.Core;
+using YARG.Core.Game;
 using YARG.Core.Extensions;
 using YARG.Helpers.Extensions;
 using YARG.Localization;
