@@ -512,7 +512,7 @@ namespace YARG.Menu.Maestro
                             // Map based on chart preference (same logic as the
                             // constructor) or the draft's harmony index.
                             bool preferHarmony =
-                                player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Harmony;
+                                staged.Player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Harmony;
                             staged.Instrument = preferHarmony
                                 ? Instrument.Harmony
                                 : Instrument.Vocals;
