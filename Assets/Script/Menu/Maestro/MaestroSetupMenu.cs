@@ -206,6 +206,12 @@ namespace YARG.Menu.Maestro
 
             _playButton?.transform.parent?.SetAsLastSibling();
 
+            // Force the VerticalLayoutGroup on PlayerContent to recalculate
+            // immediately so the Play button appears after all rows on the
+            // first rendered frame.
+            if (_playerRowContainer is RectTransform rt)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+
             if (Session.Players.FirstOrDefault() is { } first)
                 SelectPlayer(first.ProfileId);
         }
@@ -213,9 +219,11 @@ namespace YARG.Menu.Maestro
         private void ConfigureButtons()
         {
             ConfigureButton(_modifierButton,
-                () => ShowAdjustmentPicker(AdjustmentCategory.Modifiers));
+                () => ShowAdjustmentPicker(AdjustmentCategory.Modifiers),
+                MenuData.Colors.BrightButton);
             ConfigureButton(_accessibilityButton,
-                () => ShowAdjustmentPicker(AdjustmentCategory.Accessibility));
+                () => ShowAdjustmentPicker(AdjustmentCategory.Accessibility),
+                MenuData.Colors.BrightButton);
             ConfigureButton(_playButton, Continue);
         }
 
@@ -246,7 +254,8 @@ namespace YARG.Menu.Maestro
             }
         }
 
-        private static void ConfigureButton(NavigatableUnityButton button, UnityAction action)
+        private static void ConfigureButton(NavigatableUnityButton button, UnityAction action,
+            Color? backgroundColor = null)
         {
             if (button == null)
                 return;
@@ -257,6 +266,16 @@ namespace YARG.Menu.Maestro
 
             unityButton.onClick.RemoveAllListeners();
             unityButton.onClick.AddListener(action);
+
+            if (backgroundColor.HasValue)
+            {
+                // Override the green RoundButton background with the specified color.
+                foreach (var img in button.GetComponentsInChildren<Image>(true))
+                {
+                    if (img.color.g > 0.7f && img.color.b < 0.6f && img.color.a > 0.5f)
+                        img.color = backgroundColor.Value;
+                }
+            }
         }
 
         private void ConfigureNavigation()

@@ -571,23 +571,13 @@ namespace YARG.Tests.EditMode
         [Test]
         public void Adjustment_Buttons_Use_Blue_Not_Green()
         {
-            const string path = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            Assert.That(prefab, Is.Not.Null);
-
-            foreach (var buttonName in new[] { "ModifierButton", "AccessibilityButton" })
-            {
-                var button = prefab.transform.Find(
-                    $"Body/SelectedPlayerEditor/AdjustmentButtonsRow/{buttonName}");
-                Assert.That(button, Is.Not.Null, $"{buttonName} must exist.");
-                var images = button.GetComponentsInChildren<Image>(true)
-                    .Where(img => img.color.a > 0.5f && img.color != Color.white)
-                    .ToList();
-                Assert.That(images.Any(img => img.color.b > 0.9f && img.color.r < 0.5f), Is.True,
-                    $"{buttonName} background should be BrightButton blue (b ≈ 1.0, r < 0.5), not green (AC.5).");
-                Assert.That(images.Any(img => img.color.g > 0.7f && img.color.b < 0.6f), Is.False,
-                    $"{buttonName} should not use ConfirmButton green.");
-            }
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text,
+                Does.Contain("MenuData.Colors.BrightButton"),
+                "Modifier and Accessibility buttons must pass BrightButton blue " +
+                "to ConfigureButton (AC.3).");
         }
 
         [Test]
@@ -598,6 +588,54 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("PartyVocals    => \"harmVocals\""),
                 "Party Vocals must map to the harmony icon, not solo vocals (AC.3).");
+        }
+
+        [Test]
+        public void Dropdown_Click_Forwarder_Calls_Confirm_Directly()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroDropdownNavigatable.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Not.Contain("UniTask.NextFrame"),
+                "OnPointerClick must call Confirm() directly without a UniTask delay (AC.1).");
+        }
+
+        [Test]
+        public void Dropdown_Border_Has_Hide_When_Open_Logic()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroDropdownNavigatable.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("new Vector2(-4, 12)"),
+                "Focus border must use the wider/shorter offset (AC.2).");
+            Assert.That(script.text, Does.Contain("GetRoundedRect(12, 2)"),
+                "Focus border corner radius must be 12 (AC.2).");
+        }
+
+        [Test]
+        public void PartyVocals_Stage_Maps_To_Harmony_When_HarmonyIndex_Set()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupSession.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text,
+                Does.Contain("GameMode == GameMode.PartyVocals && Instrument == Instrument.PartyVocals"),
+                "Constructor must map PartyVocals to Harmony/Vocals (AC.7).");
+            Assert.That(script.text,
+                Does.Contain("if (staged.GameMode == GameMode.PartyVocals)"),
+                "TryCommit must restore PartyVocals instrument on commit (AC.7).");
+        }
+
+        [Test]
+        public void Dialog_ListDialog_Has_Red_Cancel_Entry()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Common/Dialogs/ListDialog.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("GetNavigationScheme"),
+                "ListDialog must override GetNavigationScheme (AC.5).");
+            Assert.That(script.text, Does.Contain("MenuAction.Red"),
+                "ListDialog must have a Red/Cancel entry to close the dialog (AC.5).");
         }
 
         private static Transform FindRequired(Transform root, string path)

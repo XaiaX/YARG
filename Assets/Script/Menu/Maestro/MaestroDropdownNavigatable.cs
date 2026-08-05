@@ -1,7 +1,6 @@
 // pattern: Imperative Shell
 
 using System;
-using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -64,10 +63,10 @@ namespace YARG.Menu.Maestro
                 var rt = borderGo.AddComponent<RectTransform>();
                 rt.anchorMin = Vector2.zero;
                 rt.anchorMax = Vector2.one;
-                rt.offsetMin = new Vector2(-2, -2);
-                rt.offsetMax = new Vector2(2, 2);
+                rt.offsetMin = new Vector2(-4, 12);
+                rt.offsetMax = new Vector2(4, -12);
                 var img = borderGo.AddComponent<Image>();
-                img.sprite = SpriteHelper.GetRoundedRect(8, 2);
+                img.sprite = SpriteHelper.GetRoundedRect(12, 2);
                 img.type = Image.Type.Sliced;
                 img.color = new Color(1f, 0.83137256f, 0.22745098f, 1f);
                 _focusBorder = img;
@@ -92,7 +91,11 @@ namespace YARG.Menu.Maestro
             }
 
             if (_focusBorder != null)
-                _focusBorder.gameObject.SetActive(selected);
+            {
+                bool dropdownOpen = _dropdown != null &&
+                    _dropdown.transform.Find("Dropdown List") != null;
+                _focusBorder.gameObject.SetActive(selected && !dropdownOpen);
+            }
         }
 
         public override void Confirm()
@@ -121,6 +124,9 @@ namespace YARG.Menu.Maestro
 
             if (_dropdownScheme != null)
                 return;
+
+            if (_focusBorder != null)
+                _focusBorder.gameObject.SetActive(false);
 
             if (dropdown.transform.Find("Dropdown List") == null)
                 dropdown.Show();
@@ -196,6 +202,9 @@ namespace YARG.Menu.Maestro
             _dropdownScheme = null;
             if (Navigator.Instance != null)
                 Navigator.Instance.RemoveScheme(scheme);
+
+            if (_focusBorder != null && Selected)
+                _focusBorder.gameObject.SetActive(true);
         }
     }
 
@@ -221,15 +230,7 @@ namespace YARG.Menu.Maestro
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            var dropdown = GetComponent<TMP_Dropdown>();
-            if (dropdown == null)
-                return;
-
-            UniTask.NextFrame().ContinueWith(() =>
-            {
-                if (dropdown != null && dropdown.transform.Find("Dropdown List") != null)
-                    Target?.Confirm();
-            }).Forget();
+            Target?.Confirm();
         }
     }
 }
