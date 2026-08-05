@@ -202,10 +202,21 @@ namespace YARG.Tests.EditMode
 
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor").gameObject.activeSelf,
                 Is.True, "The editor must remain visible while the left profile list has focus.");
-            Assert.That(prefab.transform.Find("Body/PlayerScroll/Viewport/PlayerContent/PlayButton"),
+            var play = prefab.transform.Find("Body/PlayerScroll/Viewport/PlayerContent/PlayButton");
+            Assert.That(play,
                 Is.Not.Null, "Play must be a visible scroll-content entry.");
+            Assert.That(play.GetComponent<RectTransform>().sizeDelta.y,
+                Is.LessThanOrEqualTo(72f), "Play must fit inside a profile row.");
+            var playLabel = play.GetComponentsInChildren<Component>(true)
+                .Single(component => component.GetType().FullName == "TMPro.TextMeshProUGUI");
+            Assert.That(new SerializedObject(playLabel).FindProperty("m_text").stringValue,
+                Is.EqualTo("Play"), "Play must have visible label text.");
             Assert.That(serializedMenu.FindProperty("_modifierButton").objectReferenceValue,
                 Is.Not.Null);
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script.text, Does.Contain("_playButton.transform.parent.SetAsLastSibling"));
+            Assert.That(script.text, Does.Contain("_rightNavigationGroup?.ClearSelection()"));
         }
 
         [Test]
