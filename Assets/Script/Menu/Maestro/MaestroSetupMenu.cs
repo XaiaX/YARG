@@ -143,9 +143,9 @@ namespace YARG.Menu.Maestro
             EnsureFocusCanvasGroups();
             bool editorFocused = _editingPlayer;
 
-            // Editor at 0.75 when reflecting, 1.0 when active
+            // Editor at 50% when profile list is active, 100% when editing.
             if (_selectedPlayerCanvasGroup != null)
-                _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.75f;
+                _selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.5f;
 
             // When the editor is active, dim the entire profile panel to 80%.
             // When the profile list is the active focus, the panel stays at 100%
@@ -208,16 +208,46 @@ namespace YARG.Menu.Maestro
                 _rows.Add(player.ProfileId, row);
             }
 
-            _playButton?.transform.parent?.SetAsLastSibling();
-
-            // Force the VerticalLayoutGroup on PlayerContent to recalculate
-            // immediately so the Play button appears after all rows on the
-            // first rendered frame.
-            if (_playerRowContainer is RectTransform rt)
-                LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+            // Move the Play button out of the scroll content and position it
+            // as a fixed element below the profile list, so it doesn't scroll
+            // with the rows and always appears at the bottom of the left column.
+            RepositionPlayButton();
 
             if (Session.Players.FirstOrDefault() is { } first)
                 SelectPlayer(first.ProfileId);
+        }
+
+        private void RepositionPlayButton()
+        {
+            if (_playButton == null)
+                return;
+
+            var container = _playButton.transform.parent;
+            if (container == null || _playerScroll == null)
+                return;
+
+            // Target parent: the same parent as the scroll view (Body),
+            // so the Play button is a sibling of the scroll, not inside it.
+            var targetParent = _playerScroll.transform.parent;
+            if (targetParent == null)
+                return;
+
+            // Already reparented — skip.
+            if (container.parent == targetParent)
+                return;
+
+            container.SetParent(targetParent, false);
+
+            if (container is RectTransform rt)
+            {
+                // Anchor to the bottom of the left half, matching the scroll
+                // view's horizontal footprint.
+                rt.anchorMin = new Vector2(0f, 0f);
+                rt.anchorMax = new Vector2(0.5f, 0f);
+                rt.pivot = new Vector2(0.5f, 0f);
+                rt.anchoredPosition = new Vector2(0f, 10f);
+                rt.sizeDelta = new Vector2(0f, 72f);
+            }
         }
 
         private void ConfigureButtons()
