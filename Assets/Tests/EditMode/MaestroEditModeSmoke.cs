@@ -274,6 +274,45 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Maestro_Direct_Summary_Setting_Is_Off_And_Visible_With_Maestro()
+        {
+            const string settingsPath = "Assets/Script/Settings/SettingsManager.Settings.cs";
+            const string metadataPath = "Assets/Script/Settings/SettingsManager.cs";
+            const string difficultyPath = "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs";
+            const string languagePath = "Assets/StreamingAssets/lang/en-US.json";
+            var settings = AssetDatabase.LoadAssetAtPath<MonoScript>(settingsPath);
+            var metadata = AssetDatabase.LoadAssetAtPath<MonoScript>(metadataPath);
+            var difficulty = AssetDatabase.LoadAssetAtPath<MonoScript>(difficultyPath);
+            var language = File.ReadAllText(languagePath);
+
+            Assert.That(settings, Is.Not.Null);
+            Assert.That(metadata, Is.Not.Null);
+            Assert.That(difficulty, Is.Not.Null);
+            Assert.That(settings.text, Does.Contain("MaestroGoDirectlyToSummary").And.Contain("new(false)"),
+                "Direct-to-summary must default off.");
+            Assert.That(metadata.text, Does.Contain("MaestroGoDirectlyToSummary"));
+            Assert.That(metadata.text, Does.Contain("Settings.MaestroEnable.Value"));
+            Assert.That(difficulty.text, Does.Contain("MaestroGoDirectlyToSummary.Value"));
+            Assert.That(difficulty.text, Does.Contain("PlayerContainer.Players.Count"));
+            Assert.That(language, Does.Contain("MaestroGoDirectlyToSummary"));
+        }
+
+        [Test]
+        public void Maestro_Footer_Provides_Skip_Toggle_And_Show_Pin()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("MenuAction.Orange"));
+            Assert.That(script.text, Does.Contain("MenuAction.Yellow"));
+            Assert.That(script.text, Does.Contain("Skip to Maestro (On)"));
+            Assert.That(script.text, Does.Contain("Skip to Maestro (Off)"));
+            Assert.That(script.text, Does.Contain("ShowMaestroPairingPin"));
+            Assert.That(script.text, Does.Contain(
+                "SettingsManager.Settings.MaestroGoDirectlyToSummary.Value"));
+        }
+
+        [Test]
         public void Instrument_Dropdown_Uses_Inline_Tiered_Labels()
         {
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
@@ -601,6 +640,19 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Setup_Menu_Caches_Editor_Alpha_Before_Reentry_Dimming()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("private void Awake()"),
+                "Editor graphic alpha must be captured before OnEnable can dim the page.");
+            Assert.That(script.text, Does.Contain("CaptureSelectedEditorGraphicAlphas();"));
+            Assert.That(script.text, Does.Not.Contain("_selectedEditorGraphicAlphas.Clear();"),
+                "Re-entering Maestro must not discard the authored alpha cache.");
+        }
+
+        [Test]
         public void Setup_Menu_Dims_Play_Content_When_Editor_Is_Focused()
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
@@ -611,6 +663,8 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text,
                 Does.Contain("_playButtonCanvasGroup.alpha = editorFocused ? 0.2f : 1f"),
                 "Play content must dim with the profile list while the editor is focused.");
+            Assert.That(script.text, Does.Contain("SetLeftNavigationHoverSelection(_playButton)"),
+                "Play must select on mouse hover like the profile rows.");
         }
 
         [Test]
