@@ -59,6 +59,8 @@ namespace YARG.Tests.EditMode
             var header = FindRequired(prefab.transform, "Header").GetComponent<RectTransform>();
             var body = FindRequired(prefab.transform, "Body").GetComponent<RectTransform>();
             var listImage = FindRequired(prefab.transform, "Body/PlayerScroll").GetComponent<Image>();
+            var editorImage = FindRequired(prefab.transform,
+                "Body/SelectedPlayerEditor").GetComponent<Image>();
 
             Assert.That(header.anchoredPosition.y, Is.LessThanOrEqualTo(-40f));
             Assert.That(body.sizeDelta.y, Is.LessThanOrEqualTo(-240f));
@@ -66,6 +68,9 @@ namespace YARG.Tests.EditMode
             Assert.That(listImage.color.a, Is.GreaterThanOrEqualTo(0.8f));
             Assert.That(listImage.sprite, Is.Not.Null,
                 "The profile list should use the rounded panel sprite.");
+            Assert.That(editorImage.sprite, Is.EqualTo(listImage.sprite),
+                "The editor should use the same rounded panel surface as the profile list.");
+            Assert.That(editorImage.color.a, Is.GreaterThanOrEqualTo(0.8f));
         }
 
         [Test]
@@ -543,8 +548,8 @@ namespace YARG.Tests.EditMode
                 "Only non-selected rows should dim while the editor has focus.");
             var rowScript = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs");
-            Assert.That(rowScript.text, Does.Contain("0.5f"),
-                "Non-selected rows must dim to 50% alpha.");
+            Assert.That(rowScript.text, Does.Contain("0.2f"),
+                "Non-selected rows must dim to 20% alpha.");
         }
 
         [Test]
@@ -569,8 +574,8 @@ namespace YARG.Tests.EditMode
 
                 row.GetType().GetMethod("SetEditorDimmed")?.Invoke(row, new object[] { true });
 
-                Assert.That(setup.color.a, Is.EqualTo(setupColor.a * 0.5f).Within(0.01f));
-                Assert.That(icon.color.a, Is.EqualTo(iconColor.a * 0.5f).Within(0.01f));
+                Assert.That(setup.color.a, Is.EqualTo(setupColor.a * 0.2f).Within(0.01f));
+                Assert.That(icon.color.a, Is.EqualTo(iconColor.a * 0.2f).Within(0.01f));
                 Assert.That(background.color, Is.EqualTo(backgroundColor),
                     "The row background should remain unchanged while its contents dim.");
 
@@ -591,8 +596,8 @@ namespace YARG.Tests.EditMode
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text,
-                Does.Contain("_selectedPlayerCanvasGroup.alpha = editorFocused ? 1f : 0.5f"),
-                "Editor content must be at 50% when the profile list is focused.");
+                Does.Contain("SetSelectedEditorContentAlpha(editorFocused ? 1f : 0.2f)"),
+                "Editor content must be at 20% when the profile list is focused.");
         }
 
         [Test]
@@ -604,8 +609,30 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("_playButtonCanvasGroup"),
                 "Play must be treated as a left-column navigation item.");
             Assert.That(script.text,
-                Does.Contain("_playButtonCanvasGroup.alpha = editorFocused ? 0.5f : 1f"),
+                Does.Contain("_playButtonCanvasGroup.alpha = editorFocused ? 0.2f : 1f"),
                 "Play content must dim with the profile list while the editor is focused.");
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_Focused_And_Unfocused_Pane_Surface_Opacity()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("_playerPanelBackground"));
+            Assert.That(script.text, Does.Contain("_selectedPlayerBackground"));
+            Assert.That(script.text, Does.Contain("FocusedPaneBackgroundAlpha = 0.9f"));
+            Assert.That(script.text, Does.Contain("UnfocusedPaneBackgroundAlpha = 0.1f"));
+        }
+
+        [Test]
+        public void Setup_Menu_Resets_Profile_Content_To_The_Top()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("contentRect.anchoredPosition = Vector2.zero"));
+            Assert.That(script.text, Does.Contain("verticalNormalizedPosition = 1f"));
         }
 
         [Test]
@@ -673,9 +700,9 @@ namespace YARG.Tests.EditMode
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroDropdownNavigatable.cs");
             Assert.That(script, Is.Not.Null);
-            Assert.That(script.text, Does.Contain("new Vector2(-4, 12)"),
-                "Focus border must use the wider/shorter offset (AC.2).");
-            Assert.That(script.text, Does.Contain("GetRoundedRect(16, 2)"),
+            Assert.That(script.text, Does.Contain("new Vector2(-6, 12)"),
+                "Focus border must be slightly wider than the dropdown (AC.2).");
+            Assert.That(script.text, Does.Contain("GetRoundedRect(18, 2)"),
                 "Focus border corner radius must track the dropdown's larger rounded corners.");
         }
 
