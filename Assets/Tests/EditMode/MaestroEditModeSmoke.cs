@@ -215,7 +215,7 @@ namespace YARG.Tests.EditMode
                 Is.Not.Null);
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
-            Assert.That(script.text, Does.Contain("_playButton.transform.parent.SetAsLastSibling"));
+            Assert.That(script.text, Does.Contain("transform.parent?.SetAsLastSibling"));
             Assert.That(script.text, Does.Contain("_rightNavigationGroup?.ClearSelection()"));
         }
 

@@ -179,7 +179,7 @@ namespace YARG.Menu.Maestro
                 _rows.Add(player.ProfileId, row);
             }
 
-            _playButton?.transform.SetAsLastSibling();
+            _playButton?.transform.parent?.SetAsLastSibling();
 
             if (Session.Players.FirstOrDefault() is { } first)
                 SelectPlayer(first.ProfileId);
@@ -354,6 +354,7 @@ namespace YARG.Menu.Maestro
 
             CloseDropdowns();
             _editingPlayer = false;
+            _rightNavigationGroup?.ClearSelection();
             ResetMaestroNavigationStack();
             SetEditorVisible(true);
             _navigationGroup?.PushNavGroupToStack();

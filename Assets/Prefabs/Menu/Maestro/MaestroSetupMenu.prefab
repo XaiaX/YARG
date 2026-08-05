@@ -1585,6 +1585,10 @@ PrefabInstance:
       propertyPath: m_text
       value: Play
       objectReference: {fileID: 0}
+    - target: {fileID: 6490900081354612681, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
+      propertyPath: m_SizeDelta.y
+      value: 72
+      objectReference: {fileID: 0}
     - target: {fileID: 5180919608764523529, guid: 1391aeff5bdd1ce40b9b1a76d237c1eb, type: 3}
       propertyPath: _selectOnClick
       value: 1
