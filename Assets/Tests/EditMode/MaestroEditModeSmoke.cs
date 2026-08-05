@@ -316,6 +316,53 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Maestro_Footer_Uses_Settings_Button_Localization_And_GRYBO_Order()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            var language = File.ReadAllText("Assets/StreamingAssets/lang/en-US.json");
+
+            Assert.That(script, Is.Not.Null);
+            Assert.That(language, Does.Contain("\"Button\":"));
+            Assert.That(script.text, Does.Contain("Settings.Button.SkipToMaestroOn"));
+            Assert.That(script.text, Does.Contain("Settings.Button.SkipToMaestroOff"));
+            Assert.That(script.text, Does.Contain("Settings.Button.ShowMaestroPairingPin"));
+
+            int red = script.text.IndexOf("MenuAction.Red", StringComparison.Ordinal);
+            int yellow = script.text.IndexOf("MenuAction.Yellow", StringComparison.Ordinal);
+            int blue = script.text.IndexOf("MenuAction.Blue", StringComparison.Ordinal);
+            int orange = script.text.IndexOf("MenuAction.Orange", StringComparison.Ordinal);
+            Assert.That(red, Is.GreaterThanOrEqualTo(0));
+            Assert.That(red, Is.LessThan(yellow));
+            Assert.That(yellow, Is.LessThan(blue));
+            Assert.That(blue, Is.LessThan(orange));
+        }
+
+        [Test]
+        public void Difficulty_Select_Initializes_Current_Player_Before_Direct_Maestro()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs");
+            Assert.That(script, Is.Not.Null);
+
+            int initializeIndex = script.text.IndexOf("ChangePlayer(0);", StringComparison.Ordinal);
+            int subscribeIndex = script.text.IndexOf(
+                "_navGroup.SelectionChanged += UpdateForSelectionChanged;", StringComparison.Ordinal);
+            int directIndex = script.text.IndexOf("OpenMaestroSummaryDirectly();", StringComparison.Ordinal);
+            Assert.That(initializeIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(subscribeIndex, Is.GreaterThan(initializeIndex));
+            Assert.That(directIndex, Is.GreaterThan(subscribeIndex),
+                "Direct Maestro must be opened only after Difficulty Select has initialized its view and navigation.");
+
+            int conditionIndex = script.text.IndexOf(
+                "MaestroGoDirectlyToSummary.Value", StringComparison.Ordinal);
+            string directBlock = script.text.Substring(conditionIndex,
+                directIndex - conditionIndex + "OpenMaestroSummaryDirectly();".Length);
+            Assert.That(directBlock, Does.Not.Contain("return;"),
+                "An early return leaves the stale/default Difficulty Select UI behind Maestro.");
+        }
+
+        [Test]
         public void Instrument_Dropdown_Uses_Inline_Tiered_Labels()
         {
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
@@ -638,8 +685,8 @@ namespace YARG.Tests.EditMode
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text,
-                Does.Contain("SetSelectedEditorContentAlpha(editorFocused ? 1f : 0.2f)"),
-                "Editor content must be at 20% when the profile list is focused.");
+                Does.Contain("SetSelectedEditorContentAlpha(editorFocused ? 1f : UnfocusedEditorContentAlpha)"),
+                "Editor content must retain 50% readability when the profile list is focused.");
         }
 
         [Test]
@@ -680,6 +727,25 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("_selectedPlayerBackground"));
             Assert.That(script.text, Does.Contain("FocusedPaneBackgroundAlpha = 0.9f"));
             Assert.That(script.text, Does.Contain("UnfocusedPaneBackgroundAlpha = 0.2f"));
+            Assert.That(script.text, Does.Contain("UnfocusedEditorBackgroundAlpha = 0.5f"));
+            Assert.That(script.text, Does.Contain("UnfocusedEditorContentAlpha = 0.5f"));
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_Last_Right_Focus_And_Pane_Background_Hover()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            var hover = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroPaneHoverTarget.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(hover, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("_lastRightSelectionIndex"));
+            Assert.That(script.text, Does.Contain("ConfigurePaneHoverTargets"));
+            Assert.That(script.text, Does.Contain("FocusProfileList"));
+            Assert.That(script.text, Does.Contain("FocusProfileEditor"));
+            Assert.That(script.text, Does.Contain("_playButton?.SetSelected(false"));
+            Assert.That(hover.text, Does.Contain("IPointerEnterHandler"));
         }
 
         [Test]
