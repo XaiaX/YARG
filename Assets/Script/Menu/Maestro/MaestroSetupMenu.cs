@@ -462,6 +462,23 @@ namespace YARG.Menu.Maestro
             dropdown.SetValueWithoutNotify(Math.Max(index, 0));
             dropdown.interactable = options.Count > 0;
             dropdown.RefreshShownValue();
+
+            // When the dropdown has no icons (e.g. difficulty), collapse the
+            // caption image area so the text starts closer to the left edge
+            // instead of leaving a large gap where the icon would be.
+            if (getImage == null && dropdown.captionImage != null)
+            {
+                dropdown.captionImage.gameObject.SetActive(false);
+                if (dropdown.captionText != null)
+                {
+                    var rt = dropdown.captionText.rectTransform;
+                    rt.offsetMin = new Vector2(12, rt.offsetMin.y);
+                }
+            }
+            else if (dropdown.captionImage != null)
+            {
+                dropdown.captionImage.gameObject.SetActive(true);
+            }
         }
 
         // Match Difficulty Select's instrument option presentation, including chart tier.
