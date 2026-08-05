@@ -31,6 +31,9 @@ namespace YARG.Menu.Maestro
         public Instrument Instrument { get; internal set; }
         public Difficulty Difficulty { get; internal set; }
         public Modifier Modifiers { get; internal set; }
+        public bool LeftyFlip { get; internal set; }
+        public bool RangeEnabled { get; internal set; }
+        public OpenLaneDisplayType OpenLaneDisplayType { get; internal set; }
         public float NoteSpeed { get; internal set; }
         public float HighwayLength { get; internal set; }
         public byte HarmonyIndex { get; internal set; }
@@ -43,6 +46,9 @@ namespace YARG.Menu.Maestro
             Instrument = player.Profile.CurrentInstrument;
             Difficulty = player.Profile.CurrentDifficulty;
             Modifiers = player.Profile.CurrentModifiers;
+            LeftyFlip = player.Profile.LeftyFlip;
+            RangeEnabled = player.Profile.RangeEnabled;
+            OpenLaneDisplayType = player.Profile.OpenLaneDisplayType;
             NoteSpeed = player.Profile.NoteSpeed;
             HighwayLength = player.Profile.HighwayLength;
             HarmonyIndex = player.Profile.HarmonyIndex;
@@ -154,7 +160,19 @@ namespace YARG.Menu.Maestro
                 .ToArray();
         }
 
-        public IReadOnlyList<Modifier> GetAvailableModifiers(Guid profileId)
+        public IReadOnlyList<Modifier> GetAvailableModifiers(Guid profileId) =>
+            GetAvailableModifiers(profileId, false);
+
+        public IReadOnlyList<Modifier> GetAvailableAccessibilityModifiers(Guid profileId) =>
+            GetAvailableModifiers(profileId, true)
+                .Where(modifier => MaestroSelectionRules.IsAccessibilityModifier(modifier) &&
+                    (!(_players[profileId].GameMode is GameMode.Vocals or GameMode.PartyVocals) ||
+                     modifier is not Modifier.UnpitchedOnly and not Modifier.UnpitchedHarm2
+                         and not Modifier.UnpitchedHarm3))
+                .ToArray();
+
+        public IReadOnlyList<Modifier> GetAvailableModifiers(Guid profileId,
+            bool includeAccessibility)
         {
             if (!_players.TryGetValue(profileId, out var player))
                 return Array.Empty<Modifier>();
@@ -163,7 +181,8 @@ namespace YARG.Menu.Maestro
             {
                 var (possible, _) = player.GameMode.PossibleModifiers(player.Instrument);
                 return EnumExtensions<Modifier>.Values
-                    .Where(modifier => modifier != Modifier.None && (possible & modifier) != 0)
+                    .Where(modifier => modifier != Modifier.None && (possible & modifier) != 0 &&
+                        (includeAccessibility || !MaestroSelectionRules.IsAccessibilityModifier(modifier)))
                     .ToArray();
             }
             catch (NotImplementedException)
@@ -210,12 +229,39 @@ namespace YARG.Menu.Maestro
         public void StageModifier(Guid profileId, Modifier modifier, bool enabled)
         {
             if (!_players.TryGetValue(profileId, out var player) ||
-                !GetAvailableModifiers(profileId).Contains(modifier))
+                !GetAvailableModifiers(profileId, true).Contains(modifier))
                 return;
 
             player.Modifiers = MaestroSelectionRules.ToggleModifier(
                 player.Modifiers, modifier, enabled);
             NormalizeModifiers(player);
+        }
+
+        public void StageLeftyFlip(Guid profileId, bool enabled)
+        {
+            if (_players.TryGetValue(profileId, out var player) &&
+                MaestroSelectionRules.SupportsLeftyFlip(player.GameMode))
+            {
+                player.LeftyFlip = enabled;
+            }
+        }
+
+        public void StageRangeEnabled(Guid profileId, bool enabled)
+        {
+            if (_players.TryGetValue(profileId, out var player) &&
+                MaestroSelectionRules.SupportsRangeShifts(player.GameMode))
+            {
+                player.RangeEnabled = enabled;
+            }
+        }
+
+        public void StageOpenLaneDisplayType(Guid profileId, OpenLaneDisplayType displayType)
+        {
+            if (_players.TryGetValue(profileId, out var player) &&
+                player.GameMode == GameMode.ProKeys)
+            {
+                player.OpenLaneDisplayType = displayType;
+            }
         }
 
         private sealed class ProfileSnapshot
@@ -231,6 +277,9 @@ namespace YARG.Menu.Maestro
             public readonly byte EffectiveHarmonyIndex;
             public readonly byte HarmonyIndexFallback;
             public readonly Modifier CurrentModifiers;
+            public readonly bool LeftyFlip;
+            public readonly bool RangeEnabled;
+            public readonly OpenLaneDisplayType OpenLaneDisplayType;
 
             public ProfileSnapshot(YargProfile profile)
             {
@@ -245,6 +294,9 @@ namespace YARG.Menu.Maestro
                 EffectiveHarmonyIndex = profile.EffectiveHarmonyIndex;
                 HarmonyIndexFallback = profile.HarmonyIndexFallback;
                 CurrentModifiers = profile.CurrentModifiers;
+                LeftyFlip = profile.LeftyFlip;
+                RangeEnabled = profile.RangeEnabled;
+                OpenLaneDisplayType = profile.OpenLaneDisplayType;
             }
 
             public void Restore()
@@ -258,6 +310,9 @@ namespace YARG.Menu.Maestro
                 Profile.HighwayLength = HighwayLength;
                 Profile.RestoreHarmonyIndexState(EffectiveHarmonyIndex, HarmonyIndexFallback);
                 Profile.RestoreSessionModifiers(CurrentModifiers);
+                Profile.LeftyFlip = LeftyFlip;
+                Profile.RangeEnabled = RangeEnabled;
+                Profile.OpenLaneDisplayType = OpenLaneDisplayType;
             }
         }
 
@@ -285,6 +340,9 @@ namespace YARG.Menu.Maestro
                     profile.CurrentInstrument = staged.Instrument;
                     profile.DifficultyFallback = staged.Difficulty;
                     profile.CurrentDifficulty = staged.Difficulty;
+                    profile.LeftyFlip = staged.LeftyFlip;
+                    profile.RangeEnabled = staged.RangeEnabled;
+                    profile.OpenLaneDisplayType = staged.OpenLaneDisplayType;
                     if (staged.GameMode is not GameMode.Vocals and not GameMode.PartyVocals)
                     {
                         profile.NoteSpeed = staged.NoteSpeed;

@@ -11,6 +11,24 @@ namespace YARG.Menu.Maestro
 {
     public static class MaestroSelectionRules
     {
+        public const Modifier AccessibilityModifiers =
+            Modifier.OpensToGreens | Modifier.NoKicks | Modifier.UnpitchedOnly |
+            Modifier.RangeCompress;
+
+        public static bool IsAccessibilityModifier(Modifier modifier) =>
+            (modifier & AccessibilityModifiers) != Modifier.None;
+
+        public static bool SupportsLeftyFlip(GameMode mode) =>
+            mode is GameMode.FiveFretGuitar or GameMode.SixFretGuitar
+                or GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums;
+
+        public static bool SupportsRangeShifts(GameMode mode) =>
+            mode is GameMode.FiveFretGuitar or GameMode.ProKeys;
+
+        public static bool HasNoRangeShifts(MaestroStagedPlayer player) =>
+            SupportsRangeShifts(player.GameMode) &&
+            (!player.RangeEnabled || (player.Modifiers & Modifier.RangeCompress) != Modifier.None);
+
         public static Modifier ToggleModifier(Modifier current, Modifier modifier, bool enabled)
         {
             if (!enabled)

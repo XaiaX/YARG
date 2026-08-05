@@ -155,7 +155,7 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Not.Contain("CycleGameMode"));
             Assert.That(script.text, Does.Not.Contain("CycleInstrument"));
             Assert.That(script.text, Does.Not.Contain("CycleDifficulty"));
-            Assert.That(script.text, Does.Contain("ShowModifierPicker"));
+            Assert.That(script.text, Does.Contain("ShowAdjustmentPicker"));
             Assert.That(script.text, Does.Contain("MenuAction.Blue"));
             Assert.That(script.text, Does.Contain("Controller Navigation Disabled"));
             Assert.That(script.text, Does.Contain("FinishEditingPlayer"));

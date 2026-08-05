@@ -14,6 +14,7 @@ using YARG.Core.Input;
 using YARG.Core.Song;
 using YARG.Helpers.Extensions;
 using YARG.Localization;
+using YARG.Menu.Dialogs;
 using YARG.Menu.Data;
 using YARG.Menu.DifficultySelect;
 using YARG.Menu.Filters;
@@ -29,6 +30,19 @@ namespace YARG.Menu.Maestro
     /// </summary>
     public sealed class MaestroSetupMenu : MonoBehaviour
     {
+        private enum AdjustmentCategory
+        {
+            Modifiers,
+            Accessibility,
+        }
+
+        private static readonly OpenLaneDisplayType[] OpenLaneOptions =
+        {
+            OpenLaneDisplayType.Never,
+            OpenLaneDisplayType.Always,
+            OpenLaneDisplayType.IfChartContainsOpens,
+        };
+
         private static readonly Dictionary<string, Sprite> InstrumentIconCache = new();
 
         [Header("Page")]
@@ -48,7 +62,7 @@ namespace YARG.Menu.Maestro
         [SerializeField] private TMP_Dropdown _difficultyDropdown;
         [SerializeField] private ModifierItem _modifierItemPrefab;
         [SerializeField] private NavigatableUnityButton _modifierButton;
-        [SerializeField] private NavigatableUnityButton _readyButton;
+        [SerializeField] private NavigatableUnityButton _accessibilityButton;
         [SerializeField] private NavigatableUnityButton _playButton;
 
         private readonly Dictionary<Guid, MaestroPlayerRow> _rows = new();
@@ -187,8 +201,10 @@ namespace YARG.Menu.Maestro
 
         private void ConfigureButtons()
         {
-            ConfigureButton(_modifierButton, ShowModifierPicker);
-            ConfigureButton(_readyButton, FinishEditingPlayer);
+            ConfigureButton(_modifierButton,
+                () => ShowAdjustmentPicker(AdjustmentCategory.Modifiers));
+            ConfigureButton(_accessibilityButton,
+                () => ShowAdjustmentPicker(AdjustmentCategory.Accessibility));
             ConfigureButton(_playButton, Continue);
         }
 
@@ -247,7 +263,7 @@ namespace YARG.Menu.Maestro
             AddNavigatableIfPresent(_rightNavigationGroup, _instrumentNavigation);
             AddNavigatableIfPresent(_rightNavigationGroup, _difficultyNavigation);
             AddNavigatableIfPresent(_rightNavigationGroup, _modifierButton);
-            AddNavigatableIfPresent(_rightNavigationGroup, _readyButton);
+            AddNavigatableIfPresent(_rightNavigationGroup, _accessibilityButton);
 
             ResetMaestroNavigationStack();
             _navigationGroup.PushNavGroupToStack();
@@ -474,17 +490,22 @@ namespace YARG.Menu.Maestro
             return icon;
         }
 
-        private void ShowModifierPicker()
+        private void ShowAdjustmentPicker(AdjustmentCategory category)
         {
             if (!Session.TryGetPlayer(_selectedProfileId, out var player) ||
                 DialogManager.Instance == null || DialogManager.Instance.IsDialogShowing)
                 return;
 
-            var modifiers = Session.GetAvailableModifiers(_selectedProfileId);
-            if (modifiers.Count == 0)
+            bool accessibility = category == AdjustmentCategory.Accessibility;
+            var modifiers = accessibility
+                ? Session.GetAvailableAccessibilityModifiers(_selectedProfileId)
+                : GetModifierOptions(player);
+            bool hasAccessibilityOptions = accessibility && HasAccessibilityOptions(player);
+            if (modifiers.Count == 0 && !hasAccessibilityOptions)
             {
-                DialogManager.Instance.ShowMessage("Modifiers",
-                    "No modifiers are available for this instrument.");
+                string title = accessibility ? "Accessibility" : "Modifiers";
+                DialogManager.Instance.ShowMessage(title,
+                    $"No {title.ToLowerInvariant()} are available for this instrument.");
                 return;
             }
 
@@ -495,24 +516,156 @@ namespace YARG.Menu.Maestro
                 return;
             }
 
-            var dialog = DialogManager.Instance.ShowList($"Modifiers — {player.Name}");
+            string dialogTitle = accessibility ? "Accessibility" : "Modifiers";
+            var dialog = DialogManager.Instance.ShowList($"{dialogTitle} — {player.Name}");
             dialog.ClearButtons();
             dialog.ClearList();
-            foreach (var modifier in modifiers)
+
+            if (accessibility)
             {
-                var option = modifier;
-                var item = dialog.AddListEntry(_modifierItemPrefab, true);
-                item.Initialize(option.ToLocalizedName(), (player.Modifiers & option) != 0,
-                    enabled =>
+                AddAccessibilityOptions(dialog, player, modifiers);
+            }
+            else
+            {
+                foreach (var modifier in modifiers)
+                {
+                    AddModifierToggle(dialog, player, modifier);
+                }
+            }
+
+            dialog.AddDialogButton("Menu.DifficultySelect.Done", MenuData.Colors.BrightButton,
+                DialogManager.Instance.ClearDialog);
+        }
+
+        private IReadOnlyList<Modifier> GetModifierOptions(MaestroStagedPlayer player)
+        {
+            var available = Session.GetAvailableModifiers(_selectedProfileId, true);
+            if (player.GameMode is not GameMode.Vocals and not GameMode.PartyVocals)
+                return available.Where(modifier =>
+                    !MaestroSelectionRules.IsAccessibilityModifier(modifier)).ToArray();
+
+            return GetVocalModifierOptions(available);
+        }
+
+        private static IReadOnlyList<Modifier> GetVocalModifierOptions(
+            IReadOnlyList<Modifier> available)
+        {
+            var options = new List<Modifier>();
+            Modifier[] unpitched =
+            {
+                Modifier.UnpitchedOnly,
+                Modifier.UnpitchedHarm2,
+                Modifier.UnpitchedHarm3,
+            };
+
+            foreach (var modifier in unpitched)
+            {
+                if (available.Contains(modifier))
+                    options.Add(modifier);
+            }
+
+            foreach (var modifier in available)
+            {
+                if (!options.Contains(modifier))
+                    options.Add(modifier);
+            }
+
+            return options;
+        }
+
+        private void AddModifierToggle(ListDialog dialog, MaestroStagedPlayer player,
+            Modifier modifier)
+        {
+            AddAdjustmentToggle(dialog, modifier.ToLocalizedName(),
+                (player.Modifiers & modifier) != 0, enabled =>
+            {
+                Session.StageModifier(_selectedProfileId, modifier, enabled);
+                RefreshView();
+            });
+        }
+
+        private void AddAccessibilityOptions(ListDialog dialog, MaestroStagedPlayer player,
+            IReadOnlyList<Modifier> modifiers)
+        {
+            if (MaestroSelectionRules.SupportsLeftyFlip(player.GameMode))
+            {
+                AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "LeftyFlip"),
+                    player.LeftyFlip, enabled =>
                     {
-                        Session.StageModifier(_selectedProfileId, option, enabled);
+                        Session.StageLeftyFlip(_selectedProfileId, enabled);
                         RefreshView();
                     });
             }
-            dialog.AddDialogButton("Menu.Common.Close", MenuData.Colors.CancelButton,
-                DialogManager.Instance.ClearDialog);
-            dialog.AddDialogButton("Menu.Common.Confirm", MenuData.Colors.ConfirmButton,
-                DialogManager.Instance.ClearDialog);
+
+            if (MaestroSelectionRules.SupportsRangeShifts(player.GameMode))
+            {
+                AddAdjustmentToggle(dialog,
+                    Localize.Key("Menu.DifficultySelect", "NoRangeShifts"),
+                    MaestroSelectionRules.HasNoRangeShifts(player), enabled =>
+                    {
+                        Session.StageRangeEnabled(_selectedProfileId, !enabled);
+                        if (Session.GetAvailableModifiers(_selectedProfileId, true)
+                            .Contains(Modifier.RangeCompress))
+                        {
+                            Session.StageModifier(_selectedProfileId, Modifier.RangeCompress, enabled);
+                        }
+                        RefreshView();
+                    });
+            }
+
+            foreach (var modifier in modifiers)
+            {
+                if (modifier == Modifier.RangeCompress)
+                    continue;
+
+                AddModifierToggle(dialog, player, modifier);
+            }
+
+            if (player.GameMode == GameMode.ProKeys)
+            {
+                ModifierItem openLaneItem = null;
+                openLaneItem = AddAdjustmentToggle(dialog,
+                    GetOpenLaneLabel(player.OpenLaneDisplayType),
+                    player.OpenLaneDisplayType != OpenLaneDisplayType.Never, _ =>
+                    {
+                        var next = GetNextOpenLaneOption(player.OpenLaneDisplayType);
+                        Session.StageOpenLaneDisplayType(_selectedProfileId, next);
+                        openLaneItem.Initialize(GetOpenLaneLabel(next),
+                            next != OpenLaneDisplayType.Never, _ =>
+                            {
+                                var following = GetNextOpenLaneOption(next);
+                                Session.StageOpenLaneDisplayType(_selectedProfileId, following);
+                                RefreshView();
+                            });
+                        RefreshView();
+                    });
+            }
+        }
+
+        private ModifierItem AddAdjustmentToggle(ListDialog dialog, string label, bool active,
+            Action<bool> onChanged)
+        {
+            var item = dialog.AddListEntry(_modifierItemPrefab, true);
+            item.Initialize(label, active, onChanged);
+            return item;
+        }
+
+        private bool HasAccessibilityOptions(MaestroStagedPlayer player)
+        {
+            return MaestroSelectionRules.SupportsLeftyFlip(player.GameMode) ||
+                MaestroSelectionRules.SupportsRangeShifts(player.GameMode) ||
+                player.GameMode == GameMode.ProKeys ||
+                Session.GetAvailableAccessibilityModifiers(_selectedProfileId).Count > 0;
+        }
+
+        private static string GetOpenLaneLabel(OpenLaneDisplayType displayType) =>
+            Localize.Key("Menu.DifficultySelect", "DedicatedOpenLane") + ": " +
+            displayType.ToLocalizedName();
+
+        private static OpenLaneDisplayType GetNextOpenLaneOption(OpenLaneDisplayType current)
+        {
+            int index = Array.IndexOf(OpenLaneOptions, current);
+            return OpenLaneOptions[(index + 1) % OpenLaneOptions.Length];
         }
 
         private void ToggleControllerLock()
