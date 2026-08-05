@@ -1007,7 +1007,9 @@
             "RefreshCache": "Scan Songs",
             "OpenExecutablePath": "Open Executable Path",
             "OpenPersistentDataPath": "Open Persistent Data Path",
-            "ShowMaestroPairingPin": "Show Maestro Pairing PIN"
+            "ShowMaestroPairingPin": "Show Maestro Pairing PIN",
+            "SkipToMaestroOn": "Skip to Maestro (On)",
+            "SkipToMaestroOff": "Skip to Maestro (Off)"
         },
         "Setting": {
             "AllowDuplicateSongs": {
@@ -1588,6 +1590,10 @@
             "MaestroEnable": {
                 "Name": "Enable Maestro",
                 "Description": "Hosts the Maestro browser companion on this computer. Profile changes apply at the next safe song boundary, while supported volume controls apply immediately."
+            },
+            "MaestroGoDirectlyToSummary": {
+                "Name": "Go Directly To Maestro Summary",
+                "Description": "Skip the individual player setup pages and open the Maestro summary page immediately."
             },
             "ShowMaestroPairingPin": {
                 "Name": "Show Maestro Pairing PIN",

@@ -193,6 +193,13 @@ namespace YARG.Menu.DifficultySelect
                 _songList = new List<SongEntry> { GlobalVariables.State.CurrentSong };
             }
 
+            if (!returningFromMaestro && SettingsManager.Settings.MaestroEnable.Value &&
+                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value)
+            {
+                OpenMaestroSummaryDirectly();
+                return;
+            }
+
             if (returningFromMaestro)
             {
                 _playerIndex = Mathf.Clamp(pageSession.CompletedPlayerBoundary - 1, 0,
@@ -248,6 +255,21 @@ namespace YARG.Menu.DifficultySelect
             _scrollRect = GetComponentInChildren<ScrollRect>();
             _scrollbar = GetComponentInChildren<Scrollbar>();
             _navGroup.SelectionChanged += UpdateForSelectionChanged;
+        }
+
+        private void OpenMaestroSummaryDirectly()
+        {
+            foreach (var player in PlayerContainer.Players)
+            {
+                player.Profile.RestoreSavedModifiers();
+            }
+
+            Guid vocalPrimaryProfileId = PlayerContainer.Players
+                .FirstOrDefault(player => player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals)
+                ?.Profile.Id ?? default;
+            MaestroSetupSession.Begin(PlayerContainer.Players, _songList,
+                PlayerContainer.Players.Count, vocalPrimaryProfileId);
+            MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
         }
 
         private void UpdateForSelectionChanged(NavigatableBehaviour navigatableBehaviour,

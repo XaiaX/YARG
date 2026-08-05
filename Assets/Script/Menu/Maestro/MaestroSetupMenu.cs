@@ -85,6 +85,11 @@ namespace YARG.Menu.Maestro
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
+        private void Awake()
+        {
+            CaptureSelectedEditorGraphicAlphas();
+        }
+
         private void OnEnable()
         {
             if (Session == null)
@@ -96,7 +101,6 @@ namespace YARG.Menu.Maestro
             _leaving = false;
             _editingPlayer = false;
             _controllerLockEnabled = true;
-            _selectedEditorGraphicAlphas.Clear();
             SetEditorVisible(true);
             EnsureFocusCanvasGroups();
             AcquireControllerLock();
@@ -105,8 +109,9 @@ namespace YARG.Menu.Maestro
             if (_rightNavigationGroup != null)
                 _rightNavigationGroup.SelectionChanged += OnRightNavigationSelectionChanged;
 
-            BuildRows();
             ConfigureDropdowns();
+            CaptureSelectedEditorGraphicAlphas();
+            BuildRows();
             ConfigureButtons();
             ConfigureNavigation();
             PushNavigationScheme();
@@ -142,6 +147,21 @@ namespace YARG.Menu.Maestro
             if (_playButton != null)
                 _playButtonCanvasGroup = _playButton.GetComponent<CanvasGroup>() ??
                     _playButton.gameObject.AddComponent<CanvasGroup>();
+        }
+
+        private void CaptureSelectedEditorGraphicAlphas()
+        {
+            if (_selectedPlayerEditor == null)
+                return;
+
+            foreach (var graphic in _selectedPlayerEditor.GetComponentsInChildren<Graphic>(true))
+            {
+                if (graphic != null && graphic != _selectedPlayerBackground &&
+                    !_selectedEditorGraphicAlphas.ContainsKey(graphic))
+                {
+                    _selectedEditorGraphicAlphas.Add(graphic, graphic.color.a);
+                }
+            }
         }
 
         private void UpdateFocusVisual()
@@ -359,6 +379,7 @@ namespace YARG.Menu.Maestro
             SetRightNavigationHoverSelection(_difficultyNavigation);
             SetRightNavigationHoverSelection(_modifierButton);
             SetRightNavigationHoverSelection(_accessibilityButton);
+            SetLeftNavigationHoverSelection(_playButton);
 
             ResetMaestroNavigationStack();
             _navigationGroup.PushNavGroupToStack();
@@ -374,6 +395,11 @@ namespace YARG.Menu.Maestro
         }
 
         private static void SetRightNavigationHoverSelection(NavigatableBehaviour navigatable)
+        {
+            navigatable?.SetSelectOnHover(true);
+        }
+
+        private static void SetLeftNavigationHoverSelection(NavigatableBehaviour navigatable)
         {
             navigatable?.SetSelectOnHover(true);
         }
@@ -429,6 +455,13 @@ namespace YARG.Menu.Maestro
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back", Back),
                 new NavigationScheme.Entry(MenuAction.Blue, controllerKey,
                     ToggleControllerLock),
+                new NavigationScheme.Entry(MenuAction.Orange,
+                    SettingsManager.Settings.MaestroGoDirectlyToSummary.Value
+                        ? "Menu.Button.SkipToMaestroOn"
+                        : "Menu.Button.SkipToMaestroOff",
+                    ToggleDirectSummary),
+                new NavigationScheme.Entry(MenuAction.Yellow,
+                    "Menu.Button.ShowMaestroPairingPin", ShowMaestroPin),
             }, false);
         }
 
@@ -523,16 +556,15 @@ namespace YARG.Menu.Maestro
             if (_selectedPlayerEditor == null)
                 return;
 
+            CaptureSelectedEditorGraphicAlphas();
+
             foreach (var graphic in _selectedPlayerEditor.GetComponentsInChildren<Graphic>(true))
             {
                 if (graphic == null || graphic == _selectedPlayerBackground)
                     continue;
 
                 if (!_selectedEditorGraphicAlphas.TryGetValue(graphic, out float baseAlpha))
-                {
-                    baseAlpha = graphic.color.a;
-                    _selectedEditorGraphicAlphas.Add(graphic, baseAlpha);
-                }
+                    continue;
 
                 var color = graphic.color;
                 color.a = baseAlpha * alpha;
@@ -837,6 +869,18 @@ namespace YARG.Menu.Maestro
             AcquireControllerLock();
             RefreshView();
             UpdateControllerLockHelpBar();
+        }
+
+        private void ToggleDirectSummary()
+        {
+            SettingsManager.Settings.MaestroGoDirectlyToSummary.Value =
+                !SettingsManager.Settings.MaestroGoDirectlyToSummary.Value;
+            UpdateControllerLockHelpBar();
+        }
+
+        private static void ShowMaestroPin()
+        {
+            SettingsManager.Settings.ShowMaestroPairingPin();
         }
 
         private void Back()

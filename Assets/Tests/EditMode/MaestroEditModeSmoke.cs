@@ -302,11 +302,14 @@ namespace YARG.Tests.EditMode
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            var language = File.ReadAllText("Assets/StreamingAssets/lang/en-US.json");
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("MenuAction.Orange"));
             Assert.That(script.text, Does.Contain("MenuAction.Yellow"));
-            Assert.That(script.text, Does.Contain("Skip to Maestro (On)"));
-            Assert.That(script.text, Does.Contain("Skip to Maestro (Off)"));
+            Assert.That(script.text, Does.Contain("SkipToMaestroOn"));
+            Assert.That(script.text, Does.Contain("SkipToMaestroOff"));
+            Assert.That(language, Does.Contain("Skip to Maestro (On)"));
+            Assert.That(language, Does.Contain("Skip to Maestro (Off)"));
             Assert.That(script.text, Does.Contain("ShowMaestroPairingPin"));
             Assert.That(script.text, Does.Contain(
                 "SettingsManager.Settings.MaestroGoDirectlyToSummary.Value"));

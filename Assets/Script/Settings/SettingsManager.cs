@@ -245,6 +245,7 @@ namespace YARG.Settings
                 nameof(Settings.CustomVocalsCharacter),
                 nameof(Settings.DataStreamEnable),
                 nameof(Settings.MaestroEnable),
+                nameof(Settings.MaestroGoDirectlyToSummary),
                 new ButtonRowMetadata(nameof(Settings.ShowMaestroPairingPin),
                     visibilityPredicate: () => Settings.MaestroEnable.Value),
                 nameof(Settings.SaveScoresWithBots),
