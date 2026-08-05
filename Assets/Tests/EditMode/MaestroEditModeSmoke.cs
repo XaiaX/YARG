@@ -364,18 +364,21 @@ namespace YARG.Tests.EditMode
         {
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
             const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            const string rowPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
             var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
             var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
+            var row = AssetDatabase.LoadAssetAtPath<MonoScript>(rowPath);
 
             Assert.That(menu, Is.Not.Null);
             Assert.That(session, Is.Not.Null);
+            Assert.That(row, Is.Not.Null);
             Assert.That(menu.text, Does.Contain("StageLeftyFlip"));
             Assert.That(menu.text, Does.Contain("StageRangeEnabled"));
             Assert.That(menu.text, Does.Contain("StageOpenLaneDisplayType"));
-            Assert.That(menu.text, Does.Contain("BuildAccessibilitySummary"));
             Assert.That(session.text, Does.Contain("LeftyFlip"));
             Assert.That(session.text, Does.Contain("RangeEnabled"));
             Assert.That(session.text, Does.Contain("OpenLaneDisplayType"));
+            Assert.That(row.text, Does.Contain("HasNoRangeShifts"));
         }
 
         [Test]
