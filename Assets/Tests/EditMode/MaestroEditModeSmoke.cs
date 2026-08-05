@@ -138,6 +138,8 @@ namespace YARG.Tests.EditMode
                 Is.Not.Null);
             Assert.That(serializedMenu.FindProperty("_readyButton").objectReferenceValue,
                 Is.Not.Null);
+            Assert.That(serializedMenu.FindProperty("_modifierButton").objectReferenceValue,
+                Is.Not.Null, "The Modifiers button must reference its navigatable component.");
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/SelectedPlayerName"), Is.Not.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeDropdown"), Is.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeButton"), Is.Null);
@@ -151,6 +153,87 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("Controller Navigation Disabled"));
             Assert.That(script.text, Does.Contain("FinishEditingPlayer"));
             Assert.That(script.text, Does.Contain("BeginEditingPlayer"));
+        }
+
+        [Test]
+        public void Player_Row_Uses_Game_Mode_Icon_And_Large_Enough_Source_Rect()
+        {
+            const string rowPrefabPath = "Assets/Prefabs/Menu/Maestro/MaestroPlayerRow.prefab";
+            const string rowScriptPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(rowPrefabPath);
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(rowScriptPath);
+            var icon = FindRequired(prefab.transform, "InstrumentIcon").GetComponent<RectTransform>();
+
+            Assert.That(prefab, Is.Not.Null);
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("player.GameMode"));
+            Assert.That(script.text, Does.Contain("GameMode.ToResourceName"));
+            Assert.That(icon.sizeDelta.y, Is.GreaterThanOrEqualTo(48f),
+                "The 512px source icon sheet supports a larger row icon without upscaling.");
+        }
+
+        [Test]
+        public void Setup_Menu_Shows_Editor_And_Puts_Play_In_Scroll_Content()
+        {
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            var menu = prefab.GetComponents<Component>()
+                .Single(component => component.GetType().FullName ==
+                    "YARG.Menu.Maestro.MaestroSetupMenu");
+            var serializedMenu = new SerializedObject(menu);
+
+            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor").gameObject.activeSelf,
+                Is.True, "The editor must remain visible while the left profile list has focus.");
+            Assert.That(prefab.transform.Find("Body/PlayerScroll/Viewport/PlayerContent/PlayButton"),
+                Is.Not.Null, "Play must be a visible scroll-content entry.");
+            Assert.That(serializedMenu.FindProperty("_modifierButton").objectReferenceValue,
+                Is.Not.Null);
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_Dynamic_Controller_Lock_Help_Label()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string languagePath = "Assets/StreamingAssets/lang/en-US.json";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            var language = AssetDatabase.LoadAssetAtPath<TextAsset>(languagePath);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(language, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("ControllersLocked"));
+            Assert.That(menu.text, Does.Contain("ControllersUnlocked"));
+            Assert.That(menu.text, Does.Contain("UpdateControllerLockHelpBar"));
+            Assert.That(language.text, Does.Contain("\"ControllersLocked\""));
+            Assert.That(language.text, Does.Contain("\"ControllersUnlocked\""));
+        }
+
+        [Test]
+        public void Instrument_Dropdown_Uses_Inline_Tiered_Labels()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("chartName + \" - \""));
+            Assert.That(menu.text, Does.Not.Contain("chartName\n                    + $\"\\n<size="));
+        }
+
+        [Test]
+        public void Setup_Menu_Separates_Row_Selection_From_Editor_Focus()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string rowPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            var row = AssetDatabase.LoadAssetAtPath<MonoScript>(rowPath);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(row, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("CanvasGroup"));
+            Assert.That(menu.text, Does.Contain("OnRightNavigationSelectionChanged"));
+            Assert.That(menu.text, Does.Contain("SelectionOrigin.Mouse"));
+            Assert.That(menu.text, Does.Contain("ResetMaestroNavigationStack"));
+            Assert.That(row.text, Does.Contain("OnPointerDown"));
+            Assert.That(row.text, Does.Contain("_wasSelectedOnPointerDown"));
         }
 
         [Test]
