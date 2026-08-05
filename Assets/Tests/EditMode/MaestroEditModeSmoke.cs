@@ -385,7 +385,7 @@ namespace YARG.Tests.EditMode
             Assert.That(row, Is.Not.Null);
             Assert.That(menu.text, Does.Contain("CanvasGroup"));
             Assert.That(menu.text, Does.Contain("OnRightNavigationSelectionChanged"));
-            Assert.That(menu.text, Does.Contain("SelectionOrigin.Mouse"));
+            Assert.That(menu.text, Does.Contain("_playButton?.SetSelected(false"));
             Assert.That(menu.text, Does.Contain("ResetMaestroNavigationStack"));
             Assert.That(row.text, Does.Contain("OnPointerDown"));
             Assert.That(row.text, Does.Contain("_wasSelectedOnPointerDown"));
