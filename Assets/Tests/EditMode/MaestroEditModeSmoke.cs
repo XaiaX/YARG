@@ -62,11 +62,13 @@ namespace YARG.Tests.EditMode
             Assert.That(header.anchoredPosition.y, Is.LessThanOrEqualTo(-40f));
             Assert.That(body.sizeDelta.y, Is.LessThanOrEqualTo(-240f));
             Assert.That(listImage.color.r, Is.LessThanOrEqualTo(0.1f));
-            Assert.That(listImage.color.a, Is.LessThanOrEqualTo(0.3f));
+            Assert.That(listImage.color.a, Is.GreaterThanOrEqualTo(0.8f));
+            Assert.That(listImage.sprite, Is.Not.Null,
+                "The profile list should use the rounded panel sprite.");
         }
 
         [Test]
-        public void Player_Row_Uses_Distinct_Readable_Columns()
+        public void Player_Row_Uses_Profile_Marker_Icon_And_Readable_Columns()
         {
             const string path = "Assets/Prefabs/Menu/Maestro/MaestroPlayerRow.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
@@ -74,18 +76,23 @@ namespace YARG.Tests.EditMode
             Assert.That(prefab, Is.Not.Null, $"Could not load {path}.");
             var background = prefab.GetComponent<Image>();
             var name = FindRequired(prefab.transform, "Name").GetComponent<RectTransform>();
-            var status = FindRequired(prefab.transform, "Status").GetComponent<RectTransform>();
+            var icon = FindRequired(prefab.transform, "InstrumentIcon").GetComponent<RectTransform>();
             var setup = FindRequired(prefab.transform, "Setup").GetComponent<RectTransform>();
             var modifiers = FindRequired(prefab.transform, "Modifiers").GetComponent<RectTransform>();
             var selected = FindRequired(prefab.transform, "SelectedBackground").GetComponent<RectTransform>();
 
             Assert.That(background.color.r, Is.LessThanOrEqualTo(0.1f));
             Assert.That(background.color.a, Is.LessThanOrEqualTo(0.3f));
-            Assert.That(name.anchorMin.x, Is.LessThan(status.anchorMin.x));
-            Assert.That(status.anchorMin.x, Is.LessThan(setup.anchorMin.x));
+            Assert.That(prefab.transform.Find("Status"), Is.Null,
+                "Bot state should be an inline marker, not a full-width column.");
+            Assert.That(name.anchorMin.x, Is.LessThan(icon.anchorMin.x));
+            Assert.That(icon.anchorMin.x, Is.LessThan(setup.anchorMin.x));
             Assert.That(setup.anchorMin.x, Is.LessThan(modifiers.anchorMin.x));
             Assert.That(selected.anchorMin, Is.EqualTo(Vector2.zero));
             Assert.That(selected.anchorMax, Is.EqualTo(Vector2.one));
+            Assert.That(selected.GetComponent<Image>().color.r, Is.GreaterThan(0.9f));
+            Assert.That(selected.GetComponent<Image>().color.g, Is.GreaterThan(0.5f));
+            Assert.That(selected.GetComponent<Image>().color.b, Is.LessThan(0.2f));
 
             foreach (var component in prefab.GetComponentsInChildren<Component>(true))
             {
@@ -115,23 +122,24 @@ namespace YARG.Tests.EditMode
                 .Select(component => component.transform.parent.name)
                 .ToArray();
 
-            Assert.That(dropdownNames, Is.EquivalentTo(new[]
-            {
-                "GameModeDropdown",
-                "InstrumentDropdown",
-                "DifficultyDropdown",
-            }));
+            Assert.That(dropdownNames, Is.EquivalentTo(new[] { "InstrumentDropdown", "DifficultyDropdown" }));
 
             var menu = prefab.GetComponents<Component>()
                 .Single(component => component.GetType().FullName ==
                     "YARG.Menu.Maestro.MaestroSetupMenu");
             var serializedMenu = new SerializedObject(menu);
-            Assert.That(serializedMenu.FindProperty("_gameModeDropdown").objectReferenceValue,
-                Is.Not.Null);
             Assert.That(serializedMenu.FindProperty("_instrumentDropdown").objectReferenceValue,
                 Is.Not.Null);
             Assert.That(serializedMenu.FindProperty("_difficultyDropdown").objectReferenceValue,
                 Is.Not.Null);
+            Assert.That(serializedMenu.FindProperty("_rightNavigationGroup").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(serializedMenu.FindProperty("_playButton").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(serializedMenu.FindProperty("_readyButton").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/SelectedPlayerName"), Is.Not.Null);
+            Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeDropdown"), Is.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/GameModeButton"), Is.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/InstrumentButton"), Is.Null);
             Assert.That(prefab.transform.Find("Body/SelectedPlayerEditor/DifficultyButton"), Is.Null);
@@ -139,6 +147,53 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Not.Contain("CycleInstrument"));
             Assert.That(script.text, Does.Not.Contain("CycleDifficulty"));
             Assert.That(script.text, Does.Contain("ShowModifierPicker"));
+            Assert.That(script.text, Does.Contain("MenuAction.Blue"));
+            Assert.That(script.text, Does.Contain("Controller Navigation Disabled"));
+            Assert.That(script.text, Does.Contain("FinishEditingPlayer"));
+            Assert.That(script.text, Does.Contain("BeginEditingPlayer"));
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_Readonly_Game_Mode_Tiered_Instruments_And_Party_Vocal_Charts()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            const string dropdownPath = "Assets/Prefabs/Menu/Common/DropdownSelection.prefab";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
+            var dropdownPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(dropdownPath);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(session, Is.Not.Null);
+            Assert.That(dropdownPrefab, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("GetTierLabel"));
+            Assert.That(menu.text, Does.Contain("ToResourceName"));
+            Assert.That(menu.text, Does.Contain("GetPartyVocalsChartLabel"));
+            Assert.That(menu.text, Does.Not.Contain("_gameModeDropdown"));
+            Assert.That(session.text, Does.Contain("GameMode.PartyVocals"));
+            Assert.That(session.text, Does.Contain("Instrument.Vocals"));
+            Assert.That(session.text, Does.Contain("Instrument.Harmony"));
+
+            var dropdown = dropdownPrefab.GetComponentsInChildren<Component>(true)
+                .Single(component => component.GetType().FullName == "TMPro.TMP_Dropdown");
+            Assert.That(new SerializedObject(dropdown).FindProperty("m_ItemImage").objectReferenceValue,
+                Is.Not.Null, "Instrument option images need an item image slot in the dropdown prefab.");
+        }
+
+        [Test]
+        public void Setup_Menu_Uses_Asterisk_Bot_Marker_And_Real_Checkbox_Visuals()
+        {
+            const string rowPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var row = AssetDatabase.LoadAssetAtPath<MonoScript>(rowPath);
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+
+            Assert.That(row, Is.Not.Null);
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(row.text, Does.Contain("*"));
+            Assert.That(menu.text, Does.Contain("ModifierItem"));
+            Assert.That(menu.text, Does.Not.Contain("☑"));
+            Assert.That(menu.text, Does.Not.Contain("☐"));
         }
 
         [Test]

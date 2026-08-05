@@ -134,7 +134,7 @@ namespace YARG.Menu.Maestro
 
             try
             {
-                return player.GameMode.PossibleInstrumentsForSong(_songs[0])
+                return GetPossibleInstruments(player.GameMode)
                     .Where(instrument => IsInstrumentAvailable(player, player.GameMode, instrument))
                     .ToArray();
             }
@@ -482,7 +482,7 @@ namespace YARG.Menu.Maestro
 
             try
             {
-                return mode.PossibleInstrumentsForSong(_songs[0])
+                return GetPossibleInstruments(mode)
                     .Any(instrument => _songs.All(song => HasPlayableInstrument(song, instrument)));
             }
             catch (NotImplementedException)
@@ -496,7 +496,7 @@ namespace YARG.Menu.Maestro
         {
             try
             {
-                if (!mode.PossibleInstrumentsForSong(_songs[0]).Contains(instrument) ||
+                if (!GetPossibleInstruments(mode).Contains(instrument) ||
                     !_songs.All(song => HasPlayableInstrument(song, instrument)))
                     return false;
 
@@ -547,6 +547,16 @@ namespace YARG.Menu.Maestro
         private int MaxHarmonyParts() => _songs.Count == 0 ? 1 : _songs.Min(song => song.VocalsCount);
 
         private static bool IsVocal(GameMode mode) => mode is GameMode.Vocals or GameMode.PartyVocals;
+
+        private IEnumerable<Instrument> GetPossibleInstruments(GameMode mode)
+        {
+            // Party Vocals is a game mode, not a chart. Its instrument control must
+            // choose the same Solo/Harmony chart options as Difficulty Select.
+            if (mode == GameMode.PartyVocals)
+                return new[] { Instrument.Vocals, Instrument.Harmony };
+
+            return mode.PossibleInstrumentsForSong(_songs[0]);
+        }
 
         private static bool HasPlayableInstrument(SongEntry entry, Instrument instrument)
         {

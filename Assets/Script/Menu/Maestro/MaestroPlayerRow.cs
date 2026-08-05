@@ -1,8 +1,15 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.AddressableAssets;
+using UnityEngine.UI;
+using YARG.Core;
 using YARG.Core.Game;
+using YARG.Core.Extensions;
+using YARG.Helpers.Extensions;
 using YARG.Localization;
 using YARG.Menu.Navigation;
 
@@ -14,8 +21,10 @@ namespace YARG.Menu.Maestro
     /// </summary>
     public sealed class MaestroPlayerRow : NavigatableBehaviour, IPointerClickHandler
     {
+        private static readonly Dictionary<string, Sprite> IconCache = new();
+
         [SerializeField] private TMP_Text _name;
-        [SerializeField] private TMP_Text _status;
+        [SerializeField] private Image _instrumentIcon;
         [SerializeField] private TMP_Text _setup;
         [SerializeField] private TMP_Text _modifiers;
 
@@ -34,23 +43,45 @@ namespace YARG.Menu.Maestro
                 return;
 
             if (_name != null)
-                _name.text = player.Name;
-            if (_status != null)
-            {
-                string state = player.SittingOut ? "Sitting out" : player.IsBot ? "Bot" :
-                    player.IsMissingInput ? "Missing input" : "Ready";
-                _status.text = state;
-            }
+                _name.text = player.IsBot ? $"* {player.Name}" : player.Name;
+            SetInstrumentIcon(player.Instrument);
             if (_setup != null)
                 _setup.text = $"{player.GameMode} · {player.Instrument} · {player.Difficulty}";
             if (_modifiers != null)
             {
                 string modifierText = player.Modifiers == Modifier.None
                     ? "No modifiers"
-                    : player.Modifiers.ToLocalizedName();
+                    : string.Join(", ", EnumExtensions<Modifier>.Values
+                        .Where(modifier => modifier != Modifier.None &&
+                            (player.Modifiers & modifier) != 0)
+                        .Select(modifier => modifier.ToLocalizedName()));
                 _modifiers.text = modifierText;
             }
             SetSelected(selected, SelectionOrigin.Programmatically);
+        }
+
+        private void SetInstrumentIcon(Instrument instrument)
+        {
+            if (_instrumentIcon == null)
+                return;
+
+            string resourceName = instrument.ToResourceName();
+            if (string.IsNullOrEmpty(resourceName))
+            {
+                _instrumentIcon.sprite = null;
+                _instrumentIcon.enabled = false;
+                return;
+            }
+
+            string assetKey = $"InstrumentIcons[{resourceName}]";
+            if (!IconCache.TryGetValue(assetKey, out var icon))
+            {
+                icon = Addressables.LoadAssetAsync<Sprite>(assetKey).WaitForCompletion();
+                IconCache[assetKey] = icon;
+            }
+
+            _instrumentIcon.sprite = icon;
+            _instrumentIcon.enabled = icon != null;
         }
 
         public void SetSelected(bool selected)

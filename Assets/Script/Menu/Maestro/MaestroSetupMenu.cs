@@ -5,12 +5,17 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Game;
 using YARG.Core.Input;
+using YARG.Core.Song;
+using YARG.Helpers.Extensions;
 using YARG.Localization;
+using YARG.Menu.DifficultySelect;
+using YARG.Menu.Filters;
 using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Player;
@@ -23,6 +28,8 @@ namespace YARG.Menu.Maestro
     /// </summary>
     public sealed class MaestroSetupMenu : MonoBehaviour
     {
+        private static readonly Dictionary<string, Sprite> InstrumentIconCache = new();
+
         [Header("Page")]
         [SerializeField] private TMP_Text _songTitle;
         [SerializeField] private TMP_Text _errorText;
@@ -33,24 +40,25 @@ namespace YARG.Menu.Maestro
         [SerializeField] private NavigationGroup _navigationGroup;
 
         [Header("Selected player editor")]
+        [SerializeField] private GameObject _selectedPlayerEditor;
+        [SerializeField] private NavigationGroup _rightNavigationGroup;
         [SerializeField] private TMP_Text _selectedPlayerText;
-        [SerializeField] private TMP_Dropdown _gameModeDropdown;
         [SerializeField] private TMP_Dropdown _instrumentDropdown;
         [SerializeField] private TMP_Dropdown _difficultyDropdown;
+        [SerializeField] private ModifierItem _modifierItemPrefab;
         [SerializeField] private NavigatableUnityButton _modifierButton;
-        [SerializeField] private NavigatableUnityButton _controllerLockButton;
+        [SerializeField] private NavigatableUnityButton _readyButton;
+        [SerializeField] private NavigatableUnityButton _playButton;
 
         private readonly Dictionary<Guid, MaestroPlayerRow> _rows = new();
         private Guid _selectedProfileId;
         private IDisposable _controllerLock;
         private NavigationScheme _scheme;
         private bool _leaving;
+        private bool _editingPlayer;
         private bool _controllerLockEnabled = true;
-        private bool _staticNavigationConfigured;
-        private GameMode[] _gameModeOptions = Array.Empty<GameMode>();
         private Instrument[] _instrumentOptions = Array.Empty<Instrument>();
         private Difficulty[] _difficultyOptions = Array.Empty<Difficulty>();
-        private MaestroDropdownNavigatable _gameModeNavigation;
         private MaestroDropdownNavigatable _instrumentNavigation;
         private MaestroDropdownNavigatable _difficultyNavigation;
 
@@ -65,10 +73,13 @@ namespace YARG.Menu.Maestro
             }
 
             _leaving = false;
+            _editingPlayer = false;
             _controllerLockEnabled = true;
+            SetEditorVisible(false);
             AcquireControllerLock();
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged += OnNavigationSelectionChanged;
+
             BuildRows();
             ConfigureDropdowns();
             ConfigureButtons();
@@ -82,15 +93,22 @@ namespace YARG.Menu.Maestro
             CloseDropdowns();
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged -= OnNavigationSelectionChanged;
+            if (_rightNavigationGroup != null)
+                _rightNavigationGroup.SelectLastNavGroup();
             ReleaseControllerLock();
             if (_scheme != null && Navigator.Instance != null)
                 Navigator.Instance.RemoveScheme(_scheme);
             _scheme = null;
         }
 
+        private void SetEditorVisible(bool visible)
+        {
+            if (_selectedPlayerEditor != null)
+                _selectedPlayerEditor.SetActive(visible);
+        }
+
         private void CloseDropdowns()
         {
-            _gameModeNavigation?.CloseDropdown();
             _instrumentNavigation?.CloseDropdown();
             _difficultyNavigation?.CloseDropdown();
         }
@@ -124,9 +142,11 @@ namespace YARG.Menu.Maestro
             {
                 var row = Instantiate(_playerRowPrefab, _playerRowContainer);
                 row.Initialize(player);
-                row.Clicked += SelectPlayer;
+                row.Clicked += BeginEditingPlayer;
                 _rows.Add(player.ProfileId, row);
             }
+
+            _playButton?.transform.SetAsLastSibling();
 
             if (Session.Players.FirstOrDefault() is { } first)
                 SelectPlayer(first.ProfileId);
@@ -135,25 +155,15 @@ namespace YARG.Menu.Maestro
         private void ConfigureButtons()
         {
             ConfigureButton(_modifierButton, ShowModifierPicker);
-            ConfigureButton(_controllerLockButton, ToggleControllerLock);
+            ConfigureButton(_readyButton, FinishEditingPlayer);
+            ConfigureButton(_playButton, Continue);
         }
 
         private void ConfigureDropdowns()
         {
-            _gameModeNavigation = MaestroDropdownNavigatable.Attach(_gameModeDropdown);
             _instrumentNavigation = MaestroDropdownNavigatable.Attach(_instrumentDropdown);
             _difficultyNavigation = MaestroDropdownNavigatable.Attach(_difficultyDropdown);
 
-            if (_gameModeDropdown != null)
-            {
-                _gameModeDropdown.onValueChanged.RemoveAllListeners();
-                _gameModeDropdown.onValueChanged.AddListener(index =>
-                {
-                    if (index >= 0 && index < _gameModeOptions.Length)
-                        Session.StageGameMode(_selectedProfileId, _gameModeOptions[index]);
-                    RefreshView();
-                });
-            }
             if (_instrumentDropdown != null)
             {
                 _instrumentDropdown.onValueChanged.RemoveAllListeners();
@@ -194,27 +204,27 @@ namespace YARG.Menu.Maestro
             if (_navigationGroup == null)
                 return;
 
-            if (!_staticNavigationConfigured)
-            {
-                AddNavigatableIfPresent(_gameModeNavigation);
-                AddNavigatableIfPresent(_instrumentNavigation);
-                AddNavigatableIfPresent(_difficultyNavigation);
-                AddNavigatableIfPresent(_modifierButton);
-                AddNavigatableIfPresent(_controllerLockButton);
-                _staticNavigationConfigured = true;
-            }
+            _navigationGroup.ClearNavigatables();
+            _rightNavigationGroup?.ClearNavigatables();
 
             foreach (var row in _rows.Values)
                 _navigationGroup.AddNavigatable(row);
+            AddNavigatableIfPresent(_navigationGroup, _playButton);
+
+            AddNavigatableIfPresent(_rightNavigationGroup, _instrumentNavigation);
+            AddNavigatableIfPresent(_rightNavigationGroup, _difficultyNavigation);
+            AddNavigatableIfPresent(_rightNavigationGroup, _modifierButton);
+            AddNavigatableIfPresent(_rightNavigationGroup, _readyButton);
 
             if (_navigationGroup.SelectedBehaviour == null)
                 _navigationGroup.SelectFirst();
         }
 
-        private void AddNavigatableIfPresent(NavigatableBehaviour navigatable)
+        private static void AddNavigatableIfPresent(NavigationGroup group,
+            NavigatableBehaviour navigatable)
         {
-            if (navigatable != null)
-                _navigationGroup.AddNavigatable(navigatable);
+            if (group != null && navigatable != null)
+                group.AddNavigatable(navigatable);
         }
 
         private void OnNavigationSelectionChanged(NavigatableBehaviour selected,
@@ -232,6 +242,8 @@ namespace YARG.Menu.Maestro
                 NavigationScheme.Entry.NavigateDown,
                 NavigationScheme.Entry.NavigateSelect,
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back", Back),
+                new NavigationScheme.Entry(MenuAction.Blue, "Menu.Common.Toggle",
+                    ToggleControllerLock),
             }, false);
             Navigator.Instance.PushScheme(_scheme);
         }
@@ -247,17 +259,50 @@ namespace YARG.Menu.Maestro
             RefreshView();
         }
 
+        private void BeginEditingPlayer(Guid profileId)
+        {
+            if (!Session.TryGetPlayer(profileId, out _))
+                return;
+
+            if (_editingPlayer && _selectedProfileId == profileId)
+                return;
+
+            if (_editingPlayer)
+                FinishEditingPlayer();
+
+            SelectPlayer(profileId);
+            _editingPlayer = true;
+            SetEditorVisible(true);
+            _rightNavigationGroup?.PushNavGroupToStack();
+            _rightNavigationGroup?.SelectFirst();
+            RefreshView();
+        }
+
+        private void FinishEditingPlayer()
+        {
+            if (!_editingPlayer)
+                return;
+
+            CloseDropdowns();
+            _editingPlayer = false;
+            _rightNavigationGroup?.SelectLastNavGroup();
+            SetEditorVisible(false);
+            _navigationGroup?.PushNavGroupToStack();
+            RefreshView();
+        }
+
         private void RefreshView()
         {
             if (Session == null)
                 return;
 
-            if (_songTitle != null && GlobalVariables.State.CurrentSong != null)
-                _songTitle.text = GlobalVariables.State.CurrentSong.Name;
+            var song = GlobalVariables.State.CurrentSong;
+            if (_songTitle != null && song != null)
+                _songTitle.text = $"{song.Artist}\n{song.Name}";
             if (_controllerLockText != null)
                 _controllerLockText.text = _controllerLockEnabled
-                    ? "Controller navigation locked"
-                    : "Controller navigation enabled";
+                    ? "Controller Navigation Disabled"
+                    : "Controller Navigation Enabled";
 
             foreach (var staged in Session.Players)
             {
@@ -269,31 +314,95 @@ namespace YARG.Menu.Maestro
                 return;
 
             if (_selectedPlayerText != null)
-                _selectedPlayerText.text = selected.Name;
+                _selectedPlayerText.text =
+                    $"{selected.Name}\n<size=18>Game Mode: {selected.GameMode.ToLocalizedName()}</size>";
 
-            _gameModeOptions = Session.GetAvailableGameModes().ToArray();
             _instrumentOptions = Session.GetAvailableInstruments(_selectedProfileId).ToArray();
             _difficultyOptions = Session.GetAvailableDifficulties(_selectedProfileId).ToArray();
-            PopulateDropdown(_gameModeDropdown, _gameModeOptions, selected.GameMode,
-                mode => mode.ToLocalizedName());
             PopulateDropdown(_instrumentDropdown, _instrumentOptions, selected.Instrument,
-                instrument => instrument.ToLocalizedName());
+                instrument => GetInstrumentOptionLabel(song, instrument), GetInstrumentIcon);
             PopulateDropdown(_difficultyDropdown, _difficultyOptions, selected.Difficulty,
                 difficulty => difficulty.ToLocalizedName());
         }
 
         private static void PopulateDropdown<T>(TMP_Dropdown dropdown, IReadOnlyList<T> options,
-            T selected, Func<T, string> getLabel)
+            T selected, Func<T, string> getLabel, Func<T, Sprite> getImage = null)
         {
             if (dropdown == null)
                 return;
 
             dropdown.ClearOptions();
-            dropdown.AddOptions(options.Select(option => new TMP_Dropdown.OptionData(getLabel(option))).ToList());
+            dropdown.AddOptions(options.Select(option =>
+                new TMP_Dropdown.OptionData(getLabel(option), getImage?.Invoke(option), Color.white)).ToList());
             int index = options.ToList().IndexOf(selected);
             dropdown.SetValueWithoutNotify(Math.Max(index, 0));
             dropdown.interactable = options.Count > 0;
             dropdown.RefreshShownValue();
+        }
+
+        // Match Difficulty Select's instrument option presentation, including chart tier.
+        private static string GetInstrumentOptionLabel(SongEntry song, Instrument instrument)
+        {
+            if (instrument is Instrument.Vocals or Instrument.Harmony)
+                return GetPartyVocalsChartLabel(song, instrument);
+
+            string chartName = instrument switch
+            {
+                _ => instrument.ToLocalizedName(),
+            };
+
+            if (song == null)
+                return chartName;
+
+            return chartName
+                + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(GetTierValues(song, instrument))}</color></size>";
+        }
+
+        private static string GetPartyVocalsChartLabel(SongEntry song, Instrument instrument)
+        {
+            string chartName = instrument == Instrument.Vocals ? "Solo" : "Harmony";
+            return song == null
+                ? chartName
+                : chartName
+                    + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(GetTierValues(song, instrument))}</color></size>";
+        }
+
+        private static PartValues GetTierValues(SongEntry song, Instrument instrument)
+        {
+            var values = song[instrument];
+            if ((instrument is Instrument.Harmony or Instrument.PartyVocals) && !values.IsActive())
+                values = song[Instrument.Vocals];
+            return values;
+        }
+
+        private static string GetTierLabel(PartValues values)
+        {
+            if (!values.IsActive() || values.Intensity < 0)
+                return "? - " + Localize.Key("Menu.Filters.Intensities.Unknown");
+
+            string text = $"{values.Intensity} - {FiltersMenu.GetIntensityLabelByIndex(values.Intensity)}";
+            return values.Intensity switch
+            {
+                >= 6 => $"<color=#FB443F>{text}</color>",
+                5 => $"<color=#FF8400>{text}</color>",
+                _ => text,
+            };
+        }
+
+        private static Sprite GetInstrumentIcon(Instrument instrument)
+        {
+            string resourceName = instrument.ToResourceName();
+            if (string.IsNullOrEmpty(resourceName))
+                return null;
+
+            string assetKey = $"InstrumentIcons[{resourceName}]";
+            if (!InstrumentIconCache.TryGetValue(assetKey, out var icon))
+            {
+                icon = Addressables.LoadAssetAsync<Sprite>(assetKey).WaitForCompletion();
+                InstrumentIconCache[assetKey] = icon;
+            }
+
+            return icon;
         }
 
         private void ShowModifierPicker()
@@ -312,31 +421,19 @@ namespace YARG.Menu.Maestro
 
             var dialog = DialogManager.Instance.ShowList($"Modifiers — {player.Name}");
             dialog.ClearButtons();
-            var buttons = new Dictionary<Modifier, YARG.Menu.ColoredButton>();
+            dialog.ClearList();
             foreach (var modifier in modifiers)
             {
                 var option = modifier;
-                YARG.Menu.ColoredButton button = null;
-                button = dialog.AddListButton(GetModifierPickerLabel(player.Modifiers, option), () =>
-                {
-                    if (!Session.TryGetPlayer(_selectedProfileId, out var current))
-                        return;
-
-                    bool enabled = (current.Modifiers & option) == 0;
-                    Session.StageModifier(_selectedProfileId, option, enabled);
-                    foreach (var pair in buttons)
-                        pair.Value.Text.text = GetModifierPickerLabel(current.Modifiers, pair.Key);
-                    RefreshView();
-                }, false);
-                buttons.Add(option, button);
+                var item = dialog.AddListEntry(_modifierItemPrefab, true);
+                item.Initialize(option.ToLocalizedName(), (player.Modifiers & option) != 0,
+                    enabled =>
+                    {
+                        Session.StageModifier(_selectedProfileId, option, enabled);
+                        RefreshView();
+                    });
             }
             dialog.AddDialogButton("Menu.Common.Confirm", DialogManager.Instance.ClearDialog);
-        }
-
-        private static string GetModifierPickerLabel(Modifier selected, Modifier option)
-        {
-            string marker = (selected & option) != 0 ? "☑" : "☐";
-            return $"{marker} {option.ToLocalizedName()}";
         }
 
         private void ToggleControllerLock()
@@ -348,7 +445,15 @@ namespace YARG.Menu.Maestro
 
         private void Back()
         {
-            if (_leaving || Session == null) return;
+            if (_leaving || Session == null)
+                return;
+
+            if (_editingPlayer)
+            {
+                FinishEditingPlayer();
+                return;
+            }
+
             _leaving = true;
             Session.MarkReturningToDifficultySelect();
             CloseDropdowns();
@@ -361,7 +466,15 @@ namespace YARG.Menu.Maestro
 
         private void Continue()
         {
-            if (_leaving || Session == null) return;
+            if (_leaving || Session == null)
+                return;
+
+            if (_editingPlayer)
+            {
+                FinishEditingPlayer();
+                return;
+            }
+
             var result = Session.TryCommit();
             if (!result.Success)
             {

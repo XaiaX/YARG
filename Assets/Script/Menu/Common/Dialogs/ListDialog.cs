@@ -37,10 +37,13 @@ namespace YARG.Menu.Dialogs
             return button;
         }
 
-        public T AddListEntry<T>(T prefab)
+        public T AddListEntry<T>(T prefab, bool registerNavigatable = false)
             where T : Object
         {
-            return Instantiate(prefab, _listContainer);
+            var entry = Instantiate(prefab, _listContainer);
+            if (registerNavigatable)
+                RegisterNavigatable(entry as Component);
+            return entry;
         }
 
         public void ClearList()
