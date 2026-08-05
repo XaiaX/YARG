@@ -22,7 +22,10 @@ using YARG.Menu.Filters;
 using YARG.Menu.MusicLibrary;
 using YARG.Menu.Maestro;
 using YARG.Player;
+using YARG.Settings;
 using YARG.Song;
+
+// pattern: Mixed (needs refactoring)
 
 namespace YARG.Menu.DifficultySelect
 {
@@ -1378,6 +1381,25 @@ namespace YARG.Menu.DifficultySelect
 
         }
 
+        private void ApplyVocalSessionModifiers()
+        {
+            if (_vocalModifierSelectIndex < 0 ||
+                _vocalModifierSelectIndex >= PlayerContainer.Players.Count)
+            {
+                return;
+            }
+
+            var primaryPlayer = PlayerContainer.Players[_vocalModifierSelectIndex];
+            foreach (var player in PlayerContainer.Players)
+            {
+                if (player.SittingOut || player == primaryPlayer)
+                    continue;
+
+                if (player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals)
+                    player.Profile.ApplySessionModifiers(primaryPlayer.Profile);
+            }
+        }
+
         private void ChangePlayer(int add)
         {
             _playerIndex += add;
@@ -1421,8 +1443,15 @@ namespace YARG.Menu.DifficultySelect
                     vocalId = PlayerContainer.Players[_vocalModifierSelectIndex].Profile.Id;
                 }
 
-                MaestroSetupSession.Begin(PlayerContainer.Players, songs, _playerIndex, vocalId);
-                MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
+                if (SettingsManager.Settings.MaestroEnable.Value)
+                {
+                    MaestroSetupSession.Begin(PlayerContainer.Players, songs, _playerIndex, vocalId);
+                    MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
+                    return;
+                }
+
+                ApplyVocalSessionModifiers();
+                GlobalVariables.Instance.LoadScene(SceneIndex.Gameplay);
                 return;
             }
 
