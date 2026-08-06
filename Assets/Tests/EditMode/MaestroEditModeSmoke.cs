@@ -871,7 +871,7 @@ namespace YARG.Tests.EditMode
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
                 "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs");
             Assert.That(script, Is.Not.Null);
-            Assert.That(script.text, Does.Contain("\\n<size="),
+            Assert.That(script.text, Does.Contain("<size=14>"),
                 "Row setup text must support a second-line tier label (AC.1).");
             Assert.That(script.text, Does.Contain("tierLabel"),
                 "Refresh must accept a tierLabel parameter.");
