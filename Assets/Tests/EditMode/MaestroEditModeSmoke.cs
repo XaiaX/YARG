@@ -175,10 +175,13 @@ namespace YARG.Tests.EditMode
         public void Maestro_Disables_The_Editor_When_No_Part_Is_Available()
         {
             const string path = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string rowPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            var rowScript = AssetDatabase.LoadAssetAtPath<MonoScript>(rowPath);
 
             Assert.That(script, Is.Not.Null, $"Could not load {path}.");
-            Assert.That(script.text, Does.Contain("No Part Available"));
+            Assert.That(rowScript, Is.Not.Null, $"Could not load {rowPath}.");
+            Assert.That(rowScript.text, Does.Contain("No Part Available"));
             Assert.That(script.text, Does.Contain("DeactivatedButton"));
             Assert.That(script.text, Does.Contain("partAvailable"));
         }

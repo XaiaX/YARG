@@ -496,17 +496,31 @@ namespace YARG.Menu.Maestro
             unityButton.onClick.AddListener(action);
 
             if (backgroundColor.HasValue)
-            {
-                // NavigatableUnityButton is attached to the nested Button child;
-                // the RoundButton background and selection ring live on its root.
-                var visualRoot = button.transform.parent != null
-                    ? button.transform.parent
-                    : button.transform;
-                foreach (var img in visualRoot.GetComponentsInChildren<Image>(true))
-                {
-                    img.color = backgroundColor.Value;
-                }
-            }
+                SetButtonVisual(button, backgroundColor.Value);
+        }
+
+        private static void SetButtonState(NavigatableUnityButton button, bool interactable,
+            Color backgroundColor)
+        {
+            if (button == null)
+                return;
+
+            var unityButton = button.GetComponent<Button>() ?? button.GetComponentInChildren<Button>(true);
+            if (unityButton != null)
+                unityButton.interactable = interactable;
+
+            SetButtonVisual(button, backgroundColor);
+        }
+
+        private static void SetButtonVisual(NavigatableUnityButton button, Color color)
+        {
+            // NavigatableUnityButton is attached to the nested Button child;
+            // the RoundButton background and selection ring live on its root.
+            var visualRoot = button.transform.parent != null
+                ? button.transform.parent
+                : button.transform;
+            foreach (var img in visualRoot.GetComponentsInChildren<Image>(true))
+                img.color = color;
         }
 
         private static void SetButtonLabel(NavigatableUnityButton button, string label)
@@ -514,7 +528,8 @@ namespace YARG.Menu.Maestro
             if (button == null)
                 return;
 
-            var text = button.GetComponentsInChildren<TMP_Text>(true).FirstOrDefault();
+            var textRoot = button.transform.parent != null ? button.transform.parent : button.transform;
+            var text = textRoot.GetComponentsInChildren<TMP_Text>(true).FirstOrDefault();
             if (text != null)
                 text.text = label;
         }
@@ -710,7 +725,9 @@ namespace YARG.Menu.Maestro
                 if (_rows.TryGetValue(staged.ProfileId, out var row))
                 {
                     string tierLabel = GetRowTierLabel(song, staged);
-                    row.Refresh(staged, staged.ProfileId == _selectedProfileId, tierLabel);
+                    bool partAvailable = Session.GetAvailableInstruments(staged.ProfileId).Count > 0;
+                    row.Refresh(staged, staged.ProfileId == _selectedProfileId, tierLabel,
+                        partAvailable);
                 }
             }
 
@@ -725,15 +742,41 @@ namespace YARG.Menu.Maestro
                 _selectedPlayerText.text = $"{selected.Name}\n<size=18>{state}</size>";
             }
 
-            SetButtonLabel(_sitOutButton, selected.SittingOut ? "PLAYING" : "SIT OUT");
-
             _instrumentOptions = Session.GetAvailableInstruments(_selectedProfileId).ToArray();
             _difficultyOptions = Session.GetAvailableDifficulties(_selectedProfileId).ToArray();
             PopulateDropdown(_instrumentDropdown, _instrumentOptions, selected.Instrument,
                 instrument => GetInstrumentOptionLabel(song, instrument), GetInstrumentIcon);
             PopulateDropdown(_difficultyDropdown, _difficultyOptions, selected.Difficulty,
                 difficulty => difficulty.ToLocalizedName());
+            RefreshEditorControls(selected, _instrumentOptions.Length > 0);
             UpdateFocusVisual();
+        }
+
+        private void RefreshEditorControls(MaestroStagedPlayer selected, bool partAvailable)
+        {
+            bool playerActive = partAvailable && !selected.SittingOut;
+            SetDropdownInteractable(_instrumentDropdown, partAvailable);
+            SetDropdownInteractable(_difficultyDropdown, playerActive);
+
+            SetButtonState(_modifierButton, playerActive,
+                playerActive ? MenuData.Colors.BrightButton : MenuData.Colors.DeactivatedButton);
+            SetButtonState(_accessibilityButton, playerActive,
+                playerActive ? MenuData.Colors.BrightButton : MenuData.Colors.DeactivatedButton);
+
+            string sitOutLabel = selected.SittingOut && partAvailable ? "JOIN" : "SIT OUT";
+            Color sitOutColor = !partAvailable
+                ? MenuData.Colors.DeactivatedButton
+                : selected.SittingOut
+                    ? MenuData.Colors.ConfirmButton
+                    : MenuData.Colors.NavigationYellow;
+            SetButtonLabel(_sitOutButton, sitOutLabel);
+            SetButtonState(_sitOutButton, partAvailable, sitOutColor);
+        }
+
+        private static void SetDropdownInteractable(TMP_Dropdown dropdown, bool interactable)
+        {
+            if (dropdown != null)
+                dropdown.interactable = interactable && dropdown.options.Count > 0;
         }
 
         private void SetSelectedEditorContentAlpha(float alpha)

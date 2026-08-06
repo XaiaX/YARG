@@ -46,7 +46,8 @@ namespace YARG.Menu.Maestro
             Refresh(player, false);
         }
 
-        public void Refresh(MaestroStagedPlayer player, bool selected, string tierLabel = null)
+        public void Refresh(MaestroStagedPlayer player, bool selected, string tierLabel = null,
+            bool partAvailable = true)
         {
             if (player.ProfileId != ProfileId)
                 return;
@@ -61,7 +62,7 @@ namespace YARG.Menu.Maestro
                     const string sitOut = "Sitting Out";
                     _setup.text = $"<color=#FFB636>{sitOut}</color>";
                     if (_modifiers != null)
-                        _modifiers.text = "—";
+                        _modifiers.text = partAvailable ? "—" : "No Part Available";
                     SetSelected(selected, SelectionOrigin.Programmatically);
                     return;
                 }
