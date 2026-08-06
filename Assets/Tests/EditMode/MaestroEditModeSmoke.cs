@@ -154,8 +154,33 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null, $"Could not load {path}.");
             Assert.That(script.text, Does.Contain("player.SittingOut"));
             Assert.That(script.text, Does.Contain("Sitting Out"));
+            Assert.That(script.text, Does.Contain("No Part Available"));
             Assert.That(script.text, Does.Contain("#FFB636"),
                 "Sitting Out should use the brand yellow accent in the profile summary.");
+        }
+
+        [Test]
+        public void Maestro_Uses_Join_For_Available_Sitting_Out_Profiles()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+            Assert.That(script.text, Does.Contain("JOIN"));
+            Assert.That(script.text, Does.Contain("NavigationYellow"));
+            Assert.That(script.text, Does.Contain("ConfirmButton"));
+        }
+
+        [Test]
+        public void Maestro_Disables_The_Editor_When_No_Part_Is_Available()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+            Assert.That(script.text, Does.Contain("No Part Available"));
+            Assert.That(script.text, Does.Contain("DeactivatedButton"));
+            Assert.That(script.text, Does.Contain("partAvailable"));
         }
 
         [Test]
