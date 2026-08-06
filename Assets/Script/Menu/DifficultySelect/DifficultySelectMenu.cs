@@ -146,6 +146,14 @@ namespace YARG.Menu.DifficultySelect
             // reactivating this menu, so this menu owns the restored Difficulty Select scheme.
             var pageSession = MaestroSetupSession.Active;
             bool returningFromMaestro = pageSession?.ReturningToDifficultySelect == true;
+            bool directSummary = !returningFromMaestro &&
+                SettingsManager.Settings.MaestroEnable.Value &&
+                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value;
+
+            // Direct Maestro opens one frame after Difficulty Select is enabled so the
+            // menu stack can finish updating. Keep the transient player content hidden
+            // during that handoff so the old first profile cannot flash on screen.
+            PrepareForDirectMaestroSummary(directSummary);
 
             // Set navigation scheme
             Navigator.Instance.PushScheme(new NavigationScheme(new()
@@ -253,11 +261,16 @@ namespace YARG.Menu.DifficultySelect
             // Open Maestro only after this page has initialized its current-player view.
             // Pushing it from the middle of OnEnable leaves the stale/default Difficulty
             // Select UI visible underneath the summary and breaks the Back path.
-            if (!returningFromMaestro && SettingsManager.Settings.MaestroEnable.Value &&
-                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value)
+            if (directSummary)
             {
                 _directMaestroCoroutine = StartCoroutine(OpenMaestroSummaryDirectlyNextFrame());
             }
+        }
+
+        private void PrepareForDirectMaestroSummary(bool directSummary)
+        {
+            if (_container != null)
+                _container.gameObject.SetActive(!directSummary);
         }
 
         private System.Collections.IEnumerator OpenMaestroSummaryDirectlyNextFrame()

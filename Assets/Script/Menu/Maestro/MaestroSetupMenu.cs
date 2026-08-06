@@ -22,6 +22,7 @@ using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Player;
 using YARG.Settings;
+using YARG.Song;
 
 namespace YARG.Menu.Maestro
 {
@@ -86,6 +87,7 @@ namespace YARG.Menu.Maestro
         private CanvasGroup _playButtonCanvasGroup;
         private int? _lastRightSelectionIndex;
         private readonly Dictionary<Graphic, float> _selectedEditorGraphicAlphas = new();
+        private Image _headerSourceIcon;
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
@@ -105,6 +107,7 @@ namespace YARG.Menu.Maestro
             _leaving = false;
             _editingPlayer = false;
             _controllerLockEnabled = true;
+            ConfigureHeader();
             SetEditorVisible(true);
             EnsureFocusCanvasGroups();
             ConfigurePaneHoverTargets();
@@ -135,6 +138,88 @@ namespace YARG.Menu.Maestro
             if (_scheme != null && Navigator.Instance != null)
                 Navigator.Instance.RemoveScheme(_scheme);
             _scheme = null;
+        }
+
+        private void ConfigureHeader()
+        {
+            var header = transform.Find("Header");
+            if (header == null)
+                return;
+
+            var pageTitle = header.Find("Single Header Text")?.GetComponent<TMP_Text>();
+            if (pageTitle != null)
+            {
+                pageTitle.gameObject.SetActive(true);
+                pageTitle.text = "Player Settings Summary";
+            }
+
+            var backButton = FindHeaderBackButton(header);
+            if (backButton != null)
+            {
+                backButton.onClick.RemoveAllListeners();
+                backButton.onClick.AddListener(BackToSongSelect);
+            }
+
+            if (_controllerLockText != null)
+                _controllerLockText.gameObject.SetActive(false);
+
+            ConfigureHeaderSongInfo();
+            ConfigureHeaderSourceIcon(header);
+        }
+
+        private void ConfigureHeaderSongInfo()
+        {
+            if (_songTitle == null)
+                return;
+
+            var rectTransform = _songTitle.rectTransform;
+            rectTransform.anchorMin = new Vector2(1f, 0.5f);
+            rectTransform.anchorMax = new Vector2(1f, 0.5f);
+            rectTransform.pivot = new Vector2(1f, 0.5f);
+            rectTransform.anchoredPosition = new Vector2(-90f, 0f);
+            rectTransform.sizeDelta = new Vector2(450f, 72f);
+            _songTitle.alignment = TextAlignmentOptions.Right;
+        }
+
+        private static Button FindHeaderBackButton(Transform header)
+        {
+            foreach (var button in header.GetComponentsInChildren<Button>(true))
+            {
+                var image = button.GetComponent<Image>();
+                var sprite = image != null ? image.sprite : null;
+                if (sprite != null &&
+                    sprite.name.Contains("RedBackButton", StringComparison.OrdinalIgnoreCase))
+                {
+                    return button;
+                }
+            }
+
+            return null;
+        }
+
+        private void ConfigureHeaderSourceIcon(Transform header)
+        {
+            _headerSourceIcon = header.Find("Source Icon")?.GetComponent<Image>();
+            if (_headerSourceIcon == null)
+            {
+                var iconObject = new GameObject("Source Icon",
+                    typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                iconObject.transform.SetParent(header, false);
+                _headerSourceIcon = iconObject.GetComponent<Image>();
+
+                var rectTransform = iconObject.GetComponent<RectTransform>();
+                rectTransform.anchorMin = new Vector2(1f, 0.5f);
+                rectTransform.anchorMax = new Vector2(1f, 0.5f);
+                rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                rectTransform.anchoredPosition = new Vector2(-40f, 0f);
+                rectTransform.sizeDelta = new Vector2(64f, 64f);
+                _headerSourceIcon.color = new Color(1f, 1f, 1f, 0.8f);
+                _headerSourceIcon.raycastTarget = false;
+            }
+
+            var song = GlobalVariables.State.CurrentSong;
+            _headerSourceIcon.sprite = song == null ? null : SongSources.SourceToIcon(song.Source);
+            _headerSourceIcon.gameObject.SetActive(_headerSourceIcon.sprite != null);
         }
 
         private void SetEditorVisible(bool visible)
@@ -580,10 +665,6 @@ namespace YARG.Menu.Maestro
             var song = GlobalVariables.State.CurrentSong;
             if (_songTitle != null && song != null)
                 _songTitle.text = $"{song.Artist}\n{song.Name}";
-            if (_controllerLockText != null)
-                _controllerLockText.text = _controllerLockEnabled
-                    ? "Controller Navigation Disabled"
-                    : "Controller Navigation Enabled";
 
             foreach (var staged in Session.Players)
             {
@@ -961,6 +1042,26 @@ namespace YARG.Menu.Maestro
                 Navigator.Instance.RemoveScheme(_scheme);
             _scheme = null;
             MenuManager.Instance.PopMenu();
+        }
+
+        private void BackToSongSelect()
+        {
+            if (_leaving || Session == null)
+                return;
+
+            _leaving = true;
+            CloseDropdowns();
+            ReleaseControllerLock();
+            if (_scheme != null && Navigator.Instance != null)
+                Navigator.Instance.RemoveScheme(_scheme);
+            _scheme = null;
+            MaestroSetupSession.ClearActive();
+
+            if (!MenuManager.Instance.PopToMenu(MenuManager.Menu.MusicLibrary))
+            {
+                _leaving = false;
+                Back();
+            }
         }
 
         private void Continue()
