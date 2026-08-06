@@ -694,7 +694,7 @@ namespace YARG.Menu.Maestro
             if (_selectedPlayerText != null)
             {
                 string state = selected.SittingOut
-                    ? $"<color=#FFB636>{Localize.Key(\"Menu.DifficultySelect\", \"SitOut\")}</color>"
+                    ? $"<color=#FFB636>{Localize.Key("Menu.DifficultySelect", "SitOut")}</color>"
                     : $"Game Mode: {selected.GameMode.ToLocalizedName()}";
                 _selectedPlayerText.text = $"{selected.Name}\n<size=18>{state}</size>";
             }
