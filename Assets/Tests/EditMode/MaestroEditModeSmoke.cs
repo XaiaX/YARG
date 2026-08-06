@@ -401,6 +401,7 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null);
             Assert.That(script.text, Does.Contain("PrepareForDirectMaestroSummary"));
             Assert.That(script.text, Does.Contain("_container.gameObject.SetActive"));
+            Assert.That(script.text, Does.Contain("_directSummaryCanvasGroup.alpha"));
             Assert.That(script.text, Does.Contain("directSummary"));
         }
 

@@ -135,6 +135,7 @@ namespace YARG.Menu.DifficultySelect
         private ScrollRect _scrollRect;
         private Scrollbar _scrollbar;
         private Coroutine _directMaestroCoroutine;
+        private CanvasGroup _directSummaryCanvasGroup;
 
         private void OnEnable()
         {
@@ -269,6 +270,16 @@ namespace YARG.Menu.DifficultySelect
 
         private void PrepareForDirectMaestroSummary(bool directSummary)
         {
+            if (_directSummaryCanvasGroup == null)
+            {
+                _directSummaryCanvasGroup = GetComponent<CanvasGroup>() ??
+                    gameObject.AddComponent<CanvasGroup>();
+            }
+
+            _directSummaryCanvasGroup.alpha = directSummary ? 0f : 1f;
+            _directSummaryCanvasGroup.interactable = !directSummary;
+            _directSummaryCanvasGroup.blocksRaycasts = !directSummary;
+
             if (_container != null)
                 _container.gameObject.SetActive(!directSummary);
         }
