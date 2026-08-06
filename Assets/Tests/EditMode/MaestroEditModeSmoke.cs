@@ -74,6 +74,23 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Setup_Menu_Leaves_Clearance_Below_Header_And_Keeps_Song_Info_Visible()
+        {
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            const string scriptPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath);
+
+            Assert.That(prefab, Is.Not.Null);
+            Assert.That(script, Is.Not.Null);
+            var body = FindRequired(prefab.transform, "Body").GetComponent<RectTransform>();
+            Assert.That(body.sizeDelta.y, Is.LessThanOrEqualTo(-320f),
+                "The content panes need a clear buffer below the shared header divider.");
+            Assert.That(script.text, Does.Contain("rectTransform.SetAsLastSibling()"),
+                "Maestro song metadata must render above the shared header background.");
+        }
+
+        [Test]
         public void Player_Row_Uses_Profile_Marker_Icon_And_Readable_Columns()
         {
             const string path = "Assets/Prefabs/Menu/Maestro/MaestroPlayerRow.prefab";
@@ -183,6 +200,19 @@ namespace YARG.Tests.EditMode
             Assert.That(menu.text, Does.Contain("Menu.DifficultySelect.Done"));
             Assert.That(menu.text, Does.Not.Contain("Menu.Common.Close"));
             Assert.That(menu.text, Does.Not.Contain("Menu.Common.Confirm"));
+        }
+
+        [Test]
+        public void Adjustment_Picker_Restores_The_Focused_Right_Control()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("RestoreEditorNavigationAfterDialog"));
+            Assert.That(menu.text, Does.Contain("WaitUntil(() =>"));
+            Assert.That(menu.text, Does.Contain("_rightNavigationGroup.ClearSelection()"));
+            Assert.That(menu.text, Does.Contain("_rightNavigationGroup.SelectAt"));
         }
 
         [Test]
