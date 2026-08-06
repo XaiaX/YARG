@@ -512,15 +512,18 @@ namespace YARG.Menu.Maestro
             SetButtonVisual(button, backgroundColor);
         }
 
-        private static void SetButtonVisual(NavigatableUnityButton button, Color color)
+        private static void SetButtonVisual(NavigatableUnityButton button, Color? backgroundColor)
         {
+            if (!backgroundColor.HasValue)
+                return;
+
             // NavigatableUnityButton is attached to the nested Button child;
             // the RoundButton background and selection ring live on its root.
             var visualRoot = button.transform.parent != null
                 ? button.transform.parent
                 : button.transform;
             foreach (var img in visualRoot.GetComponentsInChildren<Image>(true))
-                img.color = color;
+                img.color = backgroundColor.Value;
         }
 
         private static void SetButtonLabel(NavigatableUnityButton button, string label)
