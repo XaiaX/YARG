@@ -84,10 +84,28 @@ namespace YARG.Tests.EditMode
             Assert.That(prefab, Is.Not.Null);
             Assert.That(script, Is.Not.Null);
             var body = FindRequired(prefab.transform, "Body").GetComponent<RectTransform>();
-            Assert.That(body.sizeDelta.y, Is.LessThanOrEqualTo(-320f),
-                "The content panes need a clear buffer below the shared header divider.");
+            Assert.That(body.sizeDelta.y, Is.LessThanOrEqualTo(-384f),
+                "The content panes need the full buffer below the shared header divider.");
             Assert.That(script.text, Does.Contain("rectTransform.SetAsLastSibling()"),
                 "Maestro song metadata must render above the shared header background.");
+        }
+
+        [Test]
+        public void Maestro_Preserves_Unavailable_Profile_Game_Mode_And_Sits_Player_Out()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+            Assert.That(script.text, Does.Contain("player.Player.SittingOut = true;"),
+                "An unavailable existing profile must be routed to sit-out.");
+            Assert.That(script.text, Does.Contain("if (!IsModeAvailable(player.GameMode))"),
+                "Initial normalization must validate the existing game mode.");
+            Assert.That(script.text, Does.Contain("return;"),
+                "An unavailable existing game mode must not fall through to replacement-mode normalization.");
+            Assert.That(script.text, Does.Not.Contain(
+                    "var gameMode = GetAvailableGameModes().FirstOrDefault();"),
+                "Initial normalization must not replace an existing profile's game mode.");
         }
 
         [Test]
