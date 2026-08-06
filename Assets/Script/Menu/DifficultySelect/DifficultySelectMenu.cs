@@ -236,6 +236,9 @@ namespace YARG.Menu.DifficultySelect
                 foreach (var player in PlayerContainer.Players)
                 {
                     player.Profile.RestoreSavedModifiers();
+                    // Sitting Out belongs to the current song selection. Do not
+                    // carry an automatic or manual sit-out into the next song.
+                    player.SittingOut = false;
                 }
 
                 // ChangePlayer(0) will update for the current player

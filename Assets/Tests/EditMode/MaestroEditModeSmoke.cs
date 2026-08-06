@@ -489,6 +489,25 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Difficulty_Select_Resets_Sit_Out_For_A_Fresh_Song()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs");
+            Assert.That(script, Is.Not.Null);
+
+            int freshSelection = script.text.IndexOf(
+                "// Starting a fresh selection session", StringComparison.Ordinal);
+            int reset = script.text.IndexOf("player.SittingOut = false;", freshSelection,
+                StringComparison.Ordinal);
+            int initialize = script.text.IndexOf("ChangePlayer(0);", freshSelection,
+                StringComparison.Ordinal);
+
+            Assert.That(reset, Is.GreaterThan(freshSelection));
+            Assert.That(reset, Is.LessThan(initialize),
+                "Every player must be reactivated before the fresh song is initialized.");
+        }
+
+        [Test]
         public void Difficulty_Select_Defers_Direct_Maestro_Until_Menu_Push_Completes()
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
