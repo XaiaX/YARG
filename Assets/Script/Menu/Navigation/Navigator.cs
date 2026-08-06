@@ -144,8 +144,10 @@ namespace YARG.Menu.Navigation
 
             for (int i = _holdInputs.Count - 1; i >= 0; i--)
             {
-                _holdInputs[i].Tracker.StopHolding();
-                _holdInputs[i].Tracker.ClearEvents();
+                var hold = _holdInputs[i];
+                hold.Tracker.StopHolding();
+                hold.Tracker.ClearEvents();
+                _holdInputs.Remove(hold);
             }
 
             _holdInputs.Clear();
@@ -218,9 +220,10 @@ namespace YARG.Menu.Navigation
                     if (_holdInputs[i].Context.Source != MenuInputSource.Controller)
                         continue;
 
-                    _holdInputs[i].Tracker.StopHolding();
-                    _holdInputs[i].Tracker.ClearEvents();
-                    _holdInputs.RemoveAt(i);
+                    var hold = _holdInputs[i];
+                    hold.Tracker.StopHolding();
+                    hold.Tracker.ClearEvents();
+                    _holdInputs.Remove(hold);
                 }
             }
 
@@ -320,9 +323,10 @@ namespace YARG.Menu.Navigation
                     continue;
                 }
 
-                _holdInputs[i].Tracker.StopHolding();
-                _holdInputs[i].Tracker.ClearEvents();
-                _holdInputs.RemoveAt(i);
+                var hold = _holdInputs[i];
+                hold.Tracker.StopHolding();
+                hold.Tracker.ClearEvents();
+                _holdInputs.Remove(hold);
             }
 
             // Remove matching repeat inputs

@@ -134,6 +134,7 @@ namespace YARG.Menu.DifficultySelect
 
         private ScrollRect _scrollRect;
         private Scrollbar _scrollbar;
+        private Coroutine _directMaestroCoroutine;
 
         private void OnEnable()
         {
@@ -254,6 +255,22 @@ namespace YARG.Menu.DifficultySelect
             // Select UI visible underneath the summary and breaks the Back path.
             if (!returningFromMaestro && SettingsManager.Settings.MaestroEnable.Value &&
                 SettingsManager.Settings.MaestroGoDirectlyToSummary.Value)
+            {
+                _directMaestroCoroutine = StartCoroutine(OpenMaestroSummaryDirectlyNextFrame());
+            }
+        }
+
+        private System.Collections.IEnumerator OpenMaestroSummaryDirectlyNextFrame()
+        {
+            // MenuManager.PushMenu activates Difficulty Select before it pushes it
+            // onto its stack. Waiting one frame lets that push complete before this
+            // transition hides Difficulty Select and pushes Maestro on top of it.
+            yield return null;
+            _directMaestroCoroutine = null;
+
+            if (isActiveAndEnabled && SettingsManager.Settings.MaestroEnable.Value &&
+                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value &&
+                MaestroSetupSession.Active?.ReturningToDifficultySelect != true)
             {
                 OpenMaestroSummaryDirectly();
             }
@@ -1597,6 +1614,12 @@ namespace YARG.Menu.DifficultySelect
 
         private void OnDisable()
         {
+            if (_directMaestroCoroutine != null)
+            {
+                StopCoroutine(_directMaestroCoroutine);
+                _directMaestroCoroutine = null;
+            }
+
             Navigator.Instance.PopScheme();
         }
 
