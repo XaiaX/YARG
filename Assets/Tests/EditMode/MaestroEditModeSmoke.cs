@@ -406,6 +406,25 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Difficulty_Select_Has_Authored_Direct_Summary_Canvas_Group()
+        {
+            const string path = "Assets/Prefabs/Menu/DifficultySelect/DifficultySelectMenu.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+
+            Assert.That(prefab, Is.Not.Null, $"Could not load {path}.");
+            Assert.That(prefab.GetComponent<CanvasGroup>(), Is.Not.Null,
+                "Direct Maestro suppression must use a serialized CanvasGroup on the menu root.");
+
+            var menu = prefab.GetComponents<Component>().Single(component =>
+                component.GetType().FullName == "YARG.Menu.DifficultySelect.DifficultySelectMenu");
+            var directSummaryCanvasGroup = new SerializedObject(menu)
+                .FindProperty("_directSummaryCanvasGroup");
+            Assert.That(directSummaryCanvasGroup, Is.Not.Null);
+            Assert.That(directSummaryCanvasGroup.objectReferenceValue, Is.Not.Null,
+                "Difficulty Select must wire its direct-summary CanvasGroup in the prefab.");
+        }
+
+        [Test]
         public void Maestro_Reuses_Header_And_Returns_To_Song_Select()
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
