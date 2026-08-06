@@ -142,6 +142,8 @@ namespace YARG.Menu.Maestro
 
         public override void Confirm()
         {
+            if (_inputField == null || !_inputField.interactable)
+                return;
             EnterEditMode();
         }
 

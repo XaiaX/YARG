@@ -1243,7 +1243,7 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void Prefab_Has_Track_Settings_And_Calibration_Rows()
+        public void Prefab_Has_Track_Settings_Row_With_Header_And_Fields()
         {
             const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
@@ -1253,23 +1253,20 @@ namespace YARG.Tests.EditMode
             Assert.That(trackRow, Is.Not.Null,
                 "SelectedPlayerEditor must contain a TrackSettingsRow.");
             Assert.That(trackRow.Find("TrackLabel"), Is.Not.Null,
-                "TrackSettingsRow must contain a TrackLabel.");
-            Assert.That(trackRow.Find("SpeedField"), Is.Not.Null,
-                "TrackSettingsRow must contain a SpeedField input.");
-            Assert.That(trackRow.Find("LengthField"), Is.Not.Null,
-                "TrackSettingsRow must contain a LengthField input.");
-
-            var calibrationRow = prefab.transform.Find("Body/SelectedPlayerEditor/CalibrationRow");
-            Assert.That(calibrationRow, Is.Not.Null,
-                "SelectedPlayerEditor must contain a CalibrationRow.");
-            Assert.That(calibrationRow.Find("CalibrationLabel"), Is.Not.Null,
-                "CalibrationRow must contain a CalibrationLabel.");
-            Assert.That(calibrationRow.Find("CalibrationField"), Is.Not.Null,
-                "CalibrationRow must contain a CalibrationField input.");
+                "TrackSettingsRow must contain a TrackLabel header.");
+            var fieldsRow = trackRow.Find("FieldsRow");
+            Assert.That(fieldsRow, Is.Not.Null,
+                "TrackSettingsRow must contain a FieldsRow with the input fields.");
+            Assert.That(fieldsRow.Find("SpeedField"), Is.Not.Null,
+                "FieldsRow must contain a SpeedField input.");
+            Assert.That(fieldsRow.Find("LengthField"), Is.Not.Null,
+                "FieldsRow must contain a LengthField input.");
+            Assert.That(fieldsRow.Find("CalibrationField"), Is.Not.Null,
+                "FieldsRow must contain a CalibrationField input.");
         }
 
         [Test]
-        public void Prefab_Track_Settings_Rows_Are_Between_Difficulty_And_Adjustments()
+        public void Prefab_Track_Settings_Row_Is_Between_Difficulty_And_Adjustments()
         {
             const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
@@ -1278,23 +1275,42 @@ namespace YARG.Tests.EditMode
             var editor = prefab.transform.Find("Body/SelectedPlayerEditor");
             Assert.That(editor, Is.Not.Null);
 
-            int trackIndex = -1, calibrationIndex = -1, difficultyIndex = -1, adjustmentsIndex = -1;
+            int trackIndex = -1, difficultyIndex = -1, adjustmentsIndex = -1;
             for (int i = 0; i < editor.childCount; i++)
             {
                 string name = editor.GetChild(i).name;
                 if (name == "DifficultyDropdown") difficultyIndex = i;
                 if (name == "TrackSettingsRow") trackIndex = i;
-                if (name == "CalibrationRow") calibrationIndex = i;
                 if (name == "AdjustmentButtonsRow") adjustmentsIndex = i;
             }
 
             Assert.That(difficultyIndex, Is.GreaterThanOrEqualTo(0), "DifficultyDropdown must exist.");
             Assert.That(trackIndex, Is.GreaterThan(difficultyIndex),
                 "TrackSettingsRow must come after DifficultyDropdown.");
-            Assert.That(calibrationIndex, Is.GreaterThan(trackIndex),
-                "CalibrationRow must come after TrackSettingsRow.");
-            Assert.That(adjustmentsIndex, Is.GreaterThan(calibrationIndex),
-                "AdjustmentButtonsRow must come after CalibrationRow.");
+            Assert.That(adjustmentsIndex, Is.GreaterThan(trackIndex),
+                "AdjustmentButtonsRow must come after TrackSettingsRow.");
+        }
+
+        [Test]
+        public void Setup_Menu_Disables_Speed_Length_For_Vocals()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("isInstrumental"),
+                "RefreshEditorControls must check whether the game mode is instrumental.");
+            Assert.That(menu.text, Does.Contain("GameMode.Vocals"),
+                "Vocal modes must be excluded from speed/length editing.");
+        }
+
+        [Test]
+        public void Setup_Menu_Picker_Done_Button_Has_Hover_Select()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("SetSelectOnHover(true)"),
+                "Done button in adjustment picker must enable hover-to-select for mouse parity.");
         }
 
         private static Transform FindRequired(Transform root, string path)

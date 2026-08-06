@@ -860,13 +860,15 @@ namespace YARG.Menu.Maestro
         private void RefreshEditorControls(MaestroStagedPlayer selected, bool partAvailable)
         {
             bool playerActive = partAvailable && !selected.SittingOut;
+            bool isInstrumental = selected.GameMode is not GameMode.Vocals
+                and not GameMode.PartyVocals;
             SetDropdownInteractable(_instrumentDropdown, partAvailable);
             SetDropdownInteractable(_difficultyDropdown, playerActive);
 
             if (_noteSpeedField != null)
-                _noteSpeedField.interactable = playerActive;
+                _noteSpeedField.interactable = playerActive && isInstrumental;
             if (_highwayLengthField != null)
-                _highwayLengthField.interactable = playerActive;
+                _highwayLengthField.interactable = playerActive && isInstrumental;
             if (_inputCalibrationField != null)
                 _inputCalibrationField.interactable = playerActive;
 
@@ -1071,12 +1073,16 @@ namespace YARG.Menu.Maestro
                 }
             }
 
-            dialog.AddDialogButton("Menu.DifficultySelect.Done", MenuData.Colors.BrightButton,
+            var doneButton = dialog.AddDialogButton("Menu.DifficultySelect.Done",
+                MenuData.Colors.BrightButton,
                 () =>
                 {
                     DialogManager.Instance.ClearDialog();
                     RestoreEditorNavigationAfterDialog(rightSelectionIndex);
                 });
+            // Enable hover-to-select on the Done button so mouse users get the
+            // same focus behaviour as the list entries above it.
+            doneButton.GetComponentInChildren<NavigatableBehaviour>()?.SetSelectOnHover(true);
             RestoreEditorNavigationAfterDialog(rightSelectionIndex);
             dialog.SelectLast();
         }
