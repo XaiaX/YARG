@@ -371,8 +371,12 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("StartCoroutine(OpenMaestroSummaryDirectlyNextFrame())"));
             Assert.That(script.text, Does.Contain("yield return null"));
             Assert.That(script.text, Does.Contain("StopCoroutine(_directMaestroCoroutine)"));
-            Assert.That(script.text, Does.Not.Contain("OpenMaestroSummaryDirectly();\n            }"));
-            Assert.That(script.text, Does.Not.Contain("OpenMaestroSummaryDirectly();\n        }"));
+            int onEnableIndex = script.text.IndexOf("private void OnEnable", StringComparison.Ordinal);
+            int helperIndex = script.text.IndexOf(
+                "private System.Collections.IEnumerator OpenMaestroSummaryDirectlyNextFrame",
+                StringComparison.Ordinal);
+            string onEnable = script.text.Substring(onEnableIndex, helperIndex - onEnableIndex);
+            Assert.That(onEnable, Does.Not.Contain("OpenMaestroSummaryDirectly();"));
             Assert.That(script.text, Does.Contain("OpenMaestroSummaryDirectlyNextFrame"),
                 "Direct Maestro must not be pushed synchronously from Difficulty Select OnEnable.");
         }
