@@ -88,6 +88,7 @@ namespace YARG.Menu.Maestro
         private int? _lastRightSelectionIndex;
         private readonly Dictionary<Graphic, float> _selectedEditorGraphicAlphas = new();
         private Image _headerSourceIcon;
+        private Coroutine _adjustmentFocusRestoreCoroutine;
 
         private MaestroSetupSession Session => MaestroSetupSession.Active;
 
@@ -129,6 +130,11 @@ namespace YARG.Menu.Maestro
         private void OnDisable()
         {
             CloseDropdowns();
+            if (_adjustmentFocusRestoreCoroutine != null)
+            {
+                StopCoroutine(_adjustmentFocusRestoreCoroutine);
+                _adjustmentFocusRestoreCoroutine = null;
+            }
             if (_navigationGroup != null)
                 _navigationGroup.SelectionChanged -= OnNavigationSelectionChanged;
             if (_rightNavigationGroup != null)
@@ -183,6 +189,7 @@ namespace YARG.Menu.Maestro
             rectTransform.anchoredPosition = new Vector2(-90f, 0f);
             rectTransform.sizeDelta = new Vector2(450f, 72f);
             _songTitle.alignment = TextAlignmentOptions.Right;
+            rectTransform.SetAsLastSibling();
         }
 
         private static Button FindHeaderBackButton(Transform header)
@@ -834,6 +841,8 @@ namespace YARG.Menu.Maestro
                 DialogManager.Instance == null || DialogManager.Instance.IsDialogShowing)
                 return;
 
+            int rightSelectionIndex = _rightNavigationGroup?.SelectedIndex ?? 0;
+
             bool accessibility = category == AdjustmentCategory.Accessibility;
             var modifiers = accessibility
                 ? Session.GetAvailableAccessibilityModifiers(_selectedProfileId)
@@ -844,6 +853,7 @@ namespace YARG.Menu.Maestro
                 string title = accessibility ? "Accessibility" : "Modifiers";
                 DialogManager.Instance.ShowMessage(title,
                     $"No {title.ToLowerInvariant()} are available for this instrument.");
+                RestoreEditorNavigationAfterDialog(rightSelectionIndex);
                 return;
             }
 
@@ -851,6 +861,7 @@ namespace YARG.Menu.Maestro
             {
                 DialogManager.Instance.ShowMessage("Modifiers",
                     "Modifier controls are unavailable for this menu.");
+                RestoreEditorNavigationAfterDialog(rightSelectionIndex);
                 return;
             }
 
@@ -872,8 +883,45 @@ namespace YARG.Menu.Maestro
             }
 
             dialog.AddDialogButton("Menu.DifficultySelect.Done", MenuData.Colors.BrightButton,
-                DialogManager.Instance.ClearDialog);
+                () =>
+                {
+                    DialogManager.Instance.ClearDialog();
+                    RestoreEditorNavigationAfterDialog(rightSelectionIndex);
+                });
+            RestoreEditorNavigationAfterDialog(rightSelectionIndex);
             dialog.SelectLast();
+        }
+
+        private void RestoreEditorNavigationAfterDialog(int rightSelectionIndex)
+        {
+            if (_adjustmentFocusRestoreCoroutine != null)
+                StopCoroutine(_adjustmentFocusRestoreCoroutine);
+
+            _adjustmentFocusRestoreCoroutine = StartCoroutine(
+                RestoreEditorNavigationAfterDialogCoroutine(rightSelectionIndex));
+        }
+
+        private System.Collections.IEnumerator RestoreEditorNavigationAfterDialogCoroutine(
+            int rightSelectionIndex)
+        {
+            yield return new WaitUntil(() => DialogManager.Instance == null ||
+                !DialogManager.Instance.IsDialogShowing);
+            _adjustmentFocusRestoreCoroutine = null;
+
+            if (!isActiveAndEnabled || Session == null || _rightNavigationGroup == null ||
+                _rightNavigationGroup.Count == 0)
+                yield break;
+
+            _editingPlayer = true;
+            _lastRightSelectionIndex = rightSelectionIndex;
+            SetEditorVisible(true);
+            ResetMaestroNavigationStack();
+            _navigationGroup?.PushNavGroupToStack();
+            _rightNavigationGroup.PushNavGroupToStack();
+            _rightNavigationGroup.ClearSelection();
+            _rightNavigationGroup.SelectAt(Mathf.Clamp(rightSelectionIndex, 0,
+                _rightNavigationGroup.Count - 1));
+            UpdateFocusVisual();
         }
 
         private IReadOnlyList<Modifier> GetModifierOptions(MaestroStagedPlayer player)
