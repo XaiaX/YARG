@@ -364,6 +364,7 @@ GameObject:
   - component: {fileID: 1731608351740115690}
   - component: {fileID: 4004993937793846201}
   - component: {fileID: 7249260118945706693}
+  - component: {fileID: 7249260118945706694}
   m_Layer: 5
   m_Name: DifficultySelectMenu
   m_TagString: Untagged
@@ -493,6 +494,7 @@ MonoBehaviour:
   _loadingPhrase: {fileID: 6308926435231887573}
   _warningMessage: {fileID: 1551244186665827240}
   _warningMessageContainer: {fileID: 1670055410609939572}
+  _directSummaryCanvasGroup: {fileID: 7249260118945706694}
   _songTitleText: {fileID: 7778603426334286436}
   _artistText: {fileID: 4129190891411151634}
   _sourceIcon: {fileID: 4587722383312202436}
@@ -501,6 +503,18 @@ MonoBehaviour:
   _difficultyRedPrefab: {fileID: 3092605043918072569, guid: 71c91d33532d65b41b618d77343257ce, type: 3}
   _difficultyItemSmallRedPrefab: {fileID: 3092605043918072569, guid: 71c91d33532d65b41b618d77343257ce, type: 3}
   _modifierItemPrefab: {fileID: 3419815060514877507, guid: 6c928df38839ed24eaa659f76c62da6b, type: 3}
+--- !u!225 &7249260118945706694
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1731608351740115684}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 1
+  m_IgnoreParentGroups: 0
 --- !u!1 &2177612344681018170
 GameObject:
   m_ObjectHideFlags: 0

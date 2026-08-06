@@ -88,6 +88,8 @@ namespace YARG.Menu.DifficultySelect
         private TextMeshProUGUI _warningMessage;
         [SerializeField]
         private GameObject _warningMessageContainer;
+        [SerializeField]
+        private CanvasGroup _directSummaryCanvasGroup;
 
         [Space]
         [SerializeField]
@@ -135,7 +137,7 @@ namespace YARG.Menu.DifficultySelect
         private ScrollRect _scrollRect;
         private Scrollbar _scrollbar;
         private Coroutine _directMaestroCoroutine;
-        private CanvasGroup _directSummaryCanvasGroup;
+        private bool _navigationSchemePushed;
 
         private void OnEnable()
         {
@@ -189,6 +191,7 @@ namespace YARG.Menu.DifficultySelect
                     }
                 })
             }, false));
+            _navigationSchemePushed = true;
 
             _speedInput.text = $"{Mathf.RoundToInt(_songSpeed * 100f)}%";
             _songTitleText.text = GlobalVariables.State.CurrentSong.Name;
@@ -272,8 +275,17 @@ namespace YARG.Menu.DifficultySelect
         {
             if (_directSummaryCanvasGroup == null)
             {
-                _directSummaryCanvasGroup = GetComponent<CanvasGroup>() ??
-                    gameObject.AddComponent<CanvasGroup>();
+                TryGetComponent(out _directSummaryCanvasGroup);
+            }
+
+            if (_directSummaryCanvasGroup == null)
+            {
+                // Keep the normal Difficulty Select path usable if an older or
+                // malformed prefab is loaded. Authored prefabs must wire this
+                // component so direct Maestro can suppress the whole page.
+                if (_container != null)
+                    _container.gameObject.SetActive(!directSummary);
+                return;
             }
 
             _directSummaryCanvasGroup.alpha = directSummary ? 0f : 1f;
@@ -1644,7 +1656,11 @@ namespace YARG.Menu.DifficultySelect
                 _directMaestroCoroutine = null;
             }
 
-            Navigator.Instance.PopScheme();
+            if (_navigationSchemePushed)
+            {
+                Navigator.Instance.PopScheme();
+                _navigationSchemePushed = false;
+            }
         }
 
         private DifficultyItem CreateItem(string header, string body, bool selected, DifficultyItem difficultyItem, UnityAction a, bool interactable = true)
