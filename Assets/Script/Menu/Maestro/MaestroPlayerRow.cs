@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using TMPro;
 using UnityEngine;
@@ -76,9 +77,16 @@ namespace YARG.Menu.Maestro
                         : player.Instrument.ToLocalizedName();
                 string line1 = $"{instrumentLabel} · " +
                     player.Difficulty.ToLocalizedName();
-                _setup.text = string.IsNullOrEmpty(tierLabel)
-                    ? line1
-                    : $"{line1}\n<size=14>{tierLabel}</size>";
+
+                var lines = new List<string> { line1 };
+                if (!string.IsNullOrEmpty(tierLabel))
+                    lines.Add($"<size=14>{tierLabel}</size>");
+
+                string trackDelta = GetTrackDeltaLabel(player);
+                if (!string.IsNullOrEmpty(trackDelta))
+                    lines.Add($"<size=14>{trackDelta}</size>");
+
+                _setup.text = string.Join("\n", lines);
             }
             if (_modifiers != null)
             {
@@ -128,6 +136,26 @@ namespace YARG.Menu.Maestro
                     : string.Join(", ", activeAdjustments);
             }
             SetSelected(selected, SelectionOrigin.Programmatically);
+        }
+
+        /// <summary>
+        /// Builds a compact "Speed +1.0  Length -0.5" delta label when either value
+        /// differs from its default. Returns null when both are at default.
+        /// </summary>
+        private static string GetTrackDeltaLabel(MaestroStagedPlayer player)
+        {
+            float speedDelta = Mathf.Round(
+                (player.NoteSpeed - MaestroDefaults.NoteSpeed) * 10f) / 10f;
+            float lengthDelta = Mathf.Round(
+                (player.HighwayLength - MaestroDefaults.HighwayLength) * 10f) / 10f;
+
+            var parts = new List<string>(2);
+            if (speedDelta != 0f)
+                parts.Add("Speed " + speedDelta.ToString("+0.0;-0.0", CultureInfo.CurrentCulture));
+            if (lengthDelta != 0f)
+                parts.Add("Length " + lengthDelta.ToString("+0.0;-0.0", CultureInfo.CurrentCulture));
+
+            return parts.Count == 0 ? null : string.Join("  ", parts);
         }
 
         private void SetGameModeIcon(GameMode gameMode)

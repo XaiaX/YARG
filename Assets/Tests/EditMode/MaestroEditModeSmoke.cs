@@ -1164,6 +1164,139 @@ namespace YARG.Tests.EditMode
                 "(including MessageDialog popups) can be closed with Back/Esc (AC.5).");
         }
 
+        [Test]
+        public void Session_Stages_Track_Speed_Length_And_Calibration()
+        {
+            const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
+            Assert.That(session, Is.Not.Null);
+            Assert.That(session.text, Does.Contain("StageNoteSpeed"),
+                "Session must provide StageNoteSpeed.");
+            Assert.That(session.text, Does.Contain("StageHighwayLength"),
+                "Session must provide StageHighwayLength.");
+            Assert.That(session.text, Does.Contain("StageInputCalibration"),
+                "Session must provide StageInputCalibration.");
+            Assert.That(session.text, Does.Contain("InputCalibrationMilliseconds"),
+                "Staged player and snapshot must track InputCalibrationMilliseconds.");
+            Assert.That(session.text, Does.Contain("class MaestroDefaults"),
+                "Session must expose default constants for delta display.");
+            Assert.That(session.text, Does.Contain("NoteSpeed = 5f"),
+                "Default note speed must be 5.");
+            Assert.That(session.text, Does.Contain("HighwayLength = 1f"),
+                "Default highway length must be 1.");
+        }
+
+        [Test]
+        public void Maestro_Has_Navigatable_Input_Fields()
+        {
+            const string navPath = "Assets/Script/Menu/Maestro/MaestroInputNavigatable.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(navPath);
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("ConfigureFloat"),
+                "Input navigatable must support float configuration.");
+            Assert.That(script.text, Does.Contain("ConfigureInteger"),
+                "Input navigatable must support integer configuration.");
+            Assert.That(script.text, Does.Contain("EnterEditMode"),
+                "Input navigatable must enter an edit mode on Confirm.");
+            Assert.That(script.text, Does.Contain("Adjust"),
+                "Input navigatable must handle increment/decrement.");
+        }
+
+        [Test]
+        public void Setup_Menu_Wires_Input_Fields_And_Navigation()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(menu.text, Does.Contain("_noteSpeedField"),
+                "Menu must have a serialized note speed field.");
+            Assert.That(menu.text, Does.Contain("_highwayLengthField"),
+                "Menu must have a serialized highway length field.");
+            Assert.That(menu.text, Does.Contain("_inputCalibrationField"),
+                "Menu must have a serialized input calibration field.");
+            Assert.That(menu.text, Does.Contain("ConfigureInputFields"),
+                "Menu must configure input fields on enable.");
+            Assert.That(menu.text, Does.Contain("ChangeNoteSpeed"),
+                "Menu must handle note speed changes.");
+            Assert.That(menu.text, Does.Contain("ChangeHighwayLength"),
+                "Menu must handle highway length changes.");
+            Assert.That(menu.text, Does.Contain("ChangeInputCalibration"),
+                "Menu must handle input calibration changes.");
+            Assert.That(menu.text, Does.Contain("_noteSpeedNavigation"),
+                "Menu must register input field navigation in the right nav group.");
+        }
+
+        [Test]
+        public void Player_Row_Shows_Track_Speed_Length_Deltas()
+        {
+            const string rowPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
+            var row = AssetDatabase.LoadAssetAtPath<MonoScript>(rowPath);
+            Assert.That(row, Is.Not.Null);
+            Assert.That(row.text, Does.Contain("GetTrackDeltaLabel"),
+                "Row must compute track delta labels.");
+            Assert.That(row.text, Does.Contain("Speed "),
+                "Delta label must include 'Speed' prefix.");
+            Assert.That(row.text, Does.Contain("Length "),
+                "Delta label must include 'Length' prefix.");
+            Assert.That(row.text, Does.Contain("MaestroDefaults.NoteSpeed"),
+                "Delta must be computed against MaestroDefaults.NoteSpeed.");
+        }
+
+        [Test]
+        public void Prefab_Has_Track_Settings_And_Calibration_Rows()
+        {
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            Assert.That(prefab, Is.Not.Null);
+
+            var trackRow = prefab.transform.Find("Body/SelectedPlayerEditor/TrackSettingsRow");
+            Assert.That(trackRow, Is.Not.Null,
+                "SelectedPlayerEditor must contain a TrackSettingsRow.");
+            Assert.That(trackRow.Find("TrackLabel"), Is.Not.Null,
+                "TrackSettingsRow must contain a TrackLabel.");
+            Assert.That(trackRow.Find("SpeedField"), Is.Not.Null,
+                "TrackSettingsRow must contain a SpeedField input.");
+            Assert.That(trackRow.Find("LengthField"), Is.Not.Null,
+                "TrackSettingsRow must contain a LengthField input.");
+
+            var calibrationRow = prefab.transform.Find("Body/SelectedPlayerEditor/CalibrationRow");
+            Assert.That(calibrationRow, Is.Not.Null,
+                "SelectedPlayerEditor must contain a CalibrationRow.");
+            Assert.That(calibrationRow.Find("CalibrationLabel"), Is.Not.Null,
+                "CalibrationRow must contain a CalibrationLabel.");
+            Assert.That(calibrationRow.Find("CalibrationField"), Is.Not.Null,
+                "CalibrationRow must contain a CalibrationField input.");
+        }
+
+        [Test]
+        public void Prefab_Track_Settings_Rows_Are_Between_Difficulty_And_Adjustments()
+        {
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            Assert.That(prefab, Is.Not.Null);
+
+            var editor = prefab.transform.Find("Body/SelectedPlayerEditor");
+            Assert.That(editor, Is.Not.Null);
+
+            int trackIndex = -1, calibrationIndex = -1, difficultyIndex = -1, adjustmentsIndex = -1;
+            for (int i = 0; i < editor.childCount; i++)
+            {
+                string name = editor.GetChild(i).name;
+                if (name == "DifficultyDropdown") difficultyIndex = i;
+                if (name == "TrackSettingsRow") trackIndex = i;
+                if (name == "CalibrationRow") calibrationIndex = i;
+                if (name == "AdjustmentButtonsRow") adjustmentsIndex = i;
+            }
+
+            Assert.That(difficultyIndex, Is.GreaterThanOrEqualTo(0), "DifficultyDropdown must exist.");
+            Assert.That(trackIndex, Is.GreaterThan(difficultyIndex),
+                "TrackSettingsRow must come after DifficultyDropdown.");
+            Assert.That(calibrationIndex, Is.GreaterThan(trackIndex),
+                "CalibrationRow must come after TrackSettingsRow.");
+            Assert.That(adjustmentsIndex, Is.GreaterThan(calibrationIndex),
+                "AdjustmentButtonsRow must come after CalibrationRow.");
+        }
+
         private static Transform FindRequired(Transform root, string path)
         {
             var child = root.Find(path);

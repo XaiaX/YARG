@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 using YARG.Core;
 using YARG.Core.Extensions;
 using YARG.Core.Game;
@@ -13,6 +14,16 @@ using YARG.Song;
 
 namespace YARG.Menu.Maestro
 {
+    /// <summary>
+    /// Default profile values used to compute deltas shown in the player row.
+    /// </summary>
+    public static class MaestroDefaults
+    {
+        public const float NoteSpeed = 5f;
+        public const float HighwayLength = 1f;
+        public const long InputCalibrationMilliseconds = 0;
+    }
+
     /// <summary>
     /// The editable and displayable setup values for one active player. The object is
     /// intentionally independent of a live profile so opening Maestro and changing a
@@ -36,6 +47,7 @@ namespace YARG.Menu.Maestro
         public OpenLaneDisplayType OpenLaneDisplayType { get; internal set; }
         public float NoteSpeed { get; internal set; }
         public float HighwayLength { get; internal set; }
+        public long InputCalibrationMilliseconds { get; internal set; }
         public byte HarmonyIndex { get; internal set; }
 
         internal MaestroStagedPlayer(YargPlayer player)
@@ -59,6 +71,7 @@ namespace YARG.Menu.Maestro
             OpenLaneDisplayType = player.Profile.OpenLaneDisplayType;
             NoteSpeed = player.Profile.NoteSpeed;
             HighwayLength = player.Profile.HighwayLength;
+            InputCalibrationMilliseconds = player.Profile.InputCalibrationMilliseconds;
             HarmonyIndex = player.Profile.HarmonyIndex;
         }
     }
@@ -286,6 +299,24 @@ namespace YARG.Menu.Maestro
             }
         }
 
+        public void StageNoteSpeed(Guid profileId, float speed)
+        {
+            if (_players.TryGetValue(profileId, out var player))
+                player.NoteSpeed = Mathf.Clamp(speed, 0f, 100f);
+        }
+
+        public void StageHighwayLength(Guid profileId, float length)
+        {
+            if (_players.TryGetValue(profileId, out var player))
+                player.HighwayLength = Mathf.Clamp(length, 0.1f, 10f);
+        }
+
+        public void StageInputCalibration(Guid profileId, long calibration)
+        {
+            if (_players.TryGetValue(profileId, out var player))
+                player.InputCalibrationMilliseconds = calibration;
+        }
+
         private sealed class ProfileSnapshot
         {
             public readonly YargProfile Profile;
@@ -297,6 +328,7 @@ namespace YARG.Menu.Maestro
             public readonly Difficulty CurrentDifficulty;
             public readonly float NoteSpeed;
             public readonly float HighwayLength;
+            public readonly long InputCalibrationMilliseconds;
             public readonly byte EffectiveHarmonyIndex;
             public readonly byte HarmonyIndexFallback;
             public readonly Modifier CurrentModifiers;
@@ -317,6 +349,7 @@ namespace YARG.Menu.Maestro
                 CurrentDifficulty = profile.CurrentDifficulty;
                 NoteSpeed = profile.NoteSpeed;
                 HighwayLength = profile.HighwayLength;
+                InputCalibrationMilliseconds = profile.InputCalibrationMilliseconds;
                 EffectiveHarmonyIndex = profile.EffectiveHarmonyIndex;
                 HarmonyIndexFallback = profile.HarmonyIndexFallback;
                 CurrentModifiers = profile.CurrentModifiers;
@@ -335,6 +368,7 @@ namespace YARG.Menu.Maestro
                 Profile.CurrentDifficulty = CurrentDifficulty;
                 Profile.NoteSpeed = NoteSpeed;
                 Profile.HighwayLength = HighwayLength;
+                Profile.InputCalibrationMilliseconds = InputCalibrationMilliseconds;
                 Profile.RestoreHarmonyIndexState(EffectiveHarmonyIndex, HarmonyIndexFallback);
                 Profile.RestoreSessionModifiers(CurrentModifiers);
                 Profile.LeftyFlip = LeftyFlip;
@@ -390,6 +424,7 @@ namespace YARG.Menu.Maestro
                         profile.NoteSpeed = staged.NoteSpeed;
                         profile.HighwayLength = staged.HighwayLength;
                     }
+                    profile.InputCalibrationMilliseconds = staged.InputCalibrationMilliseconds;
                     if (staged.Instrument is Instrument.Harmony or Instrument.PartyVocals)
                     {
                         profile.HarmonyIndex = staged.HarmonyIndex;

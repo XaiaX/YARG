@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using TMPro;
 using UnityEngine;
@@ -68,6 +69,9 @@ namespace YARG.Menu.Maestro
         [SerializeField] private TMP_Text _selectedPlayerText;
         [SerializeField] private TMP_Dropdown _instrumentDropdown;
         [SerializeField] private TMP_Dropdown _difficultyDropdown;
+        [SerializeField] private TMP_InputField _noteSpeedField;
+        [SerializeField] private TMP_InputField _highwayLengthField;
+        [SerializeField] private TMP_InputField _inputCalibrationField;
         [SerializeField] private ModifierItem _modifierItemPrefab;
         [SerializeField] private NavigatableUnityButton _modifierButton;
         [SerializeField] private NavigatableUnityButton _accessibilityButton;
@@ -85,6 +89,9 @@ namespace YARG.Menu.Maestro
         private Difficulty[] _difficultyOptions = Array.Empty<Difficulty>();
         private MaestroDropdownNavigatable _instrumentNavigation;
         private MaestroDropdownNavigatable _difficultyNavigation;
+        private MaestroInputNavigatable _noteSpeedNavigation;
+        private MaestroInputNavigatable _highwayLengthNavigation;
+        private MaestroInputNavigatable _calibrationNavigation;
         private CanvasGroup _playButtonCanvasGroup;
         private int? _lastRightSelectionIndex;
         private readonly Dictionary<Graphic, float> _selectedEditorGraphicAlphas = new();
@@ -120,6 +127,7 @@ namespace YARG.Menu.Maestro
                 _rightNavigationGroup.SelectionChanged += OnRightNavigationSelectionChanged;
 
             ConfigureDropdowns();
+            ConfigureInputFields();
             CaptureSelectedEditorGraphicAlphas();
             BuildRows();
             ConfigureButtons();
@@ -482,6 +490,84 @@ namespace YARG.Menu.Maestro
             }
         }
 
+        private void ConfigureInputFields()
+        {
+            _noteSpeedNavigation = MaestroInputNavigatable.Attach(_noteSpeedField);
+            _noteSpeedNavigation?.ConfigureFloat(step: 0.5f, min: 0f, max: 100f, round: 0.1f);
+
+            _highwayLengthNavigation = MaestroInputNavigatable.Attach(_highwayLengthField);
+            _highwayLengthNavigation?.ConfigureFloat(step: 0.1f, min: 0.1f, max: 10f, round: 0.1f);
+
+            _calibrationNavigation = MaestroInputNavigatable.Attach(_inputCalibrationField);
+            _calibrationNavigation?.ConfigureInteger(step: 1, min: long.MinValue, max: long.MaxValue);
+
+            if (_noteSpeedField != null)
+            {
+                _noteSpeedField.onEndEdit.RemoveAllListeners();
+                _noteSpeedField.onEndEdit.AddListener(_ => ChangeNoteSpeed());
+            }
+            if (_highwayLengthField != null)
+            {
+                _highwayLengthField.onEndEdit.RemoveAllListeners();
+                _highwayLengthField.onEndEdit.AddListener(_ => ChangeHighwayLength());
+            }
+            if (_inputCalibrationField != null)
+            {
+                _inputCalibrationField.onEndEdit.RemoveAllListeners();
+                _inputCalibrationField.onEndEdit.AddListener(_ => ChangeInputCalibration());
+            }
+        }
+
+        private void ChangeNoteSpeed()
+        {
+            if (!Session.TryGetPlayer(_selectedProfileId, out var player))
+                return;
+
+            if (float.TryParse(_noteSpeedField.text, NumberStyles.Float,
+                CultureInfo.CurrentCulture, out var speed))
+            {
+                speed = Mathf.Clamp(speed, 0f, 100f);
+                speed = Mathf.Round(speed / 0.1f) * 0.1f;
+                Session.StageNoteSpeed(_selectedProfileId, speed);
+            }
+
+            _noteSpeedField.text = player.NoteSpeed.ToString("0.0", CultureInfo.CurrentCulture);
+            RefreshView();
+        }
+
+        private void ChangeHighwayLength()
+        {
+            if (!Session.TryGetPlayer(_selectedProfileId, out var player))
+                return;
+
+            if (float.TryParse(_highwayLengthField.text, NumberStyles.Float,
+                CultureInfo.CurrentCulture, out var length))
+            {
+                length = Mathf.Clamp(length, 0.1f, 10f);
+                length = Mathf.Round(length / 0.1f) * 0.1f;
+                Session.StageHighwayLength(_selectedProfileId, length);
+            }
+
+            _highwayLengthField.text = player.HighwayLength.ToString("0.0", CultureInfo.CurrentCulture);
+            RefreshView();
+        }
+
+        private void ChangeInputCalibration()
+        {
+            if (!Session.TryGetPlayer(_selectedProfileId, out var player))
+                return;
+
+            if (long.TryParse(_inputCalibrationField.text, NumberStyles.Integer,
+                CultureInfo.CurrentCulture, out var calibration))
+            {
+                Session.StageInputCalibration(_selectedProfileId, calibration);
+            }
+
+            _inputCalibrationField.text =
+                player.InputCalibrationMilliseconds.ToString(CultureInfo.CurrentCulture);
+            RefreshView();
+        }
+
         private static void ConfigureButton(NavigatableUnityButton button, UnityAction action,
             Color? backgroundColor = null)
         {
@@ -551,12 +637,18 @@ namespace YARG.Menu.Maestro
 
             AddNavigatableIfPresent(_rightNavigationGroup, _instrumentNavigation);
             AddNavigatableIfPresent(_rightNavigationGroup, _difficultyNavigation);
+            AddNavigatableIfPresent(_rightNavigationGroup, _noteSpeedNavigation);
+            AddNavigatableIfPresent(_rightNavigationGroup, _highwayLengthNavigation);
+            AddNavigatableIfPresent(_rightNavigationGroup, _calibrationNavigation);
             AddNavigatableIfPresent(_rightNavigationGroup, _modifierButton);
             AddNavigatableIfPresent(_rightNavigationGroup, _accessibilityButton);
             AddNavigatableIfPresent(_rightNavigationGroup, _sitOutButton);
 
             SetRightNavigationHoverSelection(_instrumentNavigation);
             SetRightNavigationHoverSelection(_difficultyNavigation);
+            SetRightNavigationHoverSelection(_noteSpeedNavigation);
+            SetRightNavigationHoverSelection(_highwayLengthNavigation);
+            SetRightNavigationHoverSelection(_calibrationNavigation);
             SetRightNavigationHoverSelection(_modifierButton);
             SetRightNavigationHoverSelection(_accessibilityButton);
             SetRightNavigationHoverSelection(_sitOutButton);
@@ -751,6 +843,16 @@ namespace YARG.Menu.Maestro
                 instrument => GetInstrumentOptionLabel(song, instrument), GetInstrumentIcon);
             PopulateDropdown(_difficultyDropdown, _difficultyOptions, selected.Difficulty,
                 difficulty => difficulty.ToLocalizedName());
+
+            // Populate numeric input fields (skip any that are actively being edited)
+            if (_noteSpeedField != null && !_noteSpeedField.isFocused)
+                _noteSpeedField.text = selected.NoteSpeed.ToString("0.0", CultureInfo.CurrentCulture);
+            if (_highwayLengthField != null && !_highwayLengthField.isFocused)
+                _highwayLengthField.text = selected.HighwayLength.ToString("0.0", CultureInfo.CurrentCulture);
+            if (_inputCalibrationField != null && !_inputCalibrationField.isFocused)
+                _inputCalibrationField.text =
+                    selected.InputCalibrationMilliseconds.ToString(CultureInfo.CurrentCulture);
+
             RefreshEditorControls(selected, _instrumentOptions.Length > 0);
             UpdateFocusVisual();
         }
@@ -760,6 +862,13 @@ namespace YARG.Menu.Maestro
             bool playerActive = partAvailable && !selected.SittingOut;
             SetDropdownInteractable(_instrumentDropdown, partAvailable);
             SetDropdownInteractable(_difficultyDropdown, playerActive);
+
+            if (_noteSpeedField != null)
+                _noteSpeedField.interactable = playerActive;
+            if (_highwayLengthField != null)
+                _highwayLengthField.interactable = playerActive;
+            if (_inputCalibrationField != null)
+                _inputCalibrationField.interactable = playerActive;
 
             SetButtonState(_modifierButton, playerActive,
                 playerActive ? MenuData.Colors.BrightButton : MenuData.Colors.DeactivatedButton);
