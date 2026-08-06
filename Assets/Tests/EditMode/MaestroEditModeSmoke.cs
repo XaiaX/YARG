@@ -394,6 +394,41 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Direct_Maestro_Hides_Difficulty_Player_Content_During_Transition()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("PrepareForDirectMaestroSummary"));
+            Assert.That(script.text, Does.Contain("_container.gameObject.SetActive"));
+            Assert.That(script.text, Does.Contain("directSummary"));
+        }
+
+        [Test]
+        public void Maestro_Reuses_Header_And_Returns_To_Song_Select()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs");
+            var manager = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/MenuManager.cs");
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab");
+
+            Assert.That(script, Is.Not.Null);
+            Assert.That(manager, Is.Not.Null);
+            Assert.That(prefab, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("Player Settings Summary"));
+            Assert.That(script.text, Does.Contain("BackToSongSelect"));
+            Assert.That(script.text, Does.Contain("PopToMenu(MenuManager.Menu.MusicLibrary)"));
+            Assert.That(script.text, Does.Contain("FindHeaderBackButton"));
+            Assert.That(script.text, Does.Contain("_controllerLockText.gameObject.SetActive(false)"));
+            Assert.That(manager.text, Does.Contain("PopToMenu(Menu menu)"));
+            Assert.That(prefab.transform.Find("Header"), Is.Not.Null);
+            Assert.That(prefab.transform.Find("Header/Single Header Text"), Is.Not.Null,
+                "Maestro must retain the shared header title field.");
+        }
+
+        [Test]
         public void Instrument_Dropdown_Uses_Inline_Tiered_Labels()
         {
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
