@@ -24,7 +24,7 @@ namespace YARG.Menu.Maestro
         public YargPlayer Player { get; }
         public string Name => Player.Profile.Name;
         public bool IsBot => Player.Profile.IsBot;
-        public bool SittingOut => Player.SittingOut;
+        public bool SittingOut { get; internal set; }
         public bool IsMissingInput => Player.IsMissingInputDevice || Player.IsMissingMicrophone;
 
         public GameMode GameMode { get; internal set; }
@@ -42,6 +42,7 @@ namespace YARG.Menu.Maestro
         {
             Player = player;
             ProfileId = player.Profile.Id;
+            SittingOut = player.SittingOut;
             GameMode = player.Profile.GameMode;
             Instrument = player.Profile.CurrentInstrument;
             // Party Vocals profiles store Instrument.PartyVocals, but the Maestro
@@ -204,6 +205,7 @@ namespace YARG.Menu.Maestro
                 return;
 
             player.GameMode = gameMode;
+            player.SittingOut = false;
             NormalizeDependentSelections(player);
         }
 
@@ -274,6 +276,7 @@ namespace YARG.Menu.Maestro
         private sealed class ProfileSnapshot
         {
             public readonly YargProfile Profile;
+            public readonly YargPlayer Player;
             public readonly GameMode GameMode;
             public readonly Instrument PreferredInstrument;
             public readonly Instrument CurrentInstrument;
@@ -287,9 +290,12 @@ namespace YARG.Menu.Maestro
             public readonly bool LeftyFlip;
             public readonly bool RangeEnabled;
             public readonly OpenLaneDisplayType OpenLaneDisplayType;
+            public readonly bool SittingOut;
 
-            public ProfileSnapshot(YargProfile profile)
+            public ProfileSnapshot(YargPlayer player)
             {
+                Player = player;
+                var profile = player.Profile;
                 Profile = profile;
                 GameMode = profile.GameMode;
                 PreferredInstrument = profile.PreferredInstrument;
@@ -304,6 +310,7 @@ namespace YARG.Menu.Maestro
                 LeftyFlip = profile.LeftyFlip;
                 RangeEnabled = profile.RangeEnabled;
                 OpenLaneDisplayType = profile.OpenLaneDisplayType;
+                SittingOut = player.SittingOut;
             }
 
             public void Restore()
@@ -320,6 +327,7 @@ namespace YARG.Menu.Maestro
                 Profile.LeftyFlip = LeftyFlip;
                 Profile.RangeEnabled = RangeEnabled;
                 Profile.OpenLaneDisplayType = OpenLaneDisplayType;
+                Player.SittingOut = SittingOut;
             }
         }
 
@@ -330,7 +338,7 @@ namespace YARG.Menu.Maestro
                 return MaestroFinalizationResult.Rejected(globalError, errors);
 
             var snapshots = _players.Values
-                .Select(player => new ProfileSnapshot(player.Player.Profile))
+                .Select(player => new ProfileSnapshot(player.Player))
                 .ToList();
 
             try
@@ -338,6 +346,7 @@ namespace YARG.Menu.Maestro
                 // No profile is mutated until the complete active-player set has passed.
                 foreach (var staged in _players.Values)
                 {
+                    staged.Player.SittingOut = staged.SittingOut;
                     if (staged.SittingOut)
                         continue;
 
@@ -539,10 +548,11 @@ namespace YARG.Menu.Maestro
         {
             if (!IsModeAvailable(player.GameMode))
             {
-                var gameMode = GetAvailableGameModes().FirstOrDefault();
-                if (!IsModeAvailable(gameMode))
-                    return;
-                player.GameMode = gameMode;
+                // An existing profile's game mode is also its binding contract. Do
+                // not silently replace it with the first mode this song supports;
+                // keep the profile unchanged and stage the player as sitting out.
+                player.SittingOut = true;
+                return;
             }
 
             var instruments = GetAvailableInstruments(player.ProfileId);

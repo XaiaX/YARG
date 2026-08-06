@@ -97,7 +97,7 @@ namespace YARG.Tests.EditMode
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
 
             Assert.That(script, Is.Not.Null, $"Could not load {path}.");
-            Assert.That(script.text, Does.Contain("player.Player.SittingOut = true;"),
+            Assert.That(script.text, Does.Contain("player.SittingOut = true;"),
                 "An unavailable existing profile must be routed to sit-out.");
             Assert.That(script.text, Does.Contain("if (!IsModeAvailable(player.GameMode))"),
                 "Initial normalization must validate the existing game mode.");
