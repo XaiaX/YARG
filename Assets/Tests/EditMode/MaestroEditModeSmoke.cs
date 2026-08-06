@@ -421,6 +421,8 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("BackToSongSelect"));
             Assert.That(script.text, Does.Contain("PopToMenu(MenuManager.Menu.MusicLibrary)"));
             Assert.That(script.text, Does.Contain("FindHeaderBackButton"));
+            Assert.That(script.text, Does.Contain("ConfigureHeaderSourceIcon"));
+            Assert.That(script.text, Does.Contain("SongSources.SourceToIcon"));
             Assert.That(script.text, Does.Contain("_controllerLockText.gameObject.SetActive(false)"));
             Assert.That(manager.text, Does.Contain("PopToMenu(Menu menu)"));
             Assert.That(prefab.transform.Find("Header"), Is.Not.Null);
