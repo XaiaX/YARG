@@ -143,31 +143,49 @@ namespace YARG.Menu.Maestro
         {
             if (_inputField == null || !_inputField.interactable)
                 return;
-            EnterEditMode();
-        }
-
-        private void EnterEditMode()
-        {
-            if (_inputField == null || _editScheme != null)
-                return;
 
             _inputField.ActivateInputField();
+            // Update() detects the focus transition and pushes the edit scheme.
+        }
 
-            if (_focusBorder != null)
-                _focusBorder.gameObject.SetActive(false);
+        private bool _wasFocused;
 
-            // Only capture Up/Down for increment/decrement.  Green/Red are
-            // intentionally absent so that number keys (mapped to fret buttons)
-            // pass through to the TMP_InputField for normal text entry.  Enter
-            // and Escape are handled by the EventSystem → TMP_InputField, which
-            // fires onEndEdit (submit or restore-on-escape) and cleans up the
-            // scheme via the listener registered in Initialize.
-            _editScheme = new NavigationScheme(new()
+        private void Update()
+        {
+            if (_inputField == null)
+                return;
+
+            bool focused = _inputField.isFocused;
+            if (focused == _wasFocused)
+                return;
+
+            _wasFocused = focused;
+
+            if (focused)
             {
-                new(MenuAction.Up, "Menu.Common.Up", _ => Adjust(+1)),
-                new(MenuAction.Down, "Menu.Common.Down", _ => Adjust(-1)),
-            }, null);
-            Navigator.Instance?.PushScheme(_editScheme);
+                if (_editScheme == null)
+                {
+                    if (_focusBorder != null)
+                        _focusBorder.gameObject.SetActive(false);
+
+                    // Only capture Up/Down for increment/decrement.  Green/Red
+                    // are intentionally absent so number keys (mapped to fret
+                    // buttons) pass through to the TMP_InputField for normal
+                    // text entry.  Enter and Escape are handled by the
+                    // EventSystem → TMP_InputField, which fires onEndEdit
+                    // (submit or restore-on-escape) for cleanup.
+                    _editScheme = new NavigationScheme(new()
+                    {
+                        new(MenuAction.Up, "Menu.Common.Up", _ => Adjust(+1)),
+                        new(MenuAction.Down, "Menu.Common.Down", _ => Adjust(-1)),
+                    }, null);
+                    Navigator.Instance?.PushScheme(_editScheme);
+                }
+            }
+            else
+            {
+                RemoveEditScheme();
+            }
         }
 
         /// <summary>
