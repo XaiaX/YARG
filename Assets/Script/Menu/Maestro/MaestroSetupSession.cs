@@ -148,19 +148,27 @@ namespace YARG.Menu.Maestro
 
             try
             {
-                return GetPossibleInstruments(player.GameMode)
+                if (!IsModeAvailable(player.GameMode))
+                    return new[] { Instrument.None };
+
+                var available = GetPossibleInstruments(player.GameMode)
                     .Where(instrument => IsInstrumentAvailable(player, player.GameMode, instrument))
-                    .ToArray();
+                    .ToList();
+                available.Add(Instrument.None);
+                return available.ToArray();
             }
             catch (NotImplementedException)
             {
-                return Array.Empty<Instrument>();
+                return new[] { Instrument.None };
             }
         }
 
         public IReadOnlyList<Difficulty> GetAvailableDifficulties(Guid profileId)
         {
             if (!_players.TryGetValue(profileId, out var player))
+                return Array.Empty<Difficulty>();
+
+            if (player.SittingOut)
                 return Array.Empty<Difficulty>();
 
             return EnumExtensions<Difficulty>.Values
@@ -183,6 +191,9 @@ namespace YARG.Menu.Maestro
             bool includeAccessibility)
         {
             if (!_players.TryGetValue(profileId, out var player))
+                return Array.Empty<Modifier>();
+
+            if (player.SittingOut)
                 return Array.Empty<Modifier>();
 
             try
@@ -211,10 +222,20 @@ namespace YARG.Menu.Maestro
 
         public void StageInstrument(Guid profileId, Instrument instrument)
         {
-            if (!_players.TryGetValue(profileId, out var player) ||
-                !IsInstrumentAvailable(player, player.GameMode, instrument))
+            if (!_players.TryGetValue(profileId, out var player))
                 return;
 
+            if (instrument == Instrument.None)
+            {
+                player.SittingOut = true;
+                player.Instrument = Instrument.None;
+                return;
+            }
+
+            if (!IsInstrumentAvailable(player, player.GameMode, instrument))
+                return;
+
+            player.SittingOut = false;
             player.Instrument = instrument;
             NormalizeDependentSelections(player);
         }

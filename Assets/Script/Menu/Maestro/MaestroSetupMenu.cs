@@ -520,7 +520,9 @@ namespace YARG.Menu.Maestro
 
             ResetMaestroNavigationStack();
             _navigationGroup.PushNavGroupToStack();
-            if (_navigationGroup.SelectedBehaviour == null)
+            if (_playButton != null && _navigationGroup.Count > 0)
+                _navigationGroup.SelectAt(_navigationGroup.Count - 1);
+            else if (_navigationGroup.SelectedBehaviour == null)
                 _navigationGroup.SelectFirst();
         }
 
@@ -690,8 +692,12 @@ namespace YARG.Menu.Maestro
                 return;
 
             if (_selectedPlayerText != null)
-                _selectedPlayerText.text =
-                    $"{selected.Name}\n<size=18>Game Mode: {selected.GameMode.ToLocalizedName()}</size>";
+            {
+                string state = selected.SittingOut
+                    ? $"<color=#FFB636>{Localize.Key(\"Menu.DifficultySelect\", \"SitOut\")}</color>"
+                    : $"Game Mode: {selected.GameMode.ToLocalizedName()}";
+                _selectedPlayerText.text = $"{selected.Name}\n<size=18>{state}</size>";
+            }
 
             _instrumentOptions = Session.GetAvailableInstruments(_selectedProfileId).ToArray();
             _difficultyOptions = Session.GetAvailableDifficulties(_selectedProfileId).ToArray();
@@ -768,6 +774,9 @@ namespace YARG.Menu.Maestro
         // Match Difficulty Select's instrument option presentation, including chart tier.
         private static string GetInstrumentOptionLabel(SongEntry song, Instrument instrument)
         {
+            if (instrument == Instrument.None)
+                return Localize.Key("Menu.DifficultySelect", "SitOut");
+
             if (instrument is Instrument.Vocals or Instrument.Harmony)
                 return GetPartyVocalsChartLabel(song, instrument);
 
@@ -792,7 +801,7 @@ namespace YARG.Menu.Maestro
 
         private static string GetRowTierLabel(SongEntry song, MaestroStagedPlayer player)
         {
-            if (song == null) return null;
+            if (song == null || player.SittingOut) return null;
             var values = GetTierValues(song, player.Instrument);
             return GetTierLabel(values);
         }

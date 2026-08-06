@@ -56,6 +56,16 @@ namespace YARG.Menu.Maestro
             SetGameModeIcon(player.GameMode);
             if (_setup != null)
             {
+                if (player.SittingOut)
+                {
+                    string sitOut = Localize.Key("Menu.DifficultySelect", "SitOut");
+                    _setup.text = $"<color=#FFB636>{sitOut}</color>";
+                    if (_modifiers != null)
+                        _modifiers.text = "—";
+                    SetSelected(selected, SelectionOrigin.Programmatically);
+                    return;
+                }
+
                 // For Party Vocals, show "Solo"/"Harmony" to match the dropdown
                 // labels instead of the raw instrument names "Vocals"/"Harmony".
                 string instrumentLabel =
