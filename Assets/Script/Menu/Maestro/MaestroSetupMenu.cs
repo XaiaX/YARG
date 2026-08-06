@@ -71,6 +71,7 @@ namespace YARG.Menu.Maestro
         [SerializeField] private ModifierItem _modifierItemPrefab;
         [SerializeField] private NavigatableUnityButton _modifierButton;
         [SerializeField] private NavigatableUnityButton _accessibilityButton;
+        [SerializeField] private NavigatableUnityButton _sitOutButton;
         [SerializeField] private NavigatableUnityButton _playButton;
 
         private readonly Dictionary<Guid, MaestroPlayerRow> _rows = new();
@@ -438,7 +439,20 @@ namespace YARG.Menu.Maestro
             ConfigureButton(_accessibilityButton,
                 () => ShowAdjustmentPicker(AdjustmentCategory.Accessibility),
                 MenuData.Colors.BrightButton);
+            ConfigureButton(_sitOutButton, ToggleSittingOut, MenuData.Colors.CancelButton);
             ConfigureButton(_playButton, Continue);
+        }
+
+        private void ToggleSittingOut()
+        {
+            if (!Session.TryGetPlayer(_selectedProfileId, out var player))
+                return;
+
+            if (player.SittingOut && Session.GetAvailableInstruments(_selectedProfileId).Count == 0)
+                return;
+
+            Session.StageSittingOut(_selectedProfileId, !player.SittingOut);
+            RefreshView();
         }
 
         private void ConfigureDropdowns()
@@ -495,6 +509,16 @@ namespace YARG.Menu.Maestro
             }
         }
 
+        private static void SetButtonLabel(NavigatableUnityButton button, string label)
+        {
+            if (button == null)
+                return;
+
+            var text = button.GetComponentsInChildren<TMP_Text>(true).FirstOrDefault();
+            if (text != null)
+                text.text = label;
+        }
+
         private void ConfigureNavigation()
         {
             if (_navigationGroup == null)
@@ -511,11 +535,13 @@ namespace YARG.Menu.Maestro
             AddNavigatableIfPresent(_rightNavigationGroup, _difficultyNavigation);
             AddNavigatableIfPresent(_rightNavigationGroup, _modifierButton);
             AddNavigatableIfPresent(_rightNavigationGroup, _accessibilityButton);
+            AddNavigatableIfPresent(_rightNavigationGroup, _sitOutButton);
 
             SetRightNavigationHoverSelection(_instrumentNavigation);
             SetRightNavigationHoverSelection(_difficultyNavigation);
             SetRightNavigationHoverSelection(_modifierButton);
             SetRightNavigationHoverSelection(_accessibilityButton);
+            SetRightNavigationHoverSelection(_sitOutButton);
             SetLeftNavigationHoverSelection(_playButton);
 
             ResetMaestroNavigationStack();
@@ -694,10 +720,12 @@ namespace YARG.Menu.Maestro
             if (_selectedPlayerText != null)
             {
                 string state = selected.SittingOut
-                    ? $"<color=#FFB636>{Localize.Key("Menu.DifficultySelect", "SitOut")}</color>"
+                    ? "<color=#FFB636>Sitting Out</color>"
                     : $"Game Mode: {selected.GameMode.ToLocalizedName()}";
                 _selectedPlayerText.text = $"{selected.Name}\n<size=18>{state}</size>";
             }
+
+            SetButtonLabel(_sitOutButton, selected.SittingOut ? "PLAYING" : "SIT OUT");
 
             _instrumentOptions = Session.GetAvailableInstruments(_selectedProfileId).ToArray();
             _difficultyOptions = Session.GetAvailableDifficulties(_selectedProfileId).ToArray();
@@ -774,9 +802,6 @@ namespace YARG.Menu.Maestro
         // Match Difficulty Select's instrument option presentation, including chart tier.
         private static string GetInstrumentOptionLabel(SongEntry song, Instrument instrument)
         {
-            if (instrument == Instrument.None)
-                return Localize.Key("Menu.DifficultySelect", "SitOut");
-
             if (instrument is Instrument.Vocals or Instrument.Harmony)
                 return GetPartyVocalsChartLabel(song, instrument);
 

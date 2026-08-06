@@ -113,16 +113,25 @@ namespace YARG.Tests.EditMode
         {
             const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string prefabPath = "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab";
             var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
             var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
 
             Assert.That(session, Is.Not.Null);
             Assert.That(menu, Is.Not.Null);
-            Assert.That(session.text, Does.Contain("Instrument.None"),
-                "Sit Out needs a typed sentinel rather than an invalid difficulty value.");
-            Assert.That(session.text, Does.Contain("player.SittingOut = true;"));
-            Assert.That(menu.text, Does.Contain("SitOut"),
-                "The instrument dropdown must present the sentinel as Sit Out.");
+            Assert.That(prefab, Is.Not.Null);
+            Assert.That(session.text, Does.Contain("StageSittingOut"),
+                "Sit Out should be a staged player-state change, not an instrument value.");
+            Assert.That(menu.text, Does.Contain("_sitOutButton"),
+                "The profile editor must present a dedicated Sit Out control.");
+
+            var menuComponent = prefab.GetComponents<Component>()
+                .Single(component => component.GetType().FullName ==
+                    "YARG.Menu.Maestro.MaestroSetupMenu");
+            Assert.That(new SerializedObject(menuComponent).FindProperty("_sitOutButton")
+                .objectReferenceValue, Is.Not.Null,
+                "The authored Maestro prefab must wire the Sit Out control.");
         }
 
         [Test]
@@ -144,6 +153,7 @@ namespace YARG.Tests.EditMode
 
             Assert.That(script, Is.Not.Null, $"Could not load {path}.");
             Assert.That(script.text, Does.Contain("player.SittingOut"));
+            Assert.That(script.text, Does.Contain("Sitting Out"));
             Assert.That(script.text, Does.Contain("#FFB636"),
                 "Sitting Out should use the brand yellow accent in the profile summary.");
         }

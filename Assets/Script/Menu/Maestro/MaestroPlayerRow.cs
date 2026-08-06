@@ -58,7 +58,7 @@ namespace YARG.Menu.Maestro
             {
                 if (player.SittingOut)
                 {
-                    string sitOut = Localize.Key("Menu.DifficultySelect", "SitOut");
+                    const string sitOut = "Sitting Out";
                     _setup.text = $"<color=#FFB636>{sitOut}</color>";
                     if (_modifiers != null)
                         _modifiers.text = "—";

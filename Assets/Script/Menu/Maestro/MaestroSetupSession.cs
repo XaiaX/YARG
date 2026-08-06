@@ -148,18 +148,13 @@ namespace YARG.Menu.Maestro
 
             try
             {
-                if (!IsModeAvailable(player.GameMode))
-                    return new[] { Instrument.None };
-
-                var available = GetPossibleInstruments(player.GameMode)
+                return GetPossibleInstruments(player.GameMode)
                     .Where(instrument => IsInstrumentAvailable(player, player.GameMode, instrument))
-                    .ToList();
-                available.Add(Instrument.None);
-                return available.ToArray();
+                    .ToArray();
             }
             catch (NotImplementedException)
             {
-                return new[] { Instrument.None };
+                return Array.Empty<Instrument>();
             }
         }
 
@@ -222,22 +217,19 @@ namespace YARG.Menu.Maestro
 
         public void StageInstrument(Guid profileId, Instrument instrument)
         {
-            if (!_players.TryGetValue(profileId, out var player))
-                return;
-
-            if (instrument == Instrument.None)
-            {
-                player.SittingOut = true;
-                player.Instrument = Instrument.None;
-                return;
-            }
-
-            if (!IsInstrumentAvailable(player, player.GameMode, instrument))
+            if (!_players.TryGetValue(profileId, out var player) ||
+                !IsInstrumentAvailable(player, player.GameMode, instrument))
                 return;
 
             player.SittingOut = false;
             player.Instrument = instrument;
             NormalizeDependentSelections(player);
+        }
+
+        public void StageSittingOut(Guid profileId, bool sittingOut)
+        {
+            if (_players.TryGetValue(profileId, out var player))
+                player.SittingOut = sittingOut;
         }
 
         public void StageDifficulty(Guid profileId, Difficulty difficulty)
