@@ -1196,8 +1196,8 @@ namespace YARG.Tests.EditMode
                 "Input navigatable must support float configuration.");
             Assert.That(script.text, Does.Contain("ConfigureInteger"),
                 "Input navigatable must support integer configuration.");
-            Assert.That(script.text, Does.Contain("EnterEditMode"),
-                "Input navigatable must enter an edit mode on Confirm.");
+            Assert.That(script.text, Does.Contain("isFocused"),
+                "Input navigatable must poll isFocused to detect edit mode entry.");
             Assert.That(script.text, Does.Contain("Adjust"),
                 "Input navigatable must handle increment/decrement.");
         }
