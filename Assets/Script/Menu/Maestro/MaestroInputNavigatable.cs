@@ -30,7 +30,6 @@ namespace YARG.Menu.Maestro
         private NavigationScheme _editScheme;
         private Color _defaultTextColor;
         private bool _colorCaptured;
-        private string _originalText;
 
         // Float configuration (speed / length)
         private bool _isFloat = true;
@@ -152,45 +151,35 @@ namespace YARG.Menu.Maestro
             if (_inputField == null || _editScheme != null)
                 return;
 
-            _originalText = _inputField.text;
             _inputField.ActivateInputField();
 
             if (_focusBorder != null)
                 _focusBorder.gameObject.SetActive(false);
 
+            // Only capture Up/Down for increment/decrement.  Green/Red are
+            // intentionally absent so that number keys (mapped to fret buttons)
+            // pass through to the TMP_InputField for normal text entry.  Enter
+            // and Escape are handled by the EventSystem → TMP_InputField, which
+            // fires onEndEdit (submit or restore-on-escape) and cleans up the
+            // scheme via the listener registered in Initialize.
             _editScheme = new NavigationScheme(new()
             {
                 new(MenuAction.Up, "Menu.Common.Up", _ => Adjust(+1)),
                 new(MenuAction.Down, "Menu.Common.Down", _ => Adjust(-1)),
-                new(MenuAction.Green, "Menu.Common.Confirm", ExitEditMode),
-                new(MenuAction.Red, "Menu.Common.Cancel", CancelEditMode),
             }, null);
             Navigator.Instance?.PushScheme(_editScheme);
         }
 
         /// <summary>
-        /// Called by the TMP_InputField when it loses focus (Enter key, click-away,
-        /// or explicit deactivation).  Ensures the edit scheme is always cleaned up.
+        /// Called by the TMP_InputField when it loses focus (Enter key, Escape,
+        /// click-away, or explicit deactivation).  Ensures the edit scheme is
+        /// always cleaned up.  Enter submits the current text; Escape restores
+        /// the original (handled internally by TMP_InputField via
+        /// m_RestoreOriginalTextOnEscape) before firing this callback.
         /// </summary>
         private void OnEndEdit(string _)
         {
             RemoveEditScheme();
-        }
-
-        private void ExitEditMode()
-        {
-            RemoveEditScheme();
-            _inputField?.DeactivateInputField();
-        }
-
-        private void CancelEditMode()
-        {
-            // Restore the original text before deactivating so the parent's
-            // onEndEdit handler stages the original (unchanged) value.
-            if (_inputField != null)
-                _inputField.text = _originalText;
-            RemoveEditScheme();
-            _inputField?.DeactivateInputField();
         }
 
         private void RemoveEditScheme()
