@@ -1313,6 +1313,28 @@ namespace YARG.Tests.EditMode
                 "Done button in adjustment picker must enable hover-to-select for mouse parity.");
         }
 
+        [Test]
+        public void Session_Has_Per_GameMode_Instrument_Fallback_Chains()
+        {
+            const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
+            Assert.That(session, Is.Not.Null);
+            Assert.That(session.text, Does.Contain("SelectInstrumentFallback"),
+                "Session must provide a fallback selector for unavailable instruments.");
+            Assert.That(session.text, Does.Contain("GetInstrumentFallbackChain"),
+                "Session must define per-game-mode fallback chains.");
+            Assert.That(session.text, Does.Contain("PreferredInstrument"),
+                "Staged player must track the user's preferred instrument separately " +
+                "from the resolved one so it can revert when the part becomes available.");
+            // Verify key chains exist
+            Assert.That(session.text, Does.Contain("GameMode.FiveFretGuitar"),
+                "Five-fret guitar fallback chain must be defined.");
+            Assert.That(session.text, Does.Contain("GameMode.ProKeys"),
+                "Pro keys fallback chain must be defined.");
+            Assert.That(session.text, Does.Contain("GameMode.FourLaneDrums"),
+                "Four-lane drums fallback chain must be defined.");
+        }
+
         private static Transform FindRequired(Transform root, string path)
         {
             var child = root.Find(path);

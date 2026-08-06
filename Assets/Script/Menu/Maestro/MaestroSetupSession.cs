@@ -40,6 +40,7 @@ namespace YARG.Menu.Maestro
 
         public GameMode GameMode { get; internal set; }
         public Instrument Instrument { get; internal set; }
+        public Instrument PreferredInstrument { get; internal set; }
         public Difficulty Difficulty { get; internal set; }
         public Modifier Modifiers { get; internal set; }
         public bool LeftyFlip { get; internal set; }
@@ -62,6 +63,11 @@ namespace YARG.Menu.Maestro
             // which is how Difficulty Select tracks the Solo/Harmony choice.
             if (GameMode == GameMode.PartyVocals && Instrument == Instrument.PartyVocals)
                 Instrument = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Harmony
+                    ? Instrument.Harmony
+                    : Instrument.Vocals;
+            PreferredInstrument = player.Profile.PreferredInstrument;
+            if (GameMode == GameMode.PartyVocals && PreferredInstrument == Instrument.PartyVocals)
+                PreferredInstrument = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Harmony
                     ? Instrument.Harmony
                     : Instrument.Vocals;
             Difficulty = player.Profile.CurrentDifficulty;
@@ -236,6 +242,7 @@ namespace YARG.Menu.Maestro
 
             player.SittingOut = false;
             player.Instrument = instrument;
+            player.PreferredInstrument = instrument;
             NormalizeDependentSelections(player);
         }
 
@@ -399,7 +406,7 @@ namespace YARG.Menu.Maestro
 
                     var profile = staged.Player.Profile;
                     profile.GameMode = staged.GameMode;
-                    profile.PreferredInstrument = staged.Instrument;
+                    profile.PreferredInstrument = staged.PreferredInstrument;
                     profile.CurrentInstrument = staged.Instrument;
                     // Restore PartyVocals instrument and HarmonyIndex — the Maestro
                     // dropdown uses Vocals/Harmony but the profile must store
@@ -559,6 +566,7 @@ namespace YARG.Menu.Maestro
                     if (draft.PendingInstrument.HasValue)
                     {
                         staged.Instrument = draft.PendingInstrument.Value;
+                        staged.PreferredInstrument = staged.Instrument;
                         // Remote drafts may carry Instrument.PartyVocals for
                         // Party Vocals players. Map it to the dropdown's
                         // {Vocals, Harmony} representation so normalization
@@ -574,6 +582,7 @@ namespace YARG.Menu.Maestro
                                 ? Instrument.Harmony
                                 : Instrument.Vocals;
                         }
+                        staged.PreferredInstrument = staged.Instrument;
                     }
                     if (draft.PendingDifficulty.HasValue)
                         staged.Difficulty = draft.PendingDifficulty.Value;
@@ -604,8 +613,16 @@ namespace YARG.Menu.Maestro
             }
 
             var instruments = GetAvailableInstruments(player.ProfileId);
-            if (!instruments.Contains(player.Instrument) && instruments.Count > 0)
-                player.Instrument = instruments[0];
+            if (instruments.Count > 0)
+            {
+                // Revert to the user's preferred instrument when it's available,
+                // or follow the game-mode fallback chain when it isn't.
+                if (instruments.Contains(player.PreferredInstrument))
+                    player.Instrument = player.PreferredInstrument;
+                else
+                    player.Instrument = SelectInstrumentFallback(
+                        player.PreferredInstrument, player.GameMode, instruments);
+            }
 
             var difficulties = GetAvailableDifficulties(player.ProfileId);
             if (!difficulties.Contains(player.Difficulty) && difficulties.Count > 0)
@@ -737,6 +754,60 @@ namespace YARG.Menu.Maestro
                 Instrument.FourLaneDrums or Instrument.ProDrums => entry[Instrument.FiveLaneDrums][difficulty],
                 Instrument.FiveLaneDrums => entry[Instrument.ProDrums][difficulty],
                 _ => false,
+            };
+        }
+
+        /// <summary>
+        /// Selects the best available instrument when the preferred one isn't
+        /// available, following a game-mode-specific priority chain.
+        /// </summary>
+        private static Instrument SelectInstrumentFallback(
+            Instrument preferred, GameMode mode, IReadOnlyList<Instrument> available)
+        {
+            foreach (var candidate in GetInstrumentFallbackChain(mode))
+            {
+                if (candidate != preferred && available.Contains(candidate))
+                    return candidate;
+            }
+
+            return available.Count > 0 ? available[0] : preferred;
+        }
+
+        /// <summary>
+        /// Ordered fallback instruments per game mode. The caller tries the
+        /// preferred instrument first; if it isn't available these chains
+        /// provide the next-best option in priority order.
+        /// </summary>
+        private static IReadOnlyList<Instrument> GetInstrumentFallbackChain(GameMode mode)
+        {
+            return mode switch
+            {
+                GameMode.FiveFretGuitar => new[]
+                {
+                    Instrument.FiveFretGuitar,
+                    Instrument.FiveFretBass,
+                    Instrument.Keys,
+                },
+                GameMode.ProKeys => new[]
+                {
+                    Instrument.ProKeys,
+                    Instrument.Keys,
+                    Instrument.FiveFretGuitar,
+                    Instrument.FiveFretBass,
+                },
+                GameMode.Vocals or GameMode.PartyVocals => new[]
+                {
+                    Instrument.Harmony,
+                    Instrument.Vocals,
+                },
+                GameMode.FourLaneDrums => new[]
+                {
+                    Instrument.ProDrums,
+                    Instrument.FourLaneDrums,
+                },
+                // Five-lane drums are cross-mapped in HasPlayableInstrument
+                // so no explicit chain is needed.
+                _ => Array.Empty<Instrument>(),
             };
         }
     }
