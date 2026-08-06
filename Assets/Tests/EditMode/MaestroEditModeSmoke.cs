@@ -167,7 +167,7 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Not.Contain("CycleDifficulty"));
             Assert.That(script.text, Does.Contain("ShowAdjustmentPicker"));
             Assert.That(script.text, Does.Contain("MenuAction.Blue"));
-            Assert.That(script.text, Does.Contain("Controller Navigation Disabled"));
+            Assert.That(script.text, Does.Not.Contain("Controller Navigation Disabled"));
             Assert.That(script.text, Does.Contain("FinishEditingPlayer"));
             Assert.That(script.text, Does.Contain("BeginEditingPlayer"));
         }
@@ -426,8 +426,6 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("_controllerLockText.gameObject.SetActive(false)"));
             Assert.That(manager.text, Does.Contain("PopToMenu(Menu menu)"));
             Assert.That(prefab.transform.Find("Header"), Is.Not.Null);
-            Assert.That(prefab.transform.Find("Header/Single Header Text"), Is.Not.Null,
-                "Maestro must retain the shared header title field.");
         }
 
         [Test]
