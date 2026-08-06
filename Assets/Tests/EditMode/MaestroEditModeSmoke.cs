@@ -363,6 +363,33 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Difficulty_Select_Defers_Direct_Maestro_Until_Menu_Push_Completes()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("StartCoroutine(OpenMaestroSummaryDirectlyNextFrame())"));
+            Assert.That(script.text, Does.Contain("yield return null"));
+            Assert.That(script.text, Does.Contain("StopCoroutine(_directMaestroCoroutine)"));
+            Assert.That(script.text, Does.Not.Contain("OpenMaestroSummaryDirectly();\n            }"));
+            Assert.That(script.text, Does.Not.Contain("OpenMaestroSummaryDirectly();\n        }"));
+            Assert.That(script.text, Does.Contain("OpenMaestroSummaryDirectlyNextFrame"),
+                "Direct Maestro must not be pushed synchronously from Difficulty Select OnEnable.");
+        }
+
+        [Test]
+        public void Navigator_Hold_Release_Survives_Transition_Callbacks()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/Navigation/Navigator.cs");
+            Assert.That(script, Is.Not.Null);
+            Assert.That(script.text, Does.Contain("var hold = _holdInputs[i]"));
+            Assert.That(script.text, Does.Contain("_holdInputs.Remove(hold)"));
+            Assert.That(script.text, Does.Not.Contain("_holdInputs[i].Tracker.ClearEvents()"),
+                "Hold cleanup must not index the list after StopHolding callbacks can change it.");
+        }
+
+        [Test]
         public void Instrument_Dropdown_Uses_Inline_Tiered_Labels()
         {
             const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
