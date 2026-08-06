@@ -1072,7 +1072,7 @@ namespace YARG.Menu.Maestro
 
             if (accessibility)
             {
-                AddAccessibilityOptions(dialog, player, modifiers);
+                AddAccessibilityOptions(dialog, player, modifiers, rightSelectionIndex);
             }
             else
             {
@@ -1176,7 +1176,7 @@ namespace YARG.Menu.Maestro
         }
 
         private void AddAccessibilityOptions(ListDialog dialog, MaestroStagedPlayer player,
-            IReadOnlyList<Modifier> modifiers)
+            IReadOnlyList<Modifier> modifiers, int rightSelectionIndex)
         {
             if (MaestroSelectionRules.SupportsLeftyFlip(player.GameMode))
             {
@@ -1214,23 +1214,51 @@ namespace YARG.Menu.Maestro
 
             if (player.GameMode == GameMode.ProKeys)
             {
-                ModifierItem openLaneItem = null;
-                openLaneItem = AddAdjustmentToggle(dialog,
+                // The three-state OpenLaneDisplayType gets its own sub-picker
+                // (matching Difficulty Select) rather than a cycling toggle.
+                AddAdjustmentToggle(dialog,
                     GetOpenLaneLabel(player.OpenLaneDisplayType),
-                    player.OpenLaneDisplayType != OpenLaneDisplayType.Never, _ =>
+                    false, _ =>
                     {
-                        var next = GetNextOpenLaneOption(player.OpenLaneDisplayType);
-                        Session.StageOpenLaneDisplayType(_selectedProfileId, next);
-                        openLaneItem.Initialize(GetOpenLaneLabel(next),
-                            next != OpenLaneDisplayType.Never, _ =>
-                            {
-                                var following = GetNextOpenLaneOption(next);
-                                Session.StageOpenLaneDisplayType(_selectedProfileId, following);
-                                RefreshView();
-                            });
-                        RefreshView();
+                        DialogManager.Instance.ClearDialog();
+                        ShowOpenLanePicker(rightSelectionIndex);
                     });
             }
+        }
+
+        private void ShowOpenLanePicker(int rightSelectionIndex)
+        {
+            if (!Session.TryGetPlayer(_selectedProfileId, out var player) ||
+                DialogManager.Instance == null)
+                return;
+
+            string title = Localize.Key("Menu.DifficultySelect", "DedicatedOpenLane");
+            var dialog = DialogManager.Instance.ShowList($"{title} — {player.Name}");
+            dialog.ClearButtons();
+            dialog.ClearList();
+
+            foreach (var option in OpenLaneOptions)
+            {
+                var capture = option;
+                bool selected = player.OpenLaneDisplayType == option;
+                AddAdjustmentToggle(dialog, capture.ToLocalizedName(), selected, _ =>
+                {
+                    Session.StageOpenLaneDisplayType(_selectedProfileId, capture);
+                    RefreshView();
+                    DialogManager.Instance.ClearDialog();
+                    ShowAdjustmentPicker(AdjustmentCategory.Accessibility);
+                });
+            }
+
+            var doneButton = dialog.AddDialogButton("Menu.DifficultySelect.Done",
+                MenuData.Colors.BrightButton,
+                () =>
+                {
+                    DialogManager.Instance.ClearDialog();
+                    RestoreEditorNavigationAfterDialog(rightSelectionIndex);
+                });
+            doneButton.GetComponentInChildren<NavigatableBehaviour>()?.SetSelectOnHover(true);
+            dialog.SelectLast();
         }
 
         private ModifierItem AddAdjustmentToggle(ListDialog dialog, string label, bool active,
@@ -1252,12 +1280,6 @@ namespace YARG.Menu.Maestro
         private static string GetOpenLaneLabel(OpenLaneDisplayType displayType) =>
             Localize.Key("Menu.DifficultySelect", "DedicatedOpenLane") + ": " +
             displayType.ToLocalizedName();
-
-        private static OpenLaneDisplayType GetNextOpenLaneOption(OpenLaneDisplayType current)
-        {
-            int index = Array.IndexOf(OpenLaneOptions, current);
-            return OpenLaneOptions[(index + 1) % OpenLaneOptions.Length];
-        }
 
         private void ToggleControllerLock()
         {
