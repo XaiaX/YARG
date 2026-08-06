@@ -432,6 +432,12 @@ namespace YARG.Tests.EditMode
                 "Maestro must contain the shared Header prefab instance.");
             Assert.That(prefabText, Does.Contain(
                 "guid: fbe721481a76d3340871db2a026bbbcb"));
+            var hierarchyNames = prefab.GetComponentsInChildren<Transform>(true)
+                .Select(transform => transform.name)
+                .ToArray();
+            Assert.That(hierarchyNames, Does.Contain("SharedHeader"));
+            Assert.That(hierarchyNames, Does.Contain("Single Header Text"));
+            Assert.That(hierarchyNames, Does.Contain("Button"));
         }
 
         [Test]
