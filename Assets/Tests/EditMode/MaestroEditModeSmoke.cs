@@ -354,11 +354,11 @@ namespace YARG.Tests.EditMode
             Assert.That(directIndex, Is.GreaterThan(subscribeIndex),
                 "Direct Maestro must be opened only after Difficulty Select has initialized its view and navigation.");
 
-            int conditionIndex = script.text.IndexOf(
-                "MaestroGoDirectlyToSummary.Value", StringComparison.Ordinal);
-            string directBlock = script.text.Substring(conditionIndex,
-                directIndex - conditionIndex + "OpenMaestroSummaryDirectly();".Length);
-            Assert.That(directBlock, Does.Not.Contain("return;"),
+            int onEnableIndex = script.text.IndexOf("private void OnEnable", StringComparison.Ordinal);
+            int helperIndex = script.text.IndexOf(
+                "private void PrepareForDirectMaestroSummary", StringComparison.Ordinal);
+            string onEnable = script.text.Substring(onEnableIndex, helperIndex - onEnableIndex);
+            Assert.That(onEnable, Does.Not.Contain("return;"),
                 "An early return leaves the stale/default Difficulty Select UI behind Maestro.");
         }
 
