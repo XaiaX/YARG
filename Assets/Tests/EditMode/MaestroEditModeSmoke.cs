@@ -109,6 +109,46 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Maestro_Offers_Sit_Out_In_The_Instrument_Choices()
+        {
+            const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+
+            Assert.That(session, Is.Not.Null);
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(session.text, Does.Contain("Instrument.None"),
+                "Sit Out needs a typed sentinel rather than an invalid difficulty value.");
+            Assert.That(session.text, Does.Contain("player.SittingOut = true;"));
+            Assert.That(menu.text, Does.Contain("SitOut"),
+                "The instrument dropdown must present the sentinel as Sit Out.");
+        }
+
+        [Test]
+        public void Maestro_Defaults_Navigation_To_Play_Song()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+            Assert.That(script.text, Does.Contain("_navigationGroup.SelectAt(_navigationGroup.Count - 1);"),
+                "Maestro should open with Play Song focused instead of entering the first profile editor.");
+        }
+
+        [Test]
+        public void Player_Row_Labels_Sitting_Out_With_A_Prominent_Accent()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+            Assert.That(script.text, Does.Contain("player.SittingOut"));
+            Assert.That(script.text, Does.Contain("#FFB636"),
+                "Sitting Out should use the brand yellow accent in the profile summary.");
+        }
+
+        [Test]
         public void Player_Row_Uses_Profile_Marker_Icon_And_Readable_Columns()
         {
             const string path = "Assets/Prefabs/Menu/Maestro/MaestroPlayerRow.prefab";
