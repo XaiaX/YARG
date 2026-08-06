@@ -492,15 +492,9 @@ namespace YARG.Menu.Maestro
 
         private void ConfigureInputFields()
         {
-            _noteSpeedNavigation = MaestroInputNavigatable.Attach(_noteSpeedField);
-            _noteSpeedNavigation?.ConfigureFloat(step: 0.5f, min: 0f, max: 100f, round: 0.1f);
-
-            _highwayLengthNavigation = MaestroInputNavigatable.Attach(_highwayLengthField);
-            _highwayLengthNavigation?.ConfigureFloat(step: 0.1f, min: 0.1f, max: 10f, round: 0.1f);
-
-            _calibrationNavigation = MaestroInputNavigatable.Attach(_inputCalibrationField);
-            _calibrationNavigation?.ConfigureInteger(step: 1, min: long.MinValue, max: long.MaxValue);
-
+            // Clear and wire onEndEdit handlers BEFORE attaching navigatables,
+            // because Attach() adds its own onEndEdit listener for scheme
+            // cleanup — RemoveAllListeners must not wipe it.
             if (_noteSpeedField != null)
             {
                 _noteSpeedField.onEndEdit.RemoveAllListeners();
@@ -516,6 +510,15 @@ namespace YARG.Menu.Maestro
                 _inputCalibrationField.onEndEdit.RemoveAllListeners();
                 _inputCalibrationField.onEndEdit.AddListener(_ => ChangeInputCalibration());
             }
+
+            _noteSpeedNavigation = MaestroInputNavigatable.Attach(_noteSpeedField);
+            _noteSpeedNavigation?.ConfigureFloat(step: 0.5f, min: 0f, max: 100f, round: 0.1f);
+
+            _highwayLengthNavigation = MaestroInputNavigatable.Attach(_highwayLengthField);
+            _highwayLengthNavigation?.ConfigureFloat(step: 0.1f, min: 0.1f, max: 10f, round: 0.1f);
+
+            _calibrationNavigation = MaestroInputNavigatable.Attach(_inputCalibrationField);
+            _calibrationNavigation?.ConfigureInteger(step: 1, min: long.MinValue, max: long.MaxValue);
         }
 
         private void ChangeNoteSpeed()
@@ -845,10 +848,16 @@ namespace YARG.Menu.Maestro
                 difficulty => difficulty.ToLocalizedName());
 
             // Populate numeric input fields (skip any that are actively being edited)
+            bool isInstrumental = selected.GameMode is not GameMode.Vocals
+                and not GameMode.PartyVocals;
             if (_noteSpeedField != null && !_noteSpeedField.isFocused)
-                _noteSpeedField.text = selected.NoteSpeed.ToString("0.0", CultureInfo.CurrentCulture);
+                _noteSpeedField.text = isInstrumental
+                    ? selected.NoteSpeed.ToString("0.0", CultureInfo.CurrentCulture)
+                    : "N/A";
             if (_highwayLengthField != null && !_highwayLengthField.isFocused)
-                _highwayLengthField.text = selected.HighwayLength.ToString("0.0", CultureInfo.CurrentCulture);
+                _highwayLengthField.text = isInstrumental
+                    ? selected.HighwayLength.ToString("0.0", CultureInfo.CurrentCulture)
+                    : "N/A";
             if (_inputCalibrationField != null && !_inputCalibrationField.isFocused)
                 _inputCalibrationField.text =
                     selected.InputCalibrationMilliseconds.ToString(CultureInfo.CurrentCulture);

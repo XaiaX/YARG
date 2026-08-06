@@ -144,6 +144,10 @@ namespace YARG.Menu.Maestro
         /// </summary>
         private static string GetTrackDeltaLabel(MaestroStagedPlayer player)
         {
+            // Speed / length don't apply to vocal modes — never show deltas.
+            if (player.GameMode is GameMode.Vocals or GameMode.PartyVocals)
+                return null;
+
             float speedDelta = Mathf.Round(
                 (player.NoteSpeed - MaestroDefaults.NoteSpeed) * 10f) / 10f;
             float lengthDelta = Mathf.Round(
