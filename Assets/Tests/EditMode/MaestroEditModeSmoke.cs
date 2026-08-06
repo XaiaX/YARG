@@ -426,6 +426,12 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text, Does.Contain("_controllerLockText.gameObject.SetActive(false)"));
             Assert.That(manager.text, Does.Contain("PopToMenu(Menu menu)"));
             Assert.That(prefab.transform.Find("Header"), Is.Not.Null);
+            string prefabText = File.ReadAllText(
+                "Assets/Prefabs/Menu/Maestro/MaestroSetupMenu.prefab");
+            Assert.That(prefabText, Does.Contain("value: SharedHeader"),
+                "Maestro must contain the shared Header prefab instance.");
+            Assert.That(prefabText, Does.Contain(
+                "guid: fbe721481a76d3340871db2a026bbbcb"));
         }
 
         [Test]

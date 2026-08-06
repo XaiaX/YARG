@@ -146,14 +146,18 @@ namespace YARG.Menu.Maestro
             if (header == null)
                 return;
 
-            var pageTitle = header.Find("Single Header Text")?.GetComponent<TMP_Text>();
+            // Maestro's authored Header is the song-info host. The shared visual
+            // header is nested beneath it so the song title/icon can remain separate
+            // from the centered page title and red back button.
+            var sharedHeader = header.Find("SharedHeader") ?? header.Find("Header") ?? header;
+            var pageTitle = sharedHeader.Find("Single Header Text")?.GetComponent<TMP_Text>();
             if (pageTitle != null)
             {
                 pageTitle.gameObject.SetActive(true);
                 pageTitle.text = "Player Settings Summary";
             }
 
-            var backButton = FindHeaderBackButton(header);
+            var backButton = FindHeaderBackButton(sharedHeader);
             if (backButton != null)
             {
                 backButton.onClick.RemoveAllListeners();
