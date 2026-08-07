@@ -22,9 +22,14 @@ namespace YARG.Menu.Maestro
     /// Compact, stable-ID keyed overview row for one staged Maestro player.
     /// The row has no profile mutation responsibilities; selection is reported to the page.
     /// </summary>
-    public sealed class MaestroPlayerRow : NavigatableBehaviour, IPointerClickHandler
+    public sealed class MaestroPlayerRow : NavigatableBehaviour, IPointerClickHandler, IPointerExitHandler
     {
         private static readonly Dictionary<string, Sprite> IconCache = new();
+
+        // Delay before a hover selects the row, so quick diagonal mouse
+        // movements don't flicker through intermediate rows.
+        private const float HoverSelectDelay = 0.12f;
+        private float _hoverTimer = -1f;
 
         [SerializeField] private TMP_Text _name;
         [SerializeField] private Image _gameModeIcon;
@@ -221,6 +226,34 @@ namespace YARG.Menu.Maestro
             var color = baseColor;
             color.a = baseColor.a * alpha;
             graphic.color = color;
+        }
+
+        public override void OnPointerMove(PointerEventData eventData)
+        {
+            if (!_selectOnHover) return;
+
+            // Start the hover timer once; Update counts it down and selects
+            // only if the mouse lingers. Quick sweeps cancel via OnPointerExit.
+            if (_hoverTimer < 0f && !Selected)
+                _hoverTimer = HoverSelectDelay;
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            _hoverTimer = -1f;
+        }
+
+        private void Update()
+        {
+            if (_hoverTimer >= 0f)
+            {
+                _hoverTimer -= Time.deltaTime;
+                if (_hoverTimer <= 0f)
+                {
+                    _hoverTimer = -1f;
+                    SetSelected(true, SelectionOrigin.Mouse);
+                }
+            }
         }
 
         public override void Confirm()

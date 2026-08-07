@@ -692,6 +692,13 @@ namespace YARG.Menu.Maestro
                 _playButton?.SetSelected(false, SelectionOrigin.Programmatically);
                 SelectPlayer(row.ProfileId);
             }
+            else if (selected == _playButton && _editingPlayer)
+            {
+                // Play button was clicked/hovered while the right-side editor
+                // is focused. Exit the editor so the click goes through on the
+                // first try instead of requiring a second click.
+                FinishEditingPlayer();
+            }
         }
 
         private void OnRightNavigationSelectionChanged(NavigatableBehaviour selected,
