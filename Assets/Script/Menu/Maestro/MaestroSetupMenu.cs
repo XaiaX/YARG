@@ -1365,11 +1365,15 @@ namespace YARG.Menu.Maestro
             if (_leaving || Session == null)
                 return;
 
+            // Continue() is only reachable from a mouse click on the Play button
+            // (keyboard Green calls Confirm() on the current group's selection).
+            // If the editor is focused, exit it and fall through to commit —
+            // don't eat the click and force a second one. (The Play button's
+            // Selected state is already true from initial focus, so
+            // OnPointerDown's SetSelected is a no-op and OnNavigationSelectionChanged
+            // never fires to trigger FinishEditingPlayer via that path.)
             if (_editingPlayer)
-            {
                 FinishEditingPlayer();
-                return;
-            }
 
             var result = Session.TryCommit();
             if (!result.Success)
