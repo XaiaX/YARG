@@ -318,7 +318,7 @@
             "PlayWithReplay": "Play With Replay"
         },
         "Main": {
-            "MessageOfTheDay": "<align=center><size=32><b>Welcome to v0.15!</b></size></align>\n\nv0.15 is a major update that adds many highly requested and necessary gameplay features such as roll/trill lanes and Big \"YARG\" endings, as well as revamped user interface in the song selection and results screen, drum lane customization, automatic genre categorization, experimental custom vocalist characters in venues, and more.\n\n<b>If you have any feedback or find any bugs, please let us know on Discord or GitHub.</b>\n\nHappy YARGin'!",
+            "MessageOfTheDay": "<align=center><size=32><b>Party Vocals Prototype</b></size></align>\n\nThis is an <b>unofficial, unsupported</b> prototype build of YARG with experimental <b>Party Vocals</b> support — multiple singers sharing one vocal highway (solo + harmonies), plus related fixes.\n\nIt is <b>not</b> an official YARG release or Nightly build. <b>Please do not report issues from this build to the YARG Discord or GitHub</b> — it isn't theirs to support.\n\nHappy YARGin'!",
             "Options": {
                 "Quickplay": "Quickplay",
                 "Practice": "Practice",
