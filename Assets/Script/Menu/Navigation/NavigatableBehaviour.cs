@@ -65,7 +65,7 @@ namespace YARG.Menu.Navigation
         {
         }
 
-        public void OnPointerMove(PointerEventData eventData)
+        public virtual void OnPointerMove(PointerEventData eventData)
         {
             if (_selectOnHover)
             {
