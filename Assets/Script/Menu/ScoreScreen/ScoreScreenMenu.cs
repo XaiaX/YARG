@@ -100,48 +100,6 @@ namespace YARG.Menu.ScoreScreen
 
             var scoreScreenStats = GlobalVariables.State.ScoreScreenStats.Value;
 
-#if UNITY_EDITOR || YARG_NIGHTLY_BUILD || YARG_TEST_BUILD
-            // Do analysis of replay before showing any score data
-            // This will make it so that if the analysis takes a while the screen is blank
-            // (kinda like a loading screen)
-            try
-            {
-                if (!AnalyzeReplay(song, scoreScreenStats.ReplayInfo))
-                {
-#if YARG_TEST_BUILD
-                    // FORK-LOCAL (Party Vocals prototype): suppress the user-facing "report this
-                    // to GitHub/Discord" dialog. This is an unofficial/unsupported build and we
-                    // do NOT want testers reporting replay-hash mismatches to the YARG channels.
-                    // Known issue intentionally HIDDEN, not fixed: replay analysis can be
-                    // inconsistent on this branch. Still logged locally so it isn't lost. Restore
-                    // the dialog before upstreaming. See docs/party-vocals-prototype-build-branding.md.
-                    YargLogger.LogFormatWarning(
-                        "Replay analysis produced inconsistent results (report dialog suppressed in prototype build). Chart Hash: {0}",
-                        song.Hash);
-#else
-                    DialogManager.Instance.ShowMessage("Inconsistent Replay Results!",
-                        "The replay analysis for this run produced inconsistent results to the actual gameplay.\n" +
-                        "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
-                        $"Chart Hash: {song.Hash}");
-#endif
-                }
-            }
-            catch (Exception ex)
-            {
-                YargLogger.LogException(ex, $"Failed to analyze replay! Song hash: {song.Hash}");
-#if YARG_TEST_BUILD
-                // FORK-LOCAL (Party Vocals prototype): suppress the user-facing report dialog
-                // (same rationale as above — the exception is already logged just above).
-                // Restore before upstreaming. See docs/party-vocals-prototype-build-branding.md.
-#else
-                DialogManager.Instance.ShowMessage("Failed To Analyze Replay!",
-                    "The replay analysis for this run resulted in an unexpected error.\n" +
-                    "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
-                    $"Chart Hash: {song.Hash}");
-#endif
-            }
-#endif
-
             // Play audience chatter
             if (SettingsManager.Settings.UseCrowdFx.Value == CrowdFxMode.Enabled)
             {
@@ -174,6 +132,39 @@ namespace YARG.Menu.ScoreScreen
             CreateScoreCards(scoreScreenStats);
 
             SetNavigationScheme();
+
+            // Analyze replay AFTER setting up the score screen's navigation scheme,
+            // so any error dialog's scheme is pushed on top (not buried underneath).
+            // The analysis is synchronous — by the time the user can interact,
+            // _analyzingReplay is already false.
+#if UNITY_EDITOR || YARG_NIGHTLY_BUILD || YARG_TEST_BUILD
+            try
+            {
+                if (!AnalyzeReplay(song, scoreScreenStats.ReplayInfo))
+                {
+#if YARG_TEST_BUILD
+                    YargLogger.LogFormatWarning(
+                        "Replay analysis produced inconsistent results (report dialog suppressed in prototype build). Chart Hash: {0}",
+                        song.Hash);
+#else
+                    DialogManager.Instance.ShowMessage("Inconsistent Replay Results!",
+                        "The replay analysis for this run produced inconsistent results to the actual gameplay.\n" +
+                        "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
+                        $"Chart Hash: {song.Hash}");
+#endif
+                }
+            }
+            catch (Exception ex)
+            {
+                YargLogger.LogException(ex, $"Failed to analyze replay! Song hash: {song.Hash}");
+#if !YARG_TEST_BUILD
+                DialogManager.Instance.ShowMessage("Failed To Analyze Replay!",
+                    "The replay analysis for this run resulted in an unexpected error.\n" +
+                    "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
+                    $"Chart Hash: {song.Hash}");
+#endif
+            }
+#endif
 
             _sourceIcon.sprite = SongSources.SourceToIcon(song.Source);
 
