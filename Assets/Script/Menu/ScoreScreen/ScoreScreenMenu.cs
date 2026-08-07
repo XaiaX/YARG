@@ -296,11 +296,7 @@ namespace YARG.Menu.ScoreScreen
             if (needed > available && needed > 0f)
             {
                 float scale = Mathf.Clamp(available / needed, 0.5f, 1f);
-                // Scale width down to fit, and height inversely up to fill the
-                // vertical space freed by the horizontal compression. Clamped
-                // to 2x so text doesn't stretch unreasonably.
-                float heightScale = Mathf.Clamp(1f / scale, 1f, 2f);
-                _cardContainer.localScale = new Vector3(scale, heightScale, 1f);
+                _cardContainer.localScale = new Vector3(scale, scale, 1f);
                 _cardScrollRect.horizontal = false;
             }
             else
