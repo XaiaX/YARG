@@ -276,6 +276,11 @@ namespace YARG.Menu.ScoreScreen
             // Make sure to update the canvases since we *just* added the score cards
             Canvas.ForceUpdateCanvases();
 
+            // Scale down the card container if the cards overflow the viewport.
+            // Four cards fit at full size; beyond that we shrink so all cards
+            // remain visible without horizontal scrolling.
+            FitScoreCardsToViewport();
+
             // If the scroll bar is active, make it all the way to the left
             InitializeScrollRect();
 
@@ -287,6 +292,30 @@ namespace YARG.Menu.ScoreScreen
         {
             _horizontalScrollTween?.Kill();
             _horizontalScrollTween = null;
+        }
+
+        private void FitScoreCardsToViewport()
+        {
+            if (_cardScrollRect?.viewport is not RectTransform viewport) return;
+            if (_cardContainer is not RectTransform content) return;
+
+            float available = viewport.rect.width;
+            float needed = content.rect.width;
+
+            if (needed > available && needed > 0f)
+            {
+                float scale = Mathf.Clamp(available / needed, 0.5f, 1f);
+                _cardContainer.localScale = new Vector3(scale, scale, 1f);
+                _cardScrollRect.horizontal = false;
+            }
+            else
+            {
+                _cardContainer.localScale = Vector3.one;
+                _cardScrollRect.horizontal = true;
+            }
+
+            if (_cardScrollRect.horizontalScrollbar != null)
+                _cardScrollRect.horizontalScrollbar.gameObject.SetActive(_cardScrollRect.horizontal);
         }
 
         private async void InitializeScrollRect()
