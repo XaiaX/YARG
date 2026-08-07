@@ -1002,6 +1002,17 @@ namespace YARG.Menu.Maestro
             var values = song[instrument];
             if ((instrument is Instrument.Harmony or Instrument.PartyVocals) && !values.IsActive())
                 values = song[Instrument.Vocals];
+            // 5-lane drums are usually a down-converted version of pro drums,
+            // and vice versa. Fall back so the tier is always shown.
+            if (!values.IsActive())
+            {
+                values = instrument switch
+                {
+                    Instrument.FiveLaneDrums => song[Instrument.ProDrums],
+                    Instrument.ProDrums or Instrument.FourLaneDrums => song[Instrument.FiveLaneDrums],
+                    _ => values,
+                };
+            }
             return values;
         }
 

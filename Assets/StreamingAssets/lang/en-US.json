@@ -26,7 +26,8 @@
             "ProGuitar": "Pro Guitar (17-Fret, 22-Fret)",
             "ProKeys": "Keys (5-Lane, Pro)",
             "Menu": "Menu",
-            "Vocals": "Vocals"
+            "Vocals": "Vocals",
+            "PartyVocals": "Party Vocals"
         },
         "Instrument": {
             "FiveFretGuitar": "Guitar",
