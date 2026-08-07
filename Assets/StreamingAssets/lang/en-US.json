@@ -133,6 +133,8 @@
             "Confirm": "Confirm",
             "Continue": "Continue",
             "Toggle": "Toggle",
+            "ControllersLocked": "CONTROLLERS (LOCKED)",
+            "ControllersUnlocked": "CONTROLLERS (UNLOCKED)",
             "On": "On",
             "Off": "Off",
             "Start": "Start",
@@ -1056,7 +1058,10 @@
             "RefreshCache": "Scan Songs",
             "OpenExecutablePath": "Open Executable Path",
             "OpenPersistentDataPath": "Open Persistent Data Path",
-            "RemoveRemoteContent": "Remove Cached Content"
+            "RemoveRemoteContent": "Remove Cached Content",
+            "ShowMaestroPairingPin": "Show Maestro Pairing PIN",
+            "SkipToMaestroOn": "Skip to Maestro (On)",
+            "SkipToMaestroOff": "Skip to Maestro (Off)"
         },
         "Setting": {
             "AllowDuplicateSongs": {
@@ -1668,6 +1673,18 @@
             "DataStreamEnable": {
                 "Name": "Enable UDP data stream",
                 "Description": "Enables sending of UDP information packets over the network, for software such as YALCY."
+            },
+            "MaestroEnable": {
+                "Name": "Enable Maestro",
+                "Description": "Hosts the Maestro browser companion on this computer. Profile changes apply at the next safe song boundary, while supported volume controls apply immediately."
+            },
+            "MaestroGoDirectlyToSummary": {
+                "Name": "Go Directly To Maestro Summary",
+                "Description": "Skip the individual player setup pages and open the Maestro summary page immediately."
+            },
+            "ShowMaestroPairingPin": {
+                "Name": "Show Maestro Pairing PIN",
+                "Description": "Displays the current pairing PIN required to authorize Maestro commands."
             },
             "RB3EEnabled": {
                 "Name": "Enable RB3E Stage Kit data stream",
