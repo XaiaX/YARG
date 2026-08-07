@@ -49,6 +49,7 @@
             "ProKeys": "Pro Keys",
             "Vocals": "Vocals",
             "Harmony": "Harmony",
+            "PartyVocals": "Party Vocals",
             "Dj": "DJ",
             "Band": "Band"
         },
@@ -523,6 +524,8 @@
             "ShowAdvanced": "Show Advanced",
             "HideAdvanced": "Hide Advanced",
             "EndSetlistEarly" : "End Setlist",
+            "PhraseSummaryHeader": "Phrase Breakdown",
+            "Percussion": "Percussion",
             "ViewReplay": "View Replay"
         },
         "Settings": {
