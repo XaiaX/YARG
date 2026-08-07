@@ -7,7 +7,7 @@ namespace YARG.Menu.Navigation
     public abstract class NavigatableBehaviour : MonoBehaviour, IPointerMoveHandler, IPointerDownHandler
     {
         [SerializeField]
-        private bool _selectOnHover;
+        protected bool _selectOnHover;
         [SerializeField]
         private bool _selectOnClick = true;
 
