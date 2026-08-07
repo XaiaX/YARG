@@ -221,19 +221,6 @@ namespace YARG.Menu.Navigation
             }
         }
 
-        private void ClearTrackedInputs()
-        {
-            _repeatInputs.Clear();
-
-            for (int i = _holdInputs.Count - 1; i >= 0; i--)
-            {
-                _holdInputs[i].Tracker.StopHolding();
-                _holdInputs[i].Tracker.ClearEvents();
-            }
-
-            _holdInputs.Clear();
-        }
-
         private void Start()
         {
             InputManager.MenuInput += ProcessInput;
