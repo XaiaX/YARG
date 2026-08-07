@@ -42,10 +42,9 @@ namespace YARG.Settings.Preview
                 noteGroup.Group.SetActive(false);
             }
 
-            // Find the correct note group
-            var pair = _noteGroups.Find(i => i.NoteType == NoteRef.NoteType);
-            _currentNoteGroup = pair.Group != null ? pair.Group
-                : _noteGroups.Find(i => i.NoteType == ThemeNoteType.Normal).Group;
+            // Find the correct note group, with hierarchical fallback for
+            // cymbal variants (CymbalAccent/CymbalGhost → Cymbal → Normal)
+            _currentNoteGroup = FindNoteGroup(NoteRef.NoteType);
 
             if (!NoteRef.CenterNote)
             {
@@ -76,6 +75,13 @@ namespace YARG.Settings.Preview
             _currentNoteGroup.SetActive(true);
             _currentNoteGroup.Initialize();
 
+            // Open HOPO notes have EmissionAddition: 1 in the prefab which
+            // washes the color to white. Reset it so the dedicated color shows.
+            if (NoteRef.NoteType == ThemeNoteType.OpenHOPO)
+            {
+                _currentNoteGroup.ResetEmissionAddition();
+            }
+
             // Get all materials
             _materials.Clear();
             var meshRenderers = GetComponentsInChildren<MeshRenderer>(true);
@@ -94,6 +100,23 @@ namespace YARG.Settings.Preview
             gameObject.SetActive(true);
         }
 
+        private NoteGroup FindNoteGroup(ThemeNoteType type)
+        {
+            // Try the exact type first
+            var pair = _noteGroups.Find(i => i.NoteType == type);
+            if (pair.Group != null) return pair.Group;
+
+            // Cymbal variants fall back to Cymbal before Normal
+            if (type is ThemeNoteType.CymbalAccent or ThemeNoteType.CymbalGhost)
+            {
+                pair = _noteGroups.Find(i => i.NoteType == ThemeNoteType.Cymbal);
+                if (pair.Group != null) return pair.Group;
+            }
+
+            // Final fallback: Normal
+            return _noteGroups.Find(i => i.NoteType == ThemeNoteType.Normal).Group;
+        }
+
         public void OnSettingChanged()
         {
             var cameraPreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.CameraSettings);
@@ -102,7 +125,7 @@ namespace YARG.Settings.Preview
 
             // Update color
             var info = FakeTrackPlayer.CurrentGameModeInfo;
-            var useStarPower = FakeTrackPlayer.ForceStarPowerNotes;
+            var useStarPower = NoteRef.ForceStarPower ?? FakeTrackPlayer.ForceStarPowerNotes;
 
             // Guitar lefty flip reverses the color order (Green<->Orange, Red<->Blue)
             // without moving notes: look up the mirrored fret's color, but keep the
@@ -124,6 +147,49 @@ namespace YARG.Settings.Preview
             var color = useStarPower && info.NoteStarPowerColorProvider is not null
                 ? info.NoteStarPowerColorProvider(colorProfile, colorRef)
                 : info.NoteColorProvider(colorProfile, colorRef);
+
+            // Open HOPO notes use a dedicated color (the prefab's
+            // EmissionAddition: 1 washes to white by default)
+            if (NoteRef.NoteType == ThemeNoteType.OpenHOPO &&
+                FakeTrackPlayer.SelectedGameMode == GameMode.FiveFretGuitar)
+            {
+                color = (useStarPower
+                    ? colorProfile.FiveFretGuitar.OpenHopoNoteStarPower
+                    : colorProfile.FiveFretGuitar.OpenHopoNote).ToUnityColor();
+            }
+
+            // Miss is the highest-priority preview override.
+            if (NoteRef.ForceMiss)
+            {
+                color = (FakeTrackPlayer.SelectedGameMode switch
+                {
+                    GameMode.FiveFretGuitar => colorProfile.FiveFretGuitar.Miss,
+                    GameMode.FourLaneDrums  => colorProfile.FourLaneDrums.Miss,
+                    GameMode.FiveLaneDrums  => colorProfile.FiveLaneDrums.Miss,
+                    GameMode.ProKeys        => FakeTrackPlayer.UseFiveLaneKeys
+                        ? colorProfile.FiveFretGuitar.Miss
+                        : colorProfile.ProKeys.Miss,
+                    _ => colorProfile.FiveFretGuitar.Miss,
+                }).ToUnityColor();
+            }
+
+            // Override dark-strip emission for tap and ghost notes from the
+            // color profile. These note types have a strip material with
+            // EmissionMultiplier 0 in the prefab; the user can boost it.
+            float stripEmission = NoteRef.NoteType switch
+            {
+                ThemeNoteType.Tap => colorProfile.FiveFretGuitar.TapStripEmission / 100f,
+                ThemeNoteType.Ghost or ThemeNoteType.CymbalGhost =>
+                    FakeTrackPlayer.SelectedGameMode == GameMode.FiveLaneDrums
+                        ? colorProfile.FiveLaneDrums.GhostStripEmission / 100f
+                        : colorProfile.FourLaneDrums.GhostStripEmission / 100f,
+                _ => -1f, // No override
+            };
+            if (stripEmission >= 0f)
+            {
+                _currentNoteGroup.OverrideZeroEmission(stripEmission);
+            }
+
             _currentNoteGroup.SetColorWithEmission(color, color);
 
             // Set metal color

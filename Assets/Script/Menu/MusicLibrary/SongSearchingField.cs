@@ -4,10 +4,14 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Extensions;
+using YARG.Core.Input;
 using YARG.Helpers.Extensions;
+using YARG.Menu.Navigation;
 using YARG.Song;
 
 namespace YARG.Menu.MusicLibrary
@@ -38,12 +42,17 @@ namespace YARG.Menu.MusicLibrary
         [SerializeField]
         private TMP_InputField _searchField;
         [SerializeField]
+        private GameObject _focusBorder;
+        [SerializeField]
+        private Image _focusBackground;
+        [SerializeField]
         private TextMeshProUGUI _searchPlaceholderText;
         [SerializeField]
         private ColoredButtonGroup _searchFilters;
 
         private readonly SongSearching _searchContext = new();
         private string _currentSearchText = string.Empty;
+        private bool _searchNavigationActive;
 
         public bool IsSearching => !string.IsNullOrEmpty(_fullSearchQuery);
         public bool IsCurrentSearchInField => _searchQueries[_currentSearchFilter] == _searchField.text;
@@ -55,6 +64,11 @@ namespace YARG.Menu.MusicLibrary
         private void OnEnable()
         {
             _searchFilters.ClickedButton += OnClickedSearchFilter;
+            _searchField.onSelect.AddListener(OnSearchFieldSelected);
+            _searchField.onDeselect.AddListener(OnSearchFieldDeselected);
+
+            _focusBorder.SetActive(_searchField.isFocused);
+            _focusBackground.enabled = _searchField.isFocused;
         }
 
         public void Focus()
@@ -283,6 +297,54 @@ namespace YARG.Menu.MusicLibrary
         private void OnDisable()
         {
             _searchFilters.ClickedButton -= OnClickedSearchFilter;
+            _searchField.onSelect.RemoveListener(OnSearchFieldSelected);
+            _searchField.onDeselect.RemoveListener(OnSearchFieldDeselected);
+            DisableSearchNavigation();
+        }
+
+        private void OnSearchFieldSelected(string _)
+        {
+            _focusBorder.SetActive(true);
+            _focusBackground.enabled = true;
+
+            if (_searchNavigationActive)
+            {
+                return;
+            }
+
+            var scheme = new NavigationScheme(new()
+            {
+                new NavigationScheme.Entry(MenuAction.Red, "Menu.MusicLibrary.ExitSearchHold",
+                    handler: null, onHoldHandler: ClearSearchFocus, holdSeconds: 0.5f, hide: false),
+                new NavigationScheme.Entry(MenuAction.Search, "Menu.MusicLibrary.Search",
+                    ClearSearchFocus, hide: true),
+            }, allowsMusicPlayer: null, popCallback: () => _searchNavigationActive = false);
+
+            _searchNavigationActive = true;
+            Navigator.Instance.PushTextInputScheme(scheme);
+        }
+
+        private void OnSearchFieldDeselected(string _)
+        {
+            _focusBorder.SetActive(false);
+            _focusBackground.enabled = false;
+            DisableSearchNavigation();
+        }
+
+        private static void ClearSearchFocus()
+        {
+            EventSystem.current?.SetSelectedGameObject(null);
+        }
+
+        private void DisableSearchNavigation()
+        {
+            if (!_searchNavigationActive)
+            {
+                return;
+            }
+
+            Navigator.Instance.PopScheme();
+            _searchNavigationActive = false;
         }
 
         public bool HasInstrumentFilter(Instrument instrument)

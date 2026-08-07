@@ -67,13 +67,8 @@ namespace YARG.Menu.Maestro
             _inputField = inputField;
             CaptureDefaultColor();
 
-            // We manage navigation ourselves during editing, so the TextFieldNavigationDisabler
-            // (which pushes an empty scheme on focus) must be disabled to avoid blocking
-            // the increment/decrement scheme.
-            var disabler = _inputField.GetComponent<TextFieldNavigationDisabler>();
-            if (disabler != null)
-                disabler.enabled = false;
-
+            // The Navigator now handles blocking menu input while text fields
+            // are focused (replacing the old TextFieldNavigationDisabler).
             _inputField.onEndEdit.AddListener(OnEndEdit);
 
             if (_focusBorder == null)
@@ -179,7 +174,7 @@ namespace YARG.Menu.Maestro
                         new(MenuAction.Up, "Menu.Common.Up", _ => Adjust(+1)),
                         new(MenuAction.Down, "Menu.Common.Down", _ => Adjust(-1)),
                     }, null);
-                    Navigator.Instance?.PushScheme(_editScheme);
+                    Navigator.Instance?.PushTextInputScheme(_editScheme);
                 }
             }
             else

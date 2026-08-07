@@ -4,7 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
+using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using YARG.Core.Input;
 using YARG.Input;
 using YARG.Menu.Persistent;
@@ -113,6 +115,8 @@ namespace YARG.Menu.Navigation
         private readonly HashSet<int> _controllerLockTokens = new();
 
         public bool ControllerLockEnabled => _controllerLockTokens.Count > 0;
+        private NavigationInputBlockState _inputBlockState;
+        private int _textInputSchemeCount;
 
         public bool DisableMenuInputs
         {
@@ -134,11 +138,11 @@ namespace YARG.Menu.Navigation
 
             if (_disableMenuInputs)
             {
-                ClearHeldInputs();
+                ClearTrackedInputs();
             }
         }
 
-        private void ClearHeldInputs()
+        private void ClearTrackedInputs()
         {
             _repeatInputs.Clear();
 
@@ -160,7 +164,7 @@ namespace YARG.Menu.Navigation
             _controllerLockTokens.Add(token);
             if (!wasEnabled)
             {
-                ClearHeldInputs();
+                ClearTrackedInputs();
             }
 
             return new ControllerLockScope(this, token);
@@ -190,6 +194,46 @@ namespace YARG.Menu.Navigation
             }
         }
 
+        public IDisposable PushInputBlocker()
+        {
+            _inputBlockState = _inputBlockState.AddBlocker();
+            ClearTrackedInputs();
+
+            return new InputBlocker(() =>
+            {
+                _inputBlockState = _inputBlockState.RemoveBlocker();
+            });
+        }
+
+        private sealed class InputBlocker : IDisposable
+        {
+            private Action _release;
+
+            public InputBlocker(Action release)
+            {
+                _release = release;
+            }
+
+            public void Dispose()
+            {
+                _release?.Invoke();
+                _release = null;
+            }
+        }
+
+        private void ClearTrackedInputs()
+        {
+            _repeatInputs.Clear();
+
+            for (int i = _holdInputs.Count - 1; i >= 0; i--)
+            {
+                _holdInputs[i].Tracker.StopHolding();
+                _holdInputs[i].Tracker.ClearEvents();
+            }
+
+            _holdInputs.Clear();
+        }
+
         private void Start()
         {
             InputManager.MenuInput += ProcessInput;
@@ -200,10 +244,7 @@ namespace YARG.Menu.Navigation
         {
             if (ShouldBlockInputs())
             {
-                if (_repeatInputs.Count > 0 || _holdInputs.Count > 0)
-                {
-                    ClearHeldInputs();
-                }
+                ClearTrackedInputs();
                 return;
             }
 
@@ -404,6 +445,31 @@ namespace YARG.Menu.Navigation
         public bool IsTopScheme(NavigationScheme scheme) =>
             scheme != null && _schemeStack.Count > 0 && ReferenceEquals(_schemeStack.Peek(), scheme);
 
+        /// <summary>
+        /// Pushes a scheme immediately, without waiting for any open dialog to
+        /// close. Use this for schemes that must be active *while* a dialog is
+        /// open (e.g. the color picker's slider-edit scheme). The async
+        /// <see cref="PushScheme"/> would otherwise delay the push until the
+        /// dialog closes — by which point the dialog's objects are destroyed.
+        /// </summary>
+        public void PushSchemeImmediate(NavigationScheme scheme)
+        {
+            _schemeStack.Push(scheme);
+            UpdateHelpBar().Forget();
+        }
+
+        /// <summary>
+        /// Pushes a scheme that is allowed to receive input while a TMP input field is
+        /// focused. This is reserved for text-editing actions such as leaving Music
+        /// Library search; ordinary menu navigation remains blocked.
+        /// </summary>
+        public void PushTextInputScheme(NavigationScheme scheme)
+        {
+            _textInputSchemeCount++;
+            scheme.PopCallback += () => _textInputSchemeCount = Mathf.Max(0, _textInputSchemeCount - 1);
+            PushSchemeImmediate(scheme);
+        }
+
         public void PopScheme()
         {
             var scheme = _schemeStack.Pop();
@@ -473,7 +539,15 @@ namespace YARG.Menu.Navigation
 
         private bool ShouldBlockInputs()
         {
-            return DisableMenuInputs || LoadingScreen.IsActive;
+            bool blockedByTextInput = IsTextInputFocused() && _textInputSchemeCount <= 0;
+            return DisableMenuInputs || _inputBlockState.IsBlocked || LoadingScreen.IsActive || blockedByTextInput;
+        }
+
+        private static bool IsTextInputFocused()
+        {
+            var selectedGameObject = EventSystem.current?.currentSelectedGameObject;
+            return selectedGameObject != null &&
+                selectedGameObject.GetComponentInParent<TMP_InputField>()?.isFocused == true;
         }
 
         private bool ShouldBlockContext(NavigationContext context)
