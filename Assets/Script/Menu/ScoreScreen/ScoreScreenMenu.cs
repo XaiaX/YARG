@@ -297,7 +297,10 @@ namespace YARG.Menu.ScoreScreen
                 : Mathf.Clamp(4f / cardCount, 0.5f, 1f);
 
             _cardContainer.localScale = new Vector3(scale, scale, 1f);
-            _cardScrollRect.horizontal = scale < 1f;
+            // Only disable scrolling when we've actually scaled down to fit.
+            // At full scale, keep it enabled as a fallback in case cards
+            // still overflow the viewport (e.g. narrow window).
+            _cardScrollRect.horizontal = scale >= 1f;
 
             if (_cardScrollRect.horizontalScrollbar != null)
                 _cardScrollRect.horizontalScrollbar.gameObject.SetActive(_cardScrollRect.horizontal);
