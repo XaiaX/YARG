@@ -279,6 +279,16 @@ namespace YARG.Gameplay
                 ToggleDebugEnabled();
             }
 
+            // In-game vocal volume adjustment (prototype shortcut)
+            if (Keyboard.current.leftBracketKey.wasPressedThisFrame)
+            {
+                AdjustVocalVolume(-0.1f);
+            }
+            if (Keyboard.current.rightBracketKey.wasPressedThisFrame)
+            {
+                AdjustVocalVolume(0.1f);
+            }
+
             // Skip the rest if paused
             if (_songRunner.Paused)
             {
@@ -544,6 +554,17 @@ namespace YARG.Gameplay
                 player.SendInputsOnResume();
             }
 
+        }
+
+        /// <summary>
+        /// Prototype shortcut: adjust vocal stem volume with [ and ] keys during gameplay.
+        /// </summary>
+        private static void AdjustVocalVolume(float delta)
+        {
+            var setting = SettingsManager.Settings.VocalsVolume;
+            setting.Value = Mathf.Clamp01(setting.Value + delta);
+            int pct = Mathf.RoundToInt(setting.Value * 100f);
+            ToastManager.ToastInformation($"Vocal Volume: {pct}%");
         }
 
         public void SetPaused(bool paused)
