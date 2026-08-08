@@ -38,7 +38,12 @@ namespace YARG.Gameplay
                     ++Audible;
                 }
 
-                return Volume * Audible / Total;
+                // Lerp between the miss-volume floor and full volume based on
+                // how many players are still audible. A floor of 0 reproduces
+                // the original behavior (full mute when all players miss).
+                double ratio = Total > 0 ? (double) Audible / Total : 1.0;
+                double floor = SettingsManager.Settings.MuteOnMissVolume.Value;
+                return Volume * Mathf.Lerp((float) floor, 1f, (float) ratio);
             }
 
             public bool SetReverb(bool reverb)

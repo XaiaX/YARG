@@ -283,6 +283,14 @@ namespace YARG.Settings
                 AudioFxMode.On
             };
 
+            /// <summary>
+            /// Floor volume for mute-on-miss. 0 = full mute (default),
+            /// 1 = no muting at all. When players miss notes, the stem
+            /// volume lerps between this floor and full volume based on
+            /// how many players are still audible.
+            /// </summary>
+            public VolumeSetting MuteOnMissVolume { get; } = new(0f);
+
             public DropdownSetting<AudioFxMode> UseStarpowerFx { get; } = new(AudioFxMode.On)
             {
                 AudioFxMode.Off,

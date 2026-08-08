@@ -117,6 +117,7 @@ namespace YARG.Settings
 
                 new HeaderMetadata("Gameplay"),
                 nameof(Settings.MuteOnMiss),
+                new FieldMetadata(nameof(Settings.MuteOnMissVolume)),
                 nameof(Settings.UseStarpowerFx),
                 nameof(Settings.UseCrowdFx),
                 nameof(Settings.OverstrumAndOverhitSoundEffects),

@@ -1419,6 +1419,10 @@
                     "On": "On - Background limited to 50%"
                 }
             },
+            "MuteOnMissVolume": {
+                "Name": "Mute On Miss Volume",
+                "Description": "Controls how quiet the stem gets when you miss. 0% fully mutes, 100% keeps full volume."
+            },
             "NoKicks": {
                 "Name": "No Kicks",
                 "Description": "Removes all kick notes (drums only)."
