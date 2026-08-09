@@ -117,11 +117,11 @@ namespace YARG.Menu.Maestro
             labelObject.transform.SetParent(_songSpeedField.transform.parent, false);
 
             var labelRect = (RectTransform)labelObject.transform;
-            labelRect.anchorMin = new Vector2(1f, 0f);
-            labelRect.anchorMax = new Vector2(1f, 0f);
-            labelRect.pivot = new Vector2(1f, 0.5f);
+            labelRect.anchorMin = new Vector2(1f, 1f);
+            labelRect.anchorMax = new Vector2(1f, 1f);
+            labelRect.pivot = new Vector2(1f, 1f);
             labelRect.anchoredPosition = new Vector2(-335f, 0f);
-            labelRect.sizeDelta = new Vector2(300f, 64f);
+            labelRect.sizeDelta = new Vector2(300f, 100f);
 
             var label = labelObject.GetComponent<TextMeshProUGUI>();
             label.font = _songSpeedLabelFont;
