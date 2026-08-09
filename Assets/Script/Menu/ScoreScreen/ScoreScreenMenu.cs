@@ -180,7 +180,9 @@ namespace YARG.Menu.ScoreScreen
             MusicLibraryMenu.CurrentlyPlaying = GlobalVariables.State.CurrentSong;
             if (!GlobalVariables.State.PlayingAShow && !_restartingSong)
             {
+                float songSpeed = GlobalVariables.State.SongSpeed;
                 GlobalVariables.State = PersistentState.Default;
+                GlobalVariables.State.SongSpeed = songSpeed;
             }
 
             if (SettingsManager.Settings.UseCrowdFx.Value == CrowdFxMode.Enabled)

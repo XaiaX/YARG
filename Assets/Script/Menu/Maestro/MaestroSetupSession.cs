@@ -230,7 +230,6 @@ namespace YARG.Menu.Maestro
                 return;
 
             player.GameMode = gameMode;
-            player.SittingOut = false;
             NormalizeDependentSelections(player);
         }
 
@@ -240,7 +239,6 @@ namespace YARG.Menu.Maestro
                 !IsInstrumentAvailable(player, player.GameMode, instrument))
                 return;
 
-            player.SittingOut = false;
             player.Instrument = instrument;
             player.PreferredInstrument = instrument;
             NormalizeDependentSelections(player);
