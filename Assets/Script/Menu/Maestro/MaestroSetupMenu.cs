@@ -104,6 +104,31 @@ namespace YARG.Menu.Maestro
         private void Awake()
         {
             CaptureSelectedEditorGraphicAlphas();
+            AddSongSpeedLabel();
+        }
+
+        private void AddSongSpeedLabel()
+        {
+            if (_songSpeedField == null || _songTitle == null || _songSpeedField.transform.parent == null)
+                return;
+
+            var labelObject = new GameObject("Song Speed Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            labelObject.transform.SetParent(_songSpeedField.transform.parent, false);
+
+            var labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = new Vector2(1f, 0f);
+            labelRect.anchorMax = new Vector2(1f, 0f);
+            labelRect.pivot = new Vector2(1f, 0.5f);
+            labelRect.anchoredPosition = new Vector2(-400f, 40f);
+            labelRect.sizeDelta = new Vector2(300f, 64f);
+
+            var label = labelObject.GetComponent<TextMeshProUGUI>();
+            label.font = _songTitle.font;
+            label.fontSize = _songTitle.fontSize;
+            label.fontWeight = _songTitle.fontWeight;
+            label.color = _songTitle.color;
+            label.alignment = TextAlignmentOptions.Right;
+            label.text = "Song Speed";
         }
 
         private void OnEnable()
