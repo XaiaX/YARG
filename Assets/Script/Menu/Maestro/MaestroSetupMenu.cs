@@ -119,7 +119,7 @@ namespace YARG.Menu.Maestro
             labelRect.anchorMin = new Vector2(1f, 0f);
             labelRect.anchorMax = new Vector2(1f, 0f);
             labelRect.pivot = new Vector2(1f, 0.5f);
-            labelRect.anchoredPosition = new Vector2(-400f, 40f);
+            labelRect.anchoredPosition = new Vector2(-340f, 0f);
             labelRect.sizeDelta = new Vector2(300f, 64f);
 
             var label = labelObject.GetComponent<TextMeshProUGUI>();
