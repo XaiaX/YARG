@@ -1594,9 +1594,6 @@ namespace YARG.Menu.DifficultySelect
 
             UpdatePossibleModifiers();
 
-            // Don't sit out by default
-            CurrentPlayer.SittingOut = false;
-
             // Update the possible difficulties as well
             UpdatePossibleDifficulties();
 
