@@ -800,7 +800,9 @@ namespace YARG.Gameplay
 
         public void ForceQuitSong()
         {
+            float songSpeed = GlobalVariables.State.SongSpeed;
             GlobalVariables.State = PersistentState.Default;
+            GlobalVariables.State.SongSpeed = songSpeed;
             GlobalVariables.Instance.LoadScene(SceneIndex.Menu);
         }
 
