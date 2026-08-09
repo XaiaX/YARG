@@ -300,7 +300,9 @@ namespace YARG.Menu.ScoreScreen
             // Only disable scrolling when we've actually scaled down to fit.
             // At full scale, keep it enabled as a fallback in case cards
             // still overflow the viewport (e.g. narrow window).
-            _cardScrollRect.horizontal = scale >= 1f;
+            // At the clamp floor, more than eight cards still exceed four card
+            // widths, so retain scrolling for that case.
+            _cardScrollRect.horizontal = scale >= 1f || cardCount > 8;
 
             if (_cardScrollRect.horizontalScrollbar != null)
                 _cardScrollRect.horizontalScrollbar.gameObject.SetActive(_cardScrollRect.horizontal);

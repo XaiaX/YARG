@@ -193,6 +193,7 @@ namespace YARG.Menu.DifficultySelect
             }, false));
             _navigationSchemePushed = true;
 
+            _songSpeed = Mathf.Clamp(GlobalVariables.State.SongSpeed, 0.1f, 50f);
             _speedInput.text = $"{Mathf.RoundToInt(_songSpeed * 100f)}%";
             _songTitleText.text = GlobalVariables.State.CurrentSong.Name;
             _artistText.text = GlobalVariables.State.CurrentSong.Artist;
@@ -236,9 +237,8 @@ namespace YARG.Menu.DifficultySelect
                 foreach (var player in PlayerContainer.Players)
                 {
                     player.Profile.RestoreSavedModifiers();
-                    // Sitting Out belongs to the current song selection. Do not
-                    // carry an automatic or manual sit-out into the next song.
-                    player.SittingOut = false;
+                    // Restore the persistent Maestro preference for the next song.
+                    player.SittingOut = player.Profile.MaestroSittingOut;
                 }
 
                 // ChangePlayer(0) will update for the current player

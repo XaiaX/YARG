@@ -18,8 +18,8 @@ namespace YARG.Player
         public YargProfile Profile { get; private set; }
 
         /// <summary>
-        /// Whether or not the player is sitting out. This is not needed in <see cref="Profile"/> as
-        /// players that are sitting out are not included in replays.
+        /// Whether or not the player is sitting out for the current song. The
+        /// persistent Maestro preference lives on <see cref="Profile"/>.
         /// </summary>
         public bool SittingOut;
 
@@ -63,6 +63,7 @@ namespace YARG.Player
         {
             Profile = profile;
             Bindings = bindings;
+            SittingOut = profile.MaestroSittingOut;
             IsReplay = false;
         }
 

@@ -19,8 +19,11 @@ namespace YARG.Menu.Settings.Visuals
             _slider.MinimumValue = Setting.Min;
             _slider.MaximumValue = Setting.Max;
 
-            // Show integers for whole-number ranges (e.g. 0–100 percentage sliders)
-            if (Setting.Min == Mathf.Floor(Setting.Min) && Setting.Max == Mathf.Floor(Setting.Max))
+            // Volume settings are fractional values even though their range is
+            // 0–1; keep their two-decimal display instead of treating the range
+            // endpoints as evidence that the setting is integral.
+            if (Setting is not VolumeSetting &&
+                Setting.Min == Mathf.Floor(Setting.Min) && Setting.Max == Mathf.Floor(Setting.Max))
             {
                 _slider.FormatString = "F0";
             }

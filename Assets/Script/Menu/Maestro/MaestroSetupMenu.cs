@@ -72,6 +72,7 @@ namespace YARG.Menu.Maestro
         [SerializeField] private TMP_InputField _noteSpeedField;
         [SerializeField] private TMP_InputField _highwayLengthField;
         [SerializeField] private TMP_InputField _inputCalibrationField;
+        [SerializeField] private TMP_InputField _songSpeedField;
         [SerializeField] private ModifierItem _modifierItemPrefab;
         [SerializeField] private NavigatableUnityButton _modifierButton;
         [SerializeField] private NavigatableUnityButton _accessibilityButton;
@@ -511,6 +512,13 @@ namespace YARG.Menu.Maestro
                 _inputCalibrationField.onEndEdit.AddListener(_ => ChangeInputCalibration());
             }
 
+            if (_songSpeedField != null)
+            {
+                _songSpeedField.onEndEdit.RemoveAllListeners();
+                _songSpeedField.onEndEdit.AddListener(_ => ChangeSongSpeed());
+                _songSpeedField.text = $"{Mathf.RoundToInt(GlobalVariables.State.SongSpeed * 100f)}%";
+            }
+
             _noteSpeedNavigation = MaestroInputNavigatable.Attach(_noteSpeedField);
             _noteSpeedNavigation?.ConfigureFloat(step: 0.5f, min: 0f, max: 100f, round: 0.1f);
 
@@ -569,6 +577,22 @@ namespace YARG.Menu.Maestro
             _inputCalibrationField.text =
                 player.InputCalibrationMilliseconds.ToString(CultureInfo.CurrentCulture);
             RefreshView();
+        }
+
+        private void ChangeSongSpeed()
+        {
+            if (_songSpeedField == null)
+                return;
+
+            if (!float.TryParse(_songSpeedField.text.TrimEnd('%').Trim(),
+                NumberStyles.Number, CultureInfo.CurrentCulture, out var speedPercent))
+            {
+                speedPercent = GlobalVariables.State.SongSpeed * 100f;
+            }
+
+            int roundedPercent = Mathf.Clamp(Mathf.RoundToInt(speedPercent), 10, 5000);
+            GlobalVariables.State.SongSpeed = roundedPercent / 100f;
+            _songSpeedField.SetTextWithoutNotify($"{roundedPercent}%");
         }
 
         private static void ConfigureButton(NavigatableUnityButton button, UnityAction action,

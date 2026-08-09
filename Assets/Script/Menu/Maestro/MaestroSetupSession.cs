@@ -401,6 +401,7 @@ namespace YARG.Menu.Maestro
                 foreach (var staged in _players.Values)
                 {
                     staged.Player.SittingOut = staged.SittingOut;
+                    staged.Player.Profile.MaestroSittingOut = staged.SittingOut;
                     if (staged.SittingOut)
                         continue;
 

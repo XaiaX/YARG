@@ -41,7 +41,12 @@ namespace YARG.Gameplay
                 // Lerp between the miss-volume floor and full volume based on
                 // how many players are still audible. A floor of 0 reproduces
                 // the original behavior (full mute when all players miss).
-                double ratio = Total > 0 ? (double) Audible / Total : 1.0;
+                return GetMuteVolume();
+            }
+
+            public double GetMuteVolume()
+            {
+                double ratio = Total > 0 ? Mathf.Clamp01((float) Audible / Total) : 1.0;
                 double floor = SettingsManager.Settings.MuteOnMissVolume.Value;
                 return Volume * Mathf.Lerp((float) floor, 1f, (float) ratio);
             }
@@ -94,6 +99,8 @@ namespace YARG.Gameplay
         private void LoadAudio()
         {
             _stemStates.Clear();
+            SettingsManager.Settings.MuteOnMissVolume.OnChange -= OnMuteOnMissVolumeChanged;
+            SettingsManager.Settings.MuteOnMissVolume.OnChange += OnMuteOnMissVolumeChanged;
             _mixer = Song.LoadAudio(GlobalVariables.State.SongSpeed, DEFAULT_VOLUME);
             if (_mixer == null)
             {
@@ -109,6 +116,14 @@ namespace YARG.Gameplay
             }
 
             _backgroundStem = _stemStates.Count > 1 ? SongStem.Song : _stemStates.First().Key;
+        }
+
+        private void OnMuteOnMissVolumeChanged(float _)
+        {
+            foreach (var (stem, state) in _stemStates)
+            {
+                GlobalAudioHandler.SetVolumeSetting(stem, state.GetMuteVolume());
+            }
         }
 
         public void ChangeStarPowerStatus(bool active)
