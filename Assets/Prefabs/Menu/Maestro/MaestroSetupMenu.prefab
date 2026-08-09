@@ -402,6 +402,7 @@ MonoBehaviour:
   _highwayLengthField: {fileID: 940000000000000032}
   _inputCalibrationField: {fileID: 940000000000000062}
   _songSpeedField: {fileID: 940000000000000082}
+  _songSpeedLabelFont: {fileID: 11400000, guid: 65a8a6500dc773741bd815e54cd7c1ec, type: 2}
   _modifierItemPrefab: {fileID: 3419815060514877507, guid: 6c928df38839ed24eaa659f76c62da6b, type: 3}
   _modifierButton: {fileID: 3318590168316452258}
   _accessibilityButton: {fileID: 9200000000000000005}
@@ -2654,7 +2655,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7665614177142481491, guid: 8f25b12de267d7544aa2ff7993247fcd, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -40
+      value: -120
       objectReference: {fileID: 0}
     - target: {fileID: 7665614177142481491, guid: 8f25b12de267d7544aa2ff7993247fcd, type: 3}
       propertyPath: m_AnchoredPosition.y
@@ -2662,7 +2663,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7665614177142481491, guid: 8f25b12de267d7544aa2ff7993247fcd, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 300
+      value: 200
       objectReference: {fileID: 0}
     - target: {fileID: 7665614177142481491, guid: 8f25b12de267d7544aa2ff7993247fcd, type: 3}
       propertyPath: m_SizeDelta.y

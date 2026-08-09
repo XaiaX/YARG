@@ -73,6 +73,7 @@ namespace YARG.Menu.Maestro
         [SerializeField] private TMP_InputField _highwayLengthField;
         [SerializeField] private TMP_InputField _inputCalibrationField;
         [SerializeField] private TMP_InputField _songSpeedField;
+        [SerializeField] private TMP_FontAsset _songSpeedLabelFont;
         [SerializeField] private ModifierItem _modifierItemPrefab;
         [SerializeField] private NavigatableUnityButton _modifierButton;
         [SerializeField] private NavigatableUnityButton _accessibilityButton;
@@ -109,7 +110,7 @@ namespace YARG.Menu.Maestro
 
         private void AddSongSpeedLabel()
         {
-            if (_songSpeedField == null || _songTitle == null || _songSpeedField.transform.parent == null)
+            if (_songSpeedField == null || _songSpeedField.transform.parent == null)
                 return;
 
             var labelObject = new GameObject("Song Speed Label", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -119,15 +120,16 @@ namespace YARG.Menu.Maestro
             labelRect.anchorMin = new Vector2(1f, 0f);
             labelRect.anchorMax = new Vector2(1f, 0f);
             labelRect.pivot = new Vector2(1f, 0.5f);
-            labelRect.anchoredPosition = new Vector2(-340f, 0f);
+            labelRect.anchoredPosition = new Vector2(-335f, 0f);
             labelRect.sizeDelta = new Vector2(300f, 64f);
 
             var label = labelObject.GetComponent<TextMeshProUGUI>();
-            label.font = _songTitle.font;
-            label.fontSize = _songTitle.fontSize;
-            label.fontWeight = _songTitle.fontWeight;
-            label.color = _songTitle.color;
+            label.font = _songSpeedLabelFont;
+            label.fontSize = 28f;
+            label.fontWeight = FontWeight.Regular;
+            label.color = Color.white;
             label.alignment = TextAlignmentOptions.Right;
+            label.verticalAlignment = VerticalAlignmentOptions.Middle;
             label.text = "Song Speed";
         }
 
