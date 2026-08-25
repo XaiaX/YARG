@@ -1045,6 +1045,7 @@
         },
         "Header": {
             "Other": "Other",
+            "Diagnostics": "Diagnostics",
             "Display": "Display",
             "Volume": "Volume",
             "Graphics": "Graphics",
@@ -1514,6 +1515,14 @@
             "SaveScoresWithBots": {
                 "Name": "Save Scores with Bots",
                 "Description": "Allows score saving when playing with bots. Only human scores are recorded. Bot scores are excluded."
+            },
+            "HighwayInterpolation": {
+                "Name": "Highway Interpolation",
+                "Description": "Smooths the highway's visual clock by advancing it with frame time and gently correcting toward the audio-synced clock, hiding input-timing jitter. Experimental: gameplay judging is unaffected, but highway motion is slightly filtered."
+            },
+            "TimingDiagnostics": {
+                "Name": "Timing Diagnostics",
+                "Description": "Logs per-frame timing data (frame deltas, engine timing stats, GC, gameplay clock) to a CSV under the stutter-profile folder while playing. For stutter analysis; logging only runs while enabled."
             },
             "SfxVolume": {
                 "Name": "SFX Volume",
