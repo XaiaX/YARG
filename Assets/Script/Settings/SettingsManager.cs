@@ -253,6 +253,7 @@ namespace YARG.Settings
                 new HeaderMetadata("Diagnostics"),
                 nameof(Settings.HighwayInterpolation),
                 nameof(Settings.TimingDiagnostics),
+                nameof(Settings.FrameGraph),
                 new HeaderMetadata("Accessibility"),
                 nameof(Settings.FontScaling),
                 new HeaderMetadata("OutputConfiguration"),

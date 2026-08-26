@@ -624,6 +624,7 @@ namespace YARG.Settings
 
             public ToggleSetting HighwayInterpolation { get; } = new(false);
             public ToggleSetting TimingDiagnostics { get; } = new(false);
+            public ToggleSetting FrameGraph { get; } = new(false);
             public SliderSetting FontScaling { get; } = new(0f, 0f, 100f, FontScalingCallback);
 
             public OutputDeviceSetting OutputDevice { get; } = new("Default", OutputDeviceCallback);

@@ -1524,6 +1524,10 @@
                 "Name": "Timing Diagnostics",
                 "Description": "Logs per-frame timing data (frame deltas, engine timing stats, GC, gameplay clock) to a CSV under the stutter-profile folder while playing. For stutter analysis; logging only runs while enabled."
             },
+            "FrameGraph": {
+                "Name": "Frame Graph",
+                "Description": "Shows a real-time frame-time graph with a dropped-frame counter in the bottom-right corner during song playback. Visual only; pairs with Timing Diagnostics for captured data."
+            },
             "SfxVolume": {
                 "Name": "SFX Volume",
                 "PauseName": "SFX",
