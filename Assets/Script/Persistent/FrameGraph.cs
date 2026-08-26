@@ -93,6 +93,8 @@ namespace YARG.Persistent
             }
             else if (_gameManager == null) // destroyed between scenes
             {
+                // Clear the reference so the null-branch can reacquire next song.
+                _gameManager = null;
                 return;
             }
 
@@ -206,9 +208,10 @@ namespace YARG.Persistent
                 $"worst {_worstDtMs:0.0} ms";
 
             // Optional GPU time, if Frame Timing stats are enabled in Player Settings
+            // (FrameTiming values are already in milliseconds)
             if (FrameTimingManager.GetLatestTimings(1, _timings) > 0)
             {
-                text += $"\ngpu {_timings[0].gpuFrameTime * 1000f:0.0} ms   cpu main {_timings[0].cpuMainThreadFrameTime * 1000f:0.0} ms";
+                text += $"\ngpu {_timings[0].gpuFrameTime:0.0} ms   cpu main {_timings[0].cpuMainThreadFrameTime:0.0} ms";
             }
 
             GUI.Label(new Rect(panelX + 8f, y + 3f, TEXT_WIDTH - 16f, h - 6f), text, style);

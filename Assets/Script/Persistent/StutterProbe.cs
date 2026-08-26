@@ -85,6 +85,8 @@ namespace YARG.Persistent
             }
             else if (_gameManager == null) // destroyed between scenes
             {
+                // Clear the reference so the null-branch can reacquire next song.
+                _gameManager = null;
                 _hasLastVisual = false;
                 return;
             }
