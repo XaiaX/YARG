@@ -187,9 +187,14 @@ namespace YARG.Persistent
                 float lineY = y + h - budgetMs / MS_PER_PIXEL;
                 GUI.DrawTexture(new Rect(graphX, lineY, GRAPH_WIDTH, 1f), color);
 
-                // Label sits left of the graph so the line doesn't bisect it.
-                GUI.Label(new Rect(graphX - 34f, lineY - 7f, 30f, 14f), label, lineStyle);
+                // Label sits left of the graph, nudged a few px below its line
+                // (mirroring how "30" sits just below the top edge).
+                GUI.Label(new Rect(graphX - 34f, lineY - 3f, 30f, 14f), label, lineStyle);
             }
+
+            // The 30 Hz mark is the top edge of the panel: labeled just inside it,
+            // no line needed.
+            GUI.Label(new Rect(graphX - 34f, y + 2f, 30f, 14f), "30", lineStyle);
 
             // Readout column, left of the graph, stacked to fit the graph's height
             float lastDtMs = Time.unscaledDeltaTime * 1000f;
