@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Unity.Profiling;
+using Unity.Profiling.LowLevel.Unsafe;
 using UnityEngine;
 using YARG.Core.Diagnostics;
 
@@ -16,6 +18,15 @@ namespace YARG
         public const int SCHEMA_VERSION = 1;
         private const int RING_CAPACITY = 8192;
         private const int FLUSH_CHUNK = 4096;
+
+        // FrameTimingManager delivers a frame's timing with a fixed delay of four
+        // frames (GPU results are not available sooner; Unity 6 removed
+        // FrameTiming.frameIndex, so samples cannot be keyed by frame number).
+        private const int FTM_PENDING_CAPACITY = 16;
+        private const int FTM_FRAME_DELAY = 4;
+
+        // Bounded size of the run metadata map exposed by SetRunMetadata.
+        private const int RUN_METADATA_CAPACITY = 32;
         private const string CSV_HEADER =
             "schema,session,frame,unityFrame,realtime_s,phase,warmup,dt_s,visualDt_s,inputTime_s,songTime_s,visualTime_s," +
             "targetHz,budget_s,missedRefreshPeriods,ftm_cpu_s,ftm_main_s,ftm_render_s,ftm_gpu_s," +
@@ -55,6 +66,55 @@ namespace YARG
         public static readonly ProfilerMarker HighwayCameraOnPreCameraRenderMarker = new("YARG.HighwayCamera.OnPreCameraRender");
         public static readonly ProfilerMarker HudUpdateMarker = new("YARG.HUD.Update");
         public static readonly ProfilerMarker DataStreamSerializeAndSendMarker = new("YARG.DataStream.SerializeAndSend");
+
+        // Phase 2: sought Profiler stats, in preference order. The names available
+        // vary per Unity version and platform, so handles are enumerated at runtime
+        // in the Player (ProfilerRecorderHandle.GetAvailable) and matched against
+        // these candidates case-insensitively; the first candidate that matches
+        // wins, and preferred categories break ties when several handles share a
+        // name. Nothing here is hard-wired to a handle value.
+        private static readonly string[] GC_ALLOC_CANDIDATES =
+        {
+            "GC.Alloc In Frame Count",
+            "GC.Allocated In Frame Count",
+            "GC.Allocated In Frame",
+            "GC.Alloc In Frame",
+            "GC Alloc In Frame",
+            "GC.Alloc In Frame Total",
+            "GC Alloc",
+        };
+        private static readonly string[] GC_ALLOC_PREFERRED_CATEGORIES = { "Memory", "GC", "GarbageCollector" };
+        private static readonly string[] MAIN_THREAD_CANDIDATES =
+        {
+            "Main Thread Time",
+            "CPU Main Thread Frame Time",
+            "PlayerMainFrameTime",
+            "MainFrameTime",
+            "CPU Frame Time",
+        };
+        private static readonly string[] MAIN_THREAD_PREFERRED_CATEGORIES = { "Internal", "Profiler" };
+        private static readonly string[] GC_COLLECTION_CANDIDATES =
+        {
+            "GC.CollectionCount",
+            "GC.Collect Count",
+            "GC.Collections",
+            "GarbageCollector.CollectionCount",
+        };
+        private static readonly string[] GC_COLLECTION_PREFERRED_CATEGORIES = { "GC", "GarbageCollector", "Memory" };
+
+        // Run metadata (cross-agent contract): other systems (e.g.
+        // PerformanceRunBootstrap) call SetRunMetadata from any thread, before or
+        // after the collector enables. Deliberately NOT gated on Enabled so that
+        // entries recorded before enable survive; while the collector is disabled
+        // the map is inert (no counters, no capture, no file I/O). Last write wins
+        // per key; distinct keys beyond the capacity are counted and dropped. The
+        // parallel key array keeps the JSON write order deterministic. No removals,
+        // so insertion order is stable.
+        private static readonly object _runMetadataLock = new object();
+        private static readonly Dictionary<string, string> _runMetadata = new Dictionary<string, string>(RUN_METADATA_CAPACITY);
+        private static readonly string[] _runMetadataKeys = new string[RUN_METADATA_CAPACITY];
+        private static int _runMetadataCount;
+        private static long _runMetadataDropped;
 
         private FrameRow[] _rows;
         private static PerformanceDiagnostics _instance;
@@ -137,8 +197,49 @@ namespace YARG
         private static double _clockSongTime;
         private static int _clockPlayers;
         private readonly char[] _formatBuffer = new char[96];
-        private long _allocationBaseline;
-        private bool _hasAllocationBaseline;
+
+        // Phase 2: ProfilerRecorder capture state (replaces the M1
+        // GC.GetAllocatedBytesForCurrentThread path, which is a no-op stub on
+        // Unity Mono and returned 0 on every frame of a validated run).
+        private ProfilerRecorder _gcAllocRecorder;
+        private ProfilerRecorder _mainThreadRecorder;
+        private ProfilerRecorder _gcCollectionRecorder;
+        private bool _recordersStarted;
+        private bool _gcAllocIsPerFrameCounter;
+        private double _gcAllocPreviousValue;
+        private bool _gcAllocFound;
+        private bool _gcAllocRecorderValid;
+        private string _gcAllocStatName = "";
+        private string _gcAllocStatCategory = "";
+        private bool _mainThreadFound;
+        private bool _mainThreadRecorderValid;
+        private string _mainThreadStatName = "";
+        private string _mainThreadStatCategory = "";
+        private bool _gcCollectionFound;
+        private bool _gcCollectionRecorderValid;
+        private string _gcCollectionStatName = "";
+        private string _gcCollectionStatCategory = "";
+
+        // Phase 3: FrameTimingManager delayed-mapping state. All preallocated;
+        // the frame path performs no allocation.
+        private PendingFtmCapture[] _ftmPending;
+        private int _ftmPendingHead;
+        private int _ftmPendingCount;
+        private FrameTiming[] _ftmTimings;
+        private int _ftmLastSampleUnityFrame;
+        private long _ftmSamples;
+        private long _ftmNonzeroSamplesSeen;
+        private long _ftmZeroSamples;
+        private long _ftmUnmatchedSamples;
+        private long _ftmMappingMisses;
+
+        // Identity of the most recently recorded row, for the delayed FTM fill.
+        private int _lastRowSlot;
+        private long _lastRowFrame;
+
+        // Session frame counter of the newest row already written to the CSV; rows
+        // at or below it can no longer receive a delayed FTM fill.
+        private long _flushedThroughFrame;
 
         public static bool Enabled { get; private set; }
         public static string OutputDirectory => CommandLineArgs.PerformanceCsvDirectory;
@@ -176,6 +277,8 @@ namespace YARG
             _framesPath = Path.Combine(_outputDirectory, _session + "_frames.csv");
             _metadataPath = Path.Combine(_outputDirectory, _session + "_metadata.json");
             _rows = new FrameRow[RING_CAPACITY];
+            _ftmPending = new PendingFtmCapture[FTM_PENDING_CAPACITY];
+            _ftmTimings = new FrameTiming[4];
 
             try
             {
@@ -206,14 +309,15 @@ namespace YARG
                 return;
             }
 
-            if (!_hasAllocationBaseline)
+            if (!_recordersStarted)
             {
-                _allocationBaseline = GC.GetAllocatedBytesForCurrentThread();
-                _hasAllocationBaseline = true;
-                ResetFrameCounters();
+                // Phase 2: recorders start at the same boundary as row emission
+                // (end of the warmup window); enumeration happens once, here.
+                StartRecorders();
             }
 
             RecordFrame(elapsed);
+            CaptureAndMapFrameTiming();
             if (_rowCount >= FLUSH_CHUNK)
             {
                 FlushRows();
@@ -243,6 +347,40 @@ namespace YARG
 
             _instance._exitReason = "song_end";
             _instance.FlushRows();
+        }
+
+        // Cross-agent contract: records a run-level metadata entry (e.g. "seed",
+        // "replayChecksum") that FlushAndWriteMetadata emits as "run_<key>".
+        // Safe to call from any thread, before or after the collector enables
+        // (and even if it never enables: the map is static and inert while
+        // disabled). Last write wins per key; distinct keys beyond
+        // RUN_METADATA_CAPACITY are counted in runMetadataDropped and ignored.
+        // Null or empty keys are ignored; a null value is stored as "".
+        public static void SetRunMetadata(string key, string value)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                return;
+            }
+
+            lock (_runMetadataLock)
+            {
+                if (_runMetadata.ContainsKey(key))
+                {
+                    _runMetadata[key] = value ?? string.Empty;
+                    return;
+                }
+
+                if (_runMetadataCount >= RUN_METADATA_CAPACITY)
+                {
+                    _runMetadataDropped++;
+                    return;
+                }
+
+                _runMetadata[key] = value ?? string.Empty;
+                _runMetadataKeys[_runMetadataCount] = key;
+                _runMetadataCount++;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -386,9 +524,7 @@ namespace YARG
             row.TargetHz = targetHz;
             row.Budget = targetHz > 0 ? 1d / targetHz : -1;
             row.MissedRefreshPeriods = targetHz > 0 ? Math.Max(0, (long) Math.Floor(dt * targetHz) - 1) : -1;
-            long allocatedBytes = GC.GetAllocatedBytesForCurrentThread();
-            row.GcAllocBytes = allocatedBytes - _allocationBaseline;
-            _allocationBaseline = allocatedBytes;
+            row.GcAllocBytes = SampleGcAllocBytes();
             row.GcCollectionsTotal = GetGcCollectionsTotal();
             row.Players = Volatile.Read(ref _clockPlayers);
             row.CallbackQueueBefore = Interlocked.Exchange(ref _callbackQueueBefore, 0);
@@ -482,6 +618,8 @@ namespace YARG
             }
 
             _rows[index] = row;
+            _lastRowSlot = index;
+            _lastRowFrame = row.Frame;
         }
 
         private static void ResetFrameCounters()
@@ -551,6 +689,329 @@ namespace YARG
             return total;
         }
 
+        // Phase 2: enumerate the Profiler stats that actually exist in this Player
+        // and start ProfilerRecorders for the sought signals. Never hard-code
+        // handles: the available names vary per Unity version and platform.
+        // Enumeration uses Unity.Profiling.LowLevel.Unsafe, which requires an
+        // unsafe context; the project allows unsafe code (Assembly-CSharp,
+        // ProjectSettings allowUnsafeCode=1, no asmdef override under
+        // Assets/Script), so the enumeration API is used directly. This is
+        // one-time init at the warmup boundary: allocation here is acceptable and
+        // nothing below runs per frame.
+        private void StartRecorders()
+        {
+            _recordersStarted = true;
+            ResetFrameCounters();
+
+            var handles = new List<ProfilerRecorderHandle>();
+            var names = new List<string>();
+            var categories = new List<string>();
+
+            try
+            {
+                unsafe
+                {
+                    ProfilerRecorderHandle.GetAvailable(handles);
+                    for (int i = 0; i < handles.Count; i++)
+                    {
+                        var description = ProfilerRecorderHandle.GetDescription(handles[i]);
+                        names.Add(description.Name);
+                        categories.Add(description.Category.ToString());
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                // Enumeration failed in this build: leave everything unfound. Rows
+                // then carry -1 gcAllocBytes and the metadata records why.
+                UnityEngine.Debug.LogWarning($"PerformanceDiagnostics recorder enumeration failed: {exception.Message}");
+                return;
+            }
+
+            unsafe
+            {
+                StartGcAllocRecorder(handles, names, categories);
+                StartMainThreadRecorder(handles, names, categories);
+                StartGcCollectionRecorder(handles, names, categories);
+            }
+        }
+
+        private unsafe void StartGcAllocRecorder(List<ProfilerRecorderHandle> handles, List<string> names, List<string> categories)
+        {
+            int index = FindStatIndex(names, categories, GC_ALLOC_CANDIDATES, GC_ALLOC_PREFERRED_CATEGORIES);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var description = ProfilerRecorderHandle.GetDescription(handles[index]);
+            _gcAllocRecorder = new ProfilerRecorder(description.Category, description.Name, 1);
+            _gcAllocRecorder.Start();
+            _gcAllocRecorderValid = _gcAllocRecorder.Valid;
+            _gcAllocStatName = description.Name;
+            _gcAllocStatCategory = categories[index];
+            _gcAllocFound = _gcAllocRecorderValid;
+            _gcAllocIsPerFrameCounter = description.Name.IndexOf("in frame", StringComparison.OrdinalIgnoreCase) >= 0;
+            _gcAllocPreviousValue = _gcAllocRecorder.Valid ? _gcAllocRecorder.CurrentValueAsDouble : 0;
+        }
+
+        private unsafe void StartMainThreadRecorder(List<ProfilerRecorderHandle> handles, List<string> names, List<string> categories)
+        {
+            int index = FindStatIndex(names, categories, MAIN_THREAD_CANDIDATES, MAIN_THREAD_PREFERRED_CATEGORIES);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var description = ProfilerRecorderHandle.GetDescription(handles[index]);
+            _mainThreadRecorder = new ProfilerRecorder(description.Category, description.Name, 1);
+            _mainThreadRecorder.Start();
+            _mainThreadRecorderValid = _mainThreadRecorder.Valid;
+            _mainThreadStatName = description.Name;
+            _mainThreadStatCategory = categories[index];
+            _mainThreadFound = _mainThreadRecorderValid;
+        }
+
+        private unsafe void StartGcCollectionRecorder(List<ProfilerRecorderHandle> handles, List<string> names, List<string> categories)
+        {
+            int index = FindStatIndex(names, categories, GC_COLLECTION_CANDIDATES, GC_COLLECTION_PREFERRED_CATEGORIES);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var description = ProfilerRecorderHandle.GetDescription(handles[index]);
+            _gcCollectionRecorder = new ProfilerRecorder(description.Category, description.Name, 1);
+            _gcCollectionRecorder.Start();
+            _gcCollectionRecorderValid = _gcCollectionRecorder.Valid;
+            _gcCollectionStatName = description.Name;
+            _gcCollectionStatCategory = categories[index];
+            _gcCollectionFound = _gcCollectionRecorderValid;
+        }
+
+        private static int FindStatIndex(List<string> names, List<string> categories, string[] candidates, string[] preferredCategories)
+        {
+            for (int candidate = 0; candidate < candidates.Length; candidate++)
+            {
+                int bestIndex = -1;
+                bool bestPreferred = false;
+                for (int i = 0; i < names.Count; i++)
+                {
+                    if (!string.Equals(names[i], candidates[candidate], StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    bool preferred = MatchesAny(categories[i], preferredCategories);
+                    if (bestIndex < 0 || (preferred && !bestPreferred))
+                    {
+                        bestIndex = i;
+                        bestPreferred = preferred;
+                    }
+                }
+
+                if (bestIndex >= 0)
+                {
+                    return bestIndex;
+                }
+            }
+
+            return -1;
+        }
+
+        private static bool MatchesAny(string value, string[] candidates)
+        {
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                if (string.Equals(value, candidates[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // gcAllocBytes sampling mode, chosen from the matched stat's name:
+        // - "in frame" stats (Unity's per-frame accumulator convention, e.g.
+        //   "GC.Alloc In Frame Count") reset each frame, so the row's value is read
+        //   directly from CurrentValueAsDouble at this LateUpdate. The row is
+        //   recorded at the very end of the frame's script phase, so this is the
+        //   frame's managed allocation up to the same sampling point as every
+        //   other column in the row. LastValueAsDouble is deliberately not used:
+        //   it reports the previous frame's end-of-frame sample.
+        // - Any other matched name is treated as a monotonic accumulator
+        //   (cumulative bytes); the row reports the delta of CurrentValueAsDouble
+        //   vs the previous row. A negative delta would mean the counter resets
+        //   per frame after all, in which case the raw current value is reported.
+        // Unlike the deleted M1 GC.GetAllocatedBytesForCurrentThread() stub, this
+        // counts managed allocation on all threads, not only the current one.
+        // A missing or invalid handle writes exactly -1.
+        private long SampleGcAllocBytes()
+        {
+            if (!_gcAllocRecorder.Valid)
+            {
+                return -1;
+            }
+
+            double value = _gcAllocRecorder.CurrentValueAsDouble;
+            if (_gcAllocIsPerFrameCounter)
+            {
+                return (long) value;
+            }
+
+            double delta = value - _gcAllocPreviousValue;
+            _gcAllocPreviousValue = value;
+            return (long) (delta >= 0 ? delta : value);
+        }
+
+        private void StopRecorders()
+        {
+            if (!_recordersStarted)
+            {
+                return;
+            }
+
+            _recordersStarted = false;
+            _gcAllocRecorder.Dispose();
+            _mainThreadRecorder.Dispose();
+            _gcCollectionRecorder.Dispose();
+        }
+
+        // Phase 3: FrameTimingManager capture with delayed mapping.
+        //
+        // FrameTimingManager returns a frame's CPU/GPU timing with a fixed delay
+        // of four frames (no data for the current frame), and Unity 6 removed
+        // FrameTiming.frameIndex, so samples carry no frame identity to key on.
+        // Mapping is therefore positional: every recorded frame pushes a pending
+        // entry onto a preallocated 16-entry ring, and the single latest sample
+        // (GetLatestTimings(1)) is applied to the newest unconsumed entry old
+        // enough to own it (captured at least FTM_FRAME_DELAY frames ago). The
+        // row is then patched in place in the row ring, before it can be flushed
+        // in the normal case (the 4096-row flush interval vastly exceeds the
+        // 4-frame delay).
+        //
+        // Known limitation (accepted; diagnostics-grade): if the platform drops
+        // a frame's timing, the next sample is applied to the stale entry and
+        // subsequent samples run one frame late until delivery catches up; a
+        // platform whose delay differs from four frames shifts the fill by
+        // (delay - 4) rows. Without frameIndex there is no way to detect or
+        // correct either case at runtime; ftmUnmatchedSamples and
+        // ftmMappingMisses in the metadata make the anomalies visible.
+        private void CaptureAndMapFrameTiming()
+        {
+            FrameTimingManager.CaptureFrameTimings();
+            PushPendingFtmCapture(_lastRowFrame, Time.frameCount, _lastRowSlot);
+            ConsumeFrameTiming(Time.frameCount);
+            CompactPendingFtmCaptures();
+        }
+
+        private void PushPendingFtmCapture(long frame, int unityFrame, int rowSlot)
+        {
+            if (_ftmPendingCount == FTM_PENDING_CAPACITY)
+            {
+                // Oldest entry expired without ever receiving a sample.
+                _ftmPendingHead = (_ftmPendingHead + 1) % FTM_PENDING_CAPACITY;
+                _ftmPendingCount--;
+                _ftmMappingMisses++;
+            }
+
+            int slot = (_ftmPendingHead + _ftmPendingCount) % FTM_PENDING_CAPACITY;
+            _ftmPending[slot] = new PendingFtmCapture
+            {
+                Frame = frame,
+                UnityFrame = unityFrame,
+                RowSlot = rowSlot,
+            };
+            _ftmPendingCount++;
+        }
+
+        private void ConsumeFrameTiming(int currentUnityFrame)
+        {
+            if (FrameTimingManager.GetLatestTimings(1, _ftmTimings) == 0)
+            {
+                return;
+            }
+
+            // The sample belongs to the frame captured FTM_FRAME_DELAY frames ago;
+            // take the newest unconsumed entry old enough to be its owner (this
+            // also backfills an entry whose own sample was dropped).
+            int oldestAllowed = currentUnityFrame - FTM_FRAME_DELAY;
+            int entry = -1;
+            for (int i = _ftmPendingCount - 1; i >= 0; i--)
+            {
+                int slot = (_ftmPendingHead + i) % FTM_PENDING_CAPACITY;
+                if (!_ftmPending[slot].Consumed && _ftmPending[slot].UnityFrame <= oldestAllowed)
+                {
+                    entry = slot;
+                    break;
+                }
+            }
+
+            if (entry < 0)
+            {
+                // Nothing pending is old enough: the sample predates the pending
+                // window (e.g. the warmup boundary) or repeats one already applied.
+                _ftmUnmatchedSamples++;
+                return;
+            }
+
+            FrameTiming timing = _ftmTimings[0];
+            _ftmSamples++;
+            if (timing.cpuFrameTime == 0 && timing.gpuFrameTime == 0 &&
+                timing.cpuMainThreadFrameTime == 0 && timing.cpuRenderThreadFrameTime == 0)
+            {
+                // All-zero is the documented signature of frame-timing stats being
+                // unavailable in this build; counted separately from mapping
+                // misses. The entry is consumed and its row keeps the -1 sentinel.
+                _ftmPending[entry].Consumed = true;
+                _ftmZeroSamples++;
+                return;
+            }
+
+            if (_ftmPending[entry].UnityFrame <= _ftmLastSampleUnityFrame)
+            {
+                // Delivery-order guard: this entry's frame was already filled by a
+                // newer sample, so this one is a duplicate; do not fill an older
+                // row with it.
+                _ftmPending[entry].Consumed = true;
+                _ftmUnmatchedSamples++;
+                return;
+            }
+
+            _ftmPending[entry].Consumed = true;
+            _ftmLastSampleUnityFrame = _ftmPending[entry].UnityFrame;
+            _ftmNonzeroSamplesSeen++;
+            ApplyFrameTimingToRow(_ftmPending[entry].Frame, _ftmPending[entry].RowSlot, timing);
+        }
+
+        private void ApplyFrameTimingToRow(long frame, int rowSlot, FrameTiming timing)
+        {
+            if (frame <= _flushedThroughFrame || _rows[rowSlot].Frame != frame)
+            {
+                // The row was already flushed to the CSV (chunk boundary inside the
+                // delay window) or evicted; it stays -1 on disk and counts as a
+                // mapping miss. End-of-run flushes naturally leave the last few
+                // rows -1 for the same reason; flush is never blocked.
+                _ftmMappingMisses++;
+                return;
+            }
+
+            _rows[rowSlot].FtmCpu = timing.cpuFrameTime;
+            _rows[rowSlot].FtmMain = timing.cpuMainThreadFrameTime;
+            _rows[rowSlot].FtmRender = timing.cpuRenderThreadFrameTime;
+            _rows[rowSlot].FtmGpu = timing.gpuFrameTime;
+        }
+
+        private void CompactPendingFtmCaptures()
+        {
+            while (_ftmPendingCount > 0 && _ftmPending[_ftmPendingHead].Consumed)
+            {
+                _ftmPendingHead = (_ftmPendingHead + 1) % FTM_PENDING_CAPACITY;
+                _ftmPendingCount--;
+            }
+        }
+
         private static double TicksToSeconds(long ticks)
         {
             return ticks <= 0 ? 0 : ticks / (double) Stopwatch.Frequency;
@@ -569,6 +1030,7 @@ namespace YARG
                 WriteRow(_rows[(_rowStart + i) % RING_CAPACITY]);
             }
 
+            _flushedThroughFrame = _rows[(_rowStart + count - 1) % RING_CAPACITY].Frame;
             _rowStart = 0;
             _rowCount = 0;
             _writer.Flush();
@@ -637,6 +1099,7 @@ namespace YARG
             FlushRows();
             _writer.Dispose();
             _writer = null;
+            StopRecorders();
 
             try
             {
@@ -655,7 +1118,24 @@ namespace YARG
                 WriteJson(metadata, "commandLine", string.Join(" ", CommandLineArgs.RawArguments), false);
                 WriteJson(metadata, "warmupSeconds", CommandLineArgs.PerformanceWarmupSeconds.ToString(CultureInfo.InvariantCulture), false);
                 WriteJson(metadata, "exitReason", _exitReason, false);
-                WriteJson(metadata, "droppedRows", Volatile.Read(ref _droppedRows).ToString(CultureInfo.InvariantCulture), true);
+                WriteJson(metadata, "droppedRows", Volatile.Read(ref _droppedRows).ToString(CultureInfo.InvariantCulture), false);
+                WriteRecorderHandlesMetadata(metadata);
+                WriteJson(metadata, "ftmEnabled", _ftmNonzeroSamplesSeen > 0 ? "true" : "false", false);
+                WriteJson(metadata, "ftmSamples", _ftmSamples.ToString(CultureInfo.InvariantCulture), false);
+                WriteJson(metadata, "ftmZeroSamples", _ftmZeroSamples.ToString(CultureInfo.InvariantCulture), false);
+                WriteJson(metadata, "ftmUnmatchedSamples", _ftmUnmatchedSamples.ToString(CultureInfo.InvariantCulture), false);
+                bool hasRunMetadata;
+                lock (_runMetadataLock)
+                {
+                    hasRunMetadata = _runMetadataCount > 0 || _runMetadataDropped > 0;
+                }
+
+                WriteJson(metadata, "ftmMappingMisses", _ftmMappingMisses.ToString(CultureInfo.InvariantCulture), !hasRunMetadata);
+                if (hasRunMetadata)
+                {
+                    WriteRunMetadata(metadata);
+                }
+
                 metadata.WriteLine("}");
             }
             catch (Exception exception)
@@ -677,6 +1157,69 @@ namespace YARG
         {
             if (value == null) return string.Empty;
             return value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+        }
+
+        // recorderHandles: one entry per sought stat — whether enumeration found a
+        // matching stat, the actual name and category it matched, and whether the
+        // ProfilerRecorder constructed from it reported Valid at start time
+        // (captured then, because the recorders are disposed before the metadata
+        // is written). mainThreadTime and gcCollections are corroboration-only
+        // signals: they have no CSV column and are never read per frame.
+        private void WriteRecorderHandlesMetadata(StreamWriter metadata)
+        {
+            metadata.Write("  \"recorderHandles\": [\n");
+            WriteRecorderHandleEntry(metadata, "gcAllocBytes", _gcAllocFound, _gcAllocStatName, _gcAllocStatCategory, _gcAllocRecorderValid, false);
+            WriteRecorderHandleEntry(metadata, "mainThreadTime", _mainThreadFound, _mainThreadStatName, _mainThreadStatCategory, _mainThreadRecorderValid, false);
+            WriteRecorderHandleEntry(metadata, "gcCollections", _gcCollectionFound, _gcCollectionStatName, _gcCollectionStatCategory, _gcCollectionRecorderValid, true);
+            metadata.Write("  ],\n");
+        }
+
+        private static void WriteRecorderHandleEntry(StreamWriter writer, string sought, bool found, string name, string category, bool valid, bool last)
+        {
+            writer.Write("    {\"sought\": \"");
+            writer.Write(EscapeJson(sought));
+            writer.Write("\", \"name\": \"");
+            writer.Write(EscapeJson(name));
+            writer.Write("\", \"category\": \"");
+            writer.Write(EscapeJson(category));
+            writer.Write("\", \"found\": ");
+            writer.Write(found ? "true" : "false");
+            writer.Write(", \"valid\": ");
+            writer.Write(valid ? "true" : "false");
+            writer.Write(last ? "}\n" : "},\n");
+        }
+
+        // run_<key> entries from SetRunMetadata, written last so "run_" data
+        // bookends the fixed metadata. The caller guarantees at least one entry is
+        // written here, keeping trailing-comma placement valid.
+        private void WriteRunMetadata(StreamWriter metadata)
+        {
+            lock (_runMetadataLock)
+            {
+                if (_runMetadataDropped > 0)
+                {
+                    WriteJson(metadata, "runMetadataDropped", _runMetadataDropped.ToString(CultureInfo.InvariantCulture), _runMetadataCount == 0);
+                }
+
+                for (int i = 0; i < _runMetadataCount; i++)
+                {
+                    string key = _runMetadataKeys[i];
+                    WriteJson(metadata, "run_" + key, _runMetadata[key], i == _runMetadataCount - 1);
+                }
+            }
+        }
+
+        // One FrameTimingManager capture request awaiting its delayed sample.
+        // Frame is the session frame counter (matches FrameRow.Frame), UnityFrame
+        // is Time.frameCount at capture, and RowSlot points at the row's slot in
+        // the row ring. The slot is only trusted while _rows[RowSlot].Frame still
+        // equals Frame (slots are reused once rows are flushed or evicted).
+        private struct PendingFtmCapture
+        {
+            public long Frame;
+            public int UnityFrame;
+            public int RowSlot;
+            public bool Consumed;
         }
 
         private struct FrameRow
