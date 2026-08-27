@@ -738,11 +738,16 @@ namespace YARG
             }
         }
 
+        // Diagnostic: when a sought stat name has no match in this build, a bounded
+        // dump of every available handle name so the real name can be found offline.
+        private string _recorderAvailableNamesDump;
+
         private unsafe void StartGcAllocRecorder(List<ProfilerRecorderHandle> handles, List<string> names, List<string> categories)
         {
             int index = FindStatIndex(names, categories, GC_ALLOC_CANDIDATES, GC_ALLOC_PREFERRED_CATEGORIES);
             if (index < 0)
             {
+                RecordAvailableStatNames(names);
                 return;
             }
 
@@ -759,6 +764,21 @@ namespace YARG
                 description.Name.IndexOf("in frame", StringComparison.OrdinalIgnoreCase) >= 0 &&
                 description.Name.IndexOf("total", StringComparison.OrdinalIgnoreCase) < 0;
             _gcAllocPreviousValue = _gcAllocRecorder.Valid ? _gcAllocRecorder.CurrentValueAsDouble : 0;
+        }
+
+        // One-time, enabled-path-only diagnostic helper (see _recorderAvailableNamesDump).
+        private void RecordAvailableStatNames(List<string> names)
+        {
+            if (_recorderAvailableNamesDump != null || names.Count == 0)
+            {
+                return;
+            }
+
+            const int DUMP_LIMIT = 60;
+            string joined = names.Count <= DUMP_LIMIT
+                ? string.Join(",", names)
+                : string.Join(",", names.GetRange(0, DUMP_LIMIT)) + ",+" + (names.Count - DUMP_LIMIT) + " more";
+            _recorderAvailableNamesDump = names.Count.ToString(CultureInfo.InvariantCulture) + ":" + joined;
         }
 
         private unsafe void StartMainThreadRecorder(List<ProfilerRecorderHandle> handles, List<string> names, List<string> categories)
@@ -1003,10 +1023,12 @@ namespace YARG
                 return;
             }
 
-            _rows[rowSlot].FtmCpu = timing.cpuFrameTime;
-            _rows[rowSlot].FtmMain = timing.cpuMainThreadFrameTime;
-            _rows[rowSlot].FtmRender = timing.cpuRenderThreadFrameTime;
-            _rows[rowSlot].FtmGpu = timing.gpuFrameTime;
+            // FrameTiming fields are documented (and observed: max cpuFrameTime
+            // matches max dt_s) in MILLISECONDS; the CSV columns are seconds.
+            _rows[rowSlot].FtmCpu = timing.cpuFrameTime / 1000.0;
+            _rows[rowSlot].FtmMain = timing.cpuMainThreadFrameTime / 1000.0;
+            _rows[rowSlot].FtmRender = timing.cpuRenderThreadFrameTime / 1000.0;
+            _rows[rowSlot].FtmGpu = timing.gpuFrameTime / 1000.0;
         }
 
         private void CompactPendingFtmCaptures()
@@ -1178,6 +1200,12 @@ namespace YARG
             WriteRecorderHandleEntry(metadata, "mainThreadTime", _mainThreadFound, _mainThreadStatName, _mainThreadStatCategory, _mainThreadRecorderValid, false);
             WriteRecorderHandleEntry(metadata, "gcCollections", _gcCollectionFound, _gcCollectionStatName, _gcCollectionStatCategory, _gcCollectionRecorderValid, true);
             metadata.Write("  ],\n");
+            if (_recorderAvailableNamesDump != null)
+            {
+                // Bounded comma-separated dump of this build's available stat names,
+                // recorded because at least one sought name had no match here.
+                WriteJson(metadata, "recorderAvailableNames", _recorderAvailableNamesDump, false);
+            }
         }
 
         private static void WriteRecorderHandleEntry(StreamWriter writer, string sought, bool found, string name, string category, bool valid, bool last)
