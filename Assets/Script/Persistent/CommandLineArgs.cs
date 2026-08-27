@@ -37,6 +37,12 @@ namespace YARG
         private const string PERSISTENT_DATA_PATH_ARG = "-persistent-data-path";
         private const string PERF_CSV_ARG = "-perf-csv";
         private const string PERF_WARMUP_ARG = "-perf-warmup";
+        private const string PERF_REPLAY_ARG = "-perf-replay";
+        private const string PERF_RUN_ARG = "-perf-run";
+        private const string PERF_SEED_ARG = "-perf-seed";
+        private const string PERF_OUTPUT_ARG = "-perf-output";
+        private const string PERF_QUIT_ARG = "-perf-quit";
+        private const string PERF_DURATION_ARG = "-perf-duration";
 
         public static bool Offline { get; private set; }
 
@@ -47,6 +53,12 @@ namespace YARG
         public static string PersistentDataPath { get; private set; }
         public static string PerformanceCsvDirectory { get; private set; }
         public static float PerformanceWarmupSeconds { get; private set; } = 20f;
+        public static string PerformanceReplay { get; private set; }
+        public static string PerformanceRunLabel { get; private set; }
+        public static int PerformanceSeed { get; private set; }
+        public static string PerformanceOutputDirectory { get; private set; }
+        public static bool PerformanceQuit { get; private set; }
+        public static float PerformanceDurationSeconds { get; private set; } = -1f;
         public static string[] RawArguments { get; private set; } = Array.Empty<string>();
 
         private static bool _initialized;
@@ -120,7 +132,60 @@ namespace YARG
                         }
 
                         break;
+                    case PERF_REPLAY_ARG:
+                        i++;
+                        if (i < args.Length)
+                        {
+                            PerformanceReplay = args[i];
+                        }
+
+                        break;
+                    case PERF_RUN_ARG:
+                        i++;
+                        if (i < args.Length)
+                        {
+                            PerformanceRunLabel = args[i];
+                        }
+
+                        break;
+                    case PERF_SEED_ARG:
+                        i++;
+                        if (i < args.Length && int.TryParse(args[i], NumberStyles.Integer, CultureInfo.InvariantCulture,
+                                out int perfSeed))
+                        {
+                            PerformanceSeed = perfSeed;
+                        }
+
+                        break;
+                    case PERF_OUTPUT_ARG:
+                        i++;
+                        if (i < args.Length)
+                        {
+                            PerformanceOutputDirectory = args[i];
+                        }
+
+                        break;
+                    case PERF_QUIT_ARG:
+                        PerformanceQuit = true;
+                        break;
+                    case PERF_DURATION_ARG:
+                        i++;
+                        if (i < args.Length && float.TryParse(args[i], NumberStyles.Float, CultureInfo.InvariantCulture,
+                                out float durationSeconds))
+                        {
+                            PerformanceDurationSeconds = Math.Max(0f, durationSeconds);
+                        }
+
+                        break;
                 }
+            }
+
+            // -perf-output supersedes -perf-csv for the performance collector, no matter the
+            // order the two arguments were given in. The collector reads
+            // PerformanceCsvDirectory, so overriding it here makes -perf-output win.
+            if (!string.IsNullOrEmpty(PerformanceOutputDirectory))
+            {
+                PerformanceCsvDirectory = PerformanceOutputDirectory;
             }
         }
     }
