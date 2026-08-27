@@ -32,7 +32,10 @@ namespace YARG
     /// <para>
     /// Natural end is detected two ways: the scene leaving Gameplay (the normal play flow), or
     /// — for watch-replay runs, which end paused at chart end with no score screen
-    /// (GameManager.EndSong's replay-viewer branch) — a held terminal pause at song length.
+    /// (GameManager.EndSong's replay-viewer branch) — a held terminal pause past the song-length
+    /// end gate. Intended to be used with <c>-perf-quit</c>; without it the run finishes but the
+    /// session stays degraded (the persistent menu music player remains removed).
+    /// </para>
     /// <para>
     /// Exit codes: 0 natural song end, 2 replay/song resolution failure, 3 no-song-start
     /// timeout or duration watchdog expiry, 4 collector emitted no CSV.
@@ -63,13 +66,6 @@ namespace YARG
 
         /// <summary>How often to look for the persistent menu MusicPlayer while awaiting readiness.</summary>
         private const int MUSIC_PLAYER_POLL_FRAMES = 30;
-
-        /// <summary>
-        /// Watch-replay runs end paused at chart end instead of loading the score scene. Song time
-        /// must be within this tolerance of the song length for a paused state to count as the
-        /// natural end (GameManager.EndSong triggers that pause at SongLength + SONG_END_DELAY).
-        /// </summary>
-        private const double WATCH_END_SONGTIME_TOLERANCE_SECONDS = 1.0;
 
         /// <summary>How long the terminal paused state must hold before declaring the natural end.</summary>
         private const float WATCH_END_CONFIRM_SECONDS = 1f;
@@ -227,8 +223,10 @@ namespace YARG
         /// destroyed rather than deactivated: MusicPlayer.NextSong's rejection branch only disposes
         /// the loaded mixer and continues its retry loop on an inactive object, which would issue up
         /// to 20 background audio loads during the measured window; against a destroyed object that
-        /// loop aborts at its first check instead. The orphaned startup continuation logs one
-        /// MissingReferenceException afterwards — expected, harmless, and silent (nothing plays).
+        /// loop aborts at its first check instead. If the component had already enabled, its orphaned
+        /// startup continuation may run one background audio load and log one MissingReferenceException
+        /// afterwards (none observed in practice — the destroy lands before the loading screen ends) —
+        /// harmless either way, and nothing is ever played.
         /// </summary>
         private void TryDestroyMenuMusicPlayer()
         {
@@ -365,11 +363,13 @@ namespace YARG
 
             // Watch-replay runs never leave the gameplay scene: GameManager.EndSong's replay-viewer
             // branch pauses the runner and returns before the score-screen load (GameManager.cs:647-651),
-            // so the scene-exit signal above cannot fire. Detect that terminal pause instead — the
-            // song fully played (SongTime at/over SongLength) with the runner paused — and let it
-            // settle for a moment to rule out a transient.
-            if (_gameManager != null && _gameManager.Paused &&
-                _gameManager.SongTime >= _gameManager.SongLength - WATCH_END_SONGTIME_TOLERANCE_SECONDS)
+            // so the scene-exit signal above cannot fire. Detect that terminal pause instead. The
+            // threshold mirrors EndSong's own gate exactly (SongTime >= SongLength + SONG_START_DELAY,
+            // which SONG_END_DELAY aliases): that pause provably cannot occur below it, while anything
+            // looser would also match e.g. a focus-loss pause in the final seconds. Started guards
+            // SongTime, whose getter assumes a live song runner.
+            if (_gameManager != null && _gameManager.Started && _gameManager.Paused &&
+                _gameManager.SongTime >= _gameManager.SongLength + GameManager.SONG_START_DELAY)
             {
                 if (_watchEndConfirmStartRealtime < 0f)
                 {
@@ -553,6 +553,8 @@ namespace YARG
             }
 
             TrySetMetadata("playerCount", players.Count.ToString(CultureInfo.InvariantCulture));
+            TrySetMetadata("bandScore", _gameManager.BandScore.ToString(CultureInfo.InvariantCulture));
+            TrySetMetadata("bandStars", ((int) _gameManager.BandStars).ToString(CultureInfo.InvariantCulture));
 
             for (int i = 0; i < players.Count; i++)
             {
