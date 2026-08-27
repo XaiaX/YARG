@@ -58,6 +58,7 @@ namespace YARG
 
         private Phase _phase = Phase.AwaitReadiness;
         private float _phaseStartRealtime;
+        private DateTime _startedAtUtc = DateTime.UtcNow;
         private float _launchRealtime;
         private float _runDeadlineRealtime = -1f;
         private float _quitAtRealtime = -1f;
@@ -327,7 +328,7 @@ namespace YARG
             // flush whatever rows exist as well; it is safe to call twice.
             PerformanceDiagnostics.FlushAtSongEnd();
 
-            exitCode = CheckCollectorOutput(exitCode);
+            exitCode = CheckCollectorOutput(exitCode, _startedAtUtc);
             _exitCode = exitCode;
 
             RecordEndMetadata();
@@ -347,9 +348,11 @@ namespace YARG
 
         /// <summary>
         /// Best-effort check that the collector actually emitted a CSV, only when the run
-        /// would otherwise report success and an output directory was configured.
+        /// would otherwise report success and an output directory was configured. Only
+        /// files written by THIS process count: a stale CSV from an earlier session in a
+        /// reused output directory must not mask a collector that died at startup.
         /// </summary>
-        private static int CheckCollectorOutput(int exitCode)
+        private static int CheckCollectorOutput(int exitCode, DateTime processStartUtc)
         {
             if (exitCode != 0 || string.IsNullOrEmpty(CommandLineArgs.PerformanceCsvDirectory))
             {
@@ -358,9 +361,23 @@ namespace YARG
 
             try
             {
-                if (Directory.GetFiles(CommandLineArgs.PerformanceCsvDirectory, "*_frames.csv").Length == 0)
+                // The collector opens its CSV (and writes the header) during its Awake,
+                // seconds at most before this bootstrap initializes; 30 s of slack covers
+                // slow starts while rejecting any pre-existing file.
+                DateTime freshnessFloorUtc = processStartUtc.AddSeconds(-30f);
+                bool emittedThisRun = false;
+                foreach (string file in Directory.GetFiles(CommandLineArgs.PerformanceCsvDirectory, "*_frames.csv"))
                 {
-                    YargLogger.LogError("[PerfRun] no performance CSV was emitted into the output directory");
+                    if (File.GetLastWriteTimeUtc(file) >= freshnessFloorUtc)
+                    {
+                        emittedThisRun = true;
+                        break;
+                    }
+                }
+
+                if (!emittedThisRun)
+                {
+                    YargLogger.LogError("[PerfRun] no performance CSV was emitted by this run into the output directory");
                     return 4;
                 }
             }

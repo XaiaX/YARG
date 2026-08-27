@@ -326,7 +326,9 @@ namespace YARG
 
         private void OnApplicationQuit()
         {
-            FlushAndWriteMetadata("application_quit");
+            // First-writer-wins: keep an exit reason already set this session (e.g.
+            // "song_end" from FlushAtSongEnd) instead of overwriting it at quit time.
+            FlushAndWriteMetadata(_exitReason ?? "application_quit");
         }
 
         private void OnDestroy()
@@ -751,7 +753,11 @@ namespace YARG
             _gcAllocStatName = description.Name;
             _gcAllocStatCategory = categories[index];
             _gcAllocFound = _gcAllocRecorderValid;
-            _gcAllocIsPerFrameCounter = description.Name.IndexOf("in frame", StringComparison.OrdinalIgnoreCase) >= 0;
+            // "…In Frame Total" names are monotonic accumulators, not per-frame values;
+            // exclude them from the per-frame classification.
+            _gcAllocIsPerFrameCounter =
+                description.Name.IndexOf("in frame", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                description.Name.IndexOf("total", StringComparison.OrdinalIgnoreCase) < 0;
             _gcAllocPreviousValue = _gcAllocRecorder.Valid ? _gcAllocRecorder.CurrentValueAsDouble : 0;
         }
 

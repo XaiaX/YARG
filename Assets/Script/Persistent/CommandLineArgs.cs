@@ -171,7 +171,8 @@ namespace YARG
                     case PERF_DURATION_ARG:
                         i++;
                         if (i < args.Length && float.TryParse(args[i], NumberStyles.Float, CultureInfo.InvariantCulture,
-                                out float durationSeconds))
+                                out float durationSeconds) &&
+                            !float.IsNaN(durationSeconds) && !float.IsInfinity(durationSeconds))
                         {
                             PerformanceDurationSeconds = Math.Max(0f, durationSeconds);
                         }
