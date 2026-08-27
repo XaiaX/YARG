@@ -132,7 +132,6 @@ namespace YARG
         private int _rowCount;
         private double _lastVisualTime;
         private bool _hasVisualTime;
-        private int _lastUnityFrame = -1;
         private static double _clockVisualTime;
         private static double _clockInputTime;
         private static double _clockSongTime;
@@ -367,7 +366,7 @@ namespace YARG
         private void RecordFrame(float elapsed)
         {
             var core = CorePerformanceDiagnostics.TakeSnapshot();
-            int refreshRate = Screen.currentResolution.refreshRate;
+            double refreshRate = Screen.currentResolution.refreshRateRatio.value;
             double targetHz = refreshRate > 0 ? refreshRate : 0;
             double dt = Time.unscaledDeltaTime;
             double visualTime = Volatile.Read(ref _clockVisualTime);
