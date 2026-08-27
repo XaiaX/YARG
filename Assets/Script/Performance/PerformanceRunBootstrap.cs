@@ -7,6 +7,7 @@ using YARG.Core.Replays;
 using YARG.Core.Song;
 using YARG.Gameplay;
 using YARG.Helpers;
+using YARG.Menu.Persistent;
 using YARG.Menu.ScoreScreen;
 using YARG.Replays;
 using YARG.Song;
@@ -28,6 +29,10 @@ namespace YARG
     /// from a trivial <see cref="Update"/> poll, and never modifies gameplay behaviour beyond
     /// setting the exact launch state the menu sets when watching a replay.
     /// </para>
+    /// <para>
+    /// Natural end is detected two ways: the scene leaving Gameplay (the normal play flow), or
+    /// — for watch-replay runs, which end paused at chart end with no score screen
+    /// (GameManager.EndSong's replay-viewer branch) — a held terminal pause at song length.
     /// <para>
     /// Exit codes: 0 natural song end, 2 replay/song resolution failure, 3 no-song-start
     /// timeout or duration watchdog expiry, 4 collector emitted no CSV.
@@ -56,6 +61,19 @@ namespace YARG
         /// <summary>How often to look for the GameManager instance while awaiting song start.</summary>
         private const int GAME_MANAGER_POLL_FRAMES = 30;
 
+        /// <summary>How often to look for the persistent menu MusicPlayer while awaiting readiness.</summary>
+        private const int MUSIC_PLAYER_POLL_FRAMES = 30;
+
+        /// <summary>
+        /// Watch-replay runs end paused at chart end instead of loading the score scene. Song time
+        /// must be within this tolerance of the song length for a paused state to count as the
+        /// natural end (GameManager.EndSong triggers that pause at SongLength + SONG_END_DELAY).
+        /// </summary>
+        private const double WATCH_END_SONGTIME_TOLERANCE_SECONDS = 1.0;
+
+        /// <summary>How long the terminal paused state must hold before declaring the natural end.</summary>
+        private const float WATCH_END_CONFIRM_SECONDS = 1f;
+
         private Phase _phase = Phase.AwaitReadiness;
         private float _phaseStartRealtime;
         private DateTime _startedAtUtc = DateTime.UtcNow;
@@ -64,6 +82,8 @@ namespace YARG
         private float _quitAtRealtime = -1f;
         private int _frameCounter;
         private bool _subscribedGameManager;
+        private bool _menuMusicPlayerDestroyed;
+        private float _watchEndConfirmStartRealtime = -1f;
         private bool _enteredGameplay;
         private bool _songStarted;
         private int _exitCode;
@@ -71,6 +91,7 @@ namespace YARG
 
         private ReplayInfo _replayInfo;
         private SongEntry _songEntry;
+        private GameManager _gameManager;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Initialize()
@@ -121,6 +142,14 @@ namespace YARG
             {
                 Finish(3, "readiness timeout (ReplayContainer or initial song library scan never completed)");
                 return;
+            }
+
+            // Remove the persistent menu MusicPlayer before its startup trigger (loading screen
+            // end) can fire; see TryDestroyMenuMusicPlayer for why this must precede readiness.
+            if (!_menuMusicPlayerDestroyed && ++_frameCounter >= MUSIC_PLAYER_POLL_FRAMES)
+            {
+                _frameCounter = 0;
+                TryDestroyMenuMusicPlayer();
             }
 
             // ReplayContainer is initialized by GlobalVariables.SingletonAwake (persistent scene)
@@ -182,10 +211,41 @@ namespace YARG
             // with trailing string/int arguments ambiguous (CS0121).
             YargLogger.LogInfo(
                 $"[PerfRun] Launching gameplay: replay '{_replayInfo.FilePath}', song '{_songEntry.Name} - {_songEntry.Artist}', seed {CommandLineArgs.PerformanceSeed.ToString(CultureInfo.InvariantCulture)}, run '{CommandLineArgs.PerformanceRunLabel}'");
+            // Final music-player attempt in case the readiness poll never caught it
+            TryDestroyMenuMusicPlayer();
+
             GlobalVariables.Instance.LoadScene(SceneIndex.Gameplay);
 
             _launchRealtime = Time.realtimeSinceStartup;
             _phase = Phase.AwaitSongStart;
+        }
+
+        /// <summary>
+        /// Removes the persistent-scene menu MusicPlayer. Perf runs never navigate the menu, so the
+        /// game's normal stop path (HelpBar.SetInfoFromScheme deactivating the player when the scene
+        /// leaves the menu) never runs, and menu music would play under gameplay. The object is
+        /// destroyed rather than deactivated: MusicPlayer.NextSong's rejection branch only disposes
+        /// the loaded mixer and continues its retry loop on an inactive object, which would issue up
+        /// to 20 background audio loads during the measured window; against a destroyed object that
+        /// loop aborts at its first check instead. The orphaned startup continuation logs one
+        /// MissingReferenceException afterwards — expected, harmless, and silent (nothing plays).
+        /// </summary>
+        private void TryDestroyMenuMusicPlayer()
+        {
+            if (_menuMusicPlayerDestroyed)
+            {
+                return;
+            }
+
+            var musicPlayer = FindAnyObjectByType<MusicPlayer>();
+            if (musicPlayer == null)
+            {
+                return;
+            }
+
+            _menuMusicPlayerDestroyed = true;
+            Destroy(musicPlayer.gameObject);
+            YargLogger.LogInfo("[PerfRun] Removed the persistent menu MusicPlayer to keep menu audio out of the run");
         }
 
         private static bool TryResolveReplay(out ReplayInfo replay, out string error)
@@ -278,6 +338,7 @@ namespace YARG
                 var gameManager = FindAnyObjectByType<GameManager>();
                 if (gameManager != null)
                 {
+                    _gameManager = gameManager;
                     gameManager.SongStarted += OnSongStarted;
                     _subscribedGameManager = true;
                 }
@@ -300,6 +361,29 @@ namespace YARG
             {
                 Finish(0, "natural song end");
                 return;
+            }
+
+            // Watch-replay runs never leave the gameplay scene: GameManager.EndSong's replay-viewer
+            // branch pauses the runner and returns before the score-screen load (GameManager.cs:647-651),
+            // so the scene-exit signal above cannot fire. Detect that terminal pause instead — the
+            // song fully played (SongTime at/over SongLength) with the runner paused — and let it
+            // settle for a moment to rule out a transient.
+            if (_gameManager != null && _gameManager.Paused &&
+                _gameManager.SongTime >= _gameManager.SongLength - WATCH_END_SONGTIME_TOLERANCE_SECONDS)
+            {
+                if (_watchEndConfirmStartRealtime < 0f)
+                {
+                    _watchEndConfirmStartRealtime = Time.realtimeSinceStartup;
+                }
+                else if (Time.realtimeSinceStartup - _watchEndConfirmStartRealtime >= WATCH_END_CONFIRM_SECONDS)
+                {
+                    Finish(0, "natural song end (watch replay paused at chart end)");
+                    return;
+                }
+            }
+            else
+            {
+                _watchEndConfirmStartRealtime = -1f;
             }
 
             if (_runDeadlineRealtime > 0f && Time.realtimeSinceStartup >= _runDeadlineRealtime)
@@ -420,6 +504,10 @@ namespace YARG
             var stats = GlobalVariables.State.ScoreScreenStats;
             if (!stats.HasValue)
             {
+                // Watch-replay runs pause at chart end instead of loading the score screen, so
+                // ScoreScreenStats is never populated. Harvest the same per-player data from the
+                // live GameManager instead (the exact sources EndSong's score path uses).
+                RecordPlayerMetadataFromGameManager();
                 return;
             }
 
@@ -439,6 +527,39 @@ namespace YARG
                 TrySetMetadata($"player{i}Name", card.Player?.Profile?.Name);
 
                 var playerStats = card.Stats;
+                if (playerStats == null)
+                {
+                    continue;
+                }
+
+                TrySetMetadata($"player{i}Score",
+                    playerStats.TotalScore.ToString(CultureInfo.InvariantCulture));
+                TrySetMetadata($"player{i}Judgments",
+                    $"hit={playerStats.NotesHit}/{playerStats.TotalNotes};missed={playerStats.NotesMissed};maxCombo={playerStats.MaxCombo};stars={playerStats.Stars.ToString("0.##", CultureInfo.InvariantCulture)}");
+            }
+        }
+
+        private void RecordPlayerMetadataFromGameManager()
+        {
+            if (_gameManager == null)
+            {
+                return;
+            }
+
+            var players = _gameManager.Players;
+            if (players == null || players.Count == 0)
+            {
+                return;
+            }
+
+            TrySetMetadata("playerCount", players.Count.ToString(CultureInfo.InvariantCulture));
+
+            for (int i = 0; i < players.Count; i++)
+            {
+                var player = players[i];
+                TrySetMetadata($"player{i}Name", player.Player?.Profile?.Name);
+
+                var playerStats = player.BaseStats;
                 if (playerStats == null)
                 {
                     continue;
