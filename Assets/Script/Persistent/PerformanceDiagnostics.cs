@@ -738,7 +738,7 @@ namespace YARG
             }
         }
 
-        // Diagnostic: when a sought stat name has no match in this build, a bounded
+        // Diagnostic: when a sought stat name has no match in this build, a full
         // dump of every available handle name so the real name can be found offline.
         private string _recorderAvailableNamesDump;
 
@@ -774,10 +774,9 @@ namespace YARG
                 return;
             }
 
-            const int DUMP_LIMIT = 60;
-            string joined = names.Count <= DUMP_LIMIT
-                ? string.Join(",", names)
-                : string.Join(",", names.GetRange(0, DUMP_LIMIT)) + ",+" + (names.Count - DUMP_LIMIT) + " more";
+            // Full dump, no truncation: a bounded sample hid the sought GC-alloc stat
+            // on a build that exposes 221 names, and the sidecar can afford ~2 KB.
+            string joined = string.Join(",", names);
             _recorderAvailableNamesDump = names.Count.ToString(CultureInfo.InvariantCulture) + ":" + joined;
         }
 
