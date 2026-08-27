@@ -271,12 +271,18 @@ namespace YARG.Integration.StageKit
 
         private async UniTask SendCommands()
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.StageKitSendCommandsMarker);
+            long startTicks = PerformanceDiagnostics.Timestamp();
+            int queueBefore = _commandQueue.Count;
+            PerformanceDiagnostics.StageKitQueueSample(queueBefore, queueBefore);
+            PerformanceDiagnostics.StageKitKitCount(_stageKits.Count);
             _isSendingCommands = true;
             var things = MasterLightingController.CurrentLightingCue;
 
             while (_commandQueue.Count > 0)
             {
                 var curCommand = _commandQueue.Dequeue();
+                PerformanceDiagnostics.StageKitCommand();
 
                 switch (curCommand.command)
                 {
@@ -369,6 +375,8 @@ namespace YARG.Integration.StageKit
                 await UniTask.Delay(TimeSpan.FromSeconds(SEND_DELAY), ignoreTimeScale: true);
             }
 
+            PerformanceDiagnostics.StageKitQueueSample(queueBefore, _commandQueue.Count);
+            PerformanceDiagnostics.StageKitSendTicks(PerformanceDiagnostics.ElapsedTicks(startTicks));
             _isSendingCommands = false;
         }
 

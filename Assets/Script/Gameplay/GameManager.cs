@@ -276,7 +276,8 @@ namespace YARG.Gameplay
 
         private void Update()
         {
-
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.GameManagerUpdateMarker);
+            PerformanceDiagnostics.ClockSample(VisualTime, InputTime, SongTime, TotalPlayers);
 
             // Pause/unpause
             if (Keyboard.current.escapeKey.wasPressedThisFrame)
@@ -679,6 +680,7 @@ namespace YARG.Gameplay
             RecordScores(replayInfo);
 
             // Go to the score screen
+            PerformanceDiagnostics.FlushAtSongEnd();
             GlobalVariables.Instance.LoadScene(SceneIndex.Score);
             return true;
         }

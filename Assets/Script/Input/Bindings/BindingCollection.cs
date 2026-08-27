@@ -189,6 +189,7 @@ namespace YARG.Input
         {
             foreach (var binding in _bindings)
             {
+                PerformanceDiagnostics.BindingVisited();
                 binding.UpdateForFrame(updateTime);
             }
         }

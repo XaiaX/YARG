@@ -96,10 +96,12 @@ namespace YARG.Gameplay.HUD
             if (_comboMeterFillTarget == 0f)
             {
                 // Go to zero instantly
+                PerformanceDiagnostics.HudVocalWrite();
                 _comboMeterFill.fillAmount = 0f;
             }
             else
             {
+                PerformanceDiagnostics.HudVocalWrite();
                 _comboMeterFill.fillAmount = Mathf.Lerp(_comboMeterFill.fillAmount,
                     _comboMeterFillTarget, Time.deltaTime * 12f);
             }
@@ -108,10 +110,12 @@ namespace YARG.Gameplay.HUD
             if (_shouldPulse)
             {
                 float pulse = 1 - (float) GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage;
+                PerformanceDiagnostics.HudVocalWrite();
                 _starPowerPulse.color = Color.white.WithAlpha(pulse);
             }
             else
             {
+                PerformanceDiagnostics.HudVocalWrite();
                 _starPowerPulse.color = Color.white.WithAlpha(0);
             }
 
@@ -120,7 +124,9 @@ namespace YARG.Gameplay.HUD
                 var spRimAlpha = Mathf.Clamp01(_starPowerRim.color.a + (_isSp ? 1 : -1) * 3f * Time.deltaTime);
                 var grooveRimAlpha = Mathf.Clamp01(_grooveRim.color.a + (!_isSp && _multiplier == 4 ? 1 : -1) * 3f * Time.deltaTime);
 
+                PerformanceDiagnostics.HudVocalWrite();
                 _grooveRim.color = Color.white.WithAlpha(grooveRimAlpha);
+                PerformanceDiagnostics.HudVocalWrite();
                 _starPowerRim.color = Color.white.WithAlpha(spRimAlpha);
             }
         }
@@ -130,7 +136,9 @@ namespace YARG.Gameplay.HUD
         {
             _comboMeterFillTarget = phrasePercent;
 
+            PerformanceDiagnostics.HudVocalWrite();
             _starPowerFill.fillAmount = starPowerPercent;
+            PerformanceDiagnostics.HudVocalWrite();
             _starPowerPulse.fillAmount = starPowerPercent;
 
             _shouldPulse = isStarPowerActive || starPowerPercent >= 0.5;
@@ -232,7 +240,7 @@ namespace YARG.Gameplay.HUD
             _isFc = isFullCombo;
             if (isFullCombo)
             {
-                _fcRing.gameObject.SetActive(true);
+                PerformanceDiagnostics.HudSetActive(_fcRing.gameObject, true);
             }
             else
             {
@@ -241,7 +249,7 @@ namespace YARG.Gameplay.HUD
                 {
                     _starPowerRim.color = Color.white.WithAlpha(1f);
                 }
-                _fcRing.gameObject.SetActive(false);
+                PerformanceDiagnostics.HudSetActive(_fcRing.gameObject, false);
             }
         }
     }

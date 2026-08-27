@@ -391,6 +391,7 @@ namespace YARG.Gameplay.Visuals
                 return;
             }
 
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.HighwayCameraOnPreCameraRenderMarker);
             if (_cameras.Count == 0)
             {
                 return;
@@ -426,6 +427,7 @@ namespace YARG.Gameplay.Visuals
             Shader.SetGlobalInteger(YargHighwaysNumberID, _cameras.Count);
             var renderer = _renderCamera.GetUniversalAdditionalCameraData().scriptableRenderer;
             renderer.EnqueuePass(_fadeCalcPass);
+            PerformanceDiagnostics.HighwayPass();
         }
         private void LateUpdate()
         {

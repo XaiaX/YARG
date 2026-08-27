@@ -104,19 +104,24 @@ namespace YARG.Gameplay.HUD
 
         private void Start()
         {
+            PerformanceDiagnostics.HudScoreWrite();
             _scoreText.text = SCORE_PREFIX + "0";
+            PerformanceDiagnostics.HudScoreWrite();
             _bandComboText.text = SCORE_PREFIX + "0";
+            PerformanceDiagnostics.HudScoreWrite();
             _songTimer.text = string.Empty;
             _displayedCountUpSeconds = -1;
             _displayedCountDownSeconds = -1;
 
+            PerformanceDiagnostics.HudScoreWrite();
             _songProgressBar.SetProgress(0f);
             _overlayImage.color = SettingsManager.Settings.GraphicalSongProgressTint.Value;
         }
 
         protected override void OnChartLoaded(SongChart chart)
         {
-            _bandComboObject.SetActive(SettingsManager.Settings.BandComboTypeSetting.Value != BandComboType.Off);
+            PerformanceDiagnostics.HudSetActive(_bandComboObject,
+                SettingsManager.Settings.BandComboTypeSetting.Value != BandComboType.Off);
         }
 
         protected override void OnSongStarted()
@@ -151,6 +156,7 @@ namespace YARG.Gameplay.HUD
             if (GameManager.BandScore != _bandScore)
             {
                 _bandScore = GameManager.BandScore;
+                PerformanceDiagnostics.HudScoreWrite();
                 _scoreText.SetTextFormat("{0}{1:N0}", SCORE_PREFIX, _bandScore);
 
                 var scoreTextLength = _bandScore == 0 ? 1 : Math.Floor(Math.Log10(_bandScore) + 1);
@@ -172,6 +178,7 @@ namespace YARG.Gameplay.HUD
             if (GameManager.BandCombo != _bandCombo)
             {
                 _bandCombo = GameManager.BandCombo;
+                PerformanceDiagnostics.HudScoreWrite();
                 _bandComboText.SetTextFormat("{0}{1:N0}", SCORE_PREFIX, _bandCombo / _bandComboUnits);
             }
 
@@ -183,6 +190,7 @@ namespace YARG.Gameplay.HUD
 
             if (SettingsManager.Settings.GraphicalProgressOnScoreBox.Value)
             {
+                PerformanceDiagnostics.HudScoreWrite();
                 _songProgressBar.SetProgress((float) (time / length));
             }
 
@@ -198,6 +206,7 @@ namespace YARG.Gameplay.HUD
             {
                 var countUp = TimeSpan.FromSeconds(countUpSeconds);
                 var countDown = TimeSpan.FromSeconds(countDownSeconds);
+                PerformanceDiagnostics.HudScoreWrite();
                 _songTimer.SetTextFormat(_timeFormat, countUp, countDown, _songLengthTime);
                 _displayedCountUpSeconds = countUpSeconds;
                 _displayedCountDownSeconds = countDownSeconds;
@@ -213,6 +222,7 @@ namespace YARG.Gameplay.HUD
 
             var show = GameManager.BandMultiplier > 1 && !_singlePlayer;
             _bandMultiplier = GameManager.BandMultiplier;
+            PerformanceDiagnostics.HudScoreWrite();
             _bandMultiplierText.SetTextFormat("{0}x", GameManager.BandMultiplier);
 
             if (show)

@@ -167,6 +167,8 @@ namespace YARG.Input
 
         private static void OnAfterUpdate()
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.InputOnAfterUpdateMarker);
+            PerformanceDiagnostics.InputSystemUpdated();
             if (IsEditorUpdate)
             {
                 return;
@@ -187,6 +189,7 @@ namespace YARG.Input
             {
                 while (players.MoveNext())
                 {
+                    using var bindingsDiagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.BindingsUpdateBindingsForFrameMarker);
                     players.Current.Bindings.UpdateBindingsForFrame(InputUpdateTime);
                 }
             }

@@ -266,6 +266,7 @@ namespace YARG.Gameplay.Player
                     }
 
                     BaseEngine.QueueInput(ref input);
+                    PerformanceDiagnostics.GameInputQueued();
                     OnInputQueued(input);
 
                     _replayInputIndex++;
@@ -363,6 +364,7 @@ namespace YARG.Gameplay.Player
             if (InterceptInput(ref input)) return;
 
             BaseEngine.QueueInput(ref input);
+            PerformanceDiagnostics.GameInputQueued();
             OnInputQueued(input);
             _replayInputs.Add(input);
         }

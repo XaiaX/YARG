@@ -423,12 +423,15 @@ namespace YARG.Gameplay.Player
 
         private void Update()
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.VocalTrackUpdateMarker);
             double time = GameManager.VisualTime;
 
             // Handle range changes
+            using var rangeDiagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.VocalTrackRangeDrainMarker);
             var ranges = _vocalsTrack.RangeShifts;
             while (_nextRangeIndex < ranges.Count && ranges[_nextRangeIndex].Time < time)
             {
+                PerformanceDiagnostics.VocalRangeDue();
                 StartRangeChange(ranges[_nextRangeIndex]);
                 _nextRangeIndex++;
             }
@@ -466,6 +469,8 @@ namespace YARG.Gameplay.Player
                         if (pooled is not VocalNoteElement note)
                             continue;
 
+                        using var linePointDiagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.VocalNoteUpdateLinePointsMarker);
+                        PerformanceDiagnostics.VocalLinePointUpdate();
                         note.UpdateLinePoints();
                     }
                 }

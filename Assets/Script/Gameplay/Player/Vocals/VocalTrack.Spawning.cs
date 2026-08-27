@@ -70,6 +70,7 @@ namespace YARG.Gameplay.Player
 
             while (tracker.CurrentNoteInBounds && tracker.CurrentNote.Time <= GameManager.SongTime + SpawnTimeOffset)
             {
+                PerformanceDiagnostics.VocalNoteDue();
                 var note = tracker.CurrentNote;
 
                 if (note.IsNonPitched)
@@ -83,7 +84,9 @@ namespace YARG.Gameplay.Player
                     // Spawn the vocal note
                     var noteObj = _talkiePool.TakeWithoutEnabling();
                     ((VocalTalkieElement) noteObj).NoteRef = note;
+                    PerformanceDiagnostics.VocalPooledTake();
                     noteObj.EnableFromPool();
+                    PerformanceDiagnostics.VocalActivated();
                 }
                 else if (!note.IsPercussion)
                 {
@@ -97,7 +100,9 @@ namespace YARG.Gameplay.Player
                     var noteObj = pool.TakeWithoutEnabling();
                     var vocalNote = (VocalNoteElement) noteObj;
                     vocalNote.NoteRef = note;
+                    PerformanceDiagnostics.VocalPooledTake();
                     noteObj.EnableFromPool();
+                    PerformanceDiagnostics.VocalActivated();
                     vocalNote.SetSpGlow(tracker.CurrentPhrase.IsStarPower && AllowStarPower);
                 }
 
@@ -112,6 +117,7 @@ namespace YARG.Gameplay.Player
                 tracker.CurrentLyric.Time <= GameManager.SongTime + SpawnTimeOffset &&
                 spawnedThisFrame < SCROLLING_LYRIC_SPAWN_BUDGET)
             {
+                PerformanceDiagnostics.VocalLyricDue();
                 var spawnResult = _lyricContainer.TrySpawnScrollingLyric(
                     _preparedScrollingLyrics[tracker.CurrentLyric],
                     AllowStarPower && tracker.CurrentPhrase.IsStarPower,
@@ -125,6 +131,8 @@ namespace YARG.Gameplay.Player
 
                 if (spawnResult == VocalLyricContainer.LyricSpawnResult.Spawned)
                 {
+                    PerformanceDiagnostics.VocalPooledTake();
+                    PerformanceDiagnostics.VocalActivated();
                     spawnedThisFrame++;
                 }
 
@@ -140,6 +148,10 @@ namespace YARG.Gameplay.Player
             }
 
             var change = tracker.UpdateCurrentPhrase(GameManager.SongTime);
+            if (change != StaticLyricShiftType.None)
+            {
+                PerformanceDiagnostics.VocalLyricDue();
+            }
             var queue = _staticPhraseQueues[harmonyIndex];
 
             EnqueueStaticPhrases(harmonyIndex, STATIC_PHRASE_ENQUEUE_BUDGET);
@@ -264,6 +276,8 @@ namespace YARG.Gameplay.Player
 
                 if (newPhraseElement != null)
                 {
+                    PerformanceDiagnostics.VocalPooledTake();
+                    PerformanceDiagnostics.VocalActivated();
                     _rightEdges[harmonyIndex] += newPhraseElement.Width + VocalLyricContainer.STATIC_PHRASE_SPACING;
                     _highestEnqueuedPhrasePairIndices[harmonyIndex] = phraseIdx;
                     queue.Enqueue(newPhraseElement);
@@ -283,10 +297,13 @@ namespace YARG.Gameplay.Player
 
             while (index < phrases.Count && phrases[index].TimeEnd <= GameManager.SongTime + SpawnTimeOffset)
             {
+                PerformanceDiagnostics.VocalLyricDue();
                 // Spawn the phrase end line
                 var poolable = _phraseLinePool.TakeWithoutEnabling();
                 ((PhraseLineElement) poolable).PhraseRef = phrases[index];
+                PerformanceDiagnostics.VocalPooledTake();
                 poolable.EnableFromPool();
+                PerformanceDiagnostics.VocalActivated();
 
                 index++;
             }

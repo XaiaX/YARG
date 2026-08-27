@@ -296,6 +296,7 @@ namespace YARG.Playback
 
         public void Update()
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.SongRunnerUpdatePlaybackMarker);
             // Runner is lazy-started to avoid timing issues with lag
             if (!Started)
             {

@@ -77,22 +77,31 @@ namespace YARG.Gameplay.HUD
 
         public void UpdateVisual()
         {
+            PerformanceDiagnostics.HudInputViewerWrite();
             _inputTimeText.SetText(Math.Round(_inputTime, 3));
+            PerformanceDiagnostics.HudInputViewerWrite();
             _holdTimeText.SetText(Math.Round(_inputTime, 3));
+            PerformanceDiagnostics.HudInputViewerWrite();
             _pressCountText.SetText(_pressCount);
 
             var color = ButtonColor;
             color.a = _isPressed ? 0.8f : DISABLED_ALPHA;
 
+            PerformanceDiagnostics.HudInputViewerWrite();
             _imageHighlight.color = color;
         }
 
         public void ResetState()
         {
+            PerformanceDiagnostics.HudInputViewerWrite();
             _inputTime = 0;
+            PerformanceDiagnostics.HudInputViewerWrite();
             _holdTime = 0;
+            PerformanceDiagnostics.HudInputViewerWrite();
             _holdStartTime = 0;
+            PerformanceDiagnostics.HudInputViewerWrite();
             _pressCount = 0;
+            PerformanceDiagnostics.HudInputViewerWrite();
             _isPressed = false;
 
             UpdateVisual();
@@ -104,6 +113,7 @@ namespace YARG.Gameplay.HUD
             {
                 _holdTime = _gameManager.InputTime - _holdStartTime + GameManager.SONG_START_DELAY;
 
+                PerformanceDiagnostics.HudInputViewerWrite();
                 _holdTimeText.SetText(Math.Round(_holdTime, 3));
             }
         }

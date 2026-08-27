@@ -145,6 +145,8 @@ namespace YARG.Integration.Sacn
 
         private void Sender()
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.SacnSenderMarker);
+            long startTicks = PerformanceDiagnostics.Timestamp();
             float pulseDuration = PulseDuration;
 
             _expiredChannels.Clear();
@@ -159,6 +161,8 @@ namespace YARG.Integration.Sacn
             foreach (var ch in _expiredChannels) _channelOffTimes.Remove(ch);
 
             _sendClient.SendMulticast((ushort) SettingsManager.Settings.DMXUniverseChannel.Value, _dataPacket);
+            PerformanceDiagnostics.SacnSend(_expiredChannels.Count);
+            PerformanceDiagnostics.SacnSendTicks(PerformanceDiagnostics.ElapsedTicks(startTicks));
 
             if (pulseDuration <= 0f)
             {

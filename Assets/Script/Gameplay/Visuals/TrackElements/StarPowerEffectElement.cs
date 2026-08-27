@@ -33,6 +33,8 @@ namespace YARG.Gameplay.Visuals
 
         private void Update()
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.StarPowerEffectUpdateMarker);
+            PerformanceDiagnostics.StarPowerState(_animTimestamp >= 0f && _animTimestamp <= ANIM_LENGTH);
             if (_animTimestamp > ANIM_LENGTH)
             {
                 gameObject.SetActive(false);
@@ -41,8 +43,10 @@ namespace YARG.Gameplay.Visuals
 
             _animTimestamp += Time.deltaTime;
 
+            PerformanceDiagnostics.StarPowerRendererScan();
             foreach (var meshRenderer in GetComponentsInChildren<MeshRenderer>())
             {
+                PerformanceDiagnostics.StarPowerMaterialArrayRead();
                 foreach (var material in meshRenderer.materials)
                 {
                     material.SetFloat(_animTimestampId, _animTimestamp);

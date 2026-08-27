@@ -287,6 +287,8 @@ namespace YARG.Venue.Characters
                 return;
             }
 
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.VrmUpdateBoundsMarker);
+            long startTicks = PerformanceDiagnostics.Timestamp();
             var renderers = GetComponentsInChildren<Renderer>(false);
 
             bool hasAny = false;
@@ -320,6 +322,8 @@ namespace YARG.Venue.Characters
                 _visibilityRenderer.transform.rotation = Quaternion.identity;
                 _visibilityRenderer.transform.localScale = worldBounds.size;
             }
+
+            PerformanceDiagnostics.VrmBounds(1, renderers.Length, PerformanceDiagnostics.ElapsedTicks(startTicks));
         }
 
         private void OnBecameVisible()

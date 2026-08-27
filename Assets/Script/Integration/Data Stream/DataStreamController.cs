@@ -235,6 +235,7 @@ namespace YARG.Integration
                 _guitarQueue.Enqueue(guitar);
                 _bassQueue.Enqueue(bass);
                 _keysQueue.Enqueue(keys);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(4);
             }
         }
 
@@ -243,6 +244,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _sceneQueue.Enqueue(sceneIndex);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCSceneIndex = sceneIndex;
         }
@@ -252,6 +254,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _pauseQueue.Enqueue(pauseState);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCPaused = pauseState;
         }
@@ -261,6 +264,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _venueQueue.Enqueue(venueSize);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCVenueSize = venueSize;
         }
@@ -270,6 +274,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _songSectionQueue.Enqueue(songSection);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCCurrentSongSection = songSection;
         }
@@ -279,6 +284,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _lightingCueQueue.Enqueue(lightingCue);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCCurrentLightingCue = lightingCue;
         }
@@ -288,6 +294,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _postProcessingQueue.Enqueue(postProcessing);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCPostProcessing = postProcessing;
         }
@@ -297,6 +304,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _fogStateQueue.Enqueue(fogState);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCFogState = fogState;
         }
@@ -306,6 +314,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _strobeStateQueue.Enqueue(strobeState);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCStrobeState = strobeState;
         }
@@ -315,6 +324,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _beatQueue.Enqueue(beat);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCCurrentBeat = beat;
         }
@@ -324,6 +334,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _keyframeQueue.Enqueue(keyframe);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCKeyframe = keyframe;
         }
@@ -333,6 +344,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _bonusEffectQueue.Enqueue(true);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCBonusFX = true;
         }
@@ -342,6 +354,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _autoGenVenueTrackQueue.Enqueue(autoGenVenueTrack);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCAutoGenVenueTrack = autoGenVenueTrack;
         }
@@ -351,6 +364,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _spotlightQueue.Enqueue(spotlight);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCSpotlight = spotlight;
         }
@@ -360,6 +374,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _singalongQueue.Enqueue(singalong);
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
             MLCSingalong = singalong;
         }
@@ -370,6 +385,7 @@ namespace YARG.Integration
             lock (_byteQueueLock)
             {
                 _cameraCutQueue.Enqueue(new CameraCutState(constraint, priority, subject));
+                PerformanceDiagnostics.DataStreamQueueDepthDelta(1);
             }
 
             MLCCameraCutConstraint = constraint;
@@ -381,6 +397,12 @@ namespace YARG.Integration
         {
             lock (_queueLock)
             {
+                if (PerformanceDiagnostics.Enabled)
+                {
+                    PerformanceDiagnostics.DataStreamQueueDepthDelta(-(
+                        _drumQueue.Count + _guitarQueue.Count + _bassQueue.Count + _keysQueue.Count));
+                }
+
                 _drumQueue.Clear();
                 _guitarQueue.Clear();
                 _bassQueue.Clear();
@@ -392,6 +414,16 @@ namespace YARG.Integration
         {
             lock (_byteQueueLock)
             {
+                if (PerformanceDiagnostics.Enabled)
+                {
+                    PerformanceDiagnostics.DataStreamQueueDepthDelta(-(
+                        _sceneQueue.Count + _pauseQueue.Count + _venueQueue.Count + _songSectionQueue.Count +
+                        _lightingCueQueue.Count + _postProcessingQueue.Count + _fogStateQueue.Count +
+                        _strobeStateQueue.Count + _beatQueue.Count + _keyframeQueue.Count + _bonusEffectQueue.Count +
+                        _autoGenVenueTrackQueue.Count + _spotlightQueue.Count + _singalongQueue.Count +
+                        _cameraCutQueue.Count));
+                }
+
                 _sceneQueue.Clear();
                 _pauseQueue.Clear();
                 _venueQueue.Clear();
@@ -416,7 +448,9 @@ namespace YARG.Integration
             {
                 if (queue.Count > 0)
                 {
-                    return queue.Dequeue();
+                    var value = queue.Dequeue();
+                    PerformanceDiagnostics.DataStreamQueueDepthDelta(-1);
+                    return value;
                 }
             }
 
@@ -502,6 +536,12 @@ namespace YARG.Integration
             // This prevents queue buildup when notes enqueue faster than send rate
             lock (_queueLock)
             {
+                int diagnosticQueueItems = 0;
+                if (PerformanceDiagnostics.Enabled)
+                {
+                    diagnosticQueueItems = _drumQueue.Count + _guitarQueue.Count + _bassQueue.Count + _keysQueue.Count;
+                }
+
                 if (_drumQueue.Count > 0)
                 {
                     int combined = 0;
@@ -532,6 +572,11 @@ namespace YARG.Integration
                     while (_keysQueue.Count > 0)
                         combined |= _keysQueue.Dequeue();
                     MLCCurrentKeysNotes = combined;
+                }
+
+                if (diagnosticQueueItems > 0)
+                {
+                    PerformanceDiagnostics.DataStreamQueueDepthDelta(-diagnosticQueueItems);
                 }
             }
 
@@ -762,6 +807,8 @@ namespace YARG.Integration
 
         private static void SerializeAndSend(DataMessage message)
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.DataStreamSerializeAndSendMarker);
+            long startTicks = PerformanceDiagnostics.Timestamp();
             try
             {
                 var playerStarPower = message.PlayerStarPower ?? Array.Empty<PlayerStarPowerState>();
@@ -817,10 +864,15 @@ namespace YARG.Integration
                 }
 
                 _sendClient.Send(_ms.GetBuffer(), (int) _ms.Position);
+                PerformanceDiagnostics.DataStreamPacket(_ms.Position);
             }
             catch (Exception ex)
             {
                 YargLogger.LogError($"Error sending UDP packet: {ex.Message}");
+            }
+            finally
+            {
+                PerformanceDiagnostics.DataStreamSerializeTicks(PerformanceDiagnostics.ElapsedTicks(startTicks));
             }
         }
     }

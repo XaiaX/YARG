@@ -427,6 +427,7 @@ namespace YARG.Gameplay.Player
 
         protected override void UpdateVisuals(double visualTime)
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.TrackPlayerUpdateVisualsMarker);
             // Allow the HUD to track the highway with animations
             TrackView.UpdateHUDPosition(HighwayIndex, HighwayCount);
 
@@ -518,8 +519,10 @@ namespace YARG.Gameplay.Player
 
         private void UpdateNotes(double visualTime)
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.TrackPlayerUpdateNotesMarker);
             while (NoteIndex < Notes.Count && Notes[NoteIndex].Time <= visualTime + SpawnTimeOffset)
             {
+                PerformanceDiagnostics.TrackDueNote();
                 var note = Notes[NoteIndex];
 
                 // Skip this frame if the pool is full or note is part of a BRE
@@ -554,8 +557,10 @@ namespace YARG.Gameplay.Player
 
         private void UpdateBeatlines(double time)
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.TrackPlayerUpdateBeatlinesMarker);
             while (BeatlineIndex < Beatlines.Count && Beatlines[BeatlineIndex].Time <= time + SpawnTimeOffset)
             {
+                PerformanceDiagnostics.TrackDueBeatline();
                 if (BeatlineIndex + 1 < Beatlines.Count && Beatlines[BeatlineIndex + 1].Time <= time + SpawnTimeOffset)
                 {
                     BeatlineIndex++;
@@ -583,7 +588,9 @@ namespace YARG.Gameplay.Player
                 }
 
                 ((BeatlineElement) poolable).BeatlineRef = beatline;
+                PerformanceDiagnostics.TrackPooledTake();
                 poolable.EnableFromPool();
+                PerformanceDiagnostics.TrackActivated();
 
                 BeatlineIndex++;
             }
@@ -593,7 +600,7 @@ namespace YARG.Gameplay.Player
         {
             while (_breIndex < _brePhrases.Count && _brePhrases[_breIndex].Time <= time + SpawnTimeOffset)
             {
-
+                PerformanceDiagnostics.TrackDueCoda();
                 var phrase = _brePhrases[_breIndex];
                 _breIndex++;
 
@@ -605,12 +612,14 @@ namespace YARG.Gameplay.Player
         {
             if (_unisonStartIndex < _unisonPhrases.Count && _unisonPhrases[_unisonStartIndex].Time <= time)
             {
+                PerformanceDiagnostics.TrackDueUnison();
                 OnUnisonStart();
                 _unisonStartIndex++;
             }
 
             if (_unisonEndIndex < _unisonPhrases.Count && _unisonPhrases[_unisonEndIndex].TimeEnd <= time)
             {
+                PerformanceDiagnostics.TrackDueUnison();
                 OnUnisonEnd();
                 _unisonEndIndex++;
             }
@@ -618,8 +627,11 @@ namespace YARG.Gameplay.Player
 
         private void UpdateTrackEffects(double time)
         {
+            using var diagnostics = PerformanceDiagnostics.Scope(PerformanceDiagnostics.TrackPlayerUpdateTrackEffectsMarker);
+            PerformanceDiagnostics.TrackEffectsActive(_currentEffects.Count);
             if (_upcomingEffects.TryPeek(out var nextEffect) && nextEffect.Time <= time + SpawnTimeOffset)
             {
+                PerformanceDiagnostics.TrackDueEffect();
                 SpawnEffect(nextEffect, false);
             }
 
@@ -635,6 +647,7 @@ namespace YARG.Gameplay.Player
                 var trackEffectElement = _currentEffects[i];
                 if (!trackEffectElement.Active)
                 {
+                    PerformanceDiagnostics.TrackEffectRemoved();
                     _currentEffects.RemoveAt(i);
                 }
                 else
@@ -704,6 +717,7 @@ namespace YARG.Gameplay.Player
 
         private static async void SwapEffect(TrackEffectElement trackEffectElement)
         {
+            PerformanceDiagnostics.EffectSwapped();
             await trackEffectElement.MakeVisibleAsync(false);
             trackEffectElement.Reinitialize();
             // ReSharper disable once MethodHasAsyncOverload
@@ -778,7 +792,9 @@ namespace YARG.Gameplay.Player
 
             ((TrackEffectElement) poolable).EffectRef = nextEffect;
             _currentEffects.Add((TrackEffectElement) poolable);
+            PerformanceDiagnostics.TrackPooledTake();
             poolable.EnableFromPool();
+            PerformanceDiagnostics.TrackActivated();
         }
 
         // ReSharper disable once InconsistentNaming
@@ -1023,7 +1039,9 @@ namespace YARG.Gameplay.Player
             }
 
             InitializeSpawnedNote(poolable, note);
+            PerformanceDiagnostics.TrackPooledTake();
             poolable.EnableFromPool();
+            PerformanceDiagnostics.TrackActivated();
         }
 
         protected abstract void InitializeSpawnedNote(IPoolable poolable, TNote note);

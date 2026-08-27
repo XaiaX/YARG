@@ -53,6 +53,7 @@ namespace YARG.Gameplay.Visuals
 
             if (z < REMOVE_POINT - RemovePointOffset)
             {
+                PerformanceDiagnostics.TrackPooledReturn();
                 ParentPool.Return(this);
                 return false;
             }

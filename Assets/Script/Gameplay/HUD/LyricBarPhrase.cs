@@ -80,7 +80,7 @@ namespace YARG.Gameplay.HUD
                 _currentPhraseIndex++;
                 if (_currentPhraseIndex >= _phrases.Count)
                 {
-                    gameObject.SetActive(false);
+                    PerformanceDiagnostics.HudSetActive(gameObject, false);
                     return;
                 }
             }
@@ -90,8 +90,11 @@ namespace YARG.Gameplay.HUD
              * during extremely fast lyrics. I have no idea what causes this, because what is shown on screen does not match the Unity Inspector, but they do appear to help somewhat.
              */
             _currentLyricIndex = 0;
+            PerformanceDiagnostics.HudLyricWrite();
             _lyricTextTransform.localScale = _upcomingScale;
+            PerformanceDiagnostics.HudLyricWrite();
             _lyricTextTransform.anchoredPosition = new Vector2(0, -10000f); // Just move it offscreen somewhere
+            PerformanceDiagnostics.HudLyricWrite();
             _lyricText.alpha = 0;
 
             UpdatePhraseString();
@@ -123,8 +126,10 @@ namespace YARG.Gameplay.HUD
                 }
 
                 timeFraction = CalculateTimeFraction(currentPhrase.ExitTransition);
+                PerformanceDiagnostics.HudLyricWrite();
                 _lyricTextTransform.anchoredPosition = DOVirtual.EasedValue(_activePosition, _finishedPosition,
                     timeFraction, Ease.InOutSine);
+                PerformanceDiagnostics.HudLyricWrite();
                 _lyricText.alpha = DOVirtual.EasedValue(1.0f, 0.0f, timeFraction, Ease.InOutSine);
                 return;
             }
@@ -137,10 +142,13 @@ namespace YARG.Gameplay.HUD
                 }
 
                 timeFraction = CalculateTimeFraction(currentPhrase.ActiveTransition);
+                PerformanceDiagnostics.HudLyricWrite();
                 _lyricTextTransform.anchoredPosition = DOVirtual.EasedValue(_upcomingPosition, _activePosition,
                     timeFraction, Ease.InOutSine);
+                PerformanceDiagnostics.HudLyricWrite();
                 _lyricTextTransform.localScale = DOVirtual.EasedValue(
                     _upcomingScale, Vector3.one, timeFraction, Ease.InOutSine);
+                PerformanceDiagnostics.HudLyricWrite();
                 _lyricText.alpha = DOVirtual.EasedValue(UPCOMING_ALPHA, 1.0f, timeFraction, Ease.InOutSine);
                 return;
             }
@@ -153,8 +161,10 @@ namespace YARG.Gameplay.HUD
                 }
 
                 timeFraction = CalculateTimeFraction(currentPhrase.UpcomingTransition);
+                PerformanceDiagnostics.HudLyricWrite();
                 _lyricTextTransform.anchoredPosition = DOVirtual.EasedValue(_inactivePosition,
                     _upcomingPosition, timeFraction, Ease.InOutSine);
+                PerformanceDiagnostics.HudLyricWrite();
                 _lyricText.alpha = DOVirtual.EasedValue(0.0f, UPCOMING_ALPHA, timeFraction, Ease.InOutSine);
             }
         }
