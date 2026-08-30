@@ -19,6 +19,7 @@ namespace YARG.Gameplay.Visuals
         private const float LANE_LENGTH_RATIO = 0.02f;
 
         private const float OPEN_LANE_SCALE = 0.5f;
+        private const float FULL_WIDTH_LANE_SCALE = 0.5f;
 
         private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
 
@@ -84,6 +85,7 @@ namespace YARG.Gameplay.Visuals
         private Color _color;
 
         private bool _isOpen = false;
+        private bool _isFullWidth = false;
 
         public void SetAppearance(Instrument instrument, int index, float lateralPosition, int subdivisions, Color color)
         {
@@ -212,9 +214,28 @@ namespace YARG.Gameplay.Visuals
             }
         }
 
+        public void ToggleFullWidth(bool state)
+        {
+            if (state == _isFullWidth)
+            {
+                return;
+            }
+
+            _isFullWidth = state;
+
+            //_meshRenderer.sortingOrder += _isFullWidth ? -50 : 50;
+            _meshTransform.localPosition = _meshTransform.localPosition.WithY(_isFullWidth ? -0.01f : 0);
+
+            if (Initialized)
+            {
+                RenderFullWidth();
+            }
+        }
+
         protected override void InitializeElement()
         {
             RenderOpen();
+            RenderFullWidth();
             RenderScale();
 
             // Set position
@@ -224,7 +245,20 @@ namespace YARG.Gameplay.Visuals
             // Initialize material
             _innerMaterial = _meshRenderer.materials[_innerMaterialIndex];
             _innerMaterial.color = _color;
-            ResetEmissionState();
+
+            if (_isFullWidth)
+            {
+                var newColor = _color / 48f;
+
+                _innerMaterial.SetColor(EmissionColor, newColor);
+                _innerMaterial.DisableKeyword(EMISSION_DISABLED_KEYWORD);
+                _innerMaterial.DisableKeyword(EMISSION_COLORCORRECTION);
+                _innerMaterial.EnableKeyword(EMISSION_ENABLED_KEYWORD);
+            }
+            else
+            {
+                ResetEmissionState();
+            }
         }
 
         protected override void UpdateElement()
@@ -234,6 +268,7 @@ namespace YARG.Gameplay.Visuals
         protected override void HideElement()
         {
             ToggleOpen(false);
+            ToggleFullWidth(false);
         }
 
         private void RenderLength()
@@ -253,13 +288,41 @@ namespace YARG.Gameplay.Visuals
         private void RenderOpen()
         {
             // This is the only shape key on the mesh, has an index of 0
-            _meshRenderer.SetBlendShapeWeight(0, _isOpen ? 100 : 0);
+            if (!_isFullWidth)
+            {
+                _meshRenderer.SetBlendShapeWeight(0, _isOpen ? 100 : 0);
+            }
 
             if (_isOpen == true)
             {
                 SetXPosition(0);
 
                 _scale = OPEN_LANE_SCALE;
+
+                if (Initialized)
+                {
+                    RenderScale();
+                }
+            }
+            else
+            {
+                _meshTransform.localPosition.WithY(0);
+            }
+        }
+
+        private void RenderFullWidth()
+        {
+            // This is the only shape key on the mesh, has an index of 0
+            if (_isFullWidth || !_isOpen)
+            {
+                _meshRenderer.SetBlendShapeWeight(0, _isFullWidth ? 100 : 0);
+            }
+
+            if (_isFullWidth == true)
+            {
+                SetXPosition(0);
+
+                _scale = FULL_WIDTH_LANE_SCALE;
 
                 if (Initialized)
                 {
