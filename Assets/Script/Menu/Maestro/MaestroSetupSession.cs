@@ -136,7 +136,8 @@ namespace YARG.Menu.Maestro
         {
             var session = new MaestroSetupSession(players, songs, completedPlayerBoundary,
                 vocalPrimaryProfileId);
-            session.OverlayPendingDrafts();
+            var explicitInstruments = session.OverlayPendingDrafts();
+            session.ApplyVocalHarmonyDefaults(explicitInstruments);
             Active = session;
             return session;
         }
@@ -550,9 +551,10 @@ namespace YARG.Menu.Maestro
             return errors;
         }
 
-        private void OverlayPendingDrafts()
+        private HashSet<Guid> OverlayPendingDrafts()
         {
             var maestro = MaestroController.Instance;
+            var explicitInstruments = new HashSet<Guid>();
             if (maestro != null)
             {
                 foreach (var staged in _players.Values)
@@ -564,6 +566,7 @@ namespace YARG.Menu.Maestro
                         staged.GameMode = draft.PendingGameMode.Value;
                     if (draft.PendingInstrument.HasValue)
                     {
+                        explicitInstruments.Add(staged.ProfileId);
                         staged.Instrument = draft.PendingInstrument.Value;
                         staged.PreferredInstrument = staged.Instrument;
                         // Remote drafts may carry Instrument.PartyVocals for
@@ -598,6 +601,33 @@ namespace YARG.Menu.Maestro
 
             foreach (var staged in _players.Values)
                 NormalizeDependentSelections(staged);
+
+            return explicitInstruments;
+        }
+
+        /// <summary>
+        /// Vocal players open on the harmony chart whenever the show offers one,
+        /// regardless of what the previous song resolved to (solo-only songs still
+        /// open on Solo as before). An explicit choice — this menu's dropdown or a
+        /// remote draft — still selects Solo for the current show; it simply does
+        /// not become the default for the next one.
+        /// </summary>
+        private void ApplyVocalHarmonyDefaults(HashSet<Guid> explicitInstruments)
+        {
+            foreach (var staged in _players.Values)
+            {
+                if (staged.SittingOut || explicitInstruments.Contains(staged.ProfileId) ||
+                    !IsVocal(staged.GameMode))
+                    continue;
+
+                // Availability is evaluated live so later vocal players stay
+                // locked to the first player's (harmony) chart.
+                if (GetAvailableInstruments(staged.ProfileId).Contains(Instrument.Harmony))
+                {
+                    staged.Instrument = Instrument.Harmony;
+                    NormalizeModifiers(staged);
+                }
+            }
         }
 
         private void NormalizeDependentSelections(MaestroStagedPlayer player)
