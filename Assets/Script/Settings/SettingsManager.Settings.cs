@@ -605,6 +605,7 @@ namespace YARG.Settings
             public ToggleSetting DataStreamEnable { get; } = new(false, DataStreamEnableCallback );
             public ToggleSetting MaestroEnable { get; } = new(false, MaestroEnableCallback);
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
+            public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
 
             public void ShowMaestroPairingPin()
             {

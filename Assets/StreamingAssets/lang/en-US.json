@@ -1729,6 +1729,10 @@
                 "Name": "Enable Maestro",
                 "Description": "Hosts the Maestro browser companion on this computer. Profile changes apply at the next safe song boundary, while supported volume controls apply immediately."
             },
+            "SuppressReplayAnalysisDialogs": {
+                "Name": "Suppress Replay Analysis Dialogs",
+                "Description": "Hides score-screen dialogs from replay analysis while analysis and diagnostic logging still run. Applies to dialogs shown when replay analysis is enabled (Editor/Nightly); release and test builds retain their own compile-guard behavior."
+            },
             "MaestroGoDirectlyToSummary": {
                 "Name": "Go Directly To Maestro Summary",
                 "Description": "Skip the individual player setup pages and open the Maestro summary page immediately."

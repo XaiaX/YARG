@@ -147,10 +147,19 @@ namespace YARG.Menu.ScoreScreen
                         "Replay analysis produced inconsistent results (report dialog suppressed in prototype build). Chart Hash: {0}",
                         song.Hash);
 #else
-                    DialogManager.Instance.ShowMessage("Inconsistent Replay Results!",
-                        "The replay analysis for this run produced inconsistent results to the actual gameplay.\n" +
-                        "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
-                        $"Chart Hash: {song.Hash}");
+                    if (SettingsManager.Settings.SuppressReplayAnalysisDialogs.Value)
+                    {
+                        YargLogger.LogFormatWarning(
+                            "Replay analysis produced inconsistent results (report dialog suppressed by setting). Chart Hash: {0}",
+                            song.Hash);
+                    }
+                    else
+                    {
+                        DialogManager.Instance.ShowMessage("Inconsistent Replay Results!",
+                            "The replay analysis for this run produced inconsistent results to the actual gameplay.\n" +
+                            "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
+                            $"Chart Hash: {song.Hash}");
+                    }
 #endif
                 }
             }
@@ -158,10 +167,13 @@ namespace YARG.Menu.ScoreScreen
             {
                 YargLogger.LogException(ex, $"Failed to analyze replay! Song hash: {song.Hash}");
 #if !YARG_TEST_BUILD
-                DialogManager.Instance.ShowMessage("Failed To Analyze Replay!",
-                    "The replay analysis for this run resulted in an unexpected error.\n" +
-                    "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
-                    $"Chart Hash: {song.Hash}");
+                if (!SettingsManager.Settings.SuppressReplayAnalysisDialogs.Value)
+                {
+                    DialogManager.Instance.ShowMessage("Failed To Analyze Replay!",
+                        "The replay analysis for this run resulted in an unexpected error.\n" +
+                        "Please report this issue to the YARG developers on GitHub or Discord.\n\n" +
+                        $"Chart Hash: {song.Hash}");
+                }
 #endif
             }
 #endif

@@ -247,6 +247,7 @@ namespace YARG.Settings
                 nameof(Settings.DataStreamEnable),
                 nameof(Settings.MaestroEnable),
                 nameof(Settings.MaestroGoDirectlyToSummary),
+                nameof(Settings.SuppressReplayAnalysisDialogs),
                 new ButtonRowMetadata(nameof(Settings.ShowMaestroPairingPin),
                     visibilityPredicate: () => Settings.MaestroEnable.Value),
                 nameof(Settings.SaveScoresWithBots),
