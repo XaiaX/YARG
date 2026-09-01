@@ -128,6 +128,8 @@ namespace YARG.Menu.ScoreScreen
             _bandStarView.SetStars(scoreScreenStats.BandStars);
             _bandScore.text = scoreScreenStats.BandScore.ToString("N0");
 
+            _cancellationToken = new CancellationTokenSource();
+
             // Put the scores in!
             CreateScoreCards(scoreScreenStats);
 
@@ -180,7 +182,6 @@ namespace YARG.Menu.ScoreScreen
 
             _sourceIcon.sprite = SongSources.SourceToIcon(song.Source);
 
-            _cancellationToken = new CancellationTokenSource();
             _albumCover.LoadAlbumCover(song, _cancellationToken.Token, 0.2f);
 
             //set restarting state
@@ -286,8 +287,9 @@ namespace YARG.Menu.ScoreScreen
             // remain visible without horizontal scrolling.
             FitScoreCardsToViewport();
 
-            // If the scroll bar is active, make it all the way to the left
-            InitializeScrollRect();
+            // Initialize after the layout has been rebuilt, then repeat once after the
+            // next frame so viewport dimensions finalized by the canvas are included.
+            InitializeScrollRectAsync().Forget();
 
             // As a final bonus, play the appropriate full combo/high score vox samples
             PlayScoreVox(fcCount, highScoreCount);
@@ -311,29 +313,75 @@ namespace YARG.Menu.ScoreScreen
                 : Mathf.Clamp(4f / cardCount, 0.5f, 1f);
 
             _cardContainer.localScale = new Vector3(scale, scale, 1f);
-            // Only disable scrolling when we've actually scaled down to fit.
-            // At full scale, keep it enabled as a fallback in case cards
-            // still overflow the viewport (e.g. narrow window).
-            // At the clamp floor, more than eight cards still exceed four card
-            // widths, so retain scrolling for that case.
-            _cardScrollRect.horizontal = scale >= 1f || cardCount > 8;
-
-            if (_cardScrollRect.horizontalScrollbar != null)
-                _cardScrollRect.horizontalScrollbar.gameObject.SetActive(_cardScrollRect.horizontal);
+            // Keep ScrollRect enabled so it can correct its bounds after scaling.
+            // No horizontal scrollbar exists on this ScrollRect; visibility would be
+            // handled by its AutoHideAndExpandViewport setting if one were ever added.
+            _cardScrollRect.horizontal = true;
         }
 
-        private async void InitializeScrollRect()
+        private async UniTask InitializeScrollRectAsync()
         {
+            var token = _cancellationToken?.Token ?? default;
+            await InitializeScrollRectPass(token);
+            bool cancelled = await UniTask.NextFrame(cancellationToken: token).SuppressCancellationThrow();
+            if (cancelled || token.IsCancellationRequested)
+                return;
+
+            await InitializeScrollRectPass(token);
+        }
+
+        private UniTask InitializeScrollRectPass(CancellationToken cancellationToken)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                return UniTask.CompletedTask;
+
             KillScrollTween();
-            _cardScrollRect.horizontalNormalizedPosition = 0f;
+            if (_cardContainer is not RectTransform content || _cardScrollRect == null)
+                return UniTask.CompletedTask;
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            Canvas.ForceUpdateCanvases();
+            _cardScrollRect.horizontalNormalizedPosition = GetInitialHorizontalPosition();
             SetupScrollStep();
+            return UniTask.CompletedTask;
+        }
+
+        private float GetInitialHorizontalPosition()
+        {
+            return GetVisualContentWidth() <= GetVisualViewportWidth() ? 0.5f : 0f;
+        }
+
+        private float GetVisualContentWidth()
+        {
+            if (_cardScrollRect?.content == null)
+                return 0f;
+
+            return _cardScrollRect.content.rect.width * Mathf.Abs(_cardScrollRect.content.localScale.x);
+        }
+
+        private float GetVisualViewportWidth()
+        {
+            return _cardScrollRect?.viewport is RectTransform viewport ? viewport.rect.width : 0f;
         }
 
         private void SetupScrollStep()
         {
+            if (_cardContainer == null || _cardContainer.childCount == 0)
+            {
+                _horizontalScrollStep = 0f;
+                return;
+            }
+
             var cardRect = _cardContainer.GetChild(0) as RectTransform;
             var layoutGroup = _cardContainer.GetComponent<HorizontalLayoutGroup>();
-            _horizontalScrollStep = cardRect.rect.width + layoutGroup.spacing;
+            if (cardRect == null || layoutGroup == null)
+            {
+                _horizontalScrollStep = 0f;
+                return;
+            }
+
+            float scale = Mathf.Abs(_cardContainer.localScale.x);
+            _horizontalScrollStep = (cardRect.rect.width + layoutGroup.spacing) * scale;
         }
 
         private static void PlayScoreVox(int fcCount, int highScoreCount)
@@ -579,9 +627,8 @@ namespace YARG.Menu.ScoreScreen
         }
         private void ScrollScoresHorizontal(ScrollDirection direction, bool isHeld)
         {
-            float scrollableWidth = _cardScrollRect.ScrollableWidth();
-            bool canScroll = scrollableWidth > 0f;
-            if (!canScroll)
+            float scrollableWidth = Mathf.Max(0f, GetVisualContentWidth() - GetVisualViewportWidth());
+            if (scrollableWidth <= 0f || _horizontalScrollStep <= 0f)
             {
                 return;
             }
@@ -597,7 +644,7 @@ namespace YARG.Menu.ScoreScreen
             float directionMultiplier = direction == ScrollDirection.Right ? 1f : -1f;
             float targetPos = Mathf.Clamp(startPos + directionMultiplier * _horizontalScrollStep / scrollableWidth, 0f, 1f);
 
-            if (targetPos == startPos)
+            if (Mathf.Approximately(targetPos, startPos))
             {
                 return;
             }
