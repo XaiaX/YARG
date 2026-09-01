@@ -194,7 +194,10 @@ namespace YARG.Gameplay.Player
 
         protected override InstrumentDifficulty<DrumNote> GetNotes(SongChart chart)
         {
-            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument).Clone();
+            // With the experimental Elite (Downchart) option selected, prefer the downchart
+            // variant built for this player's instrument (falls back to the native track when
+            // the chart has no usable downchart for it)
+            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument, Player.Profile.UseEliteDrumsDownchart).Clone();
             var instrumentDifficulty = track.GetDifficulty(Player.Profile.CurrentDifficulty);
             return instrumentDifficulty;
         }

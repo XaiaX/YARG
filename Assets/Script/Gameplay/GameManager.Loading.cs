@@ -311,7 +311,7 @@ namespace YARG.Gameplay
         {
             try
             {
-                Chart = Song.LoadChart();
+                Chart = Song.LoadChart(GetEliteDrumsDownchartOutputs());
                 if (Chart != null)
                 {
                     GenerateVenueTrack();
@@ -328,6 +328,43 @@ namespace YARG.Gameplay
                 _loadFailureMessage = "Failed to load chart!";
                 YargLogger.LogException(ex, "Failed to load chart!");
             }
+        }
+
+        /// <summary>
+        /// Collects the drum output formats that at least one active player has selected the
+        /// experimental Elite (Downchart) option for, so the chart load builds downchart
+        /// variants for them alongside the native drums tracks. Returns null when nobody
+        /// is using the option, which keeps chart loading exactly as it was before.
+        /// </summary>
+        private static IReadOnlyCollection<Instrument>? GetEliteDrumsDownchartOutputs()
+        {
+            if (!SettingsManager.Settings.EnableEliteDrumsDowncharts.Value)
+            {
+                return null;
+            }
+
+            List<Instrument>? outputs = null;
+            foreach (var player in PlayerContainer.Players)
+            {
+                if (player.SittingOut || !player.Profile.UseEliteDrumsDownchart)
+                {
+                    continue;
+                }
+
+                var instrument = player.Profile.CurrentInstrument;
+                if (instrument is not (Instrument.FourLaneDrums or Instrument.ProDrums or Instrument.FiveLaneDrums))
+                {
+                    continue;
+                }
+
+                outputs ??= new List<Instrument>();
+                if (!outputs.Contains(instrument))
+                {
+                    outputs.Add(instrument);
+                }
+            }
+
+            return outputs;
         }
 
         private void GenerateVenueTrack()

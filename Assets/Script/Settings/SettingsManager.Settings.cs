@@ -606,6 +606,7 @@ namespace YARG.Settings
             public ToggleSetting MaestroEnable { get; } = new(false, MaestroEnableCallback);
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
+            public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
 
             public void ShowMaestroPairingPin()
             {

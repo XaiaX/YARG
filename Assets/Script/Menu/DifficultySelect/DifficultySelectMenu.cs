@@ -122,6 +122,15 @@ namespace YARG.Menu.DifficultySelect
         private readonly List<Difficulty> _possibleDifficulties = new();
         private readonly List<Modifier>   _possibleModifiers    = new();
 
+        // Experimental "Elite (Downchart)" instrument option (gated behind the
+        // EnableEliteDrumsDowncharts setting): offered for drum game modes when every
+        // song in the show has an Elite Drums chart to downchart. Selecting it does not
+        // change CurrentInstrument — the native drum format is kept as the downchart's
+        // output format — it only sets YargProfile.UseEliteDrumsDownchart.
+        private bool _eliteDrumsDownchartAvailable;
+
+        private const string ELITE_DRUMS_DOWNCHART_LABEL = "Elite (Downchart)";
+
         [NonSerialized]
         private Modifier _excusableModifiers;
 
@@ -911,7 +920,10 @@ namespace YARG.Menu.DifficultySelect
 
             foreach (var instrument in _possibleInstruments)
             {
-                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
+                // While the Elite (Downchart) option is selected, no native instrument row
+                // is marked selected — even though one of them is the downchart's output
+                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument &&
+                    !CurrentPlayer.Profile.UseEliteDrumsDownchart;
 
                 // Instrument name with its charted tier on a smaller, dimmed
                 // second line (mirroring the header text style).
@@ -922,6 +934,7 @@ namespace YARG.Menu.DifficultySelect
                 {
                     var preferredInstrument = CurrentPlayer.Profile.PreferredInstrument;
                     CurrentPlayer.Profile.CurrentInstrument = instrument;
+                    CurrentPlayer.Profile.UseEliteDrumsDownchart = false;
 
                     // Re-resolve after an instrument switch in case the raw harmony index is out
                     // of range for this song (ChangePlayer's check can be masked by the
@@ -935,6 +948,32 @@ namespace YARG.Menu.DifficultySelect
                     {
                         CurrentPlayer.Profile.PreferredInstrument = instrument;
                     }
+
+                    FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
+                    UpdatePossibleDifficulties();
+                    UpdatePossibleModifiers();
+
+                    _menuState = State.Main;
+                    UpdateForPlayer();
+                });
+            }
+
+            // Experimental Elite (Downchart): plays the Elite Drums chart downcharted to
+            // the player's current native drum format (four-lane/Pro or five-lane), instead
+            // of that format's native chart. The row is only created when every song in the
+            // show has a usable Elite Drums chart (see ChangePlayer).
+            if (_eliteDrumsDownchartAvailable)
+            {
+                bool selected = CurrentPlayer.Profile.UseEliteDrumsDownchart;
+
+                string label = ELITE_DRUMS_DOWNCHART_LABEL
+                    + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(GetTierValues(song, Instrument.EliteDrums))}</color></size>";
+
+                CreateItem(label, selected, () =>
+                {
+                    // Keep CurrentInstrument as the downchart's output format; only the
+                    // source chart changes
+                    CurrentPlayer.Profile.UseEliteDrumsDownchart = true;
 
                     FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
                     UpdatePossibleDifficulties();
@@ -1564,6 +1603,22 @@ namespace YARG.Menu.DifficultySelect
                 }
             }
 
+            // The experimental Elite (Downchart) option is only offered when every song in
+            // the show has an Elite Drums chart to downchart, mirroring how the native
+            // instruments above are filtered across the whole show.
+            _eliteDrumsDownchartAvailable =
+                SettingsManager.Settings.EnableEliteDrumsDowncharts.Value &&
+                profile.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums &&
+                _songList.All(song => HasPlayableInstrument(song, Instrument.EliteDrums));
+
+            if (!_eliteDrumsDownchartAvailable)
+            {
+                // Not offered for this song/show (or the setting is off), so any earlier
+                // downchart selection is dropped and the player falls back to the native
+                // chart of their current instrument.
+                profile.UseEliteDrumsDownchart = false;
+            }
+
             // If the player's preferred instrument is available, set CurrentInstrument to that
             if (_possibleInstruments.Contains(profile.PreferredInstrument))
             {
@@ -1612,7 +1667,13 @@ namespace YARG.Menu.DifficultySelect
                 bool invalidDifficulty = false;
                 foreach (var showsong in _songList)
                 {
-                    if (!HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty))
+                    // With the Elite (Downchart) option selected, the difficulties come from
+                    // the Elite Drums chart rather than the native output-format chart
+                    bool playable = profile.UseEliteDrumsDownchart
+                        ? HasPlayableEliteDrumsDownchartDifficulty(showsong, difficulty)
+                        : HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty);
+
+                    if (!playable)
                     {
                         invalidDifficulty = true;
                         break;
@@ -1798,6 +1859,15 @@ namespace YARG.Menu.DifficultySelect
             }
 
             return null;
+        }
+
+        // Difficulties offered for the experimental Elite (Downchart) option come from the
+        // Elite Drums chart itself, since that is what gets downcharted. The downchart
+        // synthesizes Beginner from Easy (mirroring the Core loader's fallback behavior).
+        private static bool HasPlayableEliteDrumsDownchartDifficulty(SongEntry entry, in Difficulty difficulty)
+        {
+            var source = difficulty is Difficulty.Beginner ? Difficulty.Easy : difficulty;
+            return entry[Instrument.EliteDrums][source];
         }
 
         private bool HasPlayableDifficulty(SongEntry entry, in Instrument instrument, in Difficulty difficulty)

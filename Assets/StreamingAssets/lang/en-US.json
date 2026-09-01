@@ -1733,6 +1733,10 @@
                 "Name": "Suppress Replay Analysis Dialogs",
                 "Description": "Hides score-screen dialogs from replay analysis while analysis and diagnostic logging still run. Applies to dialogs shown when replay analysis is enabled (Editor/Nightly); release and test builds retain their own compile-guard behavior."
             },
+            "EnableEliteDrumsDowncharts": {
+                "Name": "Enable Access To Elite Drums Downcharts",
+                "Description": "Adds an \"Elite (Downchart)\" option to instrument selection for drum players. It plays the Elite Drums chart automatically downcharted to the selected drum format, instead of the native chart. Experimental."
+            },
             "MaestroGoDirectlyToSummary": {
                 "Name": "Go Directly To Maestro Summary",
                 "Description": "Skip the individual player setup pages and open the Maestro summary page immediately."
