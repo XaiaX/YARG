@@ -8,6 +8,7 @@ using YARG.Core.Chart;
 using YARG.Core.Engine;
 using YARG.Core.Engine.Drums;
 using YARG.Core.Engine.Drums.Engines;
+using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Logging;
 using YARG.Core.Replays;
@@ -194,10 +195,18 @@ namespace YARG.Gameplay.Player
 
         protected override InstrumentDifficulty<DrumNote> GetNotes(SongChart chart)
         {
-            // With the experimental Elite (Downchart) option selected, prefer the downchart
-            // variant built for this player's instrument (falls back to the native track when
-            // the chart has no usable downchart for it)
-            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument, Player.Profile.UseEliteDrumsDownchart).Clone();
+            // With an experimental "Elite (To …)" option selected, prefer the downchart
+            // variant built for this player's instrument (falls back to the native track
+            // when the chart has no usable downchart for it). While the option is active
+            // CurrentInstrument equals the explicitly chosen target, so the engine mode,
+            // highway, and this track lookup all agree on the output format. The
+            // centralized profile-consistency guard (valid domain + target equals
+            // CurrentInstrument + supported drum GameMode) treats a corrupted or stale —
+            // but well-formed — value as "no target", so it can neither request a track
+            // lookup that would throw nor select a mismatched variant; the player then
+            // simply plays the native track.
+            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument,
+                EliteDrumsDownchartRules.IsDownchartTargetActive(Player.Profile)).Clone();
             var instrumentDifficulty = track.GetDifficulty(Player.Profile.CurrentDifficulty);
             return instrumentDifficulty;
         }

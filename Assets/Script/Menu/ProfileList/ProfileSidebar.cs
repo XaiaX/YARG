@@ -385,6 +385,10 @@ namespace YARG.Menu.ProfileList
             // a brand new Keys profile defaulting to 5L Lead Guitar instead of Pro Keys
             _profile.CurrentInstrument = _profile.GameMode.PossibleInstruments()[0];
 
+            // The transient "Elite (To …)" downchart selection belonged to the previous
+            // drum game mode; drop it so it cannot desync from the new instrument.
+            _profile.EliteDrumsDownchartTarget = null;
+
             _profileView.UpdateDisplay(_profile);
             FiltersMenu.ResetIntensityFiltersForProfile(_profile);
             // Update sidebar when game mode changes so the correct settings are displayed

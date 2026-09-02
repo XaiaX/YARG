@@ -125,18 +125,22 @@ namespace YARG.Menu.History
                 return;
             }
 
-            var chart = _songEntry.LoadChart();
-            if (chart == null)
-            {
-                YargLogger.LogError("Failed to load chart");
-                return;
-            }
-
             var replayOptions = new ReplayReadOptions { KeepFrameTimes = GlobalVariables.VerboseReplays };
             var (result, data) = ReplayIO.TryLoadData(_entry, replayOptions);
             if (result != ReplayReadResult.Valid)
             {
                 YargLogger.LogFormatError("Failed to load replay. {0}", result);
+                return;
+            }
+
+            // Loaded after the replay data on purpose: a player who recorded with an
+            // explicit "Elite (To …)" downchart target needs that target's downchart
+            // variant built into the chart, or the analyzer re-simulates against a
+            // different track than the one that was actually played.
+            var chart = _songEntry.LoadChart(data.GetEliteDrumsDownchartOutputs());
+            if (chart == null)
+            {
+                YargLogger.LogError("Failed to load chart");
                 return;
             }
 

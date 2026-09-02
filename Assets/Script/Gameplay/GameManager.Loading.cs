@@ -8,6 +8,7 @@ using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
 using YARG.Core.Engine;
+using YARG.Core.Game;
 using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
@@ -331,36 +332,44 @@ namespace YARG.Gameplay
         }
 
         /// <summary>
-        /// Collects the drum output formats that at least one active player has selected the
-        /// experimental Elite (Downchart) option for, so the chart load builds downchart
-        /// variants for them alongside the native drums tracks. Returns null when nobody
-        /// is using the option, which keeps chart loading exactly as it was before.
+        /// Collects the drum output formats that at least one active player has explicitly
+        /// selected an experimental "Elite (To …)" option for, so the chart load builds
+        /// downchart variants for them alongside the native drums tracks. Returns null when
+        /// nobody is using the option, which keeps chart loading exactly as it was before.
         /// </summary>
-        private static IReadOnlyCollection<Instrument>? GetEliteDrumsDownchartOutputs()
+        private IReadOnlyCollection<Instrument>? GetEliteDrumsDownchartOutputs()
         {
-            if (!SettingsManager.Settings.EnableEliteDrumsDowncharts.Value)
-            {
-                return null;
-            }
+            bool liveEnabled = SettingsManager.Settings.EnableEliteDrumsDowncharts.Value;
 
+            // YargPlayers covers both cases by the time the chart loads: for a live run it
+            // is PlayerContainer.Players (set in Awake), and LoadReplay has already replaced
+            // (or extended, when playing *with* a replay) it with the replay players.
             List<Instrument>? outputs = null;
-            foreach (var player in PlayerContainer.Players)
+            foreach (var player in YargPlayers)
             {
-                if (player.SittingOut || !player.Profile.UseEliteDrumsDownchart)
+                // Replay players carry their recorded target in the replay file and must
+                // reproduce it regardless of this machine's experimental toggle; live
+                // players only build downcharts while the toggle is on.
+                if (player.SittingOut || !(player.IsReplay || liveEnabled))
                 {
                     continue;
                 }
 
-                var instrument = player.Profile.CurrentInstrument;
-                if (instrument is not (Instrument.FourLaneDrums or Instrument.ProDrums or Instrument.FiveLaneDrums))
+                // Centralized profile-consistency guard (valid domain + target equals the
+                // player's current instrument + supported drum GameMode): malformed,
+                // corrupted, or stale targets are skipped rather than trusted, instead of
+                // ever requesting a chart that cannot be built or that DrumsPlayer would
+                // not select.
+                if (!EliteDrumsDownchartRules.IsDownchartTargetActive(player.Profile))
                 {
                     continue;
                 }
 
+                var target = player.Profile.EliteDrumsDownchartTarget!.Value;
                 outputs ??= new List<Instrument>();
-                if (!outputs.Contains(instrument))
+                if (!outputs.Contains(target))
                 {
-                    outputs.Add(instrument);
+                    outputs.Add(target);
                 }
             }
 
@@ -487,7 +496,14 @@ namespace YARG.Gameplay
                             GameMode.SixFretGuitar  => _sixFretGuitarPrefab,
                             GameMode.FourLaneDrums  => _fourLaneDrumsPrefab,
                             GameMode.FiveLaneDrums  => _fiveLaneDrumsPrefab,
-                            GameMode.EliteDrums     => Song.HasInstrument(Instrument.FiveLaneDrums) ? _fiveLaneDrumsPrefab : _fourLaneDrumsPrefab,
+                            // Follows the selection (the native one, or the explicit
+                            // "Elite (To …)" target, which keeps CurrentInstrument equal
+                            // to it) rather than the song's chart contents — otherwise a
+                            // downchart to Pro on a five-lane song would spawn a five-lane
+                            // highway for four-lane gameplay.
+                            GameMode.EliteDrums     => player.Profile.CurrentInstrument == Instrument.FiveLaneDrums
+                                ? _fiveLaneDrumsPrefab
+                                : _fourLaneDrumsPrefab,
                             GameMode.ProKeys        => player.Profile.CurrentInstrument is Instrument.ProKeys ? _proKeysPrefab : _fiveLaneKeysPrefab,
                             GameMode.ProGuitar      => _proGuitarPrefab,
                             _                       => null

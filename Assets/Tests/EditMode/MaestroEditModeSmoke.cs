@@ -99,7 +99,7 @@ namespace YARG.Tests.EditMode
             Assert.That(script, Is.Not.Null, $"Could not load {path}.");
             Assert.That(script.text, Does.Contain("player.SittingOut = true;"),
                 "An unavailable existing profile must be routed to sit-out.");
-            Assert.That(script.text, Does.Contain("if (!IsModeAvailable(player.GameMode))"),
+            Assert.That(script.text, Does.Contain("if (!IsModeAvailableForPlayer(player))"),
                 "Initial normalization must validate the existing game mode.");
             Assert.That(script.text, Does.Contain("return;"),
                 "An unavailable existing game mode must not fall through to replacement-mode normalization.");
@@ -1333,6 +1333,170 @@ namespace YARG.Tests.EditMode
                 "Pro keys fallback chain must be defined.");
             Assert.That(session.text, Does.Contain("GameMode.FourLaneDrums"),
                 "Four-lane drums fallback chain must be defined.");
+        }
+
+        [Test]
+        public void Session_Preserves_Explicit_Elite_Downchart_Target_Through_Staging()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+
+            // The staged player must capture the explicit target so merely opening
+            // Maestro (staging + overlay + normalization) cannot lose it.
+            Assert.That(script.text,
+                Does.Contain("public Instrument? EliteDrumsDownchartTarget { get; internal set; }"),
+                "The staged player must carry the explicit Elite (To …) target.");
+            Assert.That(script.text,
+                Does.Contain("EliteDrumsDownchartTarget = player.Profile.EliteDrumsDownchartTarget;"),
+                "The staged constructor must capture the profile's explicit target.");
+
+            // Normalization must not availability-reselect the instrument while the
+            // target pins it: the downchart needs no native chart for its format.
+            Assert.That(script.text, Does.Contain("HasActiveDownchartTarget(player, out _)"),
+                "Instrument normalization must be skipped while a downchart target pins the instrument.");
+            Assert.That(script.text, Does.Contain("if (!CanCommitDownchartTarget(player))"),
+                "Availability must judge target players through the complete session condition (toggle, domain, instrument, mode, and every show song playable via the shared Core predicate).");
+            Assert.That(script.text, Does.Contain("HasPlayableDownchartDifficulty"),
+                "Difficulty availability must come from the Elite Drums chart while a target is active.");
+            Assert.That(script.text, Does.Contain("IsModeAvailableForPlayer(staged)"),
+                "Validation must judge mode availability per player so a downchart target is not sat out.");
+
+            // Remote drafts clear the target only on an actual explicit change.
+            Assert.That(script.text,
+                Does.Contain("draft.PendingGameMode.HasValue && staged.GameMode != priorGameMode"),
+                "A remote draft must clear the target only when it selects a different game mode.");
+            Assert.That(script.text,
+                Does.Contain("draft.PendingInstrument.HasValue && staged.Instrument != priorInstrument"),
+                "A remote draft must clear the target only when it selects a different instrument.");
+        }
+
+        [Test]
+        public void Session_Clears_Elite_Downchart_Target_Only_On_Explicit_Restage()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+
+            Assert.That(script.text, Does.Contain("if (gameMode != player.GameMode)"),
+                "Staging a different game mode is the explicit user change that supersedes the target.");
+            Assert.That(script.text, Does.Contain("if (instrument != player.Instrument)"),
+                "Staging a different instrument is the explicit user change that supersedes the target.");
+            Assert.That(script.text,
+                Does.Contain("staged.EliteDrumsDownchartTarget = null;"),
+                "Clearing must operate on the staged value, never the live profile mid-session.");
+        }
+
+        [Test]
+        public void Session_Commit_Preserves_Elite_Downchart_Target_And_Rollback_Restores_It()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+
+            // Commit writes the staged target rather than clearing on mismatch with
+            // the live profile: a still-valid choice survives songs that lack the
+            // target format's native chart. Preservation is decided by
+            // CanCommitDownchartTarget, which reconciles the toggle, the valid target
+            // domain, the staged instrument/mode, and show playability (the shared
+            // Core predicate).
+            Assert.That(script.text,
+                Does.Contain("CanCommitDownchartTarget(staged)"),
+                "Commit must decide target preservation through the reconciliation helper.");
+            Assert.That(script.text,
+                Does.Contain("profile.EliteDrumsDownchartTarget ="),
+                "Commit must explicitly write the resolved target (preserved or cleared).");
+
+            // The rollback snapshot must capture and restore the target so a failed
+            // commit cannot leave a cleared target behind.
+            Assert.That(script.text,
+                Does.Contain("public readonly Instrument? EliteDrumsDownchartTarget;"),
+                "The profile snapshot must capture the explicit target.");
+            Assert.That(script.text,
+                Does.Contain("Profile.EliteDrumsDownchartTarget = EliteDrumsDownchartTarget;"),
+                "Snapshot rollback must restore the explicit target.");
+        }
+
+        // NOTE ON COVERAGE LIMITATION: Maestro's session class cannot be exercised by
+        // the plain-.NET Core unit test suite (it depends on Unity-side types), so these
+        // source-string tests intentionally pin only the *wiring* — that the menu code
+        // consults the shared predicates rather than reimplementing them. The actual
+        // target-domain, per-song playability, and difficulty logic lives in
+        // YARG.Core.Game.EliteDrumsDownchartRules and IS covered by executable tests in
+        // YARG.Core.UnitTests (EliteDrumsDownchartRulesTests and the replay/profile
+        // serialization tests). If the logic moves, move the assertions' subject lines
+        // with it — do not duplicate the logic here.
+        [Test]
+        public void Session_Treats_Disabled_Downchart_Toggle_As_Invalid_At_Begin_And_Commit()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+
+            // Consistent with Difficulty Select: while the experimental toggle is off,
+            // live loading builds no downcharts, so a staged target is invalid at Begin
+            // (cleared safely before drafts overlay and normalization) and at commit
+            // (never preserved). Begin and TryCommit both clear through the complete
+            // session condition — toggle, valid domain, matching instrument and drum
+            // mode, and every show song playable for the target — so stale-but-
+            // well-formed targets are dropped too, not just malformed ones.
+            Assert.That(script.text,
+                Does.Contain("session.ClearInvalidDownchartTargets();"),
+                "Begin must clear staged targets that are invalid for this session.");
+            Assert.That(script.text,
+                Does.Contain("if (!CanCommitDownchartTarget(staged))"),
+                "The cleanup must clear every staged target failing the complete condition, not only malformed domain/toggle-off values.");
+            Assert.That(script.text,
+                Does.Contain("Re-run the same cleanup Begin performed"),
+                "TryCommit must re-run the same cleanup/revalidation before Validate, since the toggle and staged state may drift after Begin.");
+            Assert.That(script.text,
+                Does.Contain("private bool CanCommitDownchartTarget"),
+                "Commit must reconcile target validity through a dedicated helper.");
+            Assert.That(script.text,
+                Does.Contain("EliteDrumsDownchartsEnabled &&"),
+                "Both Begin-time clearing and commit preservation must consult the toggle.");
+            Assert.That(script.text,
+                Does.Contain("CanCommitDownchartTarget(staged) ? staged.EliteDrumsDownchartTarget : null"),
+                "An invalid target must be committed as null, never silently preserved.");
+        }
+
+        [Test]
+        public void Session_And_Difficulty_Select_Share_The_Core_Downchart_Predicates()
+        {
+            const string maestroPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var maestro = AssetDatabase.LoadAssetAtPath<MonoScript>(maestroPath);
+            Assert.That(maestro, Is.Not.Null, $"Could not load {maestroPath}.");
+
+            const string difficultyPath = "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs";
+            var difficulty = AssetDatabase.LoadAssetAtPath<MonoScript>(difficultyPath);
+            Assert.That(difficulty, Is.Not.Null, $"Could not load {difficultyPath}.");
+
+            // Maestro delegates availability/difficulty judgment to the shared Core
+            // rules instead of reimplementing them.
+            Assert.That(maestro.text,
+                Does.Contain("EliteDrumsDownchartRules.IsSongPlayableForTarget"),
+                "Maestro availability must use the shared Core playability predicate.");
+            Assert.That(maestro.text,
+                Does.Contain("EliteDrumsDownchartRules.HasTargetDifficulty"),
+                "Maestro difficulty availability must use the shared Core predicate.");
+            Assert.That(maestro.text,
+                Does.Contain("EliteDrumsDownchartRules.IsValidTarget"),
+                "Maestro must validate the target domain through the shared Core check.");
+
+            // Difficulty Select offers each row only when every show song satisfies
+            // the same predicate, and computes difficulties with it as well.
+            Assert.That(difficulty.text,
+                Does.Contain("AddOfferedEliteDrumsDownchartTarget"),
+                "Difficulty Select must gate each offered target row on show-wide playability.");
+            Assert.That(difficulty.text,
+                Does.Contain("EliteDrumsDownchartRules.IsSongPlayableForTarget"),
+                "Row offering must use the shared Core playability predicate.");
+            Assert.That(difficulty.text,
+                Does.Contain("EliteDrumsDownchartRules.HasTargetDifficulty"),
+                "Difficulty calculation must use the same predicate as row offering.");
+            Assert.That(difficulty.text,
+                Does.Contain("EliteDrumsDownchartRules.IsValidTarget"),
+                "Difficulty Select must validate the target domain through the shared Core check.");
         }
 
         private static Transform FindRequired(Transform root, string path)

@@ -480,13 +480,6 @@ namespace YARG.Menu.ScoreScreen
         private bool AnalyzeReplayInner(SongEntry songEntry, ReplayInfo? replayEntry)
 #nullable disable
         {
-            var chart = songEntry.LoadChart();
-            if (chart == null)
-            {
-                YargLogger.LogError("Chart did not load");
-                return true;
-            }
-
             if (GlobalVariables.State.ScoreScreenStats.Value.PlayerScores.All(e => e.Player.Profile.IsBot))
             {
                 YargLogger.LogInfo("No human players in ReplayEntry.");
@@ -507,6 +500,17 @@ namespace YARG.Menu.ScoreScreen
             if (result != ReplayReadResult.Valid)
             {
                 YargLogger.LogFormatError("Replay did not load. {0}", result);
+                return true;
+            }
+
+            // Loaded after the replay data on purpose: a player who recorded with an
+            // explicit "Elite (To …)" downchart target needs that target's downchart
+            // variant built into the chart, or the analyzer re-simulates against a
+            // different track than the one that was actually played.
+            var chart = songEntry.LoadChart(data.GetEliteDrumsDownchartOutputs());
+            if (chart == null)
+            {
+                YargLogger.LogError("Chart did not load");
                 return true;
             }
 

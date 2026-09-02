@@ -122,6 +122,7 @@ namespace YARG.Menu.Navigation
         public void ClearNavigatables()
         {
             ClearSelection();
+            SelectedIndex = null;
             _navigatables.Clear();
         }
 
