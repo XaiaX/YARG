@@ -39,6 +39,35 @@ namespace YARG.Menu.Maestro
             Accessibility,
         }
 
+        /// <summary>
+        /// One instrument-control choice. Explicit "Elite (To …)" downchart rows and
+        /// native instrument rows can share the same <see cref="Instrument"/> value
+        /// (a downchart's output format), so the option tags which kind of row it is
+        /// and the dropdown callback branches on that tag instead of the enum alone.
+        /// </summary>
+        private readonly struct InstrumentOption
+        {
+            private InstrumentOption(Instrument instrument, Instrument? eliteDrumsDownchartTarget)
+            {
+                Instrument = instrument;
+                EliteDrumsDownchartTarget = eliteDrumsDownchartTarget;
+            }
+
+            /// <summary>The native instrument, or the downchart's output format.</summary>
+            public Instrument Instrument { get; }
+
+            /// <summary>Non-null exactly for explicit "Elite (To …)" rows.</summary>
+            public Instrument? EliteDrumsDownchartTarget { get; }
+
+            public bool IsEliteDrumsDownchartTarget => EliteDrumsDownchartTarget.HasValue;
+
+            public static InstrumentOption Native(Instrument instrument) =>
+                new(instrument, null);
+
+            public static InstrumentOption EliteDrumsDownchart(Instrument target) =>
+                new(target, target);
+        }
+
         private static readonly OpenLaneDisplayType[] OpenLaneOptions =
         {
             OpenLaneDisplayType.Never,
@@ -87,7 +116,7 @@ namespace YARG.Menu.Maestro
         private bool _leaving;
         private bool _editingPlayer;
         private bool _controllerLockEnabled = true;
-        private Instrument[] _instrumentOptions = Array.Empty<Instrument>();
+        private InstrumentOption[] _instrumentOptions = Array.Empty<InstrumentOption>();
         private Difficulty[] _difficultyOptions = Array.Empty<Difficulty>();
         private MaestroDropdownNavigatable _instrumentNavigation;
         private MaestroDropdownNavigatable _difficultyNavigation;
@@ -502,7 +531,23 @@ namespace YARG.Menu.Maestro
                 _instrumentDropdown.onValueChanged.AddListener(index =>
                 {
                     if (index >= 0 && index < _instrumentOptions.Length)
-                        Session.StageInstrument(_selectedProfileId, _instrumentOptions[index]);
+                    {
+                        // Native rows and explicit "Elite (To …)" rows can carry the
+                        // same Instrument value, so selection branches on the option's
+                        // tag: a target row stages the explicit downchart target (which
+                        // also pins the staged instrument to it), a native row stages
+                        // the instrument and clears any target.
+                        var option = _instrumentOptions[index];
+                        if (option.IsEliteDrumsDownchartTarget)
+                        {
+                            Session.StageEliteDrumsDownchartTarget(_selectedProfileId,
+                                option.EliteDrumsDownchartTarget.Value);
+                        }
+                        else
+                        {
+                            Session.StageInstrument(_selectedProfileId, option.Instrument);
+                        }
+                    }
                     RefreshView();
                 });
             }
@@ -880,10 +925,16 @@ namespace YARG.Menu.Maestro
             {
                 if (_rows.TryGetValue(staged.ProfileId, out var row))
                 {
-                    string tierLabel = GetRowTierLabel(song, staged);
+                    Instrument? activeTarget =
+                        Session.TryGetActiveEliteDrumsDownchartTarget(staged.ProfileId, out var eliteTarget)
+                            ? eliteTarget
+                            : null;
+                    string tierLabel = GetRowTierLabel(song, staged, activeTarget);
                     bool partAvailable = Session.GetAvailableInstruments(staged.ProfileId).Count > 0;
                     row.Refresh(staged, staged.ProfileId == _selectedProfileId, tierLabel,
-                        partAvailable);
+                        partAvailable, activeTarget is { } target
+                            ? EliteDrumsDownchartLabel(target)
+                            : null);
                 }
             }
 
@@ -898,10 +949,10 @@ namespace YARG.Menu.Maestro
                 _selectedPlayerText.text = $"{selected.Name}\n<size=18>{state}</size>";
             }
 
-            _instrumentOptions = Session.GetAvailableInstruments(_selectedProfileId).ToArray();
+            _instrumentOptions = BuildInstrumentOptions(selected, out var selectedInstrument);
             _difficultyOptions = Session.GetAvailableDifficulties(_selectedProfileId).ToArray();
-            PopulateDropdown(_instrumentDropdown, _instrumentOptions, selected.Instrument,
-                instrument => GetInstrumentOptionLabel(song, instrument), GetInstrumentIcon);
+            PopulateDropdown(_instrumentDropdown, _instrumentOptions, selectedInstrument,
+                option => GetInstrumentOptionLabel(song, option), GetInstrumentIcon);
             PopulateDropdown(_difficultyDropdown, _difficultyOptions, selected.Difficulty,
                 difficulty => difficulty.ToLocalizedName());
 
@@ -991,6 +1042,40 @@ namespace YARG.Menu.Maestro
             graphic.color = color;
         }
 
+        /// <summary>
+        /// Builds the instrument control's choices: the native instruments, then the
+        /// explicit "Elite (To …)" downchart targets appended after them — the same
+        /// order Difficulty Select's instrument submenu uses. The two kinds can
+        /// share an <see cref="Instrument"/> value, so identity is the tagged
+        /// option, not the enum.
+        /// </summary>
+        private InstrumentOption[] BuildInstrumentOptions(MaestroStagedPlayer selected,
+            out InstrumentOption selectedOption)
+        {
+            var native = Session.GetAvailableNativeInstruments(_selectedProfileId);
+            var options = new List<InstrumentOption>(native.Count + 3);
+            foreach (var instrument in native)
+                options.Add(InstrumentOption.Native(instrument));
+
+            foreach (var target in Session.GetAvailableEliteDrumsDownchartTargets(_selectedProfileId))
+                options.Add(InstrumentOption.EliteDrumsDownchart(target));
+
+            // While an explicit target is active, no native instrument row is marked
+            // selected — even though one of them matches the downchart's output —
+            // mirroring Difficulty Select's instrument submenu. A staged target that
+            // is not fully active instead marks its native instrument row selected,
+            // matching the native chart gameplay would load.
+            int selectedIndex = Session.TryGetActiveEliteDrumsDownchartTarget(
+                _selectedProfileId, out var activeTarget)
+                ? options.FindIndex(option =>
+                    option.IsEliteDrumsDownchartTarget && option.Instrument == activeTarget)
+                : options.FindIndex(option =>
+                    !option.IsEliteDrumsDownchartTarget && option.Instrument == selected.Instrument);
+
+            selectedOption = selectedIndex >= 0 ? options[selectedIndex] : default;
+            return options.ToArray();
+        }
+
         private static void PopulateDropdown<T>(TMP_Dropdown dropdown, IReadOnlyList<T> options,
             T selected, Func<T, string> getLabel, Func<T, Sprite> getImage = null)
         {
@@ -1024,6 +1109,33 @@ namespace YARG.Menu.Maestro
         }
 
         // Match Difficulty Select's instrument option presentation, including chart tier.
+        private static string GetInstrumentOptionLabel(SongEntry song, InstrumentOption option)
+        {
+            if (option.IsEliteDrumsDownchartTarget)
+            {
+                string label = EliteDrumsDownchartLabel(option.Instrument);
+
+                // Tier must describe what gameplay actually loads for this song:
+                // the Elite Drums chart's tier only while it produces a usable
+                // downchart (the same scan-time flag the shared playability
+                // predicate uses); otherwise the target falls back to its
+                // format's native chart for this song, so that tier is shown
+                // instead — never an Elite tier for an Elite chart that
+                // downcharts to nothing. A song with neither chart gets no tier
+                // rather than a broken "? - Unknown" line.
+                if (song != null)
+                {
+                    var values = GetDownchartTierValues(song, option.Instrument);
+                    if (values.IsActive())
+                        label += " - " + GetTierLabel(values);
+                }
+
+                return label;
+            }
+
+            return GetInstrumentOptionLabel(song, option.Instrument);
+        }
+
         private static string GetInstrumentOptionLabel(SongEntry song, Instrument instrument)
         {
             if (instrument is Instrument.Vocals or Instrument.Harmony)
@@ -1048,11 +1160,48 @@ namespace YARG.Menu.Maestro
                 : chartName + " - " + GetTierLabel(GetTierValues(song, instrument));
         }
 
-        private static string GetRowTierLabel(SongEntry song, MaestroStagedPlayer player)
+        // The explicit "Elite (To …)" option label, mirroring Difficulty Select's
+        // summary and submenu rows (untranslated by design, like its other
+        // chart-format names).
+        private static string EliteDrumsDownchartLabel(Instrument target)
+        {
+            string format = target switch
+            {
+                Instrument.FourLaneDrums => "4-Lane",
+                Instrument.ProDrums      => "Pro",
+                Instrument.FiveLaneDrums => "5-Lane",
+                _                        => target.ToString(),
+            };
+            return $"Elite (To {format})";
+        }
+
+        private static string GetRowTierLabel(SongEntry song, MaestroStagedPlayer player,
+            Instrument? activeDownchartTarget = null)
         {
             if (song == null || player.SittingOut) return null;
-            var values = GetTierValues(song, player.Instrument);
+
+            // While an explicit "Elite (To …)" target is active, gameplay loads the
+            // Elite Drums downchart — but only while it is usable for this song (the
+            // same scan-time flag the shared playability predicate uses). Songs whose
+            // Elite chart produces no usable downchart fall back to the target
+            // format's native chart, so the tier follows that fallback too and an
+            // empty generated downchart never shows an Elite tier.
+            var values = activeDownchartTarget is { } target
+                ? GetDownchartTierValues(song, target)
+                : GetTierValues(song, player.Instrument);
             return GetTierLabel(values);
+        }
+
+        /// <summary>
+        /// Tier values for what an explicit "Elite (To …)" target actually loads in
+        /// this song: the Elite Drums chart while its downchart is usable, otherwise
+        /// the target format's native chart (with GetTierValues' usual drum
+        /// cross-mapping) — matching gameplay's per-song native fallback.
+        /// </summary>
+        private static PartValues GetDownchartTierValues(SongEntry song, Instrument target)
+        {
+            return GetTierValues(song,
+                song.HasEliteDrumsDownchart() ? Instrument.EliteDrums : target);
         }
 
         private static PartValues GetTierValues(SongEntry song, Instrument instrument)
@@ -1086,6 +1235,16 @@ namespace YARG.Menu.Maestro
                 5 => $"<color=#FF8400>{text}</color>",
                 _ => text,
             };
+        }
+
+        private static Sprite GetInstrumentIcon(InstrumentOption option)
+        {
+            // Explicit "Elite (To …)" rows play the Elite Drums chart downcharted to
+            // the output format, so they carry the Elite Drums icon rather than the
+            // output format's.
+            return GetInstrumentIcon(option.IsEliteDrumsDownchartTarget
+                ? Instrument.EliteDrums
+                : option.Instrument);
         }
 
         private static Sprite GetInstrumentIcon(Instrument instrument)

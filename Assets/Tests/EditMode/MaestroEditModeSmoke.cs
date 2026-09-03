@@ -527,6 +527,56 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Difficulty_Select_Summary_Instrument_Row_Shows_The_Active_Elite_Downchart_Label()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs");
+            Assert.That(script, Is.Not.Null);
+
+            // While an explicit Elite (To …) target is active, CurrentInstrument is pinned
+            // to the target's output format, so the main-menu summary row must consult the
+            // target — not CurrentInstrument — or it would read as the native instrument.
+            // "Active" is the centralized gameplay predicate, so a stale-but-well-formed
+            // target falls back to the native name, exactly like gameplay loads native notes.
+            Assert.That(script.text,
+                Does.Contain("player.Profile.EliteDrumsDownchartTarget is { } eliteTarget &&"),
+                "The summary Instrument row must extract the explicit downchart target to branch on.");
+            Assert.That(script.text,
+                Does.Contain("EliteDrumsDownchartRules.IsDownchartTargetActive(player.Profile)"),
+                "The Elite label must require the centralized active-target predicate, matching gameplay.");
+            Assert.That(script.text,
+                Does.Contain("? EliteDrumsDownchartLabel(eliteTarget)"),
+                "An active target must be summarized with the same label the instrument submenu uses.");
+            Assert.That(script.text,
+                Does.Contain(": player.Profile.CurrentInstrument.ToLocalizedName();"),
+                "Native or stale-target selections must keep the localized native instrument name.");
+        }
+
+        [Test]
+        public void Difficulty_Select_Instrument_Submenu_Marks_Rows_By_The_Active_Downchart_Predicate()
+        {
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
+                "Assets/Script/Menu/DifficultySelect/DifficultySelectMenu.cs");
+            Assert.That(script, Is.Not.Null);
+
+            // The instrument submenu's selected-state must use the same centralized
+            // profile-consistency guard as the summary label, the difficulty list, and
+            // gameplay loading: a stale but well-formed target (no longer equal to
+            // CurrentInstrument, or a mode that doesn't support downcharts) must not
+            // mark its Elite row selected, and the native row matching
+            // CurrentInstrument must be marked selected instead.
+            Assert.That(script.text,
+                Does.Contain("CurrentPlayer.Profile.EliteDrumsDownchartTarget == target &&"),
+                "An Elite row is selected only when it is the explicitly stored target.");
+            Assert.That(script.text,
+                Does.Contain("EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile)"),
+                "Elite row selection must require the centralized active-target predicate, matching gameplay.");
+            Assert.That(script.text,
+                Does.Contain("!EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile)"),
+                "A native row is selected only while no downchart target is active — a stale target falls back to the native row.");
+        }
+
+        [Test]
         public void Navigator_Hold_Release_Survives_Transition_Callbacks()
         {
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(
@@ -1380,11 +1430,74 @@ namespace YARG.Tests.EditMode
 
             Assert.That(script.text, Does.Contain("if (gameMode != player.GameMode)"),
                 "Staging a different game mode is the explicit user change that supersedes the target.");
-            Assert.That(script.text, Does.Contain("if (instrument != player.Instrument)"),
-                "Staging a different instrument is the explicit user change that supersedes the target.");
+            Assert.That(script.text,
+                Does.Contain("player.EliteDrumsDownchartTarget = null;"),
+                "Staging a native instrument is an explicit change that always supersedes the target — even when it names the format the target pinned, since the instrument control lists native rows and explicit target rows separately (mirrors Difficulty Select's native rows).");
             Assert.That(script.text,
                 Does.Contain("staged.EliteDrumsDownchartTarget = null;"),
                 "Clearing must operate on the staged value, never the live profile mid-session.");
+        }
+
+        [Test]
+        public void Maestro_Instrument_Control_Offers_And_Stages_Explicit_Elite_Downchart_Targets()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            const string rowPath = "Assets/Script/Menu/Maestro/MaestroPlayerRow.cs";
+            const string sessionPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            var row = AssetDatabase.LoadAssetAtPath<MonoScript>(rowPath);
+            var session = AssetDatabase.LoadAssetAtPath<MonoScript>(sessionPath);
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(row, Is.Not.Null);
+            Assert.That(session, Is.Not.Null);
+
+            // Native rows and explicit "Elite (To …)" rows can share one Instrument
+            // value (the downchart's output format), so the option model must tag
+            // which kind a row is and the callback must branch on that tag rather
+            // than the enum alone.
+            Assert.That(menu.text, Does.Contain("IsEliteDrumsDownchartTarget"),
+                "Instrument options must carry an explicit native/target identity tag.");
+            Assert.That(menu.text,
+                Does.Contain("Session.StageEliteDrumsDownchartTarget("),
+                "Selecting an explicit target row must go through the session's staging API, not raw profile mutation.");
+            Assert.That(menu.text,
+                Does.Contain("Session.GetAvailableEliteDrumsDownchartTargets(_selectedProfileId)"),
+                "The instrument control must build its explicit target rows from the session's offered list.");
+            Assert.That(menu.text, Does.Contain("EliteDrumsDownchartLabel"),
+                "Target rows and the active-target summary must display the explicit 'Elite (To …)' label.");
+
+            // Offering mirrors Difficulty Select: MIDI e-kit (Elite Drums) profiles
+            // get all three output formats, other drum profiles exactly their staged
+            // format, each gated on the shared Core playability predicate for the
+            // whole show — owned by the session, which knows the toggle and songs.
+            Assert.That(session.text,
+                Does.Contain("public IReadOnlyList<Instrument> GetAvailableEliteDrumsDownchartTargets"),
+                "The session must own the offered target list (toggle, mode rule, show playability).");
+            Assert.That(session.text,
+                Does.Contain("Instrument.FourLaneDrums, Instrument.ProDrums, Instrument.FiveLaneDrums"),
+                "Elite Drums (MIDI e-kit) profiles must be offered all three explicit targets.");
+            Assert.That(session.text,
+                Does.Contain("public void StageEliteDrumsDownchartTarget"),
+                "Target selection must stage through the session so the explicit target, staged instrument, and preferred instrument stay consistent with the commit contract.");
+            Assert.That(session.text,
+                Does.Contain("player.EliteDrumsDownchartTarget = target;"),
+                "Staging a target must store the explicit target and pin the staged instrument to it, mirroring Difficulty Select pinning CurrentInstrument.");
+
+            // Display goes through the session's active predicate so a stale-but-
+            // well-formed target renders as the native instrument instead.
+            Assert.That(session.text,
+                Does.Contain("public bool TryGetActiveEliteDrumsDownchartTarget"),
+                "Display must consult the session's active-target predicate, never the raw staged value.");
+            Assert.That(menu.text,
+                Does.Contain("Session.TryGetActiveEliteDrumsDownchartTarget("),
+                "Both the instrument control and the summary rows must resolve the active target through the session.");
+
+            // The summary row receives the label from the page instead of deriving
+            // it, keeping the row free of session knowledge.
+            Assert.That(row.text, Does.Contain("string instrumentLabel = null"),
+                "The row must accept an instrument label override from the page.");
+            Assert.That(row.text, Does.Contain("instrumentLabel ?? DefaultInstrumentLabel(player)"),
+                "The override must only stand in for the default label, never bypass row-owned formatting.");
         }
 
         [Test]
@@ -1435,11 +1548,12 @@ namespace YARG.Tests.EditMode
 
             // Consistent with Difficulty Select: while the experimental toggle is off,
             // live loading builds no downcharts, so a staged target is invalid at Begin
-            // (cleared safely before drafts overlay and normalization) and at commit
-            // (never preserved). Begin and TryCommit both clear through the complete
-            // session condition — toggle, valid domain, matching instrument and drum
-            // mode, and every show song playable for the target — so stale-but-
-            // well-formed targets are dropped too, not just malformed ones.
+            // (cleared safely after drafts overlay and normalization, re-resolving the
+            // affected players) and at commit (never preserved). Begin and TryCommit
+            // both clear through the complete session condition — toggle, valid domain,
+            // matching instrument and drum mode, and every show song playable for the
+            // target — so stale-but-well-formed targets are dropped too, not just
+            // malformed ones.
             Assert.That(script.text,
                 Does.Contain("session.ClearInvalidDownchartTargets();"),
                 "Begin must clear staged targets that are invalid for this session.");
@@ -1458,6 +1572,104 @@ namespace YARG.Tests.EditMode
             Assert.That(script.text,
                 Does.Contain("CanCommitDownchartTarget(staged) ? staged.EliteDrumsDownchartTarget : null"),
                 "An invalid target must be committed as null, never silently preserved.");
+        }
+
+        // Toggle drift between Begin and TryCommit: clearing an invalid target must
+        // un-pin the whole staged player (instrument AND preference), not just null
+        // the target — otherwise an Elite-only show strands a pinned lane format
+        // that Validate rejects instead of safely re-resolving or sitting out.
+        [Test]
+        public void Session_Commit_Time_Toggle_Drift_ReResolves_Pinned_Staged_Players()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+
+            // Clearing re-runs dependent normalization for the affected player only,
+            // before Validate judges them.
+            Assert.That(script.text,
+                Does.Contain("NormalizeDependentSelections(staged, target);"),
+                "Commit-time invalidation must re-run dependent normalization for affected staged players before Validate.");
+
+            // Clearing must not destroy the prior native preference: it is captured at
+            // staging time and restored on clear, so the preference never stays pinned
+            // to a dropped target format.
+            Assert.That(script.text,
+                Does.Contain("public Instrument? PreferredInstrumentBeforeDownchartTarget { get; internal set; }"),
+                "The staged player must capture the pre-target preferred instrument so clearing cannot destroy it.");
+            Assert.That(script.text,
+                Does.Contain("RestorePreferredInstrumentBeforeDownchartTarget(staged);"),
+                "Invalidation must restore the captured prior native preference before re-normalizing.");
+
+            // The re-resolution is target-exact: the dropped target's own native
+            // format is used whenever it is playable — Elite (To 4-Lane) ->
+            // FourLaneDrums, (To Pro) -> ProDrums, (To 5-Lane) -> FiveLaneDrums —
+            // never a generic fallback that could switch drum formats.
+            Assert.That(script.text,
+                Does.Contain("dropped == player.Instrument &&"),
+                "The target-exact fallback only applies while the staged instrument was actually pinned to the dropped target.");
+            Assert.That(script.text,
+                Does.Contain("player.Instrument = dropped;"),
+                "Normalization must resolve the instrument to the dropped target's own native format exactly.");
+
+            // Begin runs the clearing after the draft overlay so the target-exact
+            // re-resolution is the last normalization applied to affected players.
+            Assert.That(script.text,
+                Does.Contain("session.ApplyVocalHarmonyDefaults(explicitInstruments);"),
+                "Begin must overlay drafts and vocal defaults before the final invalid-target clearing pass.");
+        }
+
+        [Test]
+        public void Session_Stages_Elite_Downchart_Target_With_DifficultySelect_Preferred_Policy()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+
+            // The preference policy mirrors Difficulty Select's target rows: capture
+            // the prior preferred instrument, and only move the staged preference
+            // onto the target when the prior preference was itself an available
+            // native option — otherwise it is preserved.
+            Assert.That(script.text,
+                Does.Contain("var priorPreferred = player.PreferredInstrument;"),
+                "Staging a target must capture the prior preferred instrument first, like Difficulty Select.");
+            Assert.That(script.text,
+                Does.Contain("if (player.EliteDrumsDownchartTarget is null)"),
+                "The capture must happen only when the target first pins the staged state; a restage keeps the original.");
+            Assert.That(script.text,
+                Does.Contain("GetNativeAvailableInstruments(player).Contains(priorPreferred)"),
+                "The preference may only move onto the target when the prior preference was an available native option (never counting the pinned target itself).");
+
+            // Selecting a native row still clears the target and applies the same
+            // policy in the native direction.
+            Assert.That(script.text,
+                Does.Contain("public Instrument? EliteDrumsDownchartTarget { get; internal set; }"),
+                "The explicit target remains a distinct staged field that native rows clear.");
+        }
+
+        [Test]
+        public void Maestro_Downchart_Tier_Labels_Follow_Usable_Downchart_Metadata()
+        {
+            const string menuPath = "Assets/Script/Menu/Maestro/MaestroSetupMenu.cs";
+            var menu = AssetDatabase.LoadAssetAtPath<MonoScript>(menuPath);
+            Assert.That(menu, Is.Not.Null, $"Could not load {menuPath}.");
+
+            // Tier presentation must be coherent with actual usable downchart
+            // metadata — the same scan-time flag the shared playability predicate
+            // uses — for both the instrument control's target rows and the summary
+            // row, never raw Elite-chart presence.
+            Assert.That(menu.text,
+                Does.Contain("private static PartValues GetDownchartTierValues"),
+                "Both tier sites must share one downchart-aware tier resolver.");
+            Assert.That(menu.text,
+                Does.Contain("song.HasEliteDrumsDownchart() ? Instrument.EliteDrums : target"),
+                "The Elite tier may only be shown while the song's Elite chart produces a usable downchart; otherwise the target format's native chart provides the tier.");
+            Assert.That(menu.text,
+                Does.Contain("GetDownchartTierValues(song, option.Instrument)"),
+                "Target option rows must resolve their tier through the downchart-aware resolver.");
+            Assert.That(menu.text,
+                Does.Contain("GetDownchartTierValues(song, target)"),
+                "The summary row tier must resolve through the same downchart-aware resolver while a target is active.");
         }
 
         [Test]

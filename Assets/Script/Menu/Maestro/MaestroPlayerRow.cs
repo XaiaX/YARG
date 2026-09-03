@@ -53,7 +53,7 @@ namespace YARG.Menu.Maestro
         }
 
         public void Refresh(MaestroStagedPlayer player, bool selected, string tierLabel = null,
-            bool partAvailable = true)
+            bool partAvailable = true, string instrumentLabel = null)
         {
             if (player.ProfileId != ProfileId)
                 return;
@@ -73,14 +73,14 @@ namespace YARG.Menu.Maestro
                     return;
                 }
 
-                // For Party Vocals, show "Solo"/"Harmony" to match the dropdown
-                // labels instead of the raw instrument names "Vocals"/"Harmony".
-                string instrumentLabel =
-                    player.GameMode == GameMode.PartyVocals &&
-                    player.Instrument is Instrument.Vocals or Instrument.Harmony
-                        ? (player.Instrument == Instrument.Vocals ? "Solo" : "Harmony")
-                        : player.Instrument.ToLocalizedName();
-                string line1 = $"{instrumentLabel} · " +
+                // While an explicit "Elite (To …)" downchart target is active, the
+                // staged instrument is pinned to the target's output format, so the
+                // localized name would read as the native instrument (e.g. "4-Lane
+                // Drums"). The page passes the same "Elite (To …)" label the
+                // instrument control uses so the summary reflects the explicit
+                // choice, exactly like Difficulty Select's summary row.
+                string resolvedLabel = instrumentLabel ?? DefaultInstrumentLabel(player);
+                string line1 = $"{resolvedLabel} · " +
                     player.Difficulty.ToLocalizedName();
 
                 var lines = new List<string> { line1 };
@@ -141,6 +141,19 @@ namespace YARG.Menu.Maestro
                     : string.Join(", ", activeAdjustments);
             }
             SetSelected(selected, SelectionOrigin.Programmatically);
+        }
+
+        /// <summary>
+        /// The instrument label derived from the staged player alone. For Party
+        /// Vocals, shows "Solo"/"Harmony" to match the dropdown labels instead of
+        /// the raw instrument names "Vocals"/"Harmony".
+        /// </summary>
+        private static string DefaultInstrumentLabel(MaestroStagedPlayer player)
+        {
+            return player.GameMode == GameMode.PartyVocals &&
+                player.Instrument is Instrument.Vocals or Instrument.Harmony
+                    ? (player.Instrument == Instrument.Vocals ? "Solo" : "Harmony")
+                    : player.Instrument.ToLocalizedName();
         }
 
         /// <summary>

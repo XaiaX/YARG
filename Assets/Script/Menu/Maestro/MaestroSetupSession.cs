@@ -65,6 +65,18 @@ namespace YARG.Menu.Maestro
         /// </summary>
         public Instrument? EliteDrumsDownchartTarget { get; internal set; }
 
+        /// <summary>
+        /// The staged preferred instrument captured immediately before an explicit
+        /// "Elite (To …)" target first pinned it, so clearing or superseding the
+        /// target can restore the player's prior native preference instead of
+        /// leaving it pinned to a dropped target format. Null when the target was
+        /// inherited from the profile (the pre-target preference is no longer
+        /// recoverable there — Difficulty Select may already have moved the
+        /// profile's preference onto the target under its own policy) or when no
+        /// target is staged.
+        /// </summary>
+        public Instrument? PreferredInstrumentBeforeDownchartTarget { get; internal set; }
+
         internal MaestroStagedPlayer(YargPlayer player)
         {
             Player = player;
@@ -156,9 +168,14 @@ namespace YARG.Menu.Maestro
         {
             var session = new MaestroSetupSession(players, songs, completedPlayerBoundary,
                 vocalPrimaryProfileId);
-            session.ClearInvalidDownchartTargets();
             var explicitInstruments = session.OverlayPendingDrafts();
             session.ApplyVocalHarmonyDefaults(explicitInstruments);
+            // Invalid-target clearing runs after the draft overlay: the overlay
+            // normalizes every player it can (preferred-instrument first) and
+            // defers players whose staged target is already invalid, so the
+            // target-exact native fallback applied here is the last word on the
+            // affected players' staged state.
+            session.ClearInvalidDownchartTargets();
             Active = session;
             return session;
         }
@@ -171,11 +188,17 @@ namespace YARG.Menu.Maestro
         /// supported drum game mode, and every show song playable for the target. This
         /// covers stale values that merely pass the domain check — e.g. a target captured
         /// before the instrument was changed elsewhere, or one pinned while the show's
-        /// song list could still satisfy it. Clearing happens before drafts are overlaid
-        /// and selections normalized, so the pinned instrument is re-resolved against
-        /// native availability instead of silently staying pinned; it is re-run at the
-        /// start of <see cref="TryCommit"/> because the toggle and staged state may have
-        /// drifted since Begin.
+        /// song list could still satisfy it. Dropping a target re-resolves the affected
+        /// player instead of only nulling the target: the prior native preference
+        /// captured at staging time is restored first (so clearing cannot destroy it —
+        /// the preference must not stay pinned to a format the player is no longer
+        /// playing), then dependent normalization re-runs with the dropped target as the
+        /// exact native fallback. At Begin this runs after drafts are overlaid and
+        /// selections normalized (so the target-exact re-resolution is the last word on
+        /// the staged state), and it is re-run at the start of
+        /// <see cref="TryCommit"/> because the toggle and staged state may have
+        /// drifted since Begin — players whose targets remain fully valid are
+        /// untouched.
         /// </summary>
         private void ClearInvalidDownchartTargets()
         {
@@ -183,9 +206,43 @@ namespace YARG.Menu.Maestro
             {
                 if (!CanCommitDownchartTarget(staged))
                 {
+                    var dropped = staged.EliteDrumsDownchartTarget;
                     staged.EliteDrumsDownchartTarget = null;
+
+                    // Clearing must not destroy the prior native preference: restore
+                    // the one captured when the target was staged (when there is one)
+                    // so the normalization below — and the commit — can restore an
+                    // appropriate native fallback instead of staying pinned to the
+                    // dropped target format.
+                    RestorePreferredInstrumentBeforeDownchartTarget(staged);
+
+                    // Re-run the dependent normalization for the affected player so
+                    // Begin/commit judge their *effective* state: the pinned
+                    // instrument falls back to the dropped target's own native
+                    // format exactly — Elite (To 4-Lane) -> FourLaneDrums,
+                    // (To Pro) -> ProDrums, (To 5-Lane) -> FiveLaneDrums — never a
+                    // generic fallback that could switch drum formats, and a player
+                    // whose mode has no native option for this show sits out
+                    // instead of failing validation.
+                    if (dropped is { } target)
+                        NormalizeDependentSelections(staged, target);
                 }
             }
+        }
+
+        /// <summary>
+        /// Restores the staged preferred instrument captured when an explicit
+        /// "Elite (To …)" target was first staged, so superseding or dropping the
+        /// target cannot destroy the player's prior native preference. No-op when
+        /// the target was inherited from the profile (no capture exists) or when
+        /// the preference was never moved onto the target.
+        /// </summary>
+        private static void RestorePreferredInstrumentBeforeDownchartTarget(
+            MaestroStagedPlayer player)
+        {
+            if (player.PreferredInstrumentBeforeDownchartTarget is { } priorPreferred)
+                player.PreferredInstrument = priorPreferred;
+            player.PreferredInstrumentBeforeDownchartTarget = null;
         }
 
         // The experimental downchart toggle, read null-safely: before settings load (or
@@ -207,6 +264,22 @@ namespace YARG.Menu.Maestro
         public bool TryGetPlayer(Guid profileId, out MaestroStagedPlayer player) =>
             _players.TryGetValue(profileId, out player);
 
+        /// <summary>
+        /// The player's staged "Elite (To …)" target while it is fully active for
+        /// this session (<see cref="HasActiveDownchartTarget"/>): toggle on, valid
+        /// domain, still pinning the staged instrument, a drum game mode, and every
+        /// show song playable. The instrument control and summary row display
+        /// through this so a stale-but-well-formed staged target renders as its
+        /// native instrument instead — matching how gameplay and Difficulty Select
+        /// resolve it.
+        /// </summary>
+        public bool TryGetActiveEliteDrumsDownchartTarget(Guid profileId, out Instrument target)
+        {
+            target = default;
+            return _players.TryGetValue(profileId, out var player) &&
+                HasActiveDownchartTarget(player, out target);
+        }
+
         public IReadOnlyList<GameMode> GetAvailableGameModes()
         {
             return EnumExtensions<GameMode>.Values
@@ -221,9 +294,7 @@ namespace YARG.Menu.Maestro
 
             try
             {
-                var available = GetPossibleInstruments(player.GameMode)
-                    .Where(instrument => IsInstrumentAvailable(player, player.GameMode, instrument))
-                    .ToList();
+                var available = GetNativeAvailableInstruments(player);
 
                 // Keep the pinned downchart output offered while an "Elite (To …)"
                 // target is active so the editor can display the current selection.
@@ -245,6 +316,37 @@ namespace YARG.Menu.Maestro
             }
         }
 
+        /// <summary>
+        /// The natively playable instruments for the player's staged game mode —
+        /// the Maestro counterpart of Difficulty Select's <c>_possibleInstruments</c>.
+        /// This public view intentionally excludes a pinned downchart target that was
+        /// appended by <see cref="GetAvailableInstruments"/> for display. It is used
+        /// when building native-vs-target dropdown rows so a downchart-only show does
+        /// not present the target's output format as a misleading native choice.
+        /// </summary>
+        public IReadOnlyList<Instrument> GetAvailableNativeInstruments(Guid profileId)
+        {
+            if (!_players.TryGetValue(profileId, out var player) || _songs.Count == 0)
+                return Array.Empty<Instrument>();
+
+            return GetNativeAvailableInstruments(player);
+        }
+
+        private List<Instrument> GetNativeAvailableInstruments(MaestroStagedPlayer player)
+        {
+            try
+            {
+                return GetPossibleInstruments(player.GameMode)
+                    .Where(instrument => IsNativeInstrumentAvailable(player, player.GameMode,
+                        instrument))
+                    .ToList();
+            }
+            catch (NotImplementedException)
+            {
+                return new List<Instrument>();
+            }
+        }
+
         public IReadOnlyList<Difficulty> GetAvailableDifficulties(Guid profileId)
         {
             if (!_players.TryGetValue(profileId, out var player))
@@ -256,6 +358,46 @@ namespace YARG.Menu.Maestro
             return EnumExtensions<Difficulty>.Values
                 .Where(difficulty => IsDifficultyAvailableForPlayer(player, difficulty))
                 .ToArray();
+        }
+
+        /// <summary>
+        /// The explicit "Elite (To …)" downchart targets offered in this player's
+        /// instrument control, mirroring Difficulty Select's row offering: MIDI
+        /// e-kit (Elite Drums) profiles choose any of the three output formats,
+        /// while four-lane/pro/five-lane profiles get exactly the one matching
+        /// their staged native drum format. Each candidate must also satisfy the
+        /// shared session playability predicate for the whole show
+        /// (<see cref="EliteDrumsDownchartRules.IsSongPlayableForTarget"/>). Empty
+        /// when the experimental toggle is off, the player is not in a drum mode
+        /// that supports downchart outputs, or no candidate is playable.
+        /// </summary>
+        public IReadOnlyList<Instrument> GetAvailableEliteDrumsDownchartTargets(Guid profileId)
+        {
+            if (!_players.TryGetValue(profileId, out var player) || _songs.Count == 0 ||
+                !EliteDrumsDownchartsEnabled)
+            {
+                return Array.Empty<Instrument>();
+            }
+
+            if (player.GameMode == GameMode.EliteDrums)
+            {
+                return new[] { Instrument.FourLaneDrums, Instrument.ProDrums, Instrument.FiveLaneDrums }
+                    .Where(target => _songs.All(song =>
+                        EliteDrumsDownchartRules.IsSongPlayableForTarget(song, target)))
+                    .ToArray();
+            }
+
+            // While an explicit target is active the staged instrument is pinned to
+            // it — exactly how Difficulty Select resolves CurrentInstrument before
+            // offering — so this stays the single applicable row either way.
+            if (player.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums &&
+                EliteDrumsDownchartRules.IsValidTarget(player.Instrument) &&
+                _songs.All(song => EliteDrumsDownchartRules.IsSongPlayableForTarget(song, player.Instrument)))
+            {
+                return new[] { player.Instrument };
+            }
+
+            return Array.Empty<Instrument>();
         }
 
         public IReadOnlyList<Modifier> GetAvailableModifiers(Guid profileId) =>
@@ -302,7 +444,10 @@ namespace YARG.Menu.Maestro
             // so the choice is superseded instead of carried onto the new mode.
             // Re-selecting the current mode changes nothing and keeps it.
             if (gameMode != player.GameMode)
+            {
                 player.EliteDrumsDownchartTarget = null;
+                RestorePreferredInstrumentBeforeDownchartTarget(player);
+            }
 
             player.GameMode = gameMode;
             NormalizeDependentSelections(player);
@@ -314,14 +459,71 @@ namespace YARG.Menu.Maestro
                 !IsInstrumentAvailable(player, player.GameMode, instrument))
                 return;
 
-            // An explicit instrument selection supersedes any "Elite (To …)"
-            // downchart target pinned to the previous instrument. Re-selecting
-            // the pinned instrument keeps the target.
-            if (instrument != player.Instrument)
-                player.EliteDrumsDownchartTarget = null;
+            // An explicit native instrument selection supersedes any "Elite (To …)"
+            // downchart target — including one pinned to this same instrument. The
+            // instrument control lists explicit target rows separately from native
+            // instruments, so choosing the native chart of the pinned format is how
+            // the player steps back from a downchart; a target can no longer be
+            // re-selected implicitly. Mirrors Difficulty Select's native rows.
+            var priorPreferred = player.PreferredInstrument;
+            player.EliteDrumsDownchartTarget = null;
+            player.PreferredInstrumentBeforeDownchartTarget = null;
 
             player.Instrument = instrument;
-            player.PreferredInstrument = instrument;
+
+            // Mirror Difficulty Select's native rows: the preferred instrument
+            // only follows an explicit native selection when the prior preference
+            // was itself an available native option, so a player who was forced
+            // onto a fallback never has their real preference overwritten.
+            if (instrument != priorPreferred &&
+                GetNativeAvailableInstruments(player).Contains(priorPreferred))
+            {
+                player.PreferredInstrument = instrument;
+            }
+
+            NormalizeDependentSelections(player);
+        }
+
+        /// <summary>
+        /// Stages an explicit "Elite (To …)" downchart target: the chosen output
+        /// format is stored AND the staged instrument is pinned to it, so the
+        /// engine mode, highway, and track lookup all agree on the output
+        /// format — the same consistency Difficulty Select establishes by
+        /// pinning CurrentInstrument, and that the commit re-checks through
+        /// <see cref="CanCommitDownchartTarget"/>. Only targets currently offered
+        /// (<see cref="GetAvailableEliteDrumsDownchartTargets"/>) can be staged;
+        /// normalization runs afterwards like any other staging call. The preferred
+        /// instrument follows Difficulty Select's exact policy: it moves onto the
+        /// target only when the prior preference was itself an available native
+        /// option for this show (an active switch away from a real choice) and is
+        /// otherwise preserved, and the prior value is captured first so a later
+        /// invalidation can restore it rather than leave the preference pinned to
+        /// the target format.
+        /// </summary>
+        public void StageEliteDrumsDownchartTarget(Guid profileId, Instrument target)
+        {
+            if (!_players.TryGetValue(profileId, out var player) ||
+                !GetAvailableEliteDrumsDownchartTargets(profileId).Contains(target))
+                return;
+
+            // Capture the prior native preference at the moment the target first
+            // pins the staged state (a restage keeps the original capture), and
+            // evaluate the policy against native availability only — the same
+            // "_possibleInstruments.Contains(preferred)" check Difficulty Select
+            // applies, never counting the pinned target itself as a native option.
+            var priorPreferred = player.PreferredInstrument;
+            if (player.EliteDrumsDownchartTarget is null)
+                player.PreferredInstrumentBeforeDownchartTarget = priorPreferred;
+
+            player.EliteDrumsDownchartTarget = target;
+            player.Instrument = target;
+
+            if (target != priorPreferred &&
+                GetNativeAvailableInstruments(player).Contains(priorPreferred))
+            {
+                player.PreferredInstrument = target;
+            }
+
             NormalizeDependentSelections(player);
         }
 
@@ -471,9 +673,14 @@ namespace YARG.Menu.Maestro
         {
             // Re-run the same cleanup Begin performed before validating: the experimental
             // toggle and the staged selections may have drifted since the session opened,
-            // and Validate must judge every player against their *effective* state. This
-            // only touches staged values — the rollback snapshots below are taken after
-            // it, and profile restoration on failure is unaffected.
+            // and Validate must judge every player against their *effective* state.
+            // The cleanup re-resolves each affected player — restoring the prior native
+            // preference and falling the instrument back to the dropped target's exact
+            // native format (or sitting the player out when the mode has no native
+            // option) — so a toggle flip can no longer strand a pinned instrument that
+            // Validate would reject. This only touches staged values — the rollback
+            // snapshots below are taken after it, and profile restoration on failure is
+            // unaffected.
             ClearInvalidDownchartTargets();
 
             var errors = Validate(out string globalError);
@@ -728,17 +935,33 @@ namespace YARG.Menu.Maestro
                     // mode or instrument supersedes an "Elite (To …)" downchart
                     // target, exactly like the menu's own dropdowns. Re-sending
                     // the current values — or only speed/length/harmony fields —
-                    // keeps the explicit target intact.
+                    // keeps the explicit target intact. The draft sets the
+                    // preferred instrument itself above, so only the capture is
+                    // dropped here — there is nothing older to restore over the
+                    // draft's explicit choice.
                     if ((draft.PendingGameMode.HasValue && staged.GameMode != priorGameMode) ||
                         (draft.PendingInstrument.HasValue && staged.Instrument != priorInstrument))
                     {
                         staged.EliteDrumsDownchartTarget = null;
+                        staged.PreferredInstrumentBeforeDownchartTarget = null;
                     }
                 }
             }
 
             foreach (var staged in _players.Values)
+            {
+                // A staged target that is already invalid (e.g. the toggle is off)
+                // is re-resolved target-exact by ClearInvalidDownchartTargets after
+                // this overlay; normalizing it here first would flip the pinned
+                // instrument to the preferred one and lose that exact fallback.
+                if (staged.EliteDrumsDownchartTarget is not null &&
+                    !CanCommitDownchartTarget(staged))
+                {
+                    continue;
+                }
+
                 NormalizeDependentSelections(staged);
+            }
 
             return explicitInstruments;
         }
@@ -768,7 +991,8 @@ namespace YARG.Menu.Maestro
             }
         }
 
-        private void NormalizeDependentSelections(MaestroStagedPlayer player)
+        private void NormalizeDependentSelections(MaestroStagedPlayer player,
+            Instrument? droppedDownchartTarget = null)
         {
             if (!IsModeAvailableForPlayer(player))
             {
@@ -790,13 +1014,32 @@ namespace YARG.Menu.Maestro
                 var instruments = GetAvailableInstruments(player.ProfileId);
                 if (instruments.Count > 0)
                 {
-                    // Revert to the user's preferred instrument when it's available,
-                    // or follow the game-mode fallback chain when it isn't.
-                    if (instruments.Contains(player.PreferredInstrument))
-                        player.Instrument = player.PreferredInstrument;
+                    if (droppedDownchartTarget is { } dropped && dropped == player.Instrument &&
+                        EliteDrumsDownchartRules.IsValidTarget(dropped) &&
+                        instruments.Contains(dropped))
+                    {
+                        // Target-exact native fallback: a dropped "Elite (To …)"
+                        // target resolves to that same format's own native chart
+                        // whenever it is playable for the show — Elite (To 4-Lane)
+                        // -> FourLaneDrums, (To Pro) -> ProDrums, (To 5-Lane) ->
+                        // FiveLaneDrums — never the generic preferred/chain
+                        // resolution, which could switch the player to a
+                        // different drum format they did not choose. The
+                        // pinned-instrument guard keeps a malformed or
+                        // inconsistent staged target from forcing a format the
+                        // player was never on.
+                        player.Instrument = dropped;
+                    }
                     else
-                        player.Instrument = SelectInstrumentFallback(
-                            player.PreferredInstrument, player.GameMode, instruments);
+                    {
+                        // Revert to the user's preferred instrument when it's available,
+                        // or follow the game-mode fallback chain when it isn't.
+                        if (instruments.Contains(player.PreferredInstrument))
+                            player.Instrument = player.PreferredInstrument;
+                        else
+                            player.Instrument = SelectInstrumentFallback(
+                                player.PreferredInstrument, player.GameMode, instruments);
+                    }
                 }
             }
 
@@ -886,16 +1129,27 @@ namespace YARG.Menu.Maestro
         private bool IsInstrumentAvailable(MaestroStagedPlayer target, GameMode mode,
             Instrument instrument)
         {
+            // While an "Elite (To …)" target pins this player's instrument, the
+            // pinned format stays playable whenever every show song has a usable
+            // Elite Drums downchart or a native chart to fall back to — it must not
+            // require the format's own native chart in every song. The all-songs
+            // playability is part of HasActiveDownchartTarget.
+            if (HasActiveDownchartTarget(target, out var pinned) && pinned == instrument)
+                return true;
+
+            return IsNativeInstrumentAvailable(target, mode, instrument);
+        }
+
+        /// <summary>
+        /// Native-chart availability only — the check Difficulty Select's instrument
+        /// rows and preference policy use, with no special case for a pinned
+        /// downchart target.
+        /// </summary>
+        private bool IsNativeInstrumentAvailable(MaestroStagedPlayer target, GameMode mode,
+            Instrument instrument)
+        {
             try
             {
-                // While an "Elite (To …)" target pins this player's instrument, the
-                // pinned format stays playable whenever every show song has a usable
-                // Elite Drums downchart or a native chart to fall back to — it must not
-                // require the format's own native chart in every song. The all-songs
-                // playability is part of HasActiveDownchartTarget.
-                if (HasActiveDownchartTarget(target, out var pinned) && pinned == instrument)
-                    return true;
-
                 if (!GetPossibleInstruments(mode).Contains(instrument) ||
                     !_songs.All(song => HasPlayableInstrument(song, instrument)))
                     return false;

@@ -677,7 +677,19 @@ namespace YARG.Menu.DifficultySelect
                 }
                 else
                 {
-                    string instrumentLabel = player.Profile.CurrentInstrument.ToLocalizedName();
+                    // While an explicit "Elite (To …)" target is active, CurrentInstrument is
+                    // pinned to the target's output format, so its localized name would read
+                    // as the native instrument (e.g. "4-Lane Drums"). Show the same
+                    // "Elite (To …)" label the instrument submenu uses so the summary
+                    // reflects the explicit choice. "Active" is the centralized profile-
+                    // consistency guard gameplay consults (IsDownchartTargetActive), so a
+                    // stale but well-formed target — one that no longer equals
+                    // CurrentInstrument or whose mode doesn't support downcharts — falls
+                    // back to the native localized name, matching what gameplay loads.
+                    string instrumentLabel = player.Profile.EliteDrumsDownchartTarget is { } eliteTarget &&
+                        EliteDrumsDownchartRules.IsDownchartTargetActive(player.Profile)
+                            ? EliteDrumsDownchartLabel(eliteTarget)
+                            : player.Profile.CurrentInstrument.ToLocalizedName();
                     instrumentItem = CreateItem(LocalizeHeader("Instrument"),
                         instrumentLabel,
                         _lastMenuState == State.Instrument, () =>
@@ -938,10 +950,15 @@ namespace YARG.Menu.DifficultySelect
 
             foreach (var instrument in _possibleInstruments)
             {
-                // While an Elite (To …) option is selected, no native instrument row
-                // is marked selected — even though one of them matches the downchart's output
+                // While an Elite (To …) option is active, no native instrument row is
+                // marked selected — even though one of them matches the downchart's
+                // output. "Active" is the same centralized profile-consistency guard
+                // the summary label and gameplay consult
+                // (EliteDrumsDownchartRules.IsDownchartTargetActive), so a stale but
+                // well-formed target instead marks its native instrument row selected,
+                // matching the native chart gameplay actually loads.
                 bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument &&
-                    CurrentPlayer.Profile.EliteDrumsDownchartTarget is null;
+                    !EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile);
 
                 // Instrument name with its charted tier on a smaller, dimmed
                 // second line (mirroring the header text style).
@@ -984,7 +1001,15 @@ namespace YARG.Menu.DifficultySelect
             // their native chart per song.
             foreach (var target in _eliteDrumsDownchartTargets)
             {
-                bool selected = CurrentPlayer.Profile.EliteDrumsDownchartTarget == target;
+                // Selected requires the same centralized guard the summary label and
+                // the difficulty list use
+                // (EliteDrumsDownchartRules.IsDownchartTargetActive): a stale but
+                // well-formed target — one that no longer equals CurrentInstrument or
+                // whose mode doesn't support downcharts — must not mark its row
+                // selected, since gameplay and the summary both treat it as the
+                // native chart of CurrentInstrument instead.
+                bool selected = CurrentPlayer.Profile.EliteDrumsDownchartTarget == target &&
+                    EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile);
 
                 // Only show the Elite Drums tier on the second line when the song actually
                 // has an elite chart to downchart; an elite-less song would otherwise show
