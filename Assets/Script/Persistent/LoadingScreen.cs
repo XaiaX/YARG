@@ -62,7 +62,7 @@ namespace YARG
             // Load (sub)genre mappings
             try
             {
-                await Genrelizer.LoadGenreMappings(context);
+                await Genrelizer.LoadGenreMappings();
             }
             catch (Exception ex)
             {

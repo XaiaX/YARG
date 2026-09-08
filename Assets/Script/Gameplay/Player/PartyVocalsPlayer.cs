@@ -172,7 +172,7 @@ namespace YARG.Gameplay.Player
             {
                 for (int i = 1; i < effectiveMics.Count && i < _micCount; i++)
                 {
-                    var ctx = new MicInputContext(effectiveMics[i], GameManager);
+                    var ctx = new MicInputContext(new List<MicDevice> { effectiveMics[i] }, GameManager);
                     ctx.Start();
                     _additionalMicContexts.Add(ctx);
                 }
@@ -496,7 +496,7 @@ namespace YARG.Gameplay.Player
                 botPartIndex: Player.Profile.HarmonyIndex);
 
             // Register using the free vocals overload
-            EngineContainer = GameManager.EngineManager.Register(coordinator, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
+            EngineContainer = GameManager.EngineManager.Register(coordinator, NoteTrack, freeVocals: true, _chart, Player.RockMeterPreset);
 
             // Wire all engine events (mirrors VocalsPlayer.CreateEngine wiring)
             _coordinatorStarPowerHandler = _ => OnStarPowerPhraseHit();

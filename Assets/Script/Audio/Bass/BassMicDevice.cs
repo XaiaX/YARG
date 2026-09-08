@@ -38,6 +38,8 @@ namespace YARG.Audio.BASS
             }
         }
 
+        public override string StableId => ComputeStableId(_source.Channel, _source.BaseName);
+
         public bool TryCreateRecordingChannel(bool withEffects, out int handle, out int sampleRate)
             => _source.TryCreateRecordingChannel(withEffects, out handle, out sampleRate);
 

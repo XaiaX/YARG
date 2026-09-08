@@ -1693,7 +1693,7 @@ namespace YARG.Menu.Filters
             return part.IsActive();
         }
 
-        private static string GetIntensityLabelByIndex(int index)
+        public static string GetIntensityLabelByIndex(int index)
         {
             return IntensityLabels.GetLabelByIndex(index);
         }

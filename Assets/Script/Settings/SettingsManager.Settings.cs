@@ -764,6 +764,7 @@ namespace YARG.Settings
 
             public ToggleSetting DataStreamEnable { get; } = new(false, DataStreamEnableCallback );
             public ToggleSetting MaestroEnable { get; } = new(false, MaestroEnableCallback);
+
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
@@ -944,6 +945,13 @@ namespace YARG.Settings
                 {
                     MusicLibraryMenu.SetReload(MusicLibraryReloadState.Partial);
                 }
+            }
+
+            private static void MaestroEnableCallback(bool value)
+            {
+                if (!IsInitialized || MaestroController.Instance == null) return;
+                if (value) MaestroController.Instance.StartHost();
+                else MaestroController.Instance.StopHost();
             }
 
             private static void DataStreamEnableCallback(bool value)

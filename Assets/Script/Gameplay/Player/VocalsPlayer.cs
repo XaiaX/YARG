@@ -21,7 +21,7 @@ namespace YARG.Gameplay.Player
 {
     public class VocalsPlayer : BasePlayer
     {
-        public VocalsEngineParameters EngineParams { get; private set; }
+        public VocalsEngineParameters EngineParams { get; protected set; }
         public VocalsEngine           Engine       { get; private set; }
 
         public override BaseEngine BaseEngine => Engine;
@@ -52,7 +52,7 @@ namespace YARG.Gameplay.Player
         protected MicInputContext _inputContext;
 
         private VocalNote _lastTargetNote;
-        private double?   _lastHitTime;
+        protected double? _lastHitTime;
         protected double?   _lastSingTime;
         private double    _previousStarPowerPercent;
         private bool      _hotStartChecked;
@@ -62,7 +62,7 @@ namespace YARG.Gameplay.Player
 
         private VocalsPlayerHUD _hud;
         protected VocalPercussionTrack _percussionTrack;
-        private bool _shouldHideNeedle;
+        protected bool _shouldHideNeedle;
         private bool _handlesCountdown;
         private List<VocalsPart> _allVocalParts;
 
@@ -93,7 +93,7 @@ namespace YARG.Gameplay.Player
             _hud.ShowPartyVocalsGrade(grade);
         }
 
-        public void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
+        public virtual void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
         {
             if (IsInitialized)
@@ -123,7 +123,7 @@ namespace YARG.Gameplay.Player
             _handlesCountdown = vocalIndex == 0;
 
             var track = multiTrack.Parts[Player.Profile.HarmonyIndex];
-            player.Profile.ApplyVocalModifiers(track);
+            player.Profile.ApplyVocalModifiers(track, Player.Profile.HarmonyIndex);
 
             OriginalNoteTrack = track.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
@@ -175,12 +175,17 @@ namespace YARG.Gameplay.Player
 
         }
 
+        protected virtual void UnsubscribeEngineEvents()
+        {
+        }
+
         protected override void FinishDestruction()
         {
             _inputContext?.Stop();
+            UnsubscribeEngineEvents();
         }
 
-        protected VocalsEngine CreateEngine()
+        protected virtual VocalsEngine CreateEngine()
         {
             if (!Player.IsReplay)
             {
@@ -333,7 +338,15 @@ namespace YARG.Gameplay.Player
             base.UpdateInputs(time);
         }
 
-        private bool IsInThreshold(double currentTime, double? lastTime)
+        protected float AnchorPitchToOctave(float sungPitch, float referenceNotePitch)
+        {
+            if (referenceNotePitch < 0f) return sungPitch + 12f;
+            (_, int octaveShift) = GetPitchDistanceIgnoringOctave(referenceNotePitch, sungPitch);
+            int referenceOctave = (int) (referenceNotePitch / 12f);
+            return sungPitch % 12f + 12f * (referenceOctave + octaveShift);
+        }
+
+        protected bool IsInThreshold(double currentTime, double? lastTime)
         {
             if (lastTime is null)
             {
@@ -374,7 +387,7 @@ namespace YARG.Gameplay.Player
             _hud.ShowNotification(TextNotificationType.StarPowerReady);
         }
 
-        private void ShowTextNotifications(bool isLastPhrase)
+        protected void ShowTextNotifications(bool isLastPhrase)
         {
             if (SettingsManager.Settings.DisableTextNotifications.Value)
             {
@@ -412,7 +425,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        private float GetNeedleRotation(float pitchDist)
+        protected float GetNeedleRotation(float pitchDist)
         {
             const float NEEDLE_ROT_MAX = 12f;
 
@@ -691,7 +704,7 @@ namespace YARG.Gameplay.Player
         /// </returns>
         /// <param name="target">The target note (as MIDI pitch).</param>
         /// <param name="other">The other note (as MIDI pitch).</param>
-        private static (float Distance, int OctaveShift) GetPitchDistanceIgnoringOctave(float target, float other)
+        protected static (float Distance, int OctaveShift) GetPitchDistanceIgnoringOctave(float target, float other)
         {
             // Normalize the parameters
             target %= 12f;

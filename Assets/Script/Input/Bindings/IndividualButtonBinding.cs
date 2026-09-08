@@ -16,7 +16,7 @@ namespace YARG.Input
         {
         }
 
-        protected override void OnStateChanged(SingleButtonBinding binding, InputControl source, double time)
+        protected override void OnStateChanged(SingleButtonBinding binding, double time)
         {
             // Update debounce on all bindings
             bool othersPressed = false;
@@ -44,7 +44,7 @@ namespace YARG.Input
                 return;
 
             State = _debounceTimer.Stop();
-            FireInputEvent(source, time, State);
+            FireInputEvent(time, State);
 
             // Already fired in ControlBinding
             // FireStateChanged();

@@ -375,6 +375,20 @@ namespace YARG.Gameplay
             }
         }
 
+        private IReadOnlyCollection<Instrument> GetEliteDrumsDownchartOutputs()
+        {
+            if (!SettingsManager.Settings.EnableEliteDrumsDowncharts.Value) return null;
+            List<Instrument> outputs = null;
+            foreach (var player in YargPlayers)
+            {
+                if (player.SittingOut || player.Profile.EliteDrumsDownchartTarget is null) continue;
+                var target = player.Profile.EliteDrumsDownchartTarget.Value;
+                outputs ??= new List<Instrument>();
+                if (!outputs.Contains(target)) outputs.Add(target);
+            }
+            return outputs;
+        }
+
         private void GenerateVenueTrack()
         {
             // If we have no venue events, attempt to load from milo

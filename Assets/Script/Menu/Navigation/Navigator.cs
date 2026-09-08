@@ -107,6 +107,10 @@ namespace YARG.Menu.Navigation
         public bool MusicPlayerActive => HelpBar.Instance.MusicPlayer.isActiveAndEnabled;
 
         private bool _disableMenuInputs;
+        private int _nextControllerLockToken;
+        private readonly HashSet<int> _controllerLockTokens = new();
+
+        public bool ControllerLockEnabled => _controllerLockTokens.Count > 0;
         private NavigationInputBlockState _inputBlockState;
         private int _textInputSchemeCount;
 
@@ -131,6 +135,30 @@ namespace YARG.Menu.Navigation
             if (_disableMenuInputs)
             {
                 ClearTrackedInputs();
+            }
+        }
+
+        public IDisposable AcquireControllerLock()
+        {
+            int token = ++_nextControllerLockToken;
+            bool wasEnabled = ControllerLockEnabled;
+            _controllerLockTokens.Add(token);
+            if (!wasEnabled) ClearTrackedInputs();
+            return new ControllerLockScope(this, token);
+        }
+
+        private void ReleaseControllerLock(int token) => _controllerLockTokens.Remove(token);
+
+        private sealed class ControllerLockScope : IDisposable
+        {
+            private Navigator _owner;
+            private readonly int _token;
+            public ControllerLockScope(Navigator owner, int token) { _owner = owner; _token = token; }
+            public void Dispose()
+            {
+                if (_owner == null) return;
+                _owner.ReleaseControllerLock(_token);
+                _owner = null;
             }
         }
 
@@ -388,6 +416,21 @@ namespace YARG.Menu.Navigation
             _textInputSchemeCount++;
             scheme.PopCallback += () => _textInputSchemeCount = Mathf.Max(0, _textInputSchemeCount - 1);
             PushSchemeImmediate(scheme);
+        }
+
+        public bool RemoveScheme(NavigationScheme scheme)
+        {
+            if (scheme == null) return false;
+            var schemes = _schemeStack.ToArray();
+            int removeIndex = Array.FindIndex(schemes, candidate => ReferenceEquals(candidate, scheme));
+            if (removeIndex < 0) return false;
+            _schemeStack.Clear();
+            for (int index = schemes.Length - 1; index >= 0; index--)
+            {
+                if (index != removeIndex) _schemeStack.Push(schemes[index]);
+            }
+            UpdateHelpBar().Forget();
+            return true;
         }
 
         public void PopScheme()

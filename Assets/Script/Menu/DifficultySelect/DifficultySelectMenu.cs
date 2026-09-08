@@ -17,6 +17,7 @@ using YARG.Helpers.Extensions;
 using YARG.Localization;
 using YARG.Menu.Data;
 using YARG.Menu.Navigation;
+using YARG.Settings;
 using YARG.Menu.Maestro;
 using YARG.Integration.Maestro;
 using YARG.Menu.Persistent;

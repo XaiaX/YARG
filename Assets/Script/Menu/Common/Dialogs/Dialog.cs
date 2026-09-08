@@ -35,6 +35,14 @@ namespace YARG.Menu.Dialogs
             Navigator.Instance.PushSchemeImmediate(GetNavigationScheme());
         }
 
+        protected void RegisterNavigatable(Component root)
+        {
+            var navigatable = root.GetComponentInChildren<NavigatableBehaviour>();
+            if (navigatable != null) _navigationGroup.AddNavigatable(navigatable);
+        }
+
+        public void SelectLast() => _navigationGroup.SelectLast();
+
         protected virtual NavigationScheme GetNavigationScheme()
         {
             return new NavigationScheme(new()

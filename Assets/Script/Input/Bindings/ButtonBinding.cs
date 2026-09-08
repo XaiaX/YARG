@@ -244,7 +244,7 @@ namespace YARG.Input
                 return actuated;
         }
 
-        protected override void OnStateChanged(SingleButtonBinding binding, InputControl source, double time)
+        protected override void OnStateChanged(SingleButtonBinding binding, double time)
         {
             bool state = binding.IsPressed;
             foreach (var other in _bindings)
@@ -266,7 +266,7 @@ namespace YARG.Input
                 return;
 
             State = _debounceTimer.Stop();
-            FireInputEvent(source, time, State);
+            FireInputEvent(time, State);
 
             // Already fired in ControlBinding
             // FireStateChanged();
@@ -307,7 +307,7 @@ namespace YARG.Input
             // binding update, not the first currently-held control: a profile may bind both
             // keyboard and controller and the controller lock must classify this event's
             // actual origin.
-            FireInputEvent(_lastInputControl, updateTime, state);
+            FireInputEvent(updateTime, state);
             FireStateChanged();
         }
 

@@ -42,20 +42,6 @@ namespace YARG.Input
             }
         }
 
-        public event MenuInputProcessed MenuInputProcessed
-        {
-            add
-            {
-                foreach (var binding in _bindings)
-                    binding.MenuInputProcessed += value;
-            }
-            remove
-            {
-                foreach (var binding in _bindings)
-                    binding.MenuInputProcessed -= value;
-            }
-        }
-
         public GameMode? Mode { get; }
 
         public bool IsMenu => Mode == null;

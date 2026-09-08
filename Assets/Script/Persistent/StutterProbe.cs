@@ -38,7 +38,7 @@ namespace YARG.Persistent
         private static bool DiagnosticsEnabled =>
             SettingsManager.Settings is not null &&
             SettingsManager.SettingContainer.IsInitialized &&
-            SettingsManager.Settings.TimingDiagnostics.Value;
+            SettingsManager.Settings.FrameGraph.Value;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()

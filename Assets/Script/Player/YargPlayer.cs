@@ -168,10 +168,9 @@ namespace YARG.Player
             InputsEnabled = false;
         }
 
-        private void OnMenuInput(InputControl control, ref GameInput input)
+        private void OnMenuInput(ref GameInput input)
         {
-            InputDevice device = control?.device;
-            MenuInput?.Invoke(this, device, InputManager.ClassifyMenuInput(device), ref input);
+            MenuInput?.Invoke(this, ref input);
         }
 
         public void Dispose()

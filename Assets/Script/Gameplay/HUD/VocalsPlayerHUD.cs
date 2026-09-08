@@ -1,8 +1,11 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using DG.Tweening;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using YARG.Core.Engine.Vocals;
+using YARG.Gameplay.Vocals;
 using YARG.Core.Game;
 using YARG.Helpers.Extensions;
 using YARG.Helpers.UI;
@@ -248,7 +251,7 @@ namespace YARG.Gameplay.HUD
                 if (fills[i] == null) continue;
                 bool present = partInCurrentPhrase != null && partInCurrentPhrase(i);
                 _harmFillTargets[i] = present && i < meters.Count ? (float) System.Math.Min(1.0, meters[i] * scale) : 1f;
-                _harmColorTargets[i] = present ? VocalTrack.Colors[i] : new Color(.1f, .1f, .1f);
+                _harmColorTargets[i] = present ? YARG.Gameplay.Player.VocalTrack.Colors[i] : new Color(.1f, .1f, .1f);
                 if (!present && partInNextPhrase != null && partInNextPhrase(i)) _harmFillTargets[i] = 1f - (float) phraseProgress;
                 _harmPartPresent[i] = present;
             }
