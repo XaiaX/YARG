@@ -40,11 +40,13 @@ namespace YARG.Gameplay
                 return GetMuteVolume();
             }
 
-            public double GetMuteVolume()
+            public double GetMuteVolume() => GetMuteVolume(Volume);
+
+            public double GetMuteVolume(double volume)
             {
                 double ratio = Total > 0 ? Mathf.Clamp01((float) Audible / Total) : 1.0;
                 double floor = SettingsManager.Settings.MuteOnMissVolume.Value;
-                return Volume * Mathf.Lerp((float) floor, 1f, (float) ratio);
+                return volume * Mathf.Lerp((float) floor, 1f, (float) ratio);
             }
 
             public bool SetReverb(bool reverb)
@@ -119,6 +121,15 @@ namespace YARG.Gameplay
             }
 
             _backgroundStem = _stemStates.Count > 1 ? SongStem.Song : _stemStates.First().Key;
+        }
+
+        public void ApplyStemVolumeSetting(SongStem stem, double volume)
+        {
+            if (_mixer != null && _stemStates.TryGetValue(stem, out var state))
+            {
+                volume = state.GetMuteVolume(volume);
+            }
+            GlobalAudioHandler.SetVolumeSetting(stem, volume);
         }
 
         private void OnMuteOnMissVolumeChanged(float _)

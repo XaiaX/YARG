@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
@@ -294,11 +295,31 @@ namespace YARG.Gameplay.Player
                     engine.BuildCountdownsFromAllParts(_allVocalParts);
                 }
 
-                engine.OnCountdownChange += (countdownLength, endTime) =>
-                {
-                    GameManager.VocalTrack.UpdateCountdown(countdownLength, endTime);
-                };
+                engine.OnCountdownChange += countdownChanged;
             }
+
+            engine.OnTargetNoteChanged += targetNoteChanged;
+            engine.OnPhraseHit += phraseHit;
+            engine.OnNoteHit += noteHit;
+            engine.OnNoteMissed += noteMissed;
+            engine.OnSing += sing;
+            engine.OnHit += hit;
+
+            _unsubscribeEngineEvents = () =>
+            {
+                engine.OnComboIncrement -= OnComboIncrement;
+                engine.OnComboReset -= OnComboReset;
+                engine.OnStarPowerPhraseHit -= StarPowerPhraseHit;
+                engine.OnStarPowerStatus -= OnStarPowerStatus;
+                engine.OnStarPowerReady -= OnStarPowerReady;
+                engine.OnTargetNoteChanged -= targetNoteChanged;
+                engine.OnPhraseHit -= phraseHit;
+                engine.OnNoteHit -= noteHit;
+                engine.OnNoteMissed -= noteMissed;
+                engine.OnSing -= sing;
+                engine.OnHit -= hit;
+                engine.OnCountdownChange -= countdownChanged;
+            };
 
             return engine;
         }

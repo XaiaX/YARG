@@ -340,35 +340,44 @@ namespace YARG.Settings
             public ToggleSetting EnableNormalization { get; } = new(true);
             public VolumeSetting MasterMusicVolume   { get; } = new(0.75f, v => GlobalAudioHandler.SetMasterVolume(v));
 
+            private static void ApplyStemVolumeSetting(SongStem stem, float volume)
+            {
+                var gameManager = UnityEngine.Object.FindAnyObjectByType<YARG.Gameplay.GameManager>();
+                if (gameManager != null)
+                    gameManager.ApplyStemVolumeSetting(stem, volume);
+                else
+                    GlobalAudioHandler.SetVolumeSetting(stem, volume);
+            }
+
             public VolumeSetting GuitarVolume { get; } =
-                new(1f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Guitar, v));
+                new(1f, v => ApplyStemVolumeSetting(SongStem.Guitar, v));
 
             public VolumeSetting RhythmVolume { get; } =
-                new(1f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Rhythm, v));
+                new(1f, v => ApplyStemVolumeSetting(SongStem.Rhythm, v));
 
             public VolumeSetting BassVolume { get; } =
-                new(1f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Bass, v));
+                new(1f, v => ApplyStemVolumeSetting(SongStem.Bass, v));
 
             public VolumeSetting KeysVolume { get; } =
-                new(1f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Keys, v));
+                new(1f, v => ApplyStemVolumeSetting(SongStem.Keys, v));
 
             public VolumeSetting DrumsVolume { get; } =
                 new(1f, v =>
                 {
-                    GlobalAudioHandler.SetVolumeSetting(SongStem.Drums1, v);
-                    GlobalAudioHandler.SetVolumeSetting(SongStem.Drums2, v);
-                    GlobalAudioHandler.SetVolumeSetting(SongStem.Drums3, v);
-                    GlobalAudioHandler.SetVolumeSetting(SongStem.Drums4, v);
+                    ApplyStemVolumeSetting(SongStem.Drums1, v);
+                    ApplyStemVolumeSetting(SongStem.Drums2, v);
+                    ApplyStemVolumeSetting(SongStem.Drums3, v);
+                    ApplyStemVolumeSetting(SongStem.Drums4, v);
                 });
 
             public VolumeSetting VocalsVolume { get; } =
-                new(1f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Vocals, v));
+                new(1f, v => ApplyStemVolumeSetting(SongStem.Vocals, v));
 
             public VolumeSetting SongVolume { get; } =
-                new(1f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Song, v));
+                new(1f, v => ApplyStemVolumeSetting(SongStem.Song, v));
 
             public VolumeSetting CrowdVolume { get; } =
-                new(1f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Crowd, v));
+                new(1f, v => ApplyStemVolumeSetting(SongStem.Crowd, v));
 
             public VolumeSetting SfxVolume { get; } =
                 new(0.8f, v => GlobalAudioHandler.SetVolumeSetting(SongStem.Sfx, v));
