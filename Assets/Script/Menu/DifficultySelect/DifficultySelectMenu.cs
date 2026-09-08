@@ -223,20 +223,39 @@ namespace YARG.Menu.DifficultySelect
                 _songList = new List<SongEntry> { GlobalVariables.State.CurrentSong };
             }
 
-            // Starting a fresh selection session: discard any session-scoped modifiers
-            // imposed by a previous song (see ApplySessionModifiers) so each player's
-            // own saved selection is what shows and is edited here.
-            foreach (var player in PlayerContainer.Players)
+            var pageSession = MaestroSetupSession.Active;
+            bool returningFromMaestro = pageSession?.ReturningToDifficultySelect == true;
+            _vocalModifierSelectIndex = -1;
+            if (returningFromMaestro)
             {
-                player.Profile.RestoreSavedModifiers();
+                _playerIndex = Mathf.Clamp(pageSession.CompletedPlayerBoundary - 1, 0,
+                    Mathf.Max(0, PlayerContainer.Players.Count - 1));
+                if (pageSession.VocalPrimaryProfileId != default)
+                {
+                    for (int i = 0; i < PlayerContainer.Players.Count; i++)
+                    {
+                        if (PlayerContainer.Players[i].Profile.Id == pageSession.VocalPrimaryProfileId)
+                        {
+                            _vocalModifierSelectIndex = i;
+                            break;
+                        }
+                    }
+                }
+                ChangePlayer(0);
+                pageSession.ClearReturningToDifficultySelect();
+            }
+            else
+            {
+                // Restore persistent selections only for a fresh selection session.
+                foreach (var player in PlayerContainer.Players)
+                {
+                    player.Profile.RestoreSavedModifiers();
+                    player.SittingOut = player.Profile.MaestroSittingOut;
+                }
+                _playerIndex = 0;
+                ChangePlayer(0);
             }
 
-            // ChangePlayer(0) will update for the current player
-            _playerIndex = 0;
-            _vocalModifierSelectIndex = -1;
-            ChangePlayer(0);
-
-            bool returningFromMaestro = MaestroSetupSession.Active?.ReturningToDifficultySelect == true;
             bool directSummary = !returningFromMaestro && SettingsManager.Settings.MaestroEnable.Value &&
                 SettingsManager.Settings.MaestroGoDirectlyToSummary.Value;
             if (_directSummaryCanvasGroup != null)
@@ -1218,6 +1237,18 @@ namespace YARG.Menu.DifficultySelect
                     DialogManager.Instance.ShowMessage("Nobody's Playing!",
                         "You tried to play a song with every player sitting out.");
 
+                    return;
+                }
+
+                if (SettingsManager.Settings.MaestroEnable.Value)
+                {
+                    _songSpeed = Mathf.Clamp(float.Parse(_speedInput.text.TrimEnd('%')) / 100f, 0.1f, 50f);
+                    GlobalVariables.State.SongSpeed = _songSpeed;
+                    Guid vocalId = _vocalModifierSelectIndex >= 0 &&
+                        _vocalModifierSelectIndex < PlayerContainer.Players.Count
+                        ? PlayerContainer.Players[_vocalModifierSelectIndex].Profile.Id : default;
+                    MaestroSetupSession.Begin(PlayerContainer.Players, _songList, _playerIndex, vocalId);
+                    MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
                     return;
                 }
 

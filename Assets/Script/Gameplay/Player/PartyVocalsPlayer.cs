@@ -70,7 +70,8 @@ namespace YARG.Gameplay.Player
         private System.Action<bool> _coordinatorHitHandler;
 
         public override void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
-            VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
+            VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed,
+            VocalsTrack effectiveVocalTrack)
         {
             // Compute mic count BEFORE base.Initialize: base.Initialize calls
             // CreateEngine() (virtual) which now dispatches to our override,
@@ -101,7 +102,7 @@ namespace YARG.Gameplay.Player
                 // exactly one part, so reading chart.Vocals.Parts.Count here gave every
                 // bot a single needle (no per-mic slots) — visible as missing needles
                 // and trails even though scoring ran correctly off the Harmony parts.
-                var botTrack = VocalChartSelection.ResolveMultitrack(chart, player.Profile);
+                var botTrack = effectiveVocalTrack;
 
                 // PartyVocalsMicCountOverride: 0 = Auto (one synthetic vocalist per
                 // charted HARM part). 1-7 forces that many regardless of part count —
@@ -121,7 +122,7 @@ namespace YARG.Gameplay.Player
                 _micCount = 1;
             }
 
-            base.Initialize(index, vocalIndex, player, chart, hud, percussionTrack, lastHighScore, trackSpeed);
+            base.Initialize(index, vocalIndex, player, chart, hud, percussionTrack, lastHighScore, trackSpeed, effectiveVocalTrack);
 
             // Always use per-mic slots (even for _micCount == 1). The engine is a
             // PartyVocalsCoordinatorEngine, not a regular VocalsEngine — the base
@@ -458,9 +459,16 @@ namespace YARG.Gameplay.Player
 
             merged.Sort((a, b) => a.Tick.CompareTo(b.Tick));
 
+            var phrases = allParts.SelectMany(part => part.OtherPhrases)
+                .GroupBy(phrase => (phrase.Type, phrase.Tick, phrase.TickEnd))
+                .Select(group => group.First().Clone())
+                .OrderBy(phrase => phrase.Tick)
+                .ThenBy(phrase => phrase.Type)
+                .ToList();
+
             return new InstrumentDifficulty<VocalNote>(
                 baseTrack.Instrument, Difficulty.Expert,
-                merged, new(baseTrack.Phrases), new(baseTrack.TextEvents));
+                merged, phrases, new(baseTrack.TextEvents));
         }
 
         protected override VocalsEngine CreateEngine()
@@ -484,16 +492,15 @@ namespace YARG.Gameplay.Player
             // The hit window can just be taken from the params
             HitWindow = EngineParams.HitWindow;
 
-            // Must match the chart-selection logic in Initialize so the engine sees
-            // the same parts (and pitch register) as the visualization.
-            var multiTrack = VocalChartSelection.ResolveMultitrack(_chart, Player.Profile);
+            // Use the same load-time selection as the visual track and base player.
+            var multiTrack = EffectiveVocalTrack;
 
             var mergedNoteTrack = BuildMergedCoordinatorTrack(multiTrack.Parts, NoteTrack);
 
             var coordinator = new PartyVocalsCoordinatorEngine(mergedNoteTrack, multiTrack.Parts, SyncTrack,
                 EngineParams, Player.Profile.IsBot,
                 micCount: _micCount,
-                botPartIndex: Player.Profile.HarmonyIndex);
+                botPartIndex: EffectiveVocalPartIndex);
 
             // Register using the free vocals overload
             EngineContainer = GameManager.EngineManager.Register(coordinator, NoteTrack, freeVocals: true, _chart, Player.RockMeterPreset);
@@ -591,6 +598,7 @@ namespace YARG.Gameplay.Player
                 coordinator.OnNoteMissed -= _coordinatorNoteMissedHandler;
                 coordinator.OnSing -= _coordinatorSingHandler;
                 coordinator.OnHit -= _coordinatorHitHandler;
+                coordinator.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
             }
 
             foreach (var unsubscribe in _targetNoteUnsubscribers)

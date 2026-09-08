@@ -464,6 +464,7 @@ namespace YARG.Gameplay
                 _players = new List<BasePlayer>();
 
                 bool vocalTrackInitialized = false;
+                VocalsTrack effectiveVocalTrack = null;
 
                 int index = -1;
                 int highwayIndex = -1;
@@ -540,12 +541,10 @@ namespace YARG.Gameplay
                             VocalTrack.transform.position = new Vector3(highwayIndex * TRACK_SPACING_X, 100, 0);
                             _trackViewManager.CreateVocalTrackView(highwayIndex);
 
-                            // Since all players have to select the same vocals
-                            // type (solo/harmony) this works no problem.
-                            var chart = player.Profile.CurrentInstrument == Instrument.Vocals
-                                ? Chart.Vocals
-                                : Chart.Harmony;
-                            VocalTrack.Initialize(chart, player, Song.VocalScrollSpeedScalingFactor);
+                            // Resolve once for the shared visual track and all vocal engines.
+                            // Sticky Party Vocals preferences remain unchanged when falling back.
+                            effectiveVocalTrack = VocalChartSelection.ResolveMultitrack(Chart, player.Profile);
+                            VocalTrack.Initialize(effectiveVocalTrack, player, Song.VocalScrollSpeedScalingFactor);
 
                             if (SettingsManager.Settings.KeepLyricBar.Value &&
                                 SettingsManager.Settings.LyricDisplay.Value != LyricDisplayMode.Disabled)
@@ -567,7 +566,7 @@ namespace YARG.Gameplay
 
                         var percussionTrack = VocalTrack.CreatePercussionTrack();
                         percussionTrack.TrackSpeed = VocalTrack.TrackSpeed;
-                        vocalsPlayer.Initialize(index, vocalIndex, player, Chart, playerHud, percussionTrack, lastHighScore, VocalTrack.TrackSpeed);
+                        vocalsPlayer.Initialize(index, vocalIndex, player, Chart, playerHud, percussionTrack, lastHighScore, VocalTrack.TrackSpeed, effectiveVocalTrack);
 
                         _players.Add(vocalsPlayer);
                     }

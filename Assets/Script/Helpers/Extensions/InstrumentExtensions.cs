@@ -34,6 +34,8 @@ namespace YARG.Helpers.Extensions
                 Instrument.ProKeys            => SortAttribute.ProKeys,
                 Instrument.Vocals             => SortAttribute.Vocals,
                 Instrument.Harmony            => SortAttribute.Harmony,
+                // Mirrors origin/feat/free-harmonies; a follow-up may exclude PartyVocals from sorting instead.
+                Instrument.PartyVocals        => SortAttribute.Harmony,
                 Instrument.Band               => SortAttribute.Band,
                 _ => throw new InvalidOperationException("Invalid instrument value")
             };

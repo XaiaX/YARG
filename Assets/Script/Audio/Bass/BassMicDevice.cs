@@ -17,18 +17,19 @@ namespace YARG.Audio.BASS
         private readonly object          _lifecycleLock = new();
         private          bool                 _disposed;
 
-        internal BassMicDevice(IBassMicSource source) : base(source.DisplayName)
+        internal BassMicDevice(IBassMicSource source, int deviceId) : base(source.DisplayName)
         {
+            StableId = ComputeStableId(deviceId, source.BaseName);
             _source = source;
             _analyzer = CreateAnalyzer();
             _source.InputChanged += RecreateAnalyzer;
         }
 
-        internal static BassMicDevice? Create(IBassMicSource source)
+        internal static BassMicDevice? Create(IBassMicSource source, int deviceId)
         {
             try
             {
-                return new BassMicDevice(source);
+                return new BassMicDevice(source, deviceId);
             }
             catch (Exception exception)
             {
@@ -38,7 +39,7 @@ namespace YARG.Audio.BASS
             }
         }
 
-        public override string StableId => ComputeStableId(_source.Channel, _source.BaseName);
+        public override string StableId { get; }
 
         public bool TryCreateRecordingChannel(bool withEffects, out int handle, out int sampleRate)
             => _source.TryCreateRecordingChannel(withEffects, out handle, out sampleRate);

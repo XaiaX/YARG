@@ -201,14 +201,32 @@ namespace YARG.Input
 
         public void ResolveMicrophones()
         {
-            for (int i = _unresolvedMics.Count - 1; i >= 0; i--)
+            foreach (var mic in _unresolvedMics.ToArray())
             {
-                var mic = _unresolvedMics[i];
-                var device = GlobalAudioHandler.GetInputDevice(mic.BaseName, mic.Channel);
+                MicDevice device = null;
+                if (!string.IsNullOrEmpty(mic.StableId))
+                {
+                    foreach (var info in GlobalAudioHandler.GetAllInputDevices())
+                    {
+                        if (info.Channel == mic.Channel &&
+                            MicDevice.ComputeStableId(info.DeviceId, info.Name) == mic.StableId)
+                        {
+                            device = GlobalAudioHandler.CreateInputDevice(info);
+                            break;
+                        }
+                    }
+                }
+                device ??= GlobalAudioHandler.GetInputDevice(mic.BaseName, mic.Channel);
                 if (device != null)
                 {
-                    _unresolvedMics.RemoveAt(i);
-                    AddMicrophone(device);
+                    if (AddMicrophone(device))
+                    {
+                        _unresolvedMics.Remove(mic);
+                    }
+                    else
+                    {
+                        device.Dispose();
+                    }
                 }
             }
         }
@@ -447,10 +465,12 @@ namespace YARG.Input
 
         public bool AddMicrophone(MicDevice microphone)
         {
-            if (_microphones.Count >= MicrophoneCap || _microphones.Any(m => m.Serialize().BaseName == microphone.Serialize().BaseName && m.Serialize().Channel == microphone.Serialize().Channel)) return false;
-            _microphones.Add(microphone);
             var serialized = microphone.Serialize();
-            _unresolvedMics.RemoveAll(m => m.BaseName == serialized.BaseName && m.Channel == serialized.Channel);
+            if (_microphones.Count >= MicrophoneCap || _microphones.Any(m =>
+                m.StableId == microphone.StableId && m.Serialize().Channel == serialized.Channel)) return false;
+            _microphones.Add(microphone);
+            _unresolvedMics.RemoveAll(m => m.Channel == serialized.Channel &&
+                (!string.IsNullOrEmpty(m.StableId) ? m.StableId == microphone.StableId : m.BaseName == serialized.BaseName));
             return true;
         }
 

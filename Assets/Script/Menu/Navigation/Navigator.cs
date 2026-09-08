@@ -429,6 +429,7 @@ namespace YARG.Menu.Navigation
             {
                 if (index != removeIndex) _schemeStack.Push(schemes[index]);
             }
+            scheme.PopCallback?.Invoke();
             UpdateHelpBar().Forget();
             return true;
         }

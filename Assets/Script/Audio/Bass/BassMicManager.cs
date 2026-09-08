@@ -87,7 +87,7 @@ namespace YARG.Audio.BASS
                 return null;
             }
 
-            var mic = BassMicDevice.Create(source);
+            var mic = BassMicDevice.Create(source, device.DeviceId);
             if (mic == null)
             {
                 source.Dispose();

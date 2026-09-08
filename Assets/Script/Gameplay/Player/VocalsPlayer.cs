@@ -93,8 +93,12 @@ namespace YARG.Gameplay.Player
             _hud.ShowPartyVocalsGrade(grade);
         }
 
+        protected VocalsTrack EffectiveVocalTrack { get; private set; }
+        protected int EffectiveVocalPartIndex { get; private set; }
+
         public virtual void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
-            VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
+            VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed,
+            VocalsTrack effectiveVocalTrack)
         {
             if (IsInitialized)
             {
@@ -118,12 +122,13 @@ namespace YARG.Gameplay.Player
 
             // Get the notes from the specific harmony or solo part
 
-            var multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
-            _allVocalParts = multiTrack.Parts;
+            EffectiveVocalTrack = effectiveVocalTrack;
+            EffectiveVocalPartIndex = Mathf.Clamp(Player.Profile.HarmonyIndex, 0, effectiveVocalTrack.Parts.Count - 1);
+            _allVocalParts = effectiveVocalTrack.Parts;
             _handlesCountdown = vocalIndex == 0;
 
-            var track = multiTrack.Parts[Player.Profile.HarmonyIndex];
-            player.Profile.ApplyVocalModifiers(track, Player.Profile.HarmonyIndex);
+            var track = effectiveVocalTrack.Parts[EffectiveVocalPartIndex];
+            player.Profile.ApplyVocalModifiers(track, EffectiveVocalPartIndex);
 
             OriginalNoteTrack = track.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
@@ -175,8 +180,12 @@ namespace YARG.Gameplay.Player
 
         }
 
+        private Action _unsubscribeEngineEvents;
+
         protected virtual void UnsubscribeEngineEvents()
         {
+            _unsubscribeEngineEvents?.Invoke();
+            _unsubscribeEngineEvents = null;
         }
 
         protected override void FinishDestruction()
@@ -210,16 +219,17 @@ namespace YARG.Gameplay.Player
             engine.OnComboIncrement += OnComboIncrement;
             engine.OnComboReset += OnComboReset;
 
-            engine.OnStarPowerPhraseHit += _ => OnStarPowerPhraseHit();
+            void StarPowerPhraseHit(YARG.Core.Chart.VocalNote _) => OnStarPowerPhraseHit();
+            engine.OnStarPowerPhraseHit += StarPowerPhraseHit;
             engine.OnStarPowerStatus += OnStarPowerStatus;
             engine.OnStarPowerReady += OnStarPowerReady;
 
-            engine.OnTargetNoteChanged += (note) =>
+            VocalsEngine.TargetNoteChangeEvent targetNoteChanged = (note) =>
             {
                 _lastTargetNote = note;
             };
 
-            engine.OnPhraseHit += (percent, fullPoints, isLastPhrase) =>
+            VocalsEngine.PhraseHitEvent phraseHit = (percent, fullPoints, isLastPhrase) =>
             {
                 _phrasePercents.Add((float) percent);
                 if (!fullPoints)
@@ -235,7 +245,7 @@ namespace YARG.Gameplay.Player
                 _hud.ShowPhraseHit(percent, Combo);
             };
 
-            engine.OnNoteHit += (_, note) =>
+            BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.NoteHitEvent noteHit = (_, note) =>
             {
                 if (note.IsPercussion)
                 {
@@ -244,7 +254,7 @@ namespace YARG.Gameplay.Player
                 }
             };
 
-            engine.OnNoteMissed += (_, _) =>
+            BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.NoteMissedEvent noteMissed = (_, _) =>
             {
                 if (LastCombo >= 2)
                 {
@@ -256,23 +266,26 @@ namespace YARG.Gameplay.Player
                 _hud.SetFullCombo(false);
             };
 
-            engine.OnSing += (singing) =>
+            Action<bool> sing = (singing) =>
             {
                 _lastSingTime = singing
                     ? GameManager.InputTime
                     : null;
             };
 
-            engine.OnHit += (hitting) =>
+            Action<bool> hit = (hitting) =>
             {
                 _lastHitTime = hitting
                     ? GameManager.InputTime
                     : null;
             };
 
+            BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.CountdownChangeEvent countdownChanged =
+                (countdownLength, endTime) => GameManager.VocalTrack.UpdateCountdown(countdownLength, endTime);
+
             if (_handlesCountdown)
             {
-                if (Player.Profile.CurrentInstrument == Instrument.Vocals)
+                if (EffectiveVocalTrack.Parts.Count == 1)
                 {
                     engine.BuildCountdownsFromSelectedPart();
                 }

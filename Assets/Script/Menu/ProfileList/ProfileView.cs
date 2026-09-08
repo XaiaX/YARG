@@ -294,8 +294,17 @@ namespace YARG.Menu.ProfileList
                     return false;
                 }
 
-                player.Bindings.AddMicrophone(created);
-                return true;
+                if (player.Bindings.AddMicrophone(created))
+                {
+                    return true;
+                }
+
+                created.Dispose();
+                YargLogger.LogFormatWarning("Microphone rejected (cap reached) for `{0}`.", device.DisplayName);
+                DialogManager.Instance.ClearDialog();
+                DialogManager.Instance.ShowMessage("Microphone Limit Reached",
+                    $"You've reached the maximum number of microphones ({player.Bindings.MicrophoneCap}) for this profile.");
+                return false;
             }
 
             PopulateMicsAsync(dialog, inputDeviceCount, mic =>

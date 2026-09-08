@@ -118,6 +118,17 @@ namespace YARG.Menu.History
             LoadIntoReplay(_entry, _songEntry);
         }
 
+        private static bool IsAnalysisUnsupported(ReplayData data)
+        {
+            if (!data.Frames.Any(frame => frame.Profile.GameMode == YARG.Core.GameMode.PartyVocals))
+                return false;
+
+            YargLogger.LogWarning("Party Vocals replay analysis not yet supported");
+            DialogManager.Instance.ShowMessage("Replay Analysis Unavailable",
+                "Party Vocals replay analysis not yet supported. You can still watch this replay.");
+            return true;
+        }
+
         // Analyze Replay Button
         public override void AnalyzeReplayClick()
         {
@@ -150,6 +161,8 @@ namespace YARG.Menu.History
                 return;
             }
             if (_entry.CensorshipEnabled) chart.ApplyCensorship();
+
+            if (IsAnalysisUnsupported(data)) return;
 
             var results = ReplayAnalyzer.AnalyzeReplay(chart, _entry, data);
             for (int i = 0; i < results.Length; i++)
@@ -206,6 +219,8 @@ namespace YARG.Menu.History
                 YargLogger.LogError("Failed to load chart");
                 return;
             }
+
+            if (IsAnalysisUnsupported(data)) return;
 
             var results = ReplayAnalyzer.AnalyzeReplay(chart, _entry, data);
             bool replayConsistent = results.All(r => r.Passed);

@@ -64,15 +64,15 @@ namespace YARG.Menu.ProfileInfo
         {
             var dialog = DialogManager.Instance.ShowList("Select Microphone");
 
-            var boundIds = new HashSet<string>();
+            var boundIds = new HashSet<(string StableId, int Channel)>();
             foreach (var mic in _bindings.Microphones)
-                boundIds.Add(mic.StableId);
+                boundIds.Add((mic.StableId, mic.Serialize().Channel));
 
             bool anyAvailable = false;
             foreach (var info in GlobalAudioHandler.GetAllInputDevices())
             {
                 string stableId = MicDevice.ComputeStableId(info.DeviceId, info.Name);
-                if (boundIds.Contains(stableId)) continue;
+                if (boundIds.Contains((stableId, info.Channel))) continue;
                 anyAvailable = true;
                 var deviceInfo = info;
                 string deviceName = info.DisplayName;
@@ -95,6 +95,7 @@ namespace YARG.Menu.ProfileInfo
                     }
                     else
                     {
+                        device.Dispose();
                         YargLogger.LogFormatWarning("Microphone rejected (cap reached) for `{0}`.", deviceName);
                         DialogManager.Instance.ClearDialog();
                         DialogManager.Instance.ShowMessage("Microphone Limit Reached",
