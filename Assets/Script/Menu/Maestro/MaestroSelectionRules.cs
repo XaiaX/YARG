@@ -22,6 +22,22 @@ namespace YARG.Menu.Maestro
             mode is GameMode.FiveFretGuitar or GameMode.SixFretGuitar
                 or GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums;
 
+        public static IReadOnlyList<Instrument> GetEliteDrumsDownchartTargets(GameMode mode)
+        {
+            return mode switch
+            {
+                GameMode.FourLaneDrums => new[] { Instrument.FourLaneDrums, Instrument.ProDrums },
+                GameMode.FiveLaneDrums => new[] { Instrument.FiveLaneDrums },
+                GameMode.EliteDrums => new[]
+                {
+                    Instrument.FourLaneDrums,
+                    Instrument.ProDrums,
+                    Instrument.FiveLaneDrums,
+                },
+                _ => Array.Empty<Instrument>(),
+            };
+        }
+
         public static bool SupportsRangeShifts(GameMode mode) =>
             mode is GameMode.FiveFretGuitar or GameMode.ProKeys;
 

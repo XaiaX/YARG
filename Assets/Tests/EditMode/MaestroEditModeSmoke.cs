@@ -1466,16 +1466,20 @@ namespace YARG.Tests.EditMode
             Assert.That(menu.text, Does.Contain("EliteDrumsDownchartLabel"),
                 "Target rows and the active-target summary must display the explicit 'Elite (To …)' label.");
 
-            // Offering mirrors Difficulty Select: MIDI e-kit (Elite Drums) profiles
-            // get all three output formats, other drum profiles exactly their staged
-            // format, each gated on the shared Core playability predicate for the
-            // whole show — owned by the session, which knows the toggle and songs.
+            // Offering mirrors Difficulty Select: 4-lane/Pro profiles get 4-lane and
+            // Pro, five-lane gets 5-lane only, and MIDI e-kit (Elite Drums) profiles
+            // get all three output formats. Every target is gated on the shared Core
+            // playability predicate for the whole show — owned by the session, which
+            // knows the toggle and songs.
             Assert.That(session.text,
                 Does.Contain("public IReadOnlyList<Instrument> GetAvailableEliteDrumsDownchartTargets"),
                 "The session must own the offered target list (toggle, mode rule, show playability).");
             Assert.That(session.text,
-                Does.Contain("Instrument.FourLaneDrums, Instrument.ProDrums, Instrument.FiveLaneDrums"),
-                "Elite Drums (MIDI e-kit) profiles must be offered all three explicit targets.");
+                Does.Contain("MaestroSelectionRules.GetEliteDrumsDownchartTargets(player.GameMode)"),
+                "Maestro and Difficulty Select must share the same game-mode target matrix.");
+            Assert.That(session.text,
+                Does.Contain("EliteDrumsDownchartRules.IsSongPlayableForTarget"),
+                "Every target from the shared matrix must remain gated by show-wide playability.");
             Assert.That(session.text,
                 Does.Contain("public void StageEliteDrumsDownchartTarget"),
                 "Target selection must stage through the session so the explicit target, staged instrument, and preferred instrument stay consistent with the commit contract.");
@@ -1673,6 +1677,32 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void Elite_Downchart_Target_Policy_Covers_All_Drum_Game_Modes()
+        {
+            const string path = "Assets/Script/Menu/Maestro/MaestroSelectionRules.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+
+            // Keep the complete mode matrix together in the shared rule so both menu
+            // surfaces cannot silently drift back to native-instrument-only offering.
+            Assert.That(script.text,
+                Does.Contain("GameMode.FourLaneDrums => new[] { Instrument.FourLaneDrums, Instrument.ProDrums }"),
+                "4-lane/Pro profiles must offer both 4-lane and Pro targets.");
+            Assert.That(script.text,
+                Does.Contain("GameMode.FiveLaneDrums => new[] { Instrument.FiveLaneDrums }"),
+                "5-lane profiles must offer only the 5-lane target.");
+            Assert.That(script.text,
+                Does.Contain("GameMode.EliteDrums => new[]"),
+                "MIDI/Elite profiles must enter the all-target branch.");
+            Assert.That(script.text,
+                Does.Contain("Instrument.FourLaneDrums,\n                    Instrument.ProDrums,\n                    Instrument.FiveLaneDrums"),
+                "MIDI/Elite profiles must offer all three targets.");
+            Assert.That(script.text,
+                Does.Contain("_ => Array.Empty<Instrument>()"),
+                "Non-drum modes must not receive Elite downchart targets.");
+        }
+
+        [Test]
         public void Session_And_Difficulty_Select_Share_The_Core_Downchart_Predicates()
         {
             const string maestroPath = "Assets/Script/Menu/Maestro/MaestroSetupSession.cs";
@@ -1697,6 +1727,9 @@ namespace YARG.Tests.EditMode
 
             // Difficulty Select offers each row only when every show song satisfies
             // the same predicate, and computes difficulties with it as well.
+            Assert.That(difficulty.text,
+                Does.Contain("MaestroSelectionRules.GetEliteDrumsDownchartTargets(profile.GameMode)"),
+                "Difficulty Select must use the shared game-mode target matrix.");
             Assert.That(difficulty.text,
                 Does.Contain("AddOfferedEliteDrumsDownchartTarget"),
                 "Difficulty Select must gate each offered target row on show-wide playability.");

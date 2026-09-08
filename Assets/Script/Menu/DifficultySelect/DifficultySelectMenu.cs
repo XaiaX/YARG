@@ -131,9 +131,9 @@ namespace YARG.Menu.DifficultySelect
         // YargProfile.EliteDrumsDownchartTarget and keeps CurrentInstrument equal to
         // it, so gameplay follows the chosen output.
         //
-        // Which rows are offered depends on the profile: four-lane/Pro/five-lane players
-        // only get the single row matching their current native drum format, while Elite
-        // Drums (MIDI e-kit) profiles get all three to choose from.
+        // Which rows are offered depends on the profile's game mode: 4-lane/Pro players
+        // get both 4-lane and Pro output targets, 5-lane players get 5-lane only, and
+        // Elite Drums (MIDI e-kit) profiles get all three to choose from.
         private bool _eliteDrumsDownchartAvailable;
         private readonly List<Instrument> _eliteDrumsDownchartTargets = new();
 
@@ -1710,25 +1710,18 @@ namespace YARG.Menu.DifficultySelect
                 profile.CurrentInstrument = _possibleInstruments[0];
             }
 
-            // Which Elite (To …) rows to offer: Elite Drums (MIDI e-kit) profiles choose
-            // any of the three output formats; every other drum profile gets exactly the
-            // one matching its current native drum format. Computed after instrument
-            // resolution above so the offered row tracks the resolved native format.
+            // Which Elite (To …) rows to offer comes from the shared game-mode policy:
+            // 4-lane/Pro gets 4-lane and Pro, 5-lane gets 5-lane, and Elite Drums
+            // (MIDI e-kit) gets all three. Each candidate is still gated below by the
+            // session playability predicate for the whole show.
             // Each candidate must also satisfy the session playability predicate for
             // the whole show — the same predicate UpdatePossibleDifficulties uses.
             _eliteDrumsDownchartTargets.Clear();
             if (_eliteDrumsDownchartAvailable)
             {
-                if (profile.GameMode == GameMode.EliteDrums)
+                foreach (var target in MaestroSelectionRules.GetEliteDrumsDownchartTargets(profile.GameMode))
                 {
-                    AddOfferedEliteDrumsDownchartTarget(Instrument.FourLaneDrums);
-                    AddOfferedEliteDrumsDownchartTarget(Instrument.ProDrums);
-                    AddOfferedEliteDrumsDownchartTarget(Instrument.FiveLaneDrums);
-                }
-                else if (profile.CurrentInstrument is Instrument.FourLaneDrums
-                    or Instrument.ProDrums or Instrument.FiveLaneDrums)
-                {
-                    AddOfferedEliteDrumsDownchartTarget(profile.CurrentInstrument);
+                    AddOfferedEliteDrumsDownchartTarget(target);
                 }
             }
 

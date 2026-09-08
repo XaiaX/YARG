@@ -362,11 +362,10 @@ namespace YARG.Menu.Maestro
 
         /// <summary>
         /// The explicit "Elite (To …)" downchart targets offered in this player's
-        /// instrument control, mirroring Difficulty Select's row offering: MIDI
-        /// e-kit (Elite Drums) profiles choose any of the three output formats,
-        /// while four-lane/pro/five-lane profiles get exactly the one matching
-        /// their staged native drum format. Each candidate must also satisfy the
-        /// shared session playability predicate for the whole show
+        /// instrument control, mirroring Difficulty Select's row offering: 4-lane/pro
+        /// profiles choose either 4-lane or Pro output, five-lane profiles choose
+        /// 5-lane only, and MIDI e-kit (Elite Drums) profiles choose any of the three
+        /// output formats. Each candidate must also satisfy the shared session playability predicate for the whole show
         /// (<see cref="EliteDrumsDownchartRules.IsSongPlayableForTarget"/>). Empty
         /// when the experimental toggle is off, the player is not in a drum mode
         /// that supports downchart outputs, or no candidate is playable.
@@ -379,25 +378,10 @@ namespace YARG.Menu.Maestro
                 return Array.Empty<Instrument>();
             }
 
-            if (player.GameMode == GameMode.EliteDrums)
-            {
-                return new[] { Instrument.FourLaneDrums, Instrument.ProDrums, Instrument.FiveLaneDrums }
-                    .Where(target => _songs.All(song =>
-                        EliteDrumsDownchartRules.IsSongPlayableForTarget(song, target)))
-                    .ToArray();
-            }
-
-            // While an explicit target is active the staged instrument is pinned to
-            // it — exactly how Difficulty Select resolves CurrentInstrument before
-            // offering — so this stays the single applicable row either way.
-            if (player.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums &&
-                EliteDrumsDownchartRules.IsValidTarget(player.Instrument) &&
-                _songs.All(song => EliteDrumsDownchartRules.IsSongPlayableForTarget(song, player.Instrument)))
-            {
-                return new[] { player.Instrument };
-            }
-
-            return Array.Empty<Instrument>();
+            return MaestroSelectionRules.GetEliteDrumsDownchartTargets(player.GameMode)
+                .Where(target => _songs.All(song =>
+                    EliteDrumsDownchartRules.IsSongPlayableForTarget(song, target)))
+                .ToArray();
         }
 
         public IReadOnlyList<Modifier> GetAvailableModifiers(Guid profileId) =>
