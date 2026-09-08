@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Serialization;
 using YARG.Assets.Script.Helpers;
 using YARG.Core;
 using YARG.Core.Audio;
@@ -43,6 +44,8 @@ namespace YARG.Gameplay.Player
         protected HighwayCameraRendering HighwayCameraRendering;
         [SerializeField]
         protected TrackMaterial TrackMaterial;
+        [SerializeField]
+        protected StrikelineAnimator StrikelineAnimator;
         [SerializeField]
         protected ComboMeter ComboMeter;
         [SerializeField]
@@ -187,6 +190,10 @@ namespace YARG.Gameplay.Player
         private List<Phrase> _brePhrases = new();
         private int _breIndex;
 
+        private List<EngineManager.UnisonPhrase> _unisonPhrases = new();
+        private int                              _unisonStartIndex;
+        private int                              _unisonEndIndex;
+
         protected SongChart Chart;
 
         private AutoCalibrator _autoCalibrator;
@@ -249,11 +256,10 @@ namespace YARG.Gameplay.Player
                 Engine.SetSpeed(GameManager.SongSpeed);
             }
 
-            GameManager.BeatEventHandler.Audio.Subscribe(MetronomeTick, BeatEventType.Measure);
-            GameManager.BeatEventHandler.Audio.Subscribe(MetronomeTock, BeatEventType.QuarterNote);
             GameManager.BeatEventHandler.Visual.Subscribe(SunburstEffects.PulseSunburst, BeatEventType.StrongBeat);
             InitializeTrackEffects();
             InitializeCodaEvents();
+            InitializeUnisonEvents();
 
             ResetNoteCounters();
 
@@ -266,8 +272,6 @@ namespace YARG.Gameplay.Player
 
         protected override void FinishDestruction()
         {
-            GameManager.BeatEventHandler.Audio.Unsubscribe(MetronomeTick);
-            GameManager.BeatEventHandler.Audio.Unsubscribe(MetronomeTock);
             GameManager.BeatEventHandler.Visual.Unsubscribe(SunburstEffects.PulseSunburst);
 
             _autoCalibrator?.Dispose();
@@ -284,6 +288,13 @@ namespace YARG.Gameplay.Player
                     _brePhrases.Add(phrase);
                 }
             }
+        }
+
+        private void InitializeUnisonEvents()
+        {
+            _unisonStartIndex = 0;
+            _unisonEndIndex = 0;
+            _unisonPhrases = EngineContainer.UnisonPhrases;
         }
 
         private void InitializeTrackEffects()
@@ -325,7 +336,7 @@ namespace YARG.Gameplay.Player
 
             phrases.AddRange(EngineContainer.UnisonPhrases);
 
-            var effects = TrackEffect.PhrasesToEffects(phrases);
+            var effects = TrackEffect.PhrasesToEffects(Notes, phrases);
             _trackEffects.AddRange(effects);
         }
 
@@ -356,6 +367,9 @@ namespace YARG.Gameplay.Player
             TrackMaterial.Initialize(Player.HighwayPreset);
             CameraPositioner.Initialize(Player.CameraPreset);
             FinalizeTrackEffects();
+
+            GameManager.EngineManager.OnPlayerFailed += OnPlayerFailed;
+            GameManager.EngineManager.OnPlayerRevived += OnPlayerRevived;
         }
 
         protected void ResetNoteCounters()
@@ -377,8 +391,12 @@ namespace YARG.Gameplay.Player
             BeatlineIndex = 0;
             ResetNoteCounters();
 
+            ResetTrackEffectOverlay(0);
+
             CurrentCoda = null;
             _breIndex = 0;
+            _unisonStartIndex = 0;
+            _unisonEndIndex = 0;
 
             ResetLastHitTimes();
 
@@ -416,6 +434,7 @@ namespace YARG.Gameplay.Player
             UpdateBeatlines(visualTime);
             UpdateTrackEffects(visualTime);
             UpdateCodaEvents(visualTime);
+            UpdateUnisonEvents(visualTime);
 
             var stats = Engine.BaseStats;
 
@@ -579,6 +598,21 @@ namespace YARG.Gameplay.Player
                 _breIndex++;
 
                 StartBRE(phrase.Time, phrase.TimeEnd);
+            }
+        }
+
+        private void UpdateUnisonEvents(double time)
+        {
+            if (_unisonStartIndex < _unisonPhrases.Count && _unisonPhrases[_unisonStartIndex].Time <= time)
+            {
+                OnUnisonStart();
+                _unisonStartIndex++;
+            }
+
+            if (_unisonEndIndex < _unisonPhrases.Count && _unisonPhrases[_unisonEndIndex].TimeEnd <= time)
+            {
+                OnUnisonEnd();
+                _unisonEndIndex++;
             }
         }
 
@@ -768,7 +802,7 @@ namespace YARG.Gameplay.Player
                 }
 
                 newLane.SetTimeRange(timeStart, timeEnd);
-                InitializeSpawnedLane(newLane, i);
+                InitializeBRELane(newLane, i);
                 newLane.EnableFromPool();
 
                 newLane.SetEmissionColor(0);
@@ -784,7 +818,7 @@ namespace YARG.Gameplay.Player
 
         protected virtual void SpawnLanesFromNote(TNote parentNote)
         {
-            if (!Engine.LanesExist || !Engine.BaseParameters.EnableLanes)
+            if (!Engine.BaseParameters.EnableLanes)
             {
                 return;
             }
@@ -928,6 +962,9 @@ namespace YARG.Gameplay.Player
 
             BeatlineIndex = 0;
 
+            // Removed by EngineManager
+            EngineContainer = null;
+
             Engine = CreateEngine();
 
             if (GameManager.IsPractice)
@@ -991,7 +1028,7 @@ namespace YARG.Gameplay.Player
 
         protected abstract void InitializeSpawnedNote(IPoolable poolable, TNote note);
         protected abstract void InitializeSpawnedLane(LaneElement lane, TNote note);
-        protected abstract void InitializeSpawnedLane(LaneElement lane, int laneIndex);
+        protected abstract void InitializeBRELane(LaneElement lane, int laneIndex);
         protected virtual void ModifyLaneFromNote(LaneElement lane, TNote note) {}
 
         protected abstract void RescaleLanesForBRE();
@@ -1000,7 +1037,7 @@ namespace YARG.Gameplay.Player
         {
             if (!Player.Profile.IsBot)
             {
-                _autoCalibrator.RecordAccuracy(note.Time);
+                _autoCalibrator.RecordAccuracy(Engine.CurrentTime, note.Time);
             }
 
             if (!GameManager.IsSeekingReplay)
@@ -1104,11 +1141,22 @@ namespace YARG.Gameplay.Player
         {
             CurrentCoda = coda;
             SetStemMuteState(false);
+            TrackView.StartCoda();
         }
 
         protected virtual void OnCodaEnd(CodaSection coda)
         {
+            TrackView.EndCoda();
+        }
 
+        private void OnUnisonStart()
+        {
+            TrackView.StartUnison();
+        }
+
+        private void OnUnisonEnd()
+        {
+            TrackView.EndUnison();
         }
 
         protected virtual void OnCountdownChange(double countdownLength, double endTime)
@@ -1138,6 +1186,46 @@ namespace YARG.Gameplay.Player
             TrackView.ShowStarPowerReady();
         }
 
+        protected void OnHappinessOverFail()
+        {
+            TrackMaterial.FailState = 0f;
+        }
+
+        protected void OnHappinessNearFail()
+        {
+            if (SettingsManager.Settings.NoFail.Value == NoFailMode.Off && !GameManager.IsPractice)
+            {
+                TrackMaterial.FailState = 1f;
+            }
+        }
+
+        protected void OnPlayerFailed(int engineId)
+        {
+            if (SettingsManager.Settings.NoFail.Value != NoFailMode.Off
+                || engineId != EngineContainer.EngineId
+                || GameManager.IsPractice)
+            {
+                // Not for us
+                return;
+            }
+
+            // Mark as failed and lower highway
+            PlayerHasFailed = true;
+            CameraPositioner.Lower(false);
+        }
+
+        protected void OnPlayerRevived()
+        {
+            if (!PlayerHasFailed)
+            {
+                return;
+            }
+
+            // Unfail and raise highway
+            PlayerHasFailed = false;
+            CameraPositioner.Raise(false);
+        }
+
         public override void GameplayUpdate()
         {
             base.GameplayUpdate();
@@ -1149,14 +1237,12 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        public void MetronomeTick()
+        protected override void GameplayDestroy()
         {
-            GlobalAudioHandler.PlayMetronomeSoundEffect(SettingsManager.Settings.MetronomeSound.Value, MetronomePitch.Hi);
-        }
+            base.GameplayDestroy();
 
-        public void MetronomeTock()
-        {
-            GlobalAudioHandler.PlayMetronomeSoundEffect(SettingsManager.Settings.MetronomeSound.Value, MetronomePitch.Lo);
+            GameManager.EngineManager.OnPlayerFailed -= OnPlayerFailed;
+            GameManager.EngineManager.OnPlayerRevived -= OnPlayerRevived;
         }
     }
 }

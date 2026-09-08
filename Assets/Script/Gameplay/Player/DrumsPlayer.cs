@@ -8,9 +8,9 @@ using YARG.Core.Chart;
 using YARG.Core.Engine;
 using YARG.Core.Engine.Drums;
 using YARG.Core.Engine.Drums.Engines;
-using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Logging;
+using YARG.Core.Parsing;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Visuals;
@@ -41,10 +41,6 @@ namespace YARG.Gameplay.Player
         private int _kick;
         private int _wildcard;
 
-        // Number of distinct frets in the fret array.
-        // Derivable, but predetermined by MakeHighwayOrdering() for performance reasons
-        public int LaneCount { get; private set; }
-
         private bool _yellowCymbalHasLane = false;
         private bool _blueCymbalHasLane = false;
         private bool _greenCymbalHasLane = false;
@@ -61,7 +57,6 @@ namespace YARG.Gameplay.Player
 
         public int NumberOfDedicatedKickLanes { get; private set; } = 0;
         public int CenteredPosition => (LaneCount - 1) / 2;
-
 
         public float NoteScaleFactor = 1f;
         private float _baselineLaneCount => _fiveLaneMode ? 5f : 4f;
@@ -93,7 +88,7 @@ namespace YARG.Gameplay.Player
                 };
             }
 
-                return action switch
+            return action switch
                 {
                     DrumsAction.Kick =>         (int) FourLaneDrumPad.Kick,
                     DrumsAction.RedDrum =>      (int) FourLaneDrumPad.RedDrum,
@@ -195,18 +190,7 @@ namespace YARG.Gameplay.Player
 
         protected override InstrumentDifficulty<DrumNote> GetNotes(SongChart chart)
         {
-            // With an experimental "Elite (To …)" option selected, prefer the downchart
-            // variant built for this player's instrument (falls back to the native track
-            // when the chart has no usable downchart for it). While the option is active
-            // CurrentInstrument equals the explicitly chosen target, so the engine mode,
-            // highway, and this track lookup all agree on the output format. The
-            // centralized profile-consistency guard (valid domain + target equals
-            // CurrentInstrument + supported drum GameMode) treats a corrupted or stale —
-            // but well-formed — value as "no target", so it can neither request a track
-            // lookup that would throw nor select a mismatched variant; the player then
-            // simply plays the native track.
-            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument,
-                EliteDrumsDownchartRules.IsDownchartTargetActive(Player.Profile)).Clone();
+            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument).Clone();
             var instrumentDifficulty = track.GetDifficulty(Player.Profile.CurrentDifficulty);
             return instrumentDifficulty;
         }
@@ -239,7 +223,7 @@ namespace YARG.Gameplay.Player
             }
 
             var engine = new YargDrumsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot, Player.Profile.GameMode is GameMode.EliteDrums);
-            EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Chart, Player.RockMeterPreset);
+            EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack, Chart, Player.RockMeterPreset);
 
             HitWindow = EngineParams.HitWindow;
 
@@ -268,6 +252,9 @@ namespace YARG.Gameplay.Player
             engine.OnCountdownChange += OnCountdownChange;
 
             engine.OnPadHit += OnPadHit;
+
+            EngineContainer.OnHappinessNearFail += OnHappinessNearFail;
+            EngineContainer.OnHappinessOverFail += OnHappinessOverFail;
 
             return engine;
         }
@@ -531,7 +518,7 @@ namespace YARG.Gameplay.Player
 
                 if (kickLaneEnd is not null)
                 {
-                    var newLane = (LaneElement) LanePool.TakeWithoutEnabling();
+                    var newLane = (LaneElement)LanePool.TakeWithoutEnabling();
                     newLane.SetTimeRange(kickLaneStart.Time, kickLaneEnd.Time);
                     InitializeSpawnedLane(newLane, kickLaneStart);
                     ModifyLaneFromNote(newLane, kickLaneStart);
@@ -593,7 +580,7 @@ namespace YARG.Gameplay.Player
 
         }
 
-        protected override void InitializeSpawnedLane(LaneElement lane, int laneIndex)
+        protected override void InitializeBRELane(LaneElement lane, int laneIndex)
         {
             int highwayIndex = -1;
             HighwayOrderingInfo highwayOrderingInfo = default;
@@ -625,11 +612,12 @@ namespace YARG.Gameplay.Player
                 highwayOrderingInfo.Position,
                 LaneCount,
                 laneColor
-                );
+            );
         }
 
         protected override void ModifyLaneFromNote(LaneElement lane, DrumNote note)
         {
+            
             if (note.Pad == _wildcard)
             {
                 lane.ToggleFullWidth(true);
@@ -1038,7 +1026,7 @@ namespace YARG.Gameplay.Player
 
                 if (padToPress is not null)
                 {
-                    _fretArray.SetPressedDrum(padToPress.Value, lowestDelta < DRUM_PAD_FLASH_HOLD_DURATION, GetAnimType(padToPress.Value));
+                    _fretArray.SetPressedImpulse(padToPress.Value, lowestDelta < DRUM_PAD_FLASH_HOLD_DURATION, GetAnimType(padToPress.Value));
                     _fretArray.UpdateAccentColorState(padToPress.Value,
                         _animTypeToPadToLastPressedDelta[Fret.AnimType.CorrectHard][padToPress.Value] <
                         DRUM_PAD_FLASH_HOLD_DURATION);

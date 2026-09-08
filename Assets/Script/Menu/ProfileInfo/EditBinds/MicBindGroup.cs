@@ -69,16 +69,16 @@ namespace YARG.Menu.ProfileInfo
                 boundIds.Add(mic.StableId);
 
             bool anyAvailable = false;
-            foreach (var (id, name) in GlobalAudioHandler.GetAllInputDevices())
+            foreach (var info in GlobalAudioHandler.GetAllInputDevices())
             {
-                string stableId = MicDevice.ComputeStableId(id, name);
+                string stableId = MicDevice.ComputeStableId(info.DeviceId, info.Name);
                 if (boundIds.Contains(stableId)) continue;
                 anyAvailable = true;
-                int deviceId = id;
-                string deviceName = name;
+                var deviceInfo = info;
+                string deviceName = info.DisplayName;
                 dialog.AddListButton(deviceName, () =>
                 {
-                    var device = GlobalAudioHandler.CreateInputDevice(deviceId, deviceName);
+                    var device = GlobalAudioHandler.CreateInputDevice(deviceInfo);
                     if (device == null)
                     {
                         YargLogger.LogFormatWarning("Failed to initialize microphone `{0}`.", deviceName);

@@ -1,14 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
 using YARG.Core.Engine;
-using YARG.Core.Game;
 using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
@@ -21,6 +19,7 @@ using YARG.Playback;
 using YARG.Player;
 using YARG.Scores;
 using YARG.Settings;
+using YARG.Settings.Types;
 using YARG.Song;
 
 namespace YARG.Gameplay
@@ -55,7 +54,6 @@ namespace YARG.Gameplay
 
         private LoadFailureState _loadState;
         private string _loadFailureMessage;
-
         // All access to chart data must be done through this event,
         // since things are loaded asynchronously
         // Players are initialized by hand and don't go through this event
@@ -192,13 +190,45 @@ namespace YARG.Gameplay
 
             FinalizeChart();
 
+            // Add the offset read from the .json file placed in PathHelper.PersistentDataPath
+            double offsetOverrideSeconds = 0;
+            if (SettingsManager.Settings.UseSongOffsetCalibration.Value)
+            {
+                var offsetOverrideMs = SongOffsetContainer.GetOffsetMilliseconds(Song.Hash.ToString());
+                offsetOverrideSeconds = offsetOverrideMs / 1000.0;
+            }
+
             // Initialize song runner
             _songRunner = new SongRunner(
                 _mixer,
                 startTime: 0,
-                SONG_START_DELAY,
+                startDelay: SONG_START_DELAY,
                 GlobalVariables.State.SongSpeed,
-                Song.SongOffsetSeconds);
+                chartSongOffset: Song.SongOffsetSeconds,
+                songOffsetOverride: offsetOverrideSeconds);
+
+            // Lets the pause menu display/edit this song's specific offset, and persists
+            // changes (manual or auto-calibrated) to the song offsets JSON file.
+            SongOffsetOverride = new SongOffsetSetting(Song.Hash.ToString(), onChange: offsetMs =>
+            {
+                _songRunner.SetSongOffsetOverride(offsetMs / 1000.0);
+
+                // Music re-syncs itself via the audio synchronizer, but pre-scheduled one-shot
+                // events and the background video don't, so bring them back in line with the
+                // new offset here.
+                _metronomeScheduler.Reschedule(_songRunner, Chart.SyncTrack, SongLength);
+                _crowdClapScheduler.Reschedule(_songRunner, Chart.SyncTrack, Chart.CrowdEvents,
+                    FirstNoteTime, LastNoteTime, SongLength);
+                BackgroundManager.SetTime(_songRunner.GetAudioPlaybackTime(_songRunner.SongTime), waitForSeek: false);
+            });
+
+            _metronomeScheduler = new MetronomeScheduler(_mixer);
+            _metronomeScheduler.Schedule(_songRunner, Chart.SyncTrack, SongLength);
+
+            _crowdClapScheduler = new CrowdClapScheduler(_mixer);
+            _crowdClapScheduler.Schedule(_songRunner, Chart.SyncTrack, Chart.CrowdEvents,
+                FirstNoteTime, LastNoteTime, SongLength);
+            CrowdEventHandler.SetClapScheduler(_crowdClapScheduler);
 
             // Spawn players
             CreatePlayers();
@@ -248,21 +278,29 @@ namespace YARG.Gameplay
                 _failMeter.SetActive(false);
             }
 
+            // Always reset calibration toggles on load, even for a pure replay, so that stale
+            // auto-calibration from a previous song can't apply itself (and so there's nothing
+            // for AutoCalibrator to adjust while only observing a replay).
+            SettingsManager.Settings.AutoCalibrateAudio.Value = false;
+            SettingsManager.Settings.AutoCalibrateVideo.Value = false;
+            SettingsManager.Settings.AutoCalibrateOffset.Value = false;
+
             // This is not an else because we still want to subscribe in case the user disables no fail during the song
             // We check in the callback to determine whether we should actually run the fail routine
             if (ReplayInfo == null || GlobalVariables.State.PlayingWithReplay)
             {
                 EngineManager.OnSongFailed += OnSongFailed;
 
-                EngineManager.InitializeHappiness();
-
                 SettingsManager.Settings.NoFail.OnChange += OnNoFailModeChanged;
-                SettingsManager.Settings.AutoCalibrateAudio.Value = false;
-                SettingsManager.Settings.AutoCalibrateVideo.Value = false;
             }
+
+            var noFail = ReplayData?.NoFail ?? SettingsManager.Settings.NoFail.Value != NoFailMode.Off;
+            EngineManager.InitializeHappiness(noFail);
+            CrowdEventHandler.UpdateCrowdMuteState(force: true);
 
             EngineManager.OnCodaStart += StartCoda;
             EngineManager.OnCodaEnd += EndCoda;
+            EngineManager.OnUnisonPhraseSuccess += OnUnisonPhraseSuccess;
 
             // Log constant values
             YargLogger.LogFormatDebug("Audio calibration: {0}, video calibration: {1}, song offset: {2}",
@@ -315,6 +353,12 @@ namespace YARG.Gameplay
                 Chart = Song.LoadChart(GetEliteDrumsDownchartOutputs());
                 if (Chart != null)
                 {
+                    var isReplay = GlobalVariables.State.IsReplay || GlobalVariables.State.PlayingWithReplay;
+                    if ((isReplay && ReplayInfo!.CensorshipEnabled) ||
+                        (!isReplay && SettingsManager.Settings.CensorMatureContent.Value))
+                    {
+                        Chart.ApplyCensorship();
+                    }
                     GenerateVenueTrack();
                     GenerateLipsyncTrack();
                 }
@@ -329,51 +373,6 @@ namespace YARG.Gameplay
                 _loadFailureMessage = "Failed to load chart!";
                 YargLogger.LogException(ex, "Failed to load chart!");
             }
-        }
-
-        /// <summary>
-        /// Collects the drum output formats that at least one active player has explicitly
-        /// selected an experimental "Elite (To …)" option for, so the chart load builds
-        /// downchart variants for them alongside the native drums tracks. Returns null when
-        /// nobody is using the option, which keeps chart loading exactly as it was before.
-        /// </summary>
-        private IReadOnlyCollection<Instrument>? GetEliteDrumsDownchartOutputs()
-        {
-            bool liveEnabled = SettingsManager.Settings.EnableEliteDrumsDowncharts.Value;
-
-            // YargPlayers covers both cases by the time the chart loads: for a live run it
-            // is PlayerContainer.Players (set in Awake), and LoadReplay has already replaced
-            // (or extended, when playing *with* a replay) it with the replay players.
-            List<Instrument>? outputs = null;
-            foreach (var player in YargPlayers)
-            {
-                // Replay players carry their recorded target in the replay file and must
-                // reproduce it regardless of this machine's experimental toggle; live
-                // players only build downcharts while the toggle is on.
-                if (player.SittingOut || !(player.IsReplay || liveEnabled))
-                {
-                    continue;
-                }
-
-                // Centralized profile-consistency guard (valid domain + target equals the
-                // player's current instrument + supported drum GameMode): malformed,
-                // corrupted, or stale targets are skipped rather than trusted, instead of
-                // ever requesting a chart that cannot be built or that DrumsPlayer would
-                // not select.
-                if (!EliteDrumsDownchartRules.IsDownchartTargetActive(player.Profile))
-                {
-                    continue;
-                }
-
-                var target = player.Profile.EliteDrumsDownchartTarget!.Value;
-                outputs ??= new List<Instrument>();
-                if (!outputs.Contains(target))
-                {
-                    outputs.Add(target);
-                }
-            }
-
-            return outputs;
         }
 
         private void GenerateVenueTrack()
@@ -403,9 +402,7 @@ namespace YARG.Gameplay
 
         private void GenerateLipsyncTrack()
         {
-            SongChart.LoadLipsyncFromMilo(Chart, Song);
-
-            YargLogger.LogFormatDebug("Loaded {0} lipsync events from milo", Chart.LipsyncEvents.Count);
+            SongChart.LoadLipsync(Chart, Song);
         }
 
         private void FinalizeChart()
@@ -463,9 +460,12 @@ namespace YARG.Gameplay
 
                     if (!player.IsReplay)
                     {
-                        // Reset microphone (resets channel buffers)
+                        // Reset microphones (resets channel buffers)
                         // We probably wanna do this no matter what, so put it up here
-                        player.Bindings.Microphone?.Reset();
+                        foreach (var mic in player.Bindings.Microphones)
+                        {
+                            mic.Reset();
+                        }
                     }
 
                     // Skip if the player is sitting out
@@ -486,8 +486,7 @@ namespace YARG.Gameplay
                     YargLogger.LogFormatInfo("Current high score for player {0} on {1}: {2}",
                         player.Profile.Name, player.Profile.CurrentInstrument, lastHighScore ?? 0);
 
-                    if (player.Profile.GameMode != GameMode.Vocals
-                        && player.Profile.GameMode != GameMode.PartyVocals)
+                    if (player.Profile.GameMode != GameMode.Vocals)
                     {
                         highwayIndex++;
                         var prefab = player.Profile.GameMode switch
@@ -496,14 +495,7 @@ namespace YARG.Gameplay
                             GameMode.SixFretGuitar  => _sixFretGuitarPrefab,
                             GameMode.FourLaneDrums  => _fourLaneDrumsPrefab,
                             GameMode.FiveLaneDrums  => _fiveLaneDrumsPrefab,
-                            // Follows the selection (the native one, or the explicit
-                            // "Elite (To …)" target, which keeps CurrentInstrument equal
-                            // to it) rather than the song's chart contents — otherwise a
-                            // downchart to Pro on a five-lane song would spawn a five-lane
-                            // highway for four-lane gameplay.
-                            GameMode.EliteDrums     => player.Profile.CurrentInstrument == Instrument.FiveLaneDrums
-                                ? _fiveLaneDrumsPrefab
-                                : _fourLaneDrumsPrefab,
+                            GameMode.EliteDrums     => Song.HasInstrument(Instrument.FiveLaneDrums) ? _fiveLaneDrumsPrefab : _fourLaneDrumsPrefab,
                             GameMode.ProKeys        => player.Profile.CurrentInstrument is Instrument.ProKeys ? _proKeysPrefab : _fiveLaneKeysPrefab,
                             GameMode.ProGuitar      => _proGuitarPrefab,
                             _                       => null
@@ -536,10 +528,20 @@ namespace YARG.Gameplay
 
                             // Since all players have to select the same vocals
                             // type (solo/harmony) this works no problem.
-                            var chart = VocalChartSelection.ResolveMultitrack(Chart, player.Profile);
+                            var chart = player.Profile.CurrentInstrument == Instrument.Vocals
+                                ? Chart.Vocals
+                                : Chart.Harmony;
                             VocalTrack.Initialize(chart, player, Song.VocalScrollSpeedScalingFactor);
 
-                            _lyricBar.gameObject.SetActive(false);
+                            if (SettingsManager.Settings.KeepLyricBar.Value &&
+                                SettingsManager.Settings.LyricDisplay.Value != LyricDisplayMode.Disabled)
+                            {
+                                _lyricBar.SetVocalPlayerLayout();
+                            }
+                            else
+                            {
+                                _lyricBar.gameObject.SetActive(false);
+                            }
                             vocalTrackInitialized = true;
                         }
 
@@ -557,22 +559,27 @@ namespace YARG.Gameplay
                     }
 
                     // Add (or increase total of) the stem state
-                    var stem = player.Profile.CurrentInstrument.ToSongStems().First();
-                    if (stem == SongStem.Bass && !_stemStates.ContainsKey(SongStem.Bass))
+                    var hasStem = false;
+                    foreach (var stem in player.Profile.CurrentInstrument.ToSongStems())
                     {
-                        stem = SongStem.Rhythm;
+                        var transformedStem = stem;
+                        if (stem == SongStem.Bass && !_stemStates.ContainsKey(SongStem.Bass))
+                        {
+                            transformedStem = SongStem.Rhythm;
+                        }
+                        if (transformedStem != _backgroundStem && _stemStates.TryGetValue(transformedStem, out var state))
+                        {
+                            hasStem = true;
+                            ++state.Total;
+                            ++state.Audible;
+                        }
                     }
 
-                    if (stem != _backgroundStem && _stemStates.TryGetValue(stem, out var state))
-                    {
-                        ++state.Total;
-                        ++state.Audible;
-                    }
-                    else if (_stemStates.TryGetValue(_backgroundStem, out state))
+                    if (!hasStem && _stemStates.TryGetValue(_backgroundStem, out var bgState))
                     {
                         // Ensures the stem will still play at a minimum of 50%, even if all players mute
-                        state.Total += 2;
-                        state.Audible += 2;
+                        bgState.Total += 2;
+                        bgState.Audible += 2;
                     }
                 }
             }

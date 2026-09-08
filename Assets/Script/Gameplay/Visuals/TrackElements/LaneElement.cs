@@ -18,7 +18,6 @@ namespace YARG.Gameplay.Visuals
         // Conversion rate from end cap bone movement units to 1 TrackElement.GetZPositionAtTime unit
         private const float LANE_LENGTH_RATIO = 0.02f;
 
-        private const float OPEN_LANE_SCALE = 0.5f;
         private const float FULL_WIDTH_LANE_SCALE = 0.5f;
 
         private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
@@ -84,7 +83,6 @@ namespace YARG.Gameplay.Visuals
 
         private Color _color;
 
-        private bool _isOpen = false;
         private bool _isFullWidth = false;
 
         public void SetAppearance(Instrument instrument, int index, float lateralPosition, int subdivisions, Color color)
@@ -104,10 +102,17 @@ namespace YARG.Gameplay.Visuals
 
         public void SetEmissionColor(float normalizedTime)
         {
+            SetEmissionColor(_color, normalizedTime);
+        }
+
+        // Emission color independent of the lane's base color (e.g. 6-fret BRE lanes
+        // are black at rest but glow white when hit)
+        public void SetEmissionColor(Color emissionColor, float normalizedTime)
+        {
             // var strength = 1 - Mathf.Sin(Mathf.Pow(normalizedTime, 0.5f) * 1.6f);
             // var strength = Mathf.Atan(normalizedTime * 8) * -0.69f + 1;
             var strength = 1 - Mathf.Pow(normalizedTime, 0.2f);
-            var newColor = _color * strength;
+            var newColor = emissionColor * strength;
 
             _innerMaterial.SetColor(EmissionColor, newColor);
             _innerMaterial.DisableKeyword(EMISSION_DISABLED_KEYWORD);
@@ -196,24 +201,6 @@ namespace YARG.Gameplay.Visuals
             }
         }
 
-        public void ToggleOpen(bool state)
-        {
-            if (state == _isOpen)
-            {
-                return;
-            }
-
-            _isOpen = state;
-
-            //_meshRenderer.sortingOrder += _isOpen ? -50 : 50;
-            _meshTransform.localPosition = _meshTransform.localPosition.WithY(_isOpen ? -0.01f : 0);
-
-            if (Initialized)
-            {
-                RenderOpen();
-            }
-        }
-
         public void ToggleFullWidth(bool state)
         {
             if (state == _isFullWidth)
@@ -234,7 +221,6 @@ namespace YARG.Gameplay.Visuals
 
         protected override void InitializeElement()
         {
-            RenderOpen();
             RenderFullWidth();
             RenderScale();
 
@@ -267,7 +253,6 @@ namespace YARG.Gameplay.Visuals
 
         protected override void HideElement()
         {
-            ToggleOpen(false);
             ToggleFullWidth(false);
         }
 
@@ -278,45 +263,14 @@ namespace YARG.Gameplay.Visuals
 
         private void RenderScale()
         {
-            // Set scale
             _meshTransform.localScale = new Vector3(_scale, 1f, _scale);
-
-            // Recalculate length from new scale
             RenderLength();
-        }
-
-        private void RenderOpen()
-        {
-            // This is the only shape key on the mesh, has an index of 0
-            if (!_isFullWidth)
-            {
-                _meshRenderer.SetBlendShapeWeight(0, _isOpen ? 100 : 0);
-            }
-
-            if (_isOpen == true)
-            {
-                SetXPosition(0);
-
-                _scale = OPEN_LANE_SCALE;
-
-                if (Initialized)
-                {
-                    RenderScale();
-                }
-            }
-            else
-            {
-                _meshTransform.localPosition.WithY(0);
-            }
         }
 
         private void RenderFullWidth()
         {
             // This is the only shape key on the mesh, has an index of 0
-            if (_isFullWidth || !_isOpen)
-            {
-                _meshRenderer.SetBlendShapeWeight(0, _isFullWidth ? 100 : 0);
-            }
+            _meshRenderer.SetBlendShapeWeight(0, _isFullWidth ? 100 : 0);
 
             if (_isFullWidth == true)
             {

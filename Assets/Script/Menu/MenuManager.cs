@@ -17,6 +17,7 @@ namespace YARG.Menu
             ProfileList,
             ProfileInfo,
             History,
+            Content,
             MaestroSetup,
         }
 
@@ -27,7 +28,8 @@ namespace YARG.Menu
         private static readonly HashSet<Menu> _allowedLastOpenMenus = new()
         {
             Menu.MusicLibrary,
-            Menu.History
+            Menu.History,
+            Menu.Content
         };
 
         /// <summary>
@@ -135,26 +137,9 @@ namespace YARG.Menu
 
         public bool PopToMenu(Menu menu)
         {
-            if (!_openMenus.Contains(menu))
-                return false;
-
-            while (_openMenus.Count > 1 && _openMenus.Peek() != menu)
-            {
-                if (_openMenus.TryPop(out var currentMenuEnum) &&
-                    _menus.TryGetValue(currentMenuEnum, out var currentMenu))
-                {
-                    currentMenu.gameObject.SetActive(false);
-                }
-            }
-
-            if (_openMenus.TryPeek(out var targetMenuEnum) &&
-                _menus.TryGetValue(targetMenuEnum, out var targetMenu))
-            {
-                targetMenu.gameObject.SetActive(true);
-                return true;
-            }
-
-            return false;
+            if (!_openMenus.Contains(menu)) return false;
+            while (_openMenus.Count > 1 && _openMenus.Peek() != menu) PopMenu();
+            return _openMenus.Peek() == menu;
         }
 
         // Disables the current menu without popping it from the stack

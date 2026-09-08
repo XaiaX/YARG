@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
@@ -8,6 +8,7 @@ using YARG.Core.Logging;
 using YARG.Core.Audio;
 using YARG.Helpers;
 using YARG.Input;
+using YARG.Input.Bindings;
 using YARG.Integration;
 using YARG.Localization;
 using YARG.Menu.Navigation;
@@ -26,7 +27,8 @@ namespace YARG
         Menu,
         Gameplay,
         Calibration,
-        Score
+        Score,
+        Content
     }
 
     [DefaultExecutionOrder(-5000)]
@@ -43,12 +45,13 @@ namespace YARG
 
         public SceneIndex CurrentScene { get; private set; } = SceneIndex.Persistent;
 
-        // FORK-LOCAL (Party Vocals prototype branding): the version label for non-editor
-        // builds. Test builds fall back to this when no (gitignored) Resources/version.txt
-        // is present; this is only ever displayed (watermark, main menu) or stored as a
-        // string (score GameVersion), never parsed. Restore "v0.14" if merged upstream.
-        // See docs/party-vocals-prototype-build-branding.md.
-        public string CurrentVersion { get; private set; } = "Party Vocals Prototype";
+        public string CurrentVersion { get; private set; } = "v0.15";
+
+        private bool _mutedFromFocusLoss;
+        public bool IsMutedFromFocusLoss => _mutedFromFocusLoss;
+
+        private float _nextLocalizationUpdate;
+        private const float LOCALIZATION_UPDATE_INTERVAL = 1800f;
 
         protected override void SingletonAwake()
         {
@@ -84,12 +87,17 @@ namespace YARG
             CustomContentManager.Initialize();
             LocalizationManager.Initialize(CommandLineArgs.Language);
 
+            _nextLocalizationUpdate = Time.realtimeSinceStartup + LOCALIZATION_UPDATE_INTERVAL + UnityEngine.Random.Range(-30f, 30f);
+
             int profileCount = PlayerContainer.LoadProfiles();
             YargLogger.LogFormatInfo("Loaded {0} profiles", profileCount);
 
             int savedCount = PlayerContainer.SaveProfiles(false);
             YargLogger.LogFormatInfo("Saved {0} profiles", savedCount);
 
+            SettingsManager.LoadStartupSettings();
+            if (GetComponent<Integration.Maestro.MaestroController>() == null)
+                gameObject.AddComponent<Integration.Maestro.MaestroController>();
             GlobalAudioHandler.Initialize<BassAudioManager>();
 
             Players = new List<YargPlayer>();
@@ -104,61 +112,34 @@ namespace YARG
             SettingsManager.LoadSettings();
             InputManager.Initialize();
 
-            // Spawn the persistent Maestro controller on this GameObject so it survives
-            // Menu/Gameplay/Score scene transitions. The host is disabled by default;
-            // it only starts when explicitly enabled (Phase 4 toggle / future setting).
-            if (GetComponent<Integration.Maestro.MaestroController>() == null)
-            {
-                gameObject.AddComponent<Integration.Maestro.MaestroController>();
-            }
-
             LoadScene(SceneIndex.Menu);
         }
 
-        // Tracks whether audio was muted because the window lost focus,
-        // so it can be restored when focus returns.
-        private bool _mutedFromFocusLoss;
-
-        /// <summary>
-        /// Read-only query for whether the master bus is muted due to focus loss.
-        /// Maestro uses this to reject master-volume commands that would unmute YARG
-        /// while <see cref="SettingsManager.Settings.MuteOnFocusLoss"/> is active.
-        /// </summary>
-        public bool IsMutedFromFocusLoss => _mutedFromFocusLoss;
-
-        private void OnApplicationFocus(bool hasFocus)
-        {
-            if (!hasFocus)
-            {
-                if (SettingsManager.Settings.MuteOnFocusLoss.Value && !_mutedFromFocusLoss)
-                {
-                    GlobalAudioHandler.SetMasterVolume(0);
-                    _mutedFromFocusLoss = true;
-                }
-            }
-            else if (_mutedFromFocusLoss)
-            {
-                GlobalAudioHandler.SetMasterVolume(SettingsManager.Settings.MasterMusicVolume.Value);
-                _mutedFromFocusLoss = false;
-            }
-        }
-
 #if UNITY_EDITOR
-
         // For respecting the editor's mute button
         private bool _previousMute;
+#endif
 
         private void Update()
         {
+            GlobalAudioHandler.Update();
+
+#if UNITY_EDITOR
             bool muted = UnityEditor.EditorUtility.audioMasterMute;
             if (muted != _previousMute)
             {
                 GlobalAudioHandler.SetMasterVolume(muted ? 0 : SettingsManager.Settings.MasterMusicVolume.Value);
                 _previousMute = muted;
             }
-        }
 
+            if (CurrentScene != SceneIndex.Gameplay && Time.realtimeSinceStartup > _nextLocalizationUpdate)
+            {
+                _ = LocalizationManager.LoadUpdates();
+                _nextLocalizationUpdate = Time.realtimeSinceStartup + LOCALIZATION_UPDATE_INTERVAL + UnityEngine.Random.Range(-30f, 30f);
+                YargLogger.LogFormatDebug("Updating localization at {0}, next update at {1}", Time.realtimeSinceStartup, _nextLocalizationUpdate);
+            }
 #endif
+        }
 
         protected override void SingletonDestroy()
         {
@@ -198,6 +179,7 @@ namespace YARG
         public void LoadScene(SceneIndex scene)
         {
             Navigator.Instance.DisableMenuInputs = true;
+
             // Unload the current scene and load in the new one, or just load in the new one
             if (CurrentScene != SceneIndex.Persistent)
             {
@@ -219,17 +201,7 @@ namespace YARG
         {
 #if UNITY_EDITOR
             return LoadVersionFromGit();
-#elif YARG_TEST_BUILD
-            // FORK-LOCAL (Party Vocals prototype branding): display
-            // "Party Vocals Prototype (<short commit>)" instead of the raw git string.
-            // BuildGitCommitVersion writes version.txt = "{branch} b{count} ({sha})"; we keep
-            // the prototype name (CurrentVersion's initializer) for branding and append only
-            // the commit for build traceability. Restore the plain version.txt read below if
-            // this branch is ever upstreamed. See docs/party-vocals-prototype-build-branding.md.
-            var protoVersionFile = Resources.Load<TextAsset>("version");
-            string commit = ExtractShortCommit(protoVersionFile?.text);
-            return commit != null ? $"{CurrentVersion} ({commit})" : CurrentVersion;
-#elif YARG_NIGHTLY_BUILD
+#elif YARG_TEST_BUILD || YARG_NIGHTLY_BUILD
             var versionFile = Resources.Load<TextAsset>("version");
             if (versionFile != null)
             {
@@ -243,29 +215,6 @@ namespace YARG
             return CurrentVersion;
 #endif
         }
-
-#if YARG_TEST_BUILD
-        // FORK-LOCAL (Party Vocals prototype branding): pull the short commit hash out of the
-        // string BuildGitCommitVersion writes ("{branch} b{count} ({sha})"). Returns null when
-        // the input is null/empty or has no "(...)" segment.
-        private static string ExtractShortCommit(string gitVersion)
-        {
-            if (string.IsNullOrEmpty(gitVersion))
-            {
-                return null;
-            }
-
-            int open = gitVersion.LastIndexOf('(');
-            int close = gitVersion.LastIndexOf(')');
-            if (open < 0 || close <= open)
-            {
-                return null;
-            }
-
-            string commit = gitVersion.Substring(open + 1, close - open - 1).Trim();
-            return commit.Length > 0 ? commit : null;
-        }
-#endif
 
         public static string LoadVersionFromGit()
         {
@@ -298,6 +247,25 @@ namespace YARG
 #else
             return $"{branch} b{commitCount} ({commit})";
 #endif
+        }
+
+        public static string GetReleaseType()
+        {
+            string kind = null;
+#if UNITY_EDITOR || YARG_TEST_BUILD
+            kind = "dev";
+#elif YARG_NIGHTLY_BUILD
+            kind = "nightly";
+#else
+            kind = "release";
+#endif
+            return kind;
+        }
+
+        // Maybe there is a better place for this?
+        public LocalizeText[] GetLocalizedTexts()
+        {
+            return FindObjectsByType<LocalizeText>(FindObjectsSortMode.None);
         }
     }
 }

@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
@@ -13,19 +12,18 @@ using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Song;
 using YARG.Core.Utility;
+using YARG.Helpers;
 using YARG.Helpers.Extensions;
-using YARG.Integration.Maestro;
 using YARG.Localization;
+using YARG.Menu.Data;
 using YARG.Menu.Navigation;
+using YARG.Menu.Maestro;
+using YARG.Integration.Maestro;
 using YARG.Menu.Persistent;
 using YARG.Menu.Filters;
 using YARG.Menu.MusicLibrary;
-using YARG.Menu.Maestro;
 using YARG.Player;
-using YARG.Settings;
 using YARG.Song;
-
-// pattern: Mixed (needs refactoring)
 
 namespace YARG.Menu.DifficultySelect
 {
@@ -53,22 +51,39 @@ namespace YARG.Menu.DifficultySelect
         // Modifiers relocated from the Modifiers menu to the Accessibility menu.
         // RangeCompress is folded into the "No Range Shifts" toggle there.
         private const Modifier ACCESSIBILITY_MODIFIERS =
-            Modifier.NoKicks | Modifier.UnpitchedOnly | Modifier.RangeCompress;
+            Modifier.OpensToGreens | Modifier.NoKicks | Modifier.UnpitchedOnly | Modifier.RangeCompress;
 
         // Backdrop circle marking the selected instrument's ring — translucent
         // black (a blue tint blended into the row's blue selection highlight).
         private static readonly Color SELECTED_INSTRUMENT_COLOR = new Color(0f, 0f, 0f, 0.5f);
 
-        // Non-selected instrument icons in the main menu's ring row are dimmed
-        // so the selected one stands out.
-        private static readonly Color UNSELECTED_INSTRUMENT_ICON_COLOR = new Color(1f, 1f, 1f, 0.33f);
+        // Non-selected ring arcs and instrument icons dim while the instrument
+        // field is focused (blue row highlight, backdrop visible) and further
+        // when another field has focus (black row, where the backdrop is
+        // invisible). The intensity number is deliberately left undimmed.
+        private const float RING_DIM_FOCUSSED = 0.6f;
+        private const float RING_DIM_UNFOCUSSED = 0.2f;
+        private const float ICON_DIM_FOCUSSED = 0.45f;
+        private const float ICON_DIM_UNFOCUSSED = 0.3f;
 
-        // Done buttons get the Ready treatment in the menu's pale blue instead
-        // of green: tinted text that darkens while the row is highlighted (the
-        // dark blue derives from #2ED9FF with the same per-channel darkening
-        // the green pair uses).
-        private static readonly Color DONE_TEXT_COLOR = new Color32(0x2E, 0xD9, 0xFF, 0xFF);
+        // Done buttons: the ready/sit-out treatment in blue — blue text on the
+        // normal row, and while selected a solid blue fill of the whole row
+        // behind near-black text.
+        private static          Color DONE_TEXT_COLOR => new Color32(0x00, 0xD3, 0xFF, 0xFF);
         private static readonly Color DONE_SELECTED_TEXT_COLOR = new Color32(0x01, 0x22, 0x27, 0xFF);
+        private static readonly Color DONE_SELECTED_FILL_COLOR = new Color32(0x00, 0xD3, 0xFF, 0xFF);
+
+        // Instruments that use the (X-Fret) suffix and not the (X-Lane) suffix when in 6-fret mode
+        private static readonly Instrument[] _fretInstruments = {
+            Instrument.FiveFretGuitar,
+            Instrument.FiveFretBass,
+            Instrument.FiveFretCoopGuitar,
+            Instrument.FiveFretRhythm,
+            Instrument.SixFretGuitar,
+            Instrument.SixFretBass,
+            Instrument.SixFretRhythm,
+            Instrument.SixFretCoopGuitar,
+        };
 
         [SerializeField]
         private TextMeshProUGUI _subHeader;
@@ -91,6 +106,9 @@ namespace YARG.Menu.DifficultySelect
         [SerializeField]
         private CanvasGroup _directSummaryCanvasGroup;
 
+        private Coroutine _directMaestroCoroutine;
+        private bool _navigationSchemePushed;
+
         [Space]
         [SerializeField]
         private TextMeshProUGUI _songTitleText;
@@ -109,11 +127,14 @@ namespace YARG.Menu.DifficultySelect
         [SerializeField]
         private DifficultyItem _difficultyItemSmallRedPrefab;
         [SerializeField]
+        private GameObject _coloredItemPrefab;
+        [SerializeField]
+        private GameObject _ringsItemPrefab;
+        [SerializeField]
         private ModifierItem _modifierItemPrefab;
 
         private int _playerIndex;
         private int _vocalModifierSelectIndex = -1;
-        private Guid _vocalModifierPrimaryProfileId;
 
         private State _lastMenuState;
         private State _menuState;
@@ -122,32 +143,16 @@ namespace YARG.Menu.DifficultySelect
         private readonly List<Difficulty> _possibleDifficulties = new();
         private readonly List<Modifier>   _possibleModifiers    = new();
 
-        // Experimental "Elite (To …)" instrument options (gated behind the
-        // EnableEliteDrumsDowncharts setting): offered for drum game modes when the
-        // setting is on AND every show song is playable for the target (an Elite
-        // Drums chart to downchart, or the target's native chart to fall back to —
-        // see EliteDrumsDownchartRules.IsSongPlayableForTarget). Selecting one
-        // explicitly stores the downchart's output format in
-        // YargProfile.EliteDrumsDownchartTarget and keeps CurrentInstrument equal to
-        // it, so gameplay follows the chosen output.
-        //
-        // Which rows are offered depends on the profile's game mode: 4-lane/Pro players
-        // get both 4-lane and Pro output targets, 5-lane players get 5-lane only, and
-        // Elite Drums (MIDI e-kit) profiles get all three to choose from.
         private bool _eliteDrumsDownchartAvailable;
         private readonly List<Instrument> _eliteDrumsDownchartTargets = new();
 
-        private static string EliteDrumsDownchartLabel(Instrument target)
+        private static string EliteDrumsDownchartLabel(Instrument target) => target switch
         {
-            string format = target switch
-            {
-                Instrument.FourLaneDrums => "4-Lane",
-                Instrument.ProDrums      => "Pro",
-                Instrument.FiveLaneDrums => "5-Lane",
-                _                        => target.ToString(),
-            };
-            return $"Elite (To {format})";
-        }
+            Instrument.FourLaneDrums => "Elite (To 4-Lane)",
+            Instrument.ProDrums => "Elite (To Pro)",
+            Instrument.FiveLaneDrums => "Elite (To 5-Lane)",
+            _ => target.ToLocalizedName(),
+        };
 
         [NonSerialized]
         private Modifier _excusableModifiers;
@@ -163,30 +168,15 @@ namespace YARG.Menu.DifficultySelect
 
         private ScrollRect _scrollRect;
         private Scrollbar _scrollbar;
-        private Coroutine _directMaestroCoroutine;
-        private bool _navigationSchemePushed;
 
         private void OnEnable()
         {
             string subHeaderKey = GlobalVariables.State.IsPractice ? "Practice" : "Quickplay";
             _subHeader.text = Localize.Key("Menu.Main.Options", subHeaderKey);
 
-            // Maestro Back returns to the completed-player boundary instead of starting a
-            // fresh song setup session. The page has already popped its own scheme before
-            // reactivating this menu, so this menu owns the restored Difficulty Select scheme.
-            var pageSession = MaestroSetupSession.Active;
-            bool returningFromMaestro = pageSession?.ReturningToDifficultySelect == true;
-            bool directSummary = !returningFromMaestro &&
-                SettingsManager.Settings.MaestroEnable.Value &&
-                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value;
-
-            // Direct Maestro opens one frame after Difficulty Select is enabled so the
-            // menu stack can finish updating. Keep the transient player content hidden
-            // during that handoff so the old first profile cannot flash on screen.
-            PrepareForDirectMaestroSummary(directSummary);
-
             // Set navigation scheme
-            Navigator.Instance.PushScheme(new NavigationScheme(new()
+            _navigationSchemePushed = true;
+            _ = Navigator.Instance.PushScheme(new NavigationScheme(new()
             {
                 NavigationScheme.Entry.NavigateUp,
                 NavigationScheme.Entry.NavigateDown,
@@ -218,9 +208,7 @@ namespace YARG.Menu.DifficultySelect
                     }
                 })
             }, false));
-            _navigationSchemePushed = true;
 
-            _songSpeed = Mathf.Clamp(GlobalVariables.State.SongSpeed, 0.1f, 50f);
             _speedInput.text = $"{Mathf.RoundToInt(_songSpeed * 100f)}%";
             _songTitleText.text = GlobalVariables.State.CurrentSong.Name;
             _artistText.text = GlobalVariables.State.CurrentSong.Artist;
@@ -234,46 +222,30 @@ namespace YARG.Menu.DifficultySelect
                 _songList = new List<SongEntry> { GlobalVariables.State.CurrentSong };
             }
 
-            if (returningFromMaestro)
+            // Starting a fresh selection session: discard any session-scoped modifiers
+            // imposed by a previous song (see ApplySessionModifiers) so each player's
+            // own saved selection is what shows and is edited here.
+            foreach (var player in PlayerContainer.Players)
             {
-                _playerIndex = Mathf.Clamp(pageSession.CompletedPlayerBoundary - 1, 0,
-                    Mathf.Max(0, PlayerContainer.Players.Count - 1));
-                _vocalModifierPrimaryProfileId = pageSession.VocalPrimaryProfileId;
-                _vocalModifierSelectIndex = -1;
-                if (_vocalModifierPrimaryProfileId != default)
-                {
-                    for (int i = 0; i < PlayerContainer.Players.Count; i++)
-                    {
-                        if (PlayerContainer.Players[i].Profile.Id == _vocalModifierPrimaryProfileId)
-                        {
-                            _vocalModifierSelectIndex = i;
-                            break;
-                        }
-                    }
-                }
-
-                // Rebuild the current player's view without advancing to the next player.
-                ChangePlayer(0);
-                pageSession.ClearReturningToDifficultySelect();
+                player.Profile.RestoreSavedModifiers();
             }
-            else
+
+            // ChangePlayer(0) will update for the current player
+            _playerIndex = 0;
+            _vocalModifierSelectIndex = -1;
+            ChangePlayer(0);
+
+            bool returningFromMaestro = MaestroSetupSession.Active?.ReturningToDifficultySelect == true;
+            bool directSummary = !returningFromMaestro && SettingsManager.Settings.MaestroEnable.Value &&
+                SettingsManager.Settings.MaestroGoDirectlyToSummary.Value;
+            if (_directSummaryCanvasGroup != null)
             {
-                // Starting a fresh selection session: discard any session-scoped modifiers
-                // imposed by a previous song (see ApplySessionModifiers) so each player's
-                // own saved selection is what shows and is edited here.
-                foreach (var player in PlayerContainer.Players)
-                {
-                    player.Profile.RestoreSavedModifiers();
-                    // Restore the persistent Maestro preference for the next song.
-                    player.SittingOut = player.Profile.MaestroSittingOut;
-                }
-
-                // ChangePlayer(0) will update for the current player
-                _playerIndex = 0;
-                _vocalModifierSelectIndex = -1;
-                _vocalModifierPrimaryProfileId = default;
-                ChangePlayer(0);
+                _directSummaryCanvasGroup.alpha = directSummary ? 0f : 1f;
+                _directSummaryCanvasGroup.interactable = !directSummary;
+                _directSummaryCanvasGroup.blocksRaycasts = !directSummary;
             }
+            if (directSummary)
+                _directMaestroCoroutine = StartCoroutine(OpenMaestroSummaryDirectlyNextFrame());
 
             _loadingPhrase.text = RichTextUtils.StripRichTextTags(
                 GlobalVariables.State.CurrentSong.LoadingPhrase, RichTextTags.BadTags);
@@ -291,87 +263,30 @@ namespace YARG.Menu.DifficultySelect
             _scrollRect = GetComponentInChildren<ScrollRect>();
             _scrollbar = GetComponentInChildren<Scrollbar>();
             _navGroup.SelectionChanged += UpdateForSelectionChanged;
-
-            // Open Maestro only after this page has initialized its current-player view.
-            // Pushing it from the middle of OnEnable leaves the stale/default Difficulty
-            // Select UI visible underneath the summary and breaks the Back path.
-            if (directSummary)
-            {
-                _directMaestroCoroutine = StartCoroutine(OpenMaestroSummaryDirectlyNextFrame());
-            }
-        }
-
-        private void PrepareForDirectMaestroSummary(bool directSummary)
-        {
-            if (_directSummaryCanvasGroup == null)
-            {
-                TryGetComponent(out _directSummaryCanvasGroup);
-            }
-
-            if (_directSummaryCanvasGroup == null)
-            {
-                // Keep the normal Difficulty Select path usable if an older or
-                // malformed prefab is loaded. Authored prefabs must wire this
-                // component so direct Maestro can suppress the whole page.
-                if (_container != null)
-                    _container.gameObject.SetActive(!directSummary);
-                return;
-            }
-
-            _directSummaryCanvasGroup.alpha = directSummary ? 0f : 1f;
-            _directSummaryCanvasGroup.interactable = !directSummary;
-            _directSummaryCanvasGroup.blocksRaycasts = !directSummary;
-
-            if (_container != null)
-                _container.gameObject.SetActive(!directSummary);
         }
 
         private System.Collections.IEnumerator OpenMaestroSummaryDirectlyNextFrame()
         {
-            // MenuManager.PushMenu activates Difficulty Select before it pushes it
-            // onto its stack. Waiting one frame lets that push complete before this
-            // transition hides Difficulty Select and pushes Maestro on top of it.
             yield return null;
             _directMaestroCoroutine = null;
-
             if (isActiveAndEnabled && SettingsManager.Settings.MaestroEnable.Value &&
                 SettingsManager.Settings.MaestroGoDirectlyToSummary.Value &&
                 MaestroSetupSession.Active?.ReturningToDifficultySelect != true)
             {
-                OpenMaestroSummaryDirectly();
+                foreach (var player in PlayerContainer.Players)
+                    player.Profile.RestoreSavedModifiers();
+                Guid vocalProfileId = PlayerContainer.Players.FirstOrDefault(player =>
+                    player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals)?.Profile.Id ?? default;
+                MaestroSetupSession.Begin(PlayerContainer.Players, _songList,
+                    PlayerContainer.Players.Count, vocalProfileId);
+                MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
             }
-        }
-
-        private void OpenMaestroSummaryDirectly()
-        {
-            foreach (var player in PlayerContainer.Players)
-            {
-                player.Profile.RestoreSavedModifiers();
-            }
-
-            Guid vocalPrimaryProfileId = PlayerContainer.Players
-                .FirstOrDefault(player => player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals)
-                ?.Profile.Id ?? default;
-            MaestroSetupSession.Begin(PlayerContainer.Players, _songList,
-                PlayerContainer.Players.Count, vocalPrimaryProfileId);
-            MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
         }
 
         private void UpdateForSelectionChanged(NavigatableBehaviour navigatableBehaviour,
             SelectionOrigin selectionOrigin)
         {
-            // Live-preview the ring for the highlighted instrument in the instrument
-            // sub-menu, so the player sees the tier before committing a selection.
-            if (_menuState == State.Instrument)
-            {
-                int? selIndex = _navGroup.SelectedIndex;
-                if (selIndex is { } si && si >= 0 && si < _possibleInstruments.Count)
-                {
-                    SetDifficultyRingForInstrument(_possibleInstruments[si]);
-                }
-            }
-
-            RefreshScrollbar();
+            UpdateScrollbarForSelection();
         }
 
         private void UpdateScrollbarForSelection()
@@ -382,21 +297,31 @@ namespace YARG.Menu.DifficultySelect
             }
 
             int? index = _navGroup.SelectedIndex;
-            if (index is { } i)
+            if (index is not { } i) return;
+
+            int count = _navGroup.Count;
+            if (count <= 0)
             {
-                int count = _navGroup.Count;
-                float highScrollBound = _scrollbar.size + (1 - _scrollbar.size) * _scrollbar.value;
-                float lowScrollBound = (1 - _scrollbar.size) * _scrollbar.value;
-                float indexHighBound = 1 - (1 / (float) count) * i;
-                float indexLowBound = 1 - (1 / (float) count) * (i + 1);
-                if (highScrollBound < indexHighBound)
-                {
-                    _scrollbar.value = (indexHighBound - _scrollbar.size) / (1 - _scrollbar.size);
-                }
-                else if (lowScrollBound > indexLowBound)
-                {
-                    _scrollbar.value = indexLowBound / (1 - _scrollbar.size);
-                }
+                return;
+            }
+
+            if (Mathf.Approximately(_scrollbar.size, 1f))
+            {
+                _scrollbar.value = 1f;
+                return;
+            }
+
+            float highScrollBound = _scrollbar.size + (1 - _scrollbar.size) * _scrollbar.value;
+            float lowScrollBound = (1 - _scrollbar.size) * _scrollbar.value;
+            float indexHighBound = 1 - (1 / (float) count) * i;
+            float indexLowBound = 1 - (1 / (float) count) * (i + 1);
+            if (highScrollBound < indexHighBound)
+            {
+                _scrollbar.value = (indexHighBound - _scrollbar.size) / (1 - _scrollbar.size);
+            }
+            else if (lowScrollBound > indexLowBound)
+            {
+                _scrollbar.value = indexLowBound / (1 - _scrollbar.size);
             }
         }
 
@@ -404,9 +329,7 @@ namespace YARG.Menu.DifficultySelect
         {
             // Set player text
             var profile = CurrentPlayer.Profile;
-            _text.text = profile.Name;
-
-            UpdateDifficultyRing();
+            _text.text = $"<sprite name=\"{GetProfileIconSprite(CurrentPlayer)}\"> {profile.Name}";
 
             // Reset content
             _navGroup.ClearNavigatables();
@@ -449,15 +372,7 @@ namespace YARG.Menu.DifficultySelect
             }
 
             _lastMenuState = _menuState;
-        }
-
-        // Refresh the header ring to the song's charter-rated tier for the current
-        // instrument. Mirrors ScoreCard.SetCardContents (ScoreCard.cs:158-163): same
-        // data source (CurrentSong[instrument]), driven from UpdateForPlayer so it
-        // tracks instrument changes (e.g. guitar<->bass can have different tiers).
-        private void UpdateDifficultyRing()
-        {
-            SetDifficultyRingForInstrument(CurrentPlayer.Profile.CurrentInstrument);
+            RefreshScrollbar();
         }
 
         // Get the charter-rated tier values for an instrument. Harmony reads from
@@ -468,13 +383,31 @@ namespace YARG.Menu.DifficultySelect
         {
             var tierValues = song[instrument];
 
-            if (instrument is Instrument.Harmony or Instrument.PartyVocals && !tierValues.IsActive())
+            if (instrument is Instrument.Harmony && !tierValues.IsActive())
             {
                 tierValues = song[Instrument.Vocals];
             }
 
             return tierValues;
         }
+
+        // Resolve the bare Addressable icon name for the ring. Handles the 22-fret
+        // pro-instrument gap (ToResourceName returns null for ProGuitar_22Fret /
+        // ProBass_22Fret) and selects the part-count mic icon for harmony based on
+        // the song's vocal part count.
+        private static string GetInstrumentRingAsset(Instrument instrument, int vocalPartCount)
+            => instrument switch
+        {
+            Instrument.ProGuitar_22Fret => "realGuitar",
+            Instrument.ProBass_22Fret   => "realBass",
+            Instrument.Harmony => vocalPartCount switch
+            {
+                >= 3 => "harmVocals",
+                2    => "twoVocals",
+                _    => "vocals",
+            },
+            _ => instrument.ToResourceName(),
+        };
 
         private void RefreshScrollbar()
         {
@@ -495,108 +428,6 @@ namespace YARG.Menu.DifficultySelect
 
             UpdateScrollbarForSelection();
         }
-
-        // Set the ring to show the tier for a specific instrument. Used both for the
-        // committed selection (via UpdateDifficultyRing) and for live preview while
-        // navigating the instrument sub-menu (via UpdateForSelectionChanged).
-        private void SetDifficultyRingForInstrument(Instrument instrument)
-        {
-            if (_difficultyRing == null) return;
-
-            var song = GlobalVariables.State.CurrentSong;
-            var tierValues = song[instrument];
-
-            // Harmony and PartyVocals read from HarmonyVocals, which is empty on
-            // solo-only songs (no harmony chart). Fall back to the lead vocals tier
-            // so the ring still shows meaningful data instead of the dimmed state.
-            if (instrument is Instrument.Harmony or Instrument.PartyVocals
-                && !tierValues.IsActive())
-            {
-                tierValues = song[Instrument.Vocals];
-            }
-
-            _difficultyRing.SetInfo(
-                GetInstrumentRingAsset(instrument, song.VocalsCount),
-                instrument,
-                tierValues);
-        }
-
-        // Get the charter-rated tier for an instrument, mirroring the fallback
-        // used by SetDifficultyRingForInstrument (Harmony/PartyVocals fall back
-        // to lead vocals on solo-only songs).
-        private static sbyte GetInstrumentTier(SongEntry song, Instrument instrument)
-        {
-            var tierValues = song[instrument];
-
-            if (instrument is Instrument.Harmony or Instrument.PartyVocals
-                && !tierValues.IsActive())
-            {
-                tierValues = song[Instrument.Vocals];
-            }
-
-            return tierValues.Intensity;
-        }
-
-        // Build a visual tier indicator using ●/○/◇/◉ with TMP color tags:
-        //   Tier 0: 5 empty dots (○)
-        //   Tier N (1-5): N filled (● bright) + (5-N) empty (○)
-        //   Tier 6: 5 burning red dots (●)
-        //   Tier 7-10: burning dots, replacing one ● with ◉ fisheye per tier
-        //   Tier 11+: clamped to tier 10 (all 5 fisheye)
-        //   Unknown (-1): alternating empty dots/diamonds (○◇○◇○)
-        private static string GetTierDisplay(sbyte tier)
-        {
-            if (tier < 0)
-            {
-                return "<size=80%><color=#888888>Unknown</color></size>";
-            }
-
-            var sb = new StringBuilder();
-
-            if (tier >= 6)
-            {
-                // Tier 6: 5 red ●. Each tier above replaces one ● with ◉ fisheye.
-                // Tier 10 = all 5 ◉. Clamp above that.
-                int fisheye = System.Math.Min(tier - 6, 5); // tier 6→0, 7→1, ... 11+→5
-                sb.Append("<color=#F32B37>");
-                for (int i = 0; i < 5; i++)
-                {
-                    sb.Append(i < fisheye ? '\u25C9' : '\u25CF'); // ◉ vs ●
-                }
-                sb.Append("</color>");
-            }
-            else
-            {
-                int filled = tier;
-                int empty = 5 - filled;
-
-                sb.Append("<color=#DDDDDD>");
-                for (int i = 0; i < filled; i++) sb.Append('\u25CF'); // ●
-                sb.Append("</color>");
-
-                for (int i = 0; i < empty; i++) sb.Append('\u25CB'); // ○
-            }
-
-            return sb.ToString();
-        }
-
-        // Resolve the bare Addressable icon name for the ring. Handles the 22-fret
-        // pro-instrument gap (ToResourceName returns null for ProGuitar_22Fret /
-        // ProBass_22Fret, InstrumentExtensions.cs:95) and selects the part-count mic
-        // icon for harmony/party-vocals based on the song's vocal part count.
-        private static string GetInstrumentRingAsset(Instrument instrument, int vocalPartCount)
-            => instrument switch
-        {
-            Instrument.ProGuitar_22Fret => "realGuitar",
-            Instrument.ProBass_22Fret   => "realBass",
-            Instrument.Harmony or Instrument.PartyVocals => vocalPartCount switch
-            {
-                >= 3 => "harmVocals",
-                2    => "twoVocals",
-                _    => "vocals",
-            },
-            _ => instrument.ToResourceName(),
-        };
 
         private void CreateMainMenu()
         {
@@ -622,77 +453,43 @@ namespace YARG.Menu.DifficultySelect
                 CreateItem(LocalizeHeader("Ready"), _lastMenuState == State.Main, _difficultyGreenPrefab, () =>
                 {
                     // If the player just selected vocal modifiers, don't show them again
-                    if ((player.Profile.GameMode == GameMode.Vocals
-                        || player.Profile.GameMode == GameMode.PartyVocals) &&
+                    if (player.Profile.GameMode == GameMode.Vocals &&
                         _vocalModifierSelectIndex == -1)
                     {
                         _vocalModifierSelectIndex = _playerIndex;
-                        _vocalModifierPrimaryProfileId = player.Profile.Id;
                     }
 
                     ChangePlayer(1);
                 });
 
                 DifficultyItem instrumentItem;
-
-                // Party Vocals' only instrument is Party Vocals, so the meaningful choice
-                // under "Instrument" is the Solo-vs-Harmony vocal chart. Repurpose the row to
-                // open the chart picker and show the resolved chart. When the song offers only
-                // one vocal chart there's nothing to pick, so the row is shown dimmed and
-                // non-interactable (visible feedback instead of a silent no-op).
                 if (player.Profile.GameMode == GameMode.PartyVocals)
                 {
                     var song = GlobalVariables.State.CurrentSong;
-                    bool hasHarm = song.HasInstrument(Instrument.Harmony);
-                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
-
-                    // All Party Vocals players share one VocalTrack, so a later player's
-                    // chart must match the first player's or it won't render. Lock every
-                    // player after the first to that choice: copy the preference (so the
-                    // shared track and replay record the chart actually played) and dim
-                    // the row, exactly like a single-chart song. The first Party Vocals
-                    // player still chooses freely.
                     var lockedPreference = GetLockedPartyVocalsPreference();
                     if (lockedPreference is { } locked)
-                    {
                         player.Profile.PartyVocalsChartPreference = locked;
-                    }
-
+                    bool hasHarm = song.HasInstrument(Instrument.Harmony);
+                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
                     bool realChoice = hasHarm && hasSolo && lockedPreference is null;
-
-                    // Resolved chart for display: what ResolveMultitrack will pick.
-                    bool willSingSolo =
-                        player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
-                            ? hasSolo
-                            : !hasHarm;
-                    string chartLabel = willSingSolo ? "Solo" : "Harmony";
-
-                    instrumentItem = CreateItem(LocalizeHeader("Instrument"), chartLabel,
+                    bool willSingSolo = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
+                        ? hasSolo : !hasHarm;
+                    instrumentItem = CreateItem(LocalizeHeader("Instrument"),
+                        willSingSolo ? "Solo" : "Harmony",
                         _lastMenuState == State.PartyVocalsChartChoice, () =>
-                    {
-                        _menuState = State.PartyVocalsChartChoice;
-                        UpdateForPlayer();
-                    },
-                    interactable: realChoice);
+                        {
+                            _menuState = State.PartyVocalsChartChoice;
+                            UpdateForPlayer();
+                        }, interactable: realChoice);
                 }
                 else
                 {
-                    // While an explicit "Elite (To …)" target is active, CurrentInstrument is
-                    // pinned to the target's output format, so its localized name would read
-                    // as the native instrument (e.g. "4-Lane Drums"). Show the same
-                    // "Elite (To …)" label the instrument submenu uses so the summary
-                    // reflects the explicit choice. "Active" is the centralized profile-
-                    // consistency guard gameplay consults (IsDownchartTargetActive), so a
-                    // stale but well-formed target — one that no longer equals
-                    // CurrentInstrument or whose mode doesn't support downcharts — falls
-                    // back to the native localized name, matching what gameplay loads.
                     string instrumentLabel = player.Profile.EliteDrumsDownchartTarget is { } eliteTarget &&
                         EliteDrumsDownchartRules.IsDownchartTargetActive(player.Profile)
                             ? EliteDrumsDownchartLabel(eliteTarget)
-                            : player.Profile.CurrentInstrument.ToLocalizedName();
-                    instrumentItem = CreateItem(LocalizeHeader("Instrument"),
-                        instrumentLabel,
-                        _lastMenuState == State.Instrument, () =>
+                            : GetInstrumentDisplayName(player.Profile.CurrentInstrument, player.Profile.GameMode);
+                    instrumentItem = CreateItem(LocalizeHeader("Instrument"), instrumentLabel,
+                        _lastMenuState == State.Instrument, _ringsItemPrefab, () =>
                     {
                         _menuState = State.Instrument;
                         UpdateForPlayer();
@@ -701,58 +498,58 @@ namespace YARG.Menu.DifficultySelect
 
                 // Show every available instrument's tier wheel on its own row
                 // within the item (localized instrument names can be long, so a
-                // ring column beside the text doesn't reliably fit). Party Vocals
-                // gets one wheel for Solo and one for Harmony when both charts are
-                // available, matching the separate chart choices below.
+                // ring column beside the text doesn't reliably fit). The selected
+                // instrument gets a backdrop circle behind its ring; the rest
+                // are dimmed, deeper while another field has focus (the black
+                // unfocused row hides the circle and shrinks the dim contrast).
                 if (_difficultyRing != null && _possibleInstruments.Count > 0)
                 {
                     const float ringSize = 40f;
 
                     var song = GlobalVariables.State.CurrentSong;
-                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
-                    bool hasHarmony = song.HasInstrument(Instrument.Harmony);
-                    bool showPartyVocalsCharts = instrumentItem != null
-                        && player.Profile.GameMode == GameMode.PartyVocals
-                        && hasSolo && hasHarmony;
-                    int ringCount = showPartyVocalsCharts ? 2 : _possibleInstruments.Count;
-                    var rings = instrumentItem.AttachRingRow(_difficultyRing, ringCount, ringSize);
+                    var rings = instrumentItem.GetComponent<DifficultyItemRings>()
+                        .AttachRingRow(_difficultyRing, _possibleInstruments.Count, ringSize);
 
-                    bool selectedSolo = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
-                        ? hasSolo
-                        : !hasHarmony;
-                    Instrument selectedPartyVocalsChart = selectedSolo
-                        ? Instrument.Vocals
-                        : Instrument.Harmony;
+                    var currentInstrument = player.Profile.CurrentInstrument;
+                    DifficultyRing selectedRing = null;
 
-                    for (int i = 0; i < ringCount; i++)
+                    for (int i = 0; i < _possibleInstruments.Count; i++)
                     {
-                        Instrument ringInstrument = showPartyVocalsCharts
-                            ? i == 0 ? Instrument.Vocals : Instrument.Harmony
-                            : _possibleInstruments[i];
+                        var instrument = _possibleInstruments[i];
                         rings[i].SetInfo(
-                            GetInstrumentRingAsset(ringInstrument, song.VocalsCount),
-                            ringInstrument,
-                            GetTierValues(song, ringInstrument));
+                            GetInstrumentRingAsset(instrument, song.VocalsCount),
+                            instrument,
+                            GetTierValues(song, instrument));
 
-                        bool selected = showPartyVocalsCharts
-                            ? ringInstrument == selectedPartyVocalsChart
-                            : ringInstrument == player.Profile.CurrentInstrument;
-                        if (selected)
+                        if (instrument == currentInstrument)
                         {
                             // Extra size is in the ring's native units; scale it
                             // so the circle extends four *screen* pixels per
                             // side, giving the ring a prominent rim.
                             rings[i].ShowSelectionBackdrop(SELECTED_INSTRUMENT_COLOR,
                                 extraSize: 8f * 65f / ringSize);
-                        }
-                        else
-                        {
-                            rings[i].SetIconColor(UNSELECTED_INSTRUMENT_ICON_COLOR);
-                            // Dim the filled segments too, so the selected
-                            // wheel reads brightest.
-                            rings[i].SetRingOpacity(0.6f);
+                            selectedRing = rings[i];
                         }
                     }
+
+                    void ApplyInstrumentFieldFocus(bool focused)
+                    {
+                        selectedRing?.SetBackdropVisible(focused);
+                        for (int i = 0; i < rings.Length; i++)
+                        {
+                            if (rings[i] != selectedRing)
+                            {
+                                rings[i].SetRingOpacity(
+                                    focused ? RING_DIM_FOCUSSED : RING_DIM_UNFOCUSSED);
+                                rings[i].SetIconColor(Color.white.WithAlpha(
+                                    focused ? ICON_DIM_FOCUSSED : ICON_DIM_UNFOCUSSED));
+                            }
+                        }
+                    }
+
+                    instrumentItem.Button.SelectionStateChanged += (_, selected, _) =>
+                        ApplyInstrumentFieldFocus(selected);
+                    ApplyInstrumentFieldFocus(instrumentItem.Button.Selected);
                 }
 
                 CreateItem(LocalizeHeader("Difficulty"),
@@ -763,17 +560,11 @@ namespace YARG.Menu.DifficultySelect
                     UpdateForPlayer();
                 });
 
-                // Harmony-locked players pick which HARM line they want. Free Vocals bots
-                // no longer need this picker: on multi-HARM songs they auto-distribute one
-                // synthetic vocalist per part (Party Vocals bot mode); on Solo-only songs
-                // there's only one line. The HARM index isn't used by Free Vocals at all
-                // anymore for bot configuration.
-                if (player.Profile.CurrentInstrument is Instrument.Harmony)
+                // Harmony players must pick their harmony index
+                if (player.Profile.CurrentInstrument == Instrument.Harmony)
                 {
-                    string harmonyDisplayText = $"HARM{player.Profile.HarmonyIndex + 1}";
-
                     CreateItem(LocalizeHeader("Harmony"),
-                        harmonyDisplayText,
+                        (player.Profile.HarmonyIndex + 1).ToString(),
                         _lastMenuState == State.Harmony, () =>
                     {
                         _menuState = State.Harmony;
@@ -781,88 +572,38 @@ namespace YARG.Menu.DifficultySelect
                     });
                 }
 
-                // Free Vocals bots: expose a mic-count override for testing edge
-                // cases (e.g. 3 mics vs 2 parts, 1 mic vs 3 semi-overlapping parts).
-                // Auto = one bot mic per HARM part in the chart (default).
                 if (player.Profile.IsFreeVocals && player.Profile.IsBot)
                 {
                     byte botMicOverride = player.Profile.PartyVocalsMicCountOverride;
-                    string botMicLabel = botMicOverride == 0
-                        ? "Auto"
-                        : botMicOverride.ToString();
-
-                    CreateItem("Bot Mics",
-                        botMicLabel,
+                    CreateItem("Bot Mics", botMicOverride == 0 ? "Auto" : botMicOverride.ToString(),
                         _lastMenuState == State.PartyVocalsBotMicCount, () =>
+                        {
+                            _menuState = State.PartyVocalsBotMicCount;
+                            UpdateForPlayer();
+                        });
+                }
+
+                // Only allow vocal modifiers to be selected once (so they don't conflict)
+                if (player.Profile.GameMode != GameMode.Vocals && player.Profile.GameMode != GameMode.PartyVocals ||
+                    _vocalModifierSelectIndex == -1 ||
+                    _vocalModifierSelectIndex == _playerIndex)
+                {
+                    var adjustmentsItem = CreateItem(LocalizeHeader("Adjustments"),
+                        BuildAdjustmentsSummary(player.Profile, out int optionCount),
+                        _lastMenuState is State.Adjustments or State.Modifiers or State.Accessibility, () =>
                     {
-                        _menuState = State.PartyVocalsBotMicCount;
+                        _menuState = State.Adjustments;
                         UpdateForPlayer();
                     });
-                }
 
-                var adjustmentsItem = CreateItem(LocalizeHeader("Adjustments"),
-                    BuildAdjustmentsSummary(player.Profile, out int optionCount),
-                    _lastMenuState is State.Adjustments or State.Modifiers or State.Accessibility, () =>
-                {
-                    _menuState = State.Adjustments;
-                    UpdateForPlayer();
-                });
-
-                // With a single active option (or none) the summary fits at
-                // the normal body size; longer lists drop to the header size
-                // to keep the row compact.
-                if (optionCount >= 2)
-                {
-                    adjustmentsItem.UseSmallBodyText();
-                }
-
-                // (Party Vocals' Solo/Harmony chart choice now lives on the Instrument row above.)
-
-                // Vocal modifiers must be uniform across all vocal players, so only the
-                // first vocal player to claim selection can edit them. Later vocal players
-                // see the inherited selection, dimmed and non-interactable — the same
-                // pattern as the Party Vocals instrument/chart row.
-                bool isVocalMode = player.Profile.GameMode == GameMode.Vocals
-                    || player.Profile.GameMode == GameMode.PartyVocals;
-                bool modifiersLocked = isVocalMode
-                    && _vocalModifierSelectIndex != -1
-                    && _vocalModifierSelectIndex != _playerIndex;
-
-                // Show the effective modifiers: the primary player's selection when locked,
-                // otherwise this player's own.
-                var modifiersSource = modifiersLocked
-                    ? PlayerContainer.Players[_vocalModifierSelectIndex].Profile
-                    : player.Profile;
-
-                // Create modifiers body text
-                string modifierText = "";
-                if ((modifiersSource.CurrentModifiers & ~_excusableModifiers) == Modifier.None)
-                {
-                    // If there are no modifiers (ignoring the excusable ones), then just say "none"
-                    modifierText = Modifier.None.ToLocalizedName();
-                }
-                else
-                {
-                    // Combine all modifiers
-                    foreach (var modifier in _possibleModifiers)
+                    // With a single active option (or none) the summary fits at
+                    // the normal body size; longer lists drop to the header size
+                    // to keep the row compact.
+                    if (optionCount >= 2)
                     {
-                        if (!modifiersSource.IsModifierActive(modifier)) continue;
-
-                        modifierText += modifier.ToLocalizedName() + "\n";
+                        adjustmentsItem.UseSmallBodyText();
                     }
-
-                    modifierText = modifierText.Trim();
                 }
-
-                // Lefty flip is a separate profile flag, not a Modifier enum value,
-                // so append it to the summary manually.
-                if (modifiersSource.LeftyFlip)
-                {
-                    modifierText = modifierText == Modifier.None.ToLocalizedName()
-                        ? "Lefty Flip"
-                        : modifierText + "\nLefty Flip";
-                }
-
             }
 
             // Only show if there is more than one play, only if there is instruments available
@@ -925,7 +666,7 @@ namespace YARG.Menu.DifficultySelect
             }
 
             // The label clamps at the top tier; the number stays exact.
-            string text = $"{values.Intensity} - {FiltersMenu.GetIntensityLabelByIndex(values.Intensity)}";
+            string text = $"{values.Intensity} - {IntensityLabels.GetLabelByIndex(values.Intensity)}";
 
             // Top-tier colors (matching the web export's tier palette): orange
             // at 5, the ring segments' red at 6+.
@@ -937,39 +678,22 @@ namespace YARG.Menu.DifficultySelect
             };
         }
 
-        private static string GetPartyVocalsChartLabel(SongEntry song, Instrument instrument)
-        {
-            string chartName = instrument == Instrument.Vocals ? "Solo" : "Harmony";
-            return chartName
-                + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(song[instrument])}</color></size>";
-        }
-
         private void CreateInstrumentMenu()
         {
             var song = GlobalVariables.State.CurrentSong;
 
             foreach (var instrument in _possibleInstruments)
             {
-                // While an Elite (To …) option is active, no native instrument row is
-                // marked selected — even though one of them matches the downchart's
-                // output. "Active" is the same centralized profile-consistency guard
-                // the summary label and gameplay consult
-                // (EliteDrumsDownchartRules.IsDownchartTargetActive), so a stale but
-                // well-formed target instead marks its native instrument row selected,
-                // matching the native chart gameplay actually loads.
-                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument &&
-                    !EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile);
-
+                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
                 // Instrument name with its charted tier on a smaller, dimmed
                 // second line (mirroring the header text style).
-                string label = instrument.ToLocalizedName()
+                string label = GetInstrumentDisplayName(instrument, CurrentPlayer.Profile.GameMode)
                     + $"\n<size=18><color=#FFFFFF80>{GetTierLabel(GetTierValues(song, instrument))}</color></size>";
 
                 CreateItem(label, selected, () =>
                 {
                     var preferredInstrument = CurrentPlayer.Profile.PreferredInstrument;
                     CurrentPlayer.Profile.CurrentInstrument = instrument;
-                    CurrentPlayer.Profile.EliteDrumsDownchartTarget = null;
 
                     // Re-resolve after an instrument switch in case the raw harmony index is out
                     // of range for this song (ChangePlayer's check can be masked by the
@@ -993,57 +717,20 @@ namespace YARG.Menu.DifficultySelect
                 });
             }
 
-            // Experimental "Elite (To …)": plays the Elite Drums chart downcharted to the
-            // explicitly chosen output format instead of that format's native chart. The
-            // rows are offered when the experimental setting is enabled, the profile is
-            // in a supported drum mode, and every show song is playable for the target
-            // (see UpdateForPlayer); songs without an Elite Drums chart fall back to
-            // their native chart per song.
             foreach (var target in _eliteDrumsDownchartTargets)
             {
-                // Selected requires the same centralized guard the summary label and
-                // the difficulty list use
-                // (EliteDrumsDownchartRules.IsDownchartTargetActive): a stale but
-                // well-formed target — one that no longer equals CurrentInstrument or
-                // whose mode doesn't support downcharts — must not mark its row
-                // selected, since gameplay and the summary both treat it as the
-                // native chart of CurrentInstrument instead.
                 bool selected = CurrentPlayer.Profile.EliteDrumsDownchartTarget == target &&
                     EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile);
-
-                // Only show the Elite Drums tier on the second line when the song actually
-                // has an elite chart to downchart; an elite-less song would otherwise show
-                // "? - Unknown" and read as broken. Gameplay falls back to the native chart.
-                string label = EliteDrumsDownchartLabel(target);
-                if (song.HasInstrument(Instrument.EliteDrums))
+                CreateItem(EliteDrumsDownchartLabel(target), selected, () =>
                 {
-                    label += $"\n<size=18><color=#FFFFFF80>{GetTierLabel(GetTierValues(song, Instrument.EliteDrums))}</color></size>";
-                }
-
-                CreateItem(label, selected, () =>
-                {
-                    // The choice is explicit: store the target output format and make the
-                    // play instrument follow it (engine mode, highway, and scoring all key
-                    // off CurrentInstrument). Mirror the native-selection logic for
-                    // PreferredInstrument so a later menu refresh doesn't clobber it back.
-                    var preferredInstrument = CurrentPlayer.Profile.PreferredInstrument;
                     CurrentPlayer.Profile.EliteDrumsDownchartTarget = target;
                     CurrentPlayer.Profile.CurrentInstrument = target;
-
-                    if (target != preferredInstrument && _possibleInstruments.Contains(preferredInstrument))
-                    {
-                        CurrentPlayer.Profile.PreferredInstrument = target;
-                    }
-
-                    FiltersMenu.ResetIntensityFiltersForProfile(CurrentPlayer.Profile);
+                    CurrentPlayer.Profile.PreferredInstrument = target;
                     UpdatePossibleDifficulties();
-                    UpdatePossibleModifiers();
-
                     _menuState = State.Main;
                     UpdateForPlayer();
                 });
             }
-
         }
 
         private void CreateDifficultyMenu()
@@ -1098,8 +785,14 @@ namespace YARG.Menu.DifficultySelect
 
         private void CreateDoneItem(UnityAction action)
         {
-            CreateItem(LocalizeHeader("Done"), false, action)
-                .SetAccentColors(DONE_TEXT_COLOR, DONE_SELECTED_TEXT_COLOR);
+            var btn = Instantiate(_coloredItemPrefab, _container).GetComponent<DifficultyItem>();
+            btn.Initialize(LocalizeHeader("Done"), action);
+            btn.SetInteractable(true);
+            _navGroup.AddNavigatable(btn.Button);
+
+            var colorizer = btn.GetComponent<DifficultyItemColorizer>();
+            colorizer.SetButtonColor(DONE_TEXT_COLOR, DONE_SELECTED_TEXT_COLOR);
+            colorizer.SetSelectionFill(DONE_SELECTED_FILL_COLOR);
         }
 
         private void CreateModifierMenu()
@@ -1109,105 +802,36 @@ namespace YARG.Menu.DifficultySelect
             _modifierItems.Clear();
             _itemModifiers.Clear();
 
-            bool isVocalMode = profile.GameMode is GameMode.Vocals or GameMode.PartyVocals;
-
-            if (isVocalMode)
+            foreach (var modifier in _possibleModifiers)
             {
-                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "DisablePitch"));
+                // Accessibility-relocated modifiers live in the Accessibility menu
+                if ((modifier & ACCESSIBILITY_MODIFIERS) != 0) continue;
 
-                AddModifierToggle(profile, Modifier.UnpitchedOnly,  "Harmony 1");
-                AddModifierToggle(profile, Modifier.UnpitchedHarm2, "Harmony 2");
-                AddModifierToggle(profile, Modifier.UnpitchedHarm3, "Harmony 3");
-
-                CreateModifierHeader(Localize.Key("Menu.DifficultySelect", "OtherModifiers"));
-
-                AddModifierToggle(profile, Modifier.NoVocalPercussion, "Percussion");
-                AddModifierToggle(profile, Modifier.ManualVocalStarPower, "Sing to Deploy");
-            }
-            else
-            {
-                // Accessibility-relocated modifiers live in the Accessibility menu.
-                foreach (var modifier in _possibleModifiers)
-                {
-                    if ((modifier & ACCESSIBILITY_MODIFIERS) != 0) continue;
-                    AddModifierToggle(profile, modifier);
-                }
-
-                // Five-lane keys: the three-state OpenLaneDisplayType gets its own sub-menu.
-                if (profile.GameMode == GameMode.ProKeys)
-                {
-                    CreateItem(LocalizeHeader("DedicatedOpenLane"),
-                        profile.OpenLaneDisplayType.ToLocalizedName(),
-                        _lastMenuState == State.OpenLane, () =>
-                    {
-                        _menuState = State.OpenLane;
-                        UpdateForPlayer();
-                    });
-                }
+                AddModifierToggle(profile, modifier);
             }
 
-            // Create done button (back to the Adjustments menu these nest under).
+            // Five-lane keys: the three-state OpenLaneDisplayType gets its own
+            // sub-menu with the options laid out explicitly (a pair of dependent
+            // toggles read poorly, especially once localized).
+            if (profile.GameMode == GameMode.ProKeys)
+            {
+                CreateItem(LocalizeHeader("DedicatedOpenLane"),
+                    profile.OpenLaneDisplayType.ToLocalizedName(),
+                    _lastMenuState == State.OpenLane, () =>
+                {
+                    _menuState = State.OpenLane;
+                    UpdateForPlayer();
+                });
+            }
+
+            // Create done button (back to the Adjustments menu these nest under)
             CreateDoneItem(() =>
             {
                 _menuState = State.Adjustments;
                 UpdateForPlayer();
             });
-        }
 
-        private void CreateModifierHeader(string text)
-        {
-            var go = new GameObject("ModifierSectionHeader", typeof(RectTransform));
-            go.transform.SetParent(_container, false);
-
-            var tmp = go.AddComponent<TextMeshProUGUI>();
-
-            // Match the font used by the modifier toggle rows, but slightly smaller.
-            var refText = _modifierItemPrefab.GetComponentInChildren<TextMeshProUGUI>();
-            if (refText != null)
-            {
-                tmp.font = refText.font;
-                tmp.fontSize = refText.fontSize - 4;
-            }
-            else
-            {
-                tmp.font = TMP_Settings.defaultFontAsset;
-                tmp.fontSize = 16;
-            }
-
-            tmp.fontStyle = FontStyles.Bold | FontStyles.UpperCase;
-            tmp.color = new Color(0.55f, 0.55f, 0.6f);
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.text = text;
-
-            var fitter = go.AddComponent<ContentSizeFitter>();
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        }
-
-        private void AddModifierToggle(YargProfile profile, Modifier modifier, string labelOverride = null)
-        {
-            // Skip modifiers that aren't applicable to this game mode (defensive).
-            if (!_possibleModifiers.Contains(modifier)) return;
-
-            string label = labelOverride ?? modifier.ToLocalizedName();
-
-            var btn = Instantiate(_modifierItemPrefab, _container);
-            btn.Initialize(label, profile.IsModifierActive(modifier), active =>
-            {
-                if (active)
-                {
-                    profile.AddSingleModifier(modifier);
-                }
-                else
-                {
-                    profile.RemoveModifiers(modifier);
-                }
-
-                UpdateModifierMenu();
-            });
-
-            _navGroup.AddNavigatable(btn);
-            _modifierItems.Add(btn);
-            _itemModifiers.Add(modifier);
+            _navGroup.SelectFirst();
         }
 
         private static readonly OpenLaneDisplayType[] OPEN_LANE_OPTIONS =
@@ -1448,16 +1072,13 @@ namespace YARG.Menu.DifficultySelect
 
         private void CreateHarmonyMenu()
         {
-            var profile = CurrentPlayer.Profile;
-
-            for (int i = 1; i <= _maxHarmonyIndex; i++)
+            for (int i = 0; i < _maxHarmonyIndex; i++)
             {
                 int capture = i;
-                bool harmonySelected = profile.HarmonyIndex == (i - 1);
-                CreateItem($"HARM{i}", harmonySelected, () =>
+                bool selected = CurrentPlayer.Profile.HarmonyIndex == i;
+                CreateItem((i + 1).ToString(), selected, () =>
                 {
-                    profile.CurrentInstrument = Instrument.Harmony;
-                    profile.HarmonyIndex = (byte) (capture - 1);
+                    CurrentPlayer.Profile.HarmonyIndex = (byte) capture;
 
                     _menuState = State.Main;
                     UpdateForPlayer();
@@ -1468,19 +1089,16 @@ namespace YARG.Menu.DifficultySelect
         private void CreatePartyVocalsBotMicCountMenu()
         {
             var profile = CurrentPlayer.Profile;
-            byte current = profile.PartyVocalsMicCountOverride;
-
-            CreateItem("Auto", current == 0, () =>
+            CreateItem("Auto", profile.PartyVocalsMicCountOverride == 0, () =>
             {
                 profile.PartyVocalsMicCountOverride = 0;
                 _menuState = State.Main;
                 UpdateForPlayer();
             });
-
-            for (int i = 1; i <= 7; i++)
+            for (byte i = 1; i <= 7; i++)
             {
-                byte capture = (byte) i;
-                CreateItem(capture.ToString(), current == capture, () =>
+                byte capture = i;
+                CreateItem(capture.ToString(), profile.PartyVocalsMicCountOverride == capture, () =>
                 {
                     profile.PartyVocalsMicCountOverride = capture;
                     _menuState = State.Main;
@@ -1492,25 +1110,48 @@ namespace YARG.Menu.DifficultySelect
         private void CreatePartyVocalsChartChoiceMenu()
         {
             var profile = CurrentPlayer.Profile;
-            var current = profile.PartyVocalsChartPreference;
-
+            var locked = GetLockedPartyVocalsPreference();
+            if (locked is { } lockedPreference)
+            {
+                profile.PartyVocalsChartPreference = lockedPreference;
+                _menuState = State.Main;
+                UpdateForPlayer();
+                return;
+            }
             var song = GlobalVariables.State.CurrentSong;
-
             CreateItem(GetPartyVocalsChartLabel(song, Instrument.Harmony),
-                current == PartyVocalsChartPreference.Harmony, () =>
+                profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Harmony, () =>
             {
                 profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Harmony;
+                profile.CurrentInstrument = Instrument.PartyVocals;
                 _menuState = State.Main;
                 UpdateForPlayer();
             });
-
             CreateItem(GetPartyVocalsChartLabel(song, Instrument.Vocals),
-                current == PartyVocalsChartPreference.Solo, () =>
+                profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo, () =>
             {
                 profile.PartyVocalsChartPreference = PartyVocalsChartPreference.Solo;
+                profile.CurrentInstrument = Instrument.PartyVocals;
                 _menuState = State.Main;
                 UpdateForPlayer();
             });
+        }
+
+        private static string GetPartyVocalsChartLabel(SongEntry song, Instrument instrument)
+        {
+            string chartName = instrument == Instrument.Vocals ? "Solo" : "Harmony";
+            return chartName + $"\\n<size=18><color=#FFFFFF80>{GetTierLabel(song[instrument])}</color></size>";
+        }
+
+        private PartyVocalsChartPreference? GetLockedPartyVocalsPreference()
+        {
+            for (int i = 0; i < _playerIndex; i++)
+            {
+                var player = PlayerContainer.Players[i];
+                if (!player.SittingOut && player.Profile.GameMode == GameMode.PartyVocals)
+                    return player.Profile.PartyVocalsChartPreference;
+            }
+            return null;
         }
 
         private void UpdateModifierMenu()
@@ -1560,25 +1201,6 @@ namespace YARG.Menu.DifficultySelect
 
         }
 
-        private void ApplyVocalSessionModifiers()
-        {
-            if (_vocalModifierSelectIndex < 0 ||
-                _vocalModifierSelectIndex >= PlayerContainer.Players.Count)
-            {
-                return;
-            }
-
-            var primaryPlayer = PlayerContainer.Players[_vocalModifierSelectIndex];
-            foreach (var player in PlayerContainer.Players)
-            {
-                if (player.SittingOut || player == primaryPlayer)
-                    continue;
-
-                if (player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals)
-                    player.Profile.ApplySessionModifiers(primaryPlayer.Profile);
-            }
-        }
-
         private void ChangePlayer(int add)
         {
             _playerIndex += add;
@@ -1598,38 +1220,33 @@ namespace YARG.Menu.DifficultySelect
                     return;
                 }
 
-                // The existing Difficulty Select boundary still owns song speed. Setup
-                // values are captured here and finalized by Maestro Continue, so page
-                // edits and remote drafts remain non-mutating until that explicit action.
-                string speedText = _speedInput.text.TrimEnd('%').Trim();
-                if (!float.TryParse(speedText, NumberStyles.Number, CultureInfo.CurrentCulture,
-                        out float speedPercent))
+                // Ensure all vocal players have the same modifiers active
+                if (_vocalModifierSelectIndex != -1)
                 {
-                    speedPercent = 100f;
+                    // Call the player with the selected modifiers, the "primary player"
+                    var primaryPlayer = PlayerContainer.Players[_vocalModifierSelectIndex];
+
+                    // Apply the primary player's modifiers to the other vocal players
+                    // for this session only, so their own saved selections survive
+                    foreach (var player in PlayerContainer.Players)
+                    {
+                        if (player.SittingOut) continue;
+                        if (player == primaryPlayer) continue;
+
+                        if (player.Profile.GameMode == GameMode.Vocals)
+                        {
+                            player.Profile.ApplySessionModifiers(primaryPlayer.Profile);
+                        }
+                    }
                 }
 
-                float speed = Mathf.Clamp(speedPercent / 100f, 0.1f, 50.0f);
+                // This will always work (as it's set up in the input field)
+                // The max speed that the game can keep up with is 5000%
+                float speed = float.Parse(_speedInput.text.TrimEnd('%')) / 100f;
+                speed = Mathf.Clamp(speed, 0.1f, 50.0f);
                 _songSpeed = speed;
                 GlobalVariables.State.SongSpeed = speed;
 
-                var songs = GlobalVariables.State.PlayingAShow
-                    ? GlobalVariables.State.ShowSongs
-                    : new List<SongEntry> { GlobalVariables.State.CurrentSong };
-                var vocalId = _vocalModifierPrimaryProfileId;
-                if (vocalId == default && _vocalModifierSelectIndex >= 0 &&
-                    _vocalModifierSelectIndex < PlayerContainer.Players.Count)
-                {
-                    vocalId = PlayerContainer.Players[_vocalModifierSelectIndex].Profile.Id;
-                }
-
-                if (SettingsManager.Settings.MaestroEnable.Value)
-                {
-                    MaestroSetupSession.Begin(PlayerContainer.Players, songs, _playerIndex, vocalId);
-                    MenuManager.Instance.PushMenu(MenuManager.Menu.MaestroSetup);
-                    return;
-                }
-
-                ApplyVocalSessionModifiers();
                 GlobalVariables.Instance.LoadScene(SceneIndex.Gameplay);
                 return;
             }
@@ -1647,6 +1264,48 @@ namespace YARG.Menu.DifficultySelect
 
             foreach (var instrument in allowedInstruments)
             {
+                bool invalidInstrument = _songList.Any(showSong => !HasPlayableInstrument(showSong, instrument));
+                if (!invalidInstrument)
+                    _possibleInstruments.Add(instrument);
+            }
+
+            _eliteDrumsDownchartAvailable = SettingsManager.Settings.EnableEliteDrumsDowncharts.Value &&
+                profile.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums;
+            if (!_eliteDrumsDownchartAvailable || !EliteDrumsDownchartRules.IsValidTarget(profile.EliteDrumsDownchartTarget))
+                profile.EliteDrumsDownchartTarget = null;
+            _eliteDrumsDownchartTargets.Clear();
+            if (_eliteDrumsDownchartAvailable)
+                foreach (var target in MaestroSelectionRules.GetEliteDrumsDownchartTargets(profile.GameMode))
+                    AddOfferedEliteDrumsDownchartTarget(target);
+
+            if (profile.EliteDrumsDownchartTarget is { } staleTarget && !_eliteDrumsDownchartTargets.Contains(staleTarget))
+                profile.EliteDrumsDownchartTarget = null;
+
+            // Native instrument resolution remains unchanged unless an explicit target is active.
+            if (profile.EliteDrumsDownchartTarget is null && _possibleInstruments.Contains(profile.PreferredInstrument))
+                profile.CurrentInstrument = profile.PreferredInstrument;
+            if (profile.EliteDrumsDownchartTarget is null && !_possibleInstruments.Contains(profile.CurrentInstrument) && _possibleInstruments.Count > 0)
+                profile.CurrentInstrument = _possibleInstruments[0];
+
+            // Get the possible harmonies for this show
+            _maxHarmonyIndex = song.VocalsCount;
+            foreach (var showsong in _songList)
+                _maxHarmonyIndex = Mathf.Min(_maxHarmonyIndex, showsong.VocalsCount);
+            profile.ResolveHarmonyIndex(_maxHarmonyIndex);
+            UpdatePossibleModifiers();
+            CurrentPlayer.SittingOut = false;
+            UpdatePossibleDifficulties();
+            UpdateForPlayer();
+        }
+
+        private void AddOfferedEliteDrumsDownchartTarget(Instrument target)
+        {
+            if (_songList.All(showsong => EliteDrumsDownchartRules.IsSongPlayableForTarget(showsong, target)))
+                _eliteDrumsDownchartTargets.Add(target);
+        }
+
+        /* private void UpdatePossibleInstrumentsTail_REMOVED()
+            {
                 bool invalidInstrument = false;
                 foreach (var showSong in _songList)
                 {
@@ -1663,89 +1322,16 @@ namespace YARG.Menu.DifficultySelect
                 }
             }
 
-            // The experimental "Elite (To …)" options are offered to drum players when
-            // the toggle is on. They deliberately do NOT require the songs to have Elite
-            // Drums charts: songs without an elite chart fall back to their native chart
-            // per song (see UpdatePossibleDifficulties and DrumsPlayer), exactly like the
-            // chart loader already does, so elite-free libraries still show the option.
-            // What they DO require is the shared session playability predicate
-            // (EliteDrumsDownchartRules.IsSongPlayableForTarget): a row is only offered
-            // when every show song has a usable (non-empty) generated downchart OR a
-            // usable native chart for the target. Without that, a mixed show could
-            // contain a song with neither, leaving an empty difficulty list and a
-            // gameplay track load that cannot resolve a difficulty.
-            _eliteDrumsDownchartAvailable =
-                SettingsManager.Settings.EnableEliteDrumsDowncharts.Value &&
-                profile.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums;
-
-            if (!_eliteDrumsDownchartAvailable)
-            {
-                // Not offered (setting off, or not a drum game mode), so any earlier
-                // downchart selection is dropped and the player falls back to the native
-                // chart of their current instrument.
-                profile.EliteDrumsDownchartTarget = null;
-            }
-            else if (!EliteDrumsDownchartRules.IsValidTarget(profile.EliteDrumsDownchartTarget))
-            {
-                // Malformed or stale value (only 4-lane/Pro/5-lane are valid targets):
-                // drop it now so instrument resolution below starts from a clean slate.
-                profile.EliteDrumsDownchartTarget = null;
-            }
-
-            // If the player's preferred instrument is available, set CurrentInstrument to that.
-            // Skipped while an Elite (To …) target is active: CurrentInstrument is pinned to
-            // the explicitly chosen output format so gameplay follows the choice.
-            if (profile.EliteDrumsDownchartTarget is null &&
-                _possibleInstruments.Contains(profile.PreferredInstrument))
+            // If the player's preferred instrument is available, set CurrentInstrument to that
+            if (_possibleInstruments.Contains(profile.PreferredInstrument))
             {
                 profile.CurrentInstrument = profile.PreferredInstrument;
             }
 
-            // Set the instrument to a valid one. Also skipped while a downchart target is
-            // active — the downchart does not need a native chart for its output format,
-            // so the explicit choice stands even when the song lacks that native part.
-            if (profile.EliteDrumsDownchartTarget is null &&
-                !_possibleInstruments.Contains(profile.CurrentInstrument) && _possibleInstruments.Count > 0)
+            // Set the instrument to a valid one
+            if (!_possibleInstruments.Contains(profile.CurrentInstrument) && _possibleInstruments.Count > 0)
             {
                 profile.CurrentInstrument = _possibleInstruments[0];
-            }
-
-            // Which Elite (To …) rows to offer comes from the shared game-mode policy:
-            // 4-lane/Pro gets 4-lane and Pro, 5-lane gets 5-lane, and Elite Drums
-            // (MIDI e-kit) gets all three. Each candidate is still gated below by the
-            // session playability predicate for the whole show.
-            // Each candidate must also satisfy the session playability predicate for
-            // the whole show — the same predicate UpdatePossibleDifficulties uses.
-            _eliteDrumsDownchartTargets.Clear();
-            if (_eliteDrumsDownchartAvailable)
-            {
-                foreach (var target in MaestroSelectionRules.GetEliteDrumsDownchartTargets(profile.GameMode))
-                {
-                    AddOfferedEliteDrumsDownchartTarget(target);
-                }
-            }
-
-            // A staged target that is not offered for THIS show is stale: the show
-            // contains a song with neither an Elite Drums chart nor the target's native
-            // chart, so keeping it would leave that song with an empty difficulty list
-            // and gameplay would fail to resolve its track. Clear it and re-resolve the
-            // instrument exactly as if the player had never selected it; a target that
-            // IS offered (every show song playable) keeps the selection.
-            if (profile.EliteDrumsDownchartTarget is { } staleTarget &&
-                !_eliteDrumsDownchartTargets.Contains(staleTarget))
-            {
-                profile.EliteDrumsDownchartTarget = null;
-
-                if (_possibleInstruments.Contains(profile.PreferredInstrument))
-                {
-                    profile.CurrentInstrument = profile.PreferredInstrument;
-                }
-
-                if (!_possibleInstruments.Contains(profile.CurrentInstrument) &&
-                    _possibleInstruments.Count > 0)
-                {
-                    profile.CurrentInstrument = _possibleInstruments[0];
-                }
             }
 
             // Get the possible harmonies for this show
@@ -1766,30 +1352,15 @@ namespace YARG.Menu.DifficultySelect
 
             UpdatePossibleModifiers();
 
+            // Don't sit out by default
+            CurrentPlayer.SittingOut = false;
+
             // Update the possible difficulties as well
             UpdatePossibleDifficulties();
 
             UpdateForPlayer();
         }
-
-        // Adds an "Elite (To …)" row for a target only when every show song satisfies
-        // the shared session playability predicate: a usable (non-empty) generated
-        // downchart, or the target format's native chart (with the usual 4/5-lane
-        // conversions) to fall back to. The predicate lives in Core
-        // (EliteDrumsDownchartRules) so the menu, Maestro, and gameplay loading can
-        // never disagree about playability.
-        private void AddOfferedEliteDrumsDownchartTarget(Instrument target)
-        {
-            foreach (var showsong in _songList)
-            {
-                if (!EliteDrumsDownchartRules.IsSongPlayableForTarget(showsong, target))
-                {
-                    return;
-                }
-            }
-
-            _eliteDrumsDownchartTargets.Add(target);
-        }
+        */
 
         private void UpdatePossibleDifficulties()
         {
@@ -1803,24 +1374,10 @@ namespace YARG.Menu.DifficultySelect
                 bool invalidDifficulty = false;
                 foreach (var showsong in _songList)
                 {
-                    // With an "Elite (To …)" option selected, the difficulties come from
-                    // the shared target-aware predicate in Core: songs with a usable
-                    // (non-empty) generated downchart use its difficulties (Beginner is
-                    // synthesized from Easy, like the Core downchart loader); songs whose
-                    // Elite chart downcharts to nothing keep their native difficulties
-                    // because no downchart is built for them. This is the same predicate
-                    // that decides whether the row is offered, so an offered target can
-                    // never produce an empty difficulty list. "Selected" here means the
-                    // centralized profile-consistency guard gameplay and replay use
-                    // (EliteDrumsDownchartRules.IsDownchartTargetActive): a stale target
-                    // that no longer equals CurrentInstrument or the drum GameMode is
-                    // treated as absent, so the menu can never show downchart
-                    // difficulties while gameplay loads native notes.
-                    bool playable = profile.EliteDrumsDownchartTarget is { } downchartTarget &&
+                    bool playable = profile.EliteDrumsDownchartTarget is { } target &&
                         EliteDrumsDownchartRules.IsDownchartTargetActive(profile)
-                            ? EliteDrumsDownchartRules.HasTargetDifficulty(showsong, downchartTarget, difficulty)
+                            ? EliteDrumsDownchartRules.HasTargetDifficulty(showsong, target, difficulty)
                             : HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty);
-
                     if (!playable)
                     {
                         invalidDifficulty = true;
@@ -1864,18 +1421,34 @@ namespace YARG.Menu.DifficultySelect
                 StopCoroutine(_directMaestroCoroutine);
                 _directMaestroCoroutine = null;
             }
-
             if (_navigationSchemePushed)
             {
                 Navigator.Instance.PopScheme();
                 _navigationSchemePushed = false;
+            }
+            if (_directSummaryCanvasGroup != null)
+            {
+                _directSummaryCanvasGroup.alpha = 1f;
+                _directSummaryCanvasGroup.interactable = true;
+                _directSummaryCanvasGroup.blocksRaycasts = true;
             }
         }
 
         private DifficultyItem CreateItem(string header, string body, bool selected, DifficultyItem difficultyItem, UnityAction a, bool interactable = true)
         {
             var btn = Instantiate(difficultyItem, _container);
+            return FinishCreateItem(btn, header, body, selected, a, interactable);
+        }
 
+        private DifficultyItem CreateItem(string header, string body, bool selected, GameObject itemPrefab, UnityAction a)
+        {
+            var btn = Instantiate(itemPrefab, _container).GetComponent<DifficultyItem>();
+            return FinishCreateItem(btn, header, body, selected, a);
+        }
+
+        private DifficultyItem FinishCreateItem(DifficultyItem btn, string header, string body,
+            bool selected, UnityAction a, bool interactable = true)
+        {
             if (header is null)
             {
                 btn.Initialize(body, a);
@@ -1924,31 +1497,35 @@ namespace YARG.Menu.DifficultySelect
             return Localize.Key("Menu.DifficultySelect", key);
         }
 
-        // Profile icon shown in the player header. Party Vocals uses the multi-mic
-        // "harmVocals" icon when the song has a harmony chart, else the solo "vocals" icon.
-        // (A mic-count icon would need numbered sprites wired into the TMP sprite asset —
-        // not worth it for a prototype. Both names below already resolve.) All other game
-        // modes use their normal instrument sprite.
+        private string GetInstrumentDisplayName(Instrument instrument, GameMode gameMode)
+        {
+            var name = instrument.ToLocalizedName();
+            // When in 6-fret mode, indicate when a 5-fret instrument is being used
+            // (i.e., a 5-fret chart loaded in 6-fret mode)
+            if (gameMode == GameMode.SixFretGuitar && !instrument.IsSixFret())
+            {
+                //TODO: Figure out a way to localise this
+                if (_fretInstruments.Contains(instrument))
+                {
+                    return $"{name} (5-Fret)";
+                }
+                return $"{name} (5-Lane)";
+            }
+            return name;
+        }
+
         private static string GetProfileIconSprite(YargPlayer player)
         {
-            var profile = player.Profile;
-            if (profile.GameMode != GameMode.PartyVocals)
-            {
-                return profile.GameMode.ToResourceName();
-            }
-
-            return GlobalVariables.State.CurrentSong.HasInstrument(Instrument.Harmony)
-                ? "harmVocals"
-                : "vocals";
+            if (player.Profile.GameMode != GameMode.PartyVocals)
+                return player.Profile.GameMode.ToResourceName();
+            return GlobalVariables.State.CurrentSong.HasInstrument(Instrument.Harmony) ? "harmVocals" : "vocals";
         }
 
         private bool HasPlayableInstrument(SongEntry entry, in Instrument instrument)
         {
-            // Party Vocals is playable when the song has any vocals chart (solo or harmony).
+            // Party Vocals is playable when either vocal chart exists.
             if (instrument == Instrument.PartyVocals)
-            {
                 return entry.HasInstrument(Instrument.Vocals) || entry.HasInstrument(Instrument.Harmony);
-            }
 
             // For vocals, all players *must* select the same gamemode (solo/harmony)
             if (instrument is Instrument.Vocals or Instrument.Harmony)
@@ -1959,12 +1536,10 @@ namespace YARG.Menu.DifficultySelect
                 }
 
                 // Loop through all of the players up to the current one
-                // to see what has already been selected. Skip sitting-out players —
-                // their CurrentInstrument shouldn't lock later players into a vocals mode.
+                // to see what has already been selected.
                 for (int i = 0; i < _playerIndex; i++)
                 {
                     var player = PlayerContainer.Players[i];
-                    if (player.SittingOut) continue;
                     var playerInstrument = player.Profile.CurrentInstrument;
                     if (playerInstrument is Instrument.Vocals or Instrument.Harmony)
                     {
@@ -1984,39 +1559,9 @@ namespace YARG.Menu.DifficultySelect
             };
         }
 
-        /// <summary>
-        /// Returns the Solo-vs-Harmony chart preference locked in by the first
-        /// non-sitting-out Party Vocals player ahead of the current one, or null when
-        /// the current player IS that first player (and so chooses freely).
-        /// All Party Vocals players share a single <see cref="VocalTrack"/> that is
-        /// initialized from the first vocal player (see GameManager.Loading.cs), so a
-        /// later player picking a different chart wouldn't render — it must match the
-        /// first player's choice. Mirrors the same-gamemode constraint for the old
-        /// Vocals/Harmony path in <see cref="HasPlayableInstrument"/>.
-        /// </summary>
-        private PartyVocalsChartPreference? GetLockedPartyVocalsPreference()
-        {
-            for (int i = 0; i < _playerIndex; i++)
-            {
-                var player = PlayerContainer.Players[i];
-                if (player.SittingOut) continue;
-                if (player.Profile.GameMode == GameMode.PartyVocals)
-                {
-                    return player.Profile.PartyVocalsChartPreference;
-                }
-            }
-
-            return null;
-        }
-
-        // Difficulties for the experimental "Elite (To …)" options come from the shared
-        // target-aware predicate in Core (EliteDrumsDownchartRules.HasTargetDifficulty),
-        // which reads the Elite Drums chart for songs that have one and keeps native
-        // difficulties for elite-less songs.
-
         private bool HasPlayableDifficulty(SongEntry entry, in Instrument instrument, in Difficulty difficulty)
         {
-            // For vocals, insert special difficulties
+            // For vocals and Party Vocals, insert special difficulties.
             if (instrument is Instrument.Vocals or Instrument.Harmony or Instrument.PartyVocals)
             {
                 return difficulty is not Difficulty.ExpertPlus;

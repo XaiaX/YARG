@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Cysharp.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -18,16 +17,7 @@ namespace YARG.Input
 {
     using Enumerate = InputControlExtensions.Enumerate;
 
-    public enum MenuInputSource
-    {
-        DefaultKeyboard,
-        Keyboard,
-        Controller,
-        Unknown,
-    }
-
-    public delegate void MenuInputEvent(YargPlayer player, InputDevice device, MenuInputSource source,
-        ref GameInput input);
+    public delegate void MenuInputEvent(YargPlayer player, ref GameInput input);
 
     public static class InputManager
     {
@@ -58,6 +48,10 @@ namespace YARG.Input
         /// </summary>
         public static double CurrentInputTime => InputState.currentTime;
 
+        internal static bool IsEditorUpdate => InputState.currentUpdateType == InputUpdateType.Editor;
+
+        internal static double ClampInputTime(double time) => Math.Min(time, CurrentInputTime);
+
         private static HashSet<InputDevice> _seenDevices = new();
         private static HashSet<InputDevice> _disabledDevices = new();
 
@@ -71,13 +65,6 @@ namespace YARG.Input
         private static bool _gameFocused;
         private static bool _focusChanged;
         private static HashSet<InputDevice> _backgroundDisabledDevices = new();
-
-        private static bool HasProfileWithKeyboard =>
-            PlayerContainer.Players
-                .Where(p => p.InputsEnabled)
-                .SelectMany(p => p.Bindings.InputDevices)
-                .OfType<Keyboard>()
-                .Any();
 
         public static void Initialize()
         {
@@ -134,8 +121,6 @@ namespace YARG.Input
         public static void RegisterPlayer(YargPlayer player)
         {
             player.MenuInput += OnMenuInput;
-            player.Bindings.DeviceAdded += OnPlayerBindingDeviceAdded;
-            player.Bindings.DeviceRemoved += OnPlayerBindingDeviceRemoved;
 
             foreach (var device in player.Bindings.InputDevices)
             {
@@ -143,19 +128,12 @@ namespace YARG.Input
                 {
                     YargLogger.LogFormatError("Player already registered with device: {0}", device);
                 }
-
-                if (device is Keyboard)
-                {
-                    _defaultKeyboardMenuBindings.Disable();
-                }
             }
         }
 
         public static void UnregisterPlayer(YargPlayer player)
         {
             player.MenuInput -= OnMenuInput;
-            player.Bindings.DeviceAdded -= OnPlayerBindingDeviceAdded;
-            player.Bindings.DeviceRemoved -= OnPlayerBindingDeviceRemoved;
 
             foreach (var device in player.Bindings.InputDevices)
             {
@@ -164,59 +142,37 @@ namespace YARG.Input
                     YargLogger.LogFormatError("Player not registered with device: {0}", device);
                 }
             }
-
-            if (!HasProfileWithKeyboard)
-            {
-                _defaultKeyboardMenuBindings?.Enable();
-            }
-        }
-
-        private static void OnPlayerBindingDeviceAdded(InputDevice device)
-        {
-            if (HasProfileWithKeyboard)
-            {
-                _defaultKeyboardMenuBindings.Disable();
-            }
-        }
-
-        private static void OnPlayerBindingDeviceRemoved(InputDevice device)
-        {
-            if (!HasProfileWithKeyboard)
-            {
-                _defaultKeyboardMenuBindings.Enable();
-            }
         }
 
         public static void OnMenuAction(MenuAction action, bool pressed)
         {
             var input = new GameInput(CurrentInputTime, (int)action, pressed);
-            MenuInput?.Invoke(null, null, MenuInputSource.DefaultKeyboard, ref input);
+            MenuInput?.Invoke(null, ref input);
         }
 
-        private static void OnMenuInput(YargPlayer player, InputDevice device, MenuInputSource source,
-            ref GameInput input)
+        private static void OnMenuInput(YargPlayer player, ref GameInput input)
         {
-            MenuInput?.Invoke(player, device, source, ref input);
-        }
-
-        public static MenuInputSource ClassifyMenuInput(InputDevice device)
-        {
-            if (device is Keyboard)
-                return MenuInputSource.Keyboard;
-            if (device != null)
-                return MenuInputSource.Controller;
-
-            return MenuInputSource.Unknown;
+            MenuInput?.Invoke(player, ref input);
         }
 
         private static void OnBeforeUpdate()
         {
-            InputUpdateTime = CurrentInputTime;
+            if (IsEditorUpdate)
+            {
+                return;
+            }
+
+            CaptureInputUpdateTime();
         }
 
         private static void OnAfterUpdate()
         {
-            InputUpdateTime = CurrentInputTime;
+            if (IsEditorUpdate)
+            {
+                return;
+            }
+
+            CaptureInputUpdateTime();
 
             if (InputUpdateTime < _latestInputTime)
             {
@@ -249,9 +205,19 @@ namespace YARG.Input
             _focusChanged = false;
         }
 
+        private static void CaptureInputUpdateTime()
+        {
+            InputUpdateTime = CurrentInputTime;
+        }
+
         // For input time handling/debugging
         private static void OnEvent(InputEventPtr eventPtr, InputDevice device)
         {
+            if (IsEditorUpdate)
+            {
+                return;
+            }
+
             double currentTime = CurrentInputTime;
 
             // Only check state events
@@ -260,18 +226,19 @@ namespace YARG.Input
                 return;
             }
 
-            // Keep track of the latest input event
-            if (eventPtr.time > _latestInputTime)
-            {
-                _latestInputTime = eventPtr.time;
-            }
-
             // Rare edge-case, but the input system very much allows this
             if (eventPtr.time > currentTime)
             {
                 YargLogger.LogFormatError(
                     "An input event is in the future!\nCurrent time: {0}, event time: {1}, device: {2}",
                     currentTime, eventPtr.time, device);
+            }
+
+            // Keep track of the latest input event
+            double inputTime = ClampInputTime(eventPtr.time);
+            if (inputTime > _latestInputTime)
+            {
+                _latestInputTime = inputTime;
             }
 
             // TODO: It would be nice to suppress the following for keyboard/mouse when there is no

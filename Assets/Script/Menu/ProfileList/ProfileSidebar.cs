@@ -6,14 +6,12 @@ using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using YARG.Assets.Script.Helpers;
 using YARG.Core;
 using YARG.Core.Game;
 using YARG.Helpers.Extensions;
 using YARG.Localization;
 using YARG.Menu.Data;
 using YARG.Menu.Filters;
-using YARG.Menu.Main;
 using YARG.Menu.Persistent;
 using YARG.Menu.ProfileInfo;
 using YARG.Player;
@@ -31,11 +29,11 @@ namespace YARG.Menu.ProfileList
         private static readonly GameMode[] _gameModes =
         {
             GameMode.FiveFretGuitar,
+            GameMode.SixFretGuitar,
             GameMode.EliteDrums,
             GameMode.FourLaneDrums,
             GameMode.FiveLaneDrums,
             GameMode.Vocals,
-            GameMode.PartyVocals,
             GameMode.ProKeys
         };
 
@@ -197,8 +195,8 @@ namespace YARG.Menu.ProfileList
                 RemoveDropdownOption(_engineDropdown, _enginePresetsByIndex, EnginePreset.SoloTaps.Id);
             }
 
-            // Casual only changes FiveFretGuitar and Vocals
-            if (profile.GameMode is not (GameMode.FiveFretGuitar or GameMode.Vocals or GameMode.PartyVocals))
+            // Casual only changes FiveFretGuitar, SixFretGuitar, and Vocals
+            if (profile.GameMode is not (GameMode.FiveFretGuitar or GameMode.Vocals or GameMode.SixFretGuitar))
             {
                 RemoveDropdownOption(_engineDropdown, _enginePresetsByIndex, EnginePreset.Casual.Id);
             }
@@ -252,7 +250,7 @@ namespace YARG.Menu.ProfileList
             _rangeDisabledToggle.isOn = profile.RangeEnabled;
             _openLaneDisplayTypeDropdown.value = _openLaneDisplayTypesByIndex.IndexOf(profile.OpenLaneDisplayType);
             _useCymbalModelsToggle.isOn = profile.UseCymbalModels;
-            
+
             // Update preset dropdowns
             _engineDropdown.SetValueWithoutNotify(
                 _enginePresetsByIndex.IndexOf(profile.EnginePreset));
@@ -270,6 +268,12 @@ namespace YARG.Menu.ProfileList
                 _starPowerActivationTypesByIndex.IndexOf(profile.StarPowerActivationType));
             _rockMeterPresetDropdown.SetValueWithoutNotify(
                 _rockmeterPresetsByIndex.IndexOf(profile.RockMeterPreset));
+
+            // Not all game modes support all engine presets.
+            // If the current engine doesn't exist for the selected instrument, the above _engineDropdown
+            // will be silently set to index 0, but the engine itself will not have been set, so we need
+            // to explicitly set it.
+            ChangeEngine();
 
             // Show the proper name container (hide the editing version)
             _nameContainer.SetActive(true);
@@ -300,9 +304,9 @@ namespace YARG.Menu.ProfileList
                 // Disable if the child's gameObject.name is not found in possibleSettings
                 var child = _sidebarContent.transform.GetChild(i);
 
-                #nullable enable
+#nullable enable
                 (string setting, string? overrideText)? settingInfo = null;
-                #nullable disable
+#nullable disable
 
                 foreach (var possibleSetting in possibleSettings)
                 {
@@ -316,7 +320,9 @@ namespace YARG.Menu.ProfileList
                 if (settingInfo is null)
                 {
                     child.gameObject.SetActive(false);
-                } else {
+                }
+                else
+                {
                     child.gameObject.SetActive(true);
                     if (settingInfo.Value.overrideText is not null)
                     {
@@ -385,10 +391,6 @@ namespace YARG.Menu.ProfileList
             // a brand new Keys profile defaulting to 5L Lead Guitar instead of Pro Keys
             _profile.CurrentInstrument = _profile.GameMode.PossibleInstruments()[0];
 
-            // The transient "Elite (To …)" downchart selection belonged to the previous
-            // drum game mode; drop it so it cannot desync from the new instrument.
-            _profile.EliteDrumsDownchartTarget = null;
-
             _profileView.UpdateDisplay(_profile);
             FiltersMenu.ResetIntensityFiltersForProfile(_profile);
             // Update sidebar when game mode changes so the correct settings are displayed
@@ -410,7 +412,7 @@ namespace YARG.Menu.ProfileList
         {
             if (float.TryParse(_highwayLengthField.text, out var speed))
             {
-                _profile.HighwayLength = Mathf.Clamp(speed, 0.1f, 10f);
+                _profile.HighwayLength = Mathf.Clamp(speed, 0.001f, 10f);
             }
 
             // Always format it after
@@ -499,7 +501,7 @@ namespace YARG.Menu.ProfileList
 
             // Add buttons
 
-            dialog.AddDialogButton("Menu.Common.Cancel", MenuData.Colors.CancelButton,
+            dialog.AddDialogButton("Menu.Common.DontApply", MenuData.Colors.CancelButton,
                 () => DialogManager.Instance.ClearDialog());
 
             dialog.AddDialogButton("Menu.Common.Apply", MenuData.Colors.ConfirmButton, () =>

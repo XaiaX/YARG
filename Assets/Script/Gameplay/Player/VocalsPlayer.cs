@@ -2,29 +2,26 @@
 using System.Linq;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
-using UnityEngine.ResourceManagement.AsyncOperations;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
 using YARG.Core.Engine;
 using YARG.Core.Engine.Vocals;
 using YARG.Core.Engine.Vocals.Engines;
-using YARG.Core.Game;
 using YARG.Core.Input;
-using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
+using YARG.Gameplay.Visuals;
 using YARG.Helpers;
 using YARG.Input;
 using YARG.Player;
 using YARG.Settings;
 
-
 namespace YARG.Gameplay.Player
 {
     public class VocalsPlayer : BasePlayer
     {
-        public VocalsEngineParameters EngineParams { get; protected set; }
+        public VocalsEngineParameters EngineParams { get; private set; }
         public VocalsEngine           Engine       { get; private set; }
 
         public override BaseEngine BaseEngine => Engine;
@@ -32,13 +29,16 @@ namespace YARG.Gameplay.Player
         [SerializeField]
         protected GameObject _needleVisualContainer;
         [SerializeField]
-        protected MeshRenderer _needleRenderer;
+        private MeshRenderer _needleRenderer;
         [SerializeField]
-        protected Transform _needleTransform;
+        private Transform _needleTransform;
         [SerializeField]
         protected ParticleGroup _hittingParticleGroup;
 
-        
+        private static readonly int OutlineWidthID = Shader.PropertyToID("_OutlineWidth");
+        private static readonly int OutlineColorID = Shader.PropertyToID("_OutlineColor");
+        private const float OUTLINE_WIDTH = 7f;
+
         public override bool ShouldUpdateInputsOnResume => false;
 
         protected override float[] StarMultiplierThresholds { get; set; } =
@@ -46,75 +46,54 @@ namespace YARG.Gameplay.Player
             0.05f, 0.11f, 0.19f, 0.46f, 0.77f, 1.06f
         };
 
-        protected InstrumentDifficulty<VocalNote> NoteTrack { get; set; }
+        protected InstrumentDifficulty<VocalNote> NoteTrack { get; private set; }
         private InstrumentDifficulty<VocalNote> OriginalNoteTrack { get; set; }
 
         protected MicInputContext _inputContext;
 
-        protected VocalNote _lastTargetNote;
-        protected double?   _lastHitTime;
+        private VocalNote _lastTargetNote;
+        private double?   _lastHitTime;
         protected double?   _lastSingTime;
         private double    _previousStarPowerPercent;
         private bool      _hotStartChecked;
         private bool      _newHighScoreShown;
+        private bool      _outlineEnabled;
+        private MaterialPropertyBlock _needleMaterialPropertyBlock;
 
-        protected VocalsPlayerHUD _hud;
+        private VocalsPlayerHUD _hud;
         protected VocalPercussionTrack _percussionTrack;
-        protected bool _shouldHideNeedle;
-
-        // Stored engine event handlers for clean unsubscription on practice reset
-        private BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.StarPowerPhraseHitEvent _onStarPowerPhraseHitHandler;
-        private VocalsEngine.PhraseHitEvent _onPhraseHitHandler;
-        private BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.NoteHitEvent _onNoteHitHandler;
-        private BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.NoteMissedEvent _onNoteMissedHandler;
-        private System.Action<bool> _onSingHandler;
-        private System.Action<bool> _onHitHandler;
-        private BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.CountdownChangeEvent _onCountdownChangeHandler;
+        private bool _shouldHideNeedle;
+        private bool _handlesCountdown;
+        private List<VocalsPart> _allVocalParts;
 
         private int _phraseIndex = -1;
 
-        // Per-phrase normalized hit percents, captured live from OnPhraseHit in chronological
-        // (song) order. Routed to the score screen's Advanced view for the vocals phrase summary.
         protected readonly List<float> _phrasePercents = new();
-        public IReadOnlyList<float> PhrasePercents => _phrasePercents;
-
-        // Per-phrase Party Vocals grades (Miss/Awesome/DoubleAwesome/TripleAwesome), captured from
-        // OnPartyVocalsPhrase. Only the PartyVocalsCoordinatorEngine fires this event, so this list
-        // stays empty for solo and traditional harmony vocals. Routed to the score screen so the
-        // histogram can show Triple/Double/Single Awesome breakdowns.
         protected readonly List<PhraseGrade> _phraseGrades = new();
-        public IReadOnlyList<PhraseGrade> PhraseGrades => _phraseGrades;
-
-        // Per-phrase per-part Party Vocals results: for each phrase, the active harmony parts
-        // (those with notes in that phrase) and their raw canonical meters. Captured from
-        // OnPartyVocalsPhrase alongside the grade. Empty for solo/traditional vocals. Routed to the
-        // score screen so the histogram can render one Awesome segment per available part.
         protected readonly List<IReadOnlyList<PartyPartResult>> _phrasePartResults = new();
-        public IReadOnlyList<IReadOnlyList<PartyPartResult>> PhrasePartResults => _phrasePartResults;
-
-        // Awesome meter threshold (PhraseHitPercent), exposed so the score screen can scale each
-        // part's meter into a 0..1 fill without reaching into engine parameters.
-        public double AwesomeThreshold => EngineParams.PhraseHitPercent;
-
-        // Vocal percussion isn't tracked in stats; tally hits/total live for the score screen.
-        // Total is derived from chart data so it's correct regardless of shared mutable state
-        // (multiple engines on the same VocalsPart share VocalNote objects — first engine to hit
-        // a percussion note mutates WasHit, causing sibling engines to skip it).
         protected int _percussionHits;
-        private int _percussionTotalFromChart;
-        public int PercussionHits => _percussionHits;
-        public int PercussionTotal => _percussionTotalFromChart;
 
         protected const int NEEDLES_COUNT = 7;
 
-        
         protected SongChart _chart;
 
-        // Free vocals: needle material instance (mutable copy of Addressable)
-        private Material _needleMaterialInstance;
-        private AsyncOperationHandle<Material> _needleMaterialHandle;
+        protected void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<PartyPartResult> parts, bool isLastPhrase)
+        {
+            _phraseGrades.Add(grade);
+            _phrasePartResults.Add(parts);
+            if (grade == PhraseGrade.Miss)
+            {
+                double bestMeter = 0;
+                foreach (var part in parts)
+                    bestMeter = System.Math.Max(bestMeter, part.Meter);
+                double threshold = EngineParams.PhraseHitPercent;
+                _hud.ShowPhraseHit(threshold > 0 ? bestMeter / threshold : 0, Combo);
+                return;
+            }
+            _hud.ShowPartyVocalsGrade(grade);
+        }
 
-        public virtual void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
+        public void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed)
         {
             if (IsInitialized)
@@ -127,76 +106,27 @@ namespace YARG.Gameplay.Player
             // Save the chart
             _chart = chart;
 
-            // Resolve the vocal track first — we need parts.Count to compute the bot's
-            // simulated mic count (one bot "vocalist" per HARM part).
-            // For Free Vocals on songs that have a Harmony chart, source from Harmony so the
-            // bot's pitch values are in the same register as the visualized HARM lines
-            // (the global VocalTrack is initialized with Chart.Harmony in this case — see
-            // GameManager.Loading.cs).
-            // Free Vocals: prefer Harmony chart when present, fall back to Solo Vocals so
-            // solo-only songs (e.g. older charts without HARM parts) still play — they
-            // degenerate to single-HARM rendering. Mirrors GameManager.Loading's chart
-            // pick so visualization and engine agree. Don't trust CurrentInstrument here
-            // because it can be stale from a previous song's selection.
-            VocalsTrack multiTrack;
-            if (Player.Profile.IsFreeVocals)
-            {
-                multiTrack = VocalChartSelection.ResolveMultitrack(chart, Player.Profile);
-            }
-            else
-            {
-                multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
-            }
-
-            // Get the effective microphone(s) for this player
-            IReadOnlyList<MicDevice> effectiveMics = player.IsReplay
-                ? null
-                : player.Bindings.Microphones;
-            if (effectiveMics != null && player.Profile.GameMode == GameMode.Vocals && effectiveMics.Count > 1)
-            {
-                effectiveMics = new[] { effectiveMics[0] };
-            }
-
-            // Get the needle index for this player
-            int needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
-
-            // Load material for the needle
-            // AC27.2: one-shot sync load at Initialize; handle released in FinishDestruction.
+            // Needle materials have names starting from 1.
+            var needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
             var materialPath = $"VocalNeedle/{needleIndex}";
-            _needleMaterialHandle = Addressables.LoadAssetAsync<Material>(materialPath);
-            var baseMaterial = _needleMaterialHandle.WaitForCompletion();
-            _needleMaterialInstance = new Material(baseMaterial);
-            _needleRenderer.material = _needleMaterialInstance;
+            _needleRenderer.material = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
 
-            VocalsPart selectedPart;
+            MaterialPropertyInstance.Instance.SetColor(OutlineColorID, VocalTrack.Colors[Player.Profile.HarmonyIndex]);
+            MaterialPropertyInstance.Instance.SetFloat(OutlineWidthID, 0f);
+            _needleRenderer.SetPropertyBlock(MaterialPropertyInstance.Instance);
+            _outlineEnabled = false;
 
-            // For Free profiles, use part 0 as the base chart to satisfy VocalsEngine's contract.
-            // On multi-HARM tracks, all parts will be rendered via BuildCountdownsFromAllParts.
-            // On single-part tracks, Free degenerates to Solo rendering (AC4.2).
-            if (Player.Profile.IsFreeVocals)
-            {
-                selectedPart = multiTrack.Parts[0];
-            }
-            else
-            {
-                selectedPart = multiTrack.Parts[Player.Profile.HarmonyIndex];
-            }
+            // Get the notes from the specific harmony or solo part
 
-            int partIndex = Player.Profile.IsFreeVocals ? 0 : Player.Profile.HarmonyIndex;
-            player.Profile.ApplyVocalModifiers(selectedPart, partIndex);
+            var multiTrack = chart.GetVocalsTrack(Player.Profile.CurrentInstrument);
+            _allVocalParts = multiTrack.Parts;
+            _handlesCountdown = vocalIndex == 0;
 
-            OriginalNoteTrack = selectedPart.CloneAsInstrumentDifficulty();
+            var track = multiTrack.Parts[Player.Profile.HarmonyIndex];
+            player.Profile.ApplyVocalModifiers(track);
+
+            OriginalNoteTrack = track.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
-
-            // Count percussion notes from the chart data so the denominator is authoritative
-            // regardless of shared-mutable-state bugs between engines on the same part.
-            _percussionTotalFromChart = NoteTrack.Notes
-                .Sum(phrase => phrase.ChildNotes.Count(n => n.IsPercussion));
-
-            // Harmony tracks (HARM1/HARM2/HARM3) may not carry MIDI StarPower phrase
-            // events — those are on the solo vocal track.  Stamp SP flags from the
-            // solo chart so the engine can award star power.
-            InheritStarPowerFlagsFromSoloTrack();
 
             _phraseIndex = -1;
             _previousStarPowerPercent = 0.0;
@@ -212,58 +142,27 @@ namespace YARG.Gameplay.Player
                 var startSpeed = main.startSpeed;
                 startSpeed.constant *= trackSpeed;
                 main.startSpeed = startSpeed;
-                // Trail identifies the singer, not the lane being scored. For Free
-                // vocals, color by the player's needle slot; otherwise by HARM index.
-                int colorIndex = Player.Profile.IsFreeVocals
-                    ? (needleIndex - 1) % VocalTrack.Colors.Length
-                    : Player.Profile.HarmonyIndex;
-                main.startColor = VocalTrack.Colors[colorIndex];
+                main.startColor = VocalTrack.Colors[Player.Profile.HarmonyIndex];
             }
 
-            
             // Initialize player specific vocal visuals
 
             hud.Initialize(player.EnginePreset);
             _hud = hud;
 
-            // Initialize percussion track
             percussionTrack.Initialize(NoteTrack.Notes);
             _percussionTrack = percussionTrack;
 
             _hud.ShowPlayerName(player, needleIndex);
 
-            // Create and start input context for microphone
-            if (!Player.IsReplay && !player.Profile.IsBot && effectiveMics.Count > 0)
+            // Create and start an input context for the mics
+            if (!Player.IsReplay && player.Bindings.Microphones.Count > 0)
             {
-                _inputContext = new MicInputContext(effectiveMics[0], GameManager);
+                _inputContext = new MicInputContext(player.Bindings.Microphones, GameManager);
                 _inputContext.Start();
             }
 
             Engine = CreateEngine();
-
-            Engine.OnComboIncrement += OnComboIncrement;
-            Engine.OnComboReset += OnComboReset;
-
-            if (vocalIndex == 0)
-            {
-                // Free Vocals (single- or multi-mic) builds its percussion-excluded
-                // countdowns inside the engine constructor (YargFreeVocalsEngine /
-                // PartyVocalsCoordinatorEngine), so no explicit build is needed here.
-                if (Player.Profile.CurrentInstrument == Instrument.Vocals)
-                {
-                    Engine.BuildCountdownsFromSelectedPart();
-                }
-                else if (Player.Profile.CurrentInstrument == Instrument.Harmony)
-                {
-                    Engine.BuildCountdownsFromAllParts(multiTrack.Parts);
-                }
-
-                _onCountdownChangeHandler = (countdownLength, endTime) =>
-                {
-                    GameManager.VocalTrack.UpdateCountdown(countdownLength, endTime);
-                };
-                Engine.OnCountdownChange += _onCountdownChangeHandler;
-            }
 
             if (GameManager.IsPractice)
             {
@@ -276,71 +175,16 @@ namespace YARG.Gameplay.Player
 
         }
 
-        protected virtual void UnsubscribeEngineEvents()
-        {
-            if (Engine == null) return;
-
-            Engine.OnStarPowerPhraseHit -= _onStarPowerPhraseHitHandler;
-            Engine.OnStarPowerStatus -= OnStarPowerStatus;
-            Engine.OnTargetNoteChanged -= OnTargetNoteChangedHandler;
-            Engine.OnPhraseHit -= _onPhraseHitHandler;
-            Engine.OnNoteHit -= _onNoteHitHandler;
-            Engine.OnNoteMissed -= _onNoteMissedHandler;
-            Engine.OnSing -= _onSingHandler;
-            Engine.OnHit -= _onHitHandler;
-            Engine.OnComboIncrement -= OnComboIncrement;
-            Engine.OnComboReset -= OnComboReset;
-            Engine.OnCountdownChange -= _onCountdownChangeHandler;
-            if (Engine is PartyVocalsCoordinatorEngine coordinator)
-            {
-                coordinator.OnPartyVocalsPhrase -= OnPartyVocalsPhrase;
-            }
-        }
-
         protected override void FinishDestruction()
         {
-            // Stop input context
             _inputContext?.Stop();
-
-            UnsubscribeEngineEvents();
-
-            // Release Addressable handle (AC20)
-            if (_needleMaterialHandle.IsValid())
-            {
-                Addressables.Release(_needleMaterialHandle);
-            }
-
-            // Clean up material
-            if (_needleMaterialInstance != null)
-            {
-                Destroy(_needleMaterialInstance);
-            }
         }
 
-        protected void OnTargetNoteChangedHandler(VocalNote note)
-        {
-            _lastTargetNote = note;
-
-            // Free vocals single-mic: tint the trail to the HARM lane being scored, so
-            // the trail "lights up" that lane. Needle keeps its singer-slot material.
-            if (Player.Profile.IsFreeVocals
-                && Engine is YargFreeVocalsEngine freeEngine)
-            {
-                int idx = freeEngine.CurrentTargetHarmonyIndex;
-                if (idx >= 0 && idx < VocalTrack.Colors.Length)
-                {
-                    _hittingParticleGroup.Colorize(VocalTrack.Colors[idx]);
-                }
-            }
-        }
-
-        protected virtual VocalsEngine CreateEngine()
+        protected VocalsEngine CreateEngine()
         {
             if (!Player.IsReplay)
             {
-                var singToActivateStarPower =
-                    SettingsManager.Settings.VoiceActivatedVocalStarPower.Value &&
-                    !Player.Profile.IsModifierActive(Modifier.ManualVocalStarPower);
+                var singToActivateStarPower = SettingsManager.Settings.VoiceActivatedVocalStarPower.Value;
 
                 // Create the engine params from the engine preset
                 EngineParams = Player.EnginePreset.Vocals.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds,
@@ -355,34 +199,24 @@ namespace YARG.Gameplay.Player
             // The hit window can just be taken from the params
             HitWindow = EngineParams.HitWindow;
 
-            VocalsEngine engine;
-            if (Player.Profile.IsFreeVocals)
-            {
-                var multiTrack = VocalChartSelection.ResolveMultitrack(_chart, Player.Profile);
+            var engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
+            EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
 
-                engine = new YargFreeVocalsEngine(NoteTrack, multiTrack.Parts, SyncTrack, EngineParams, Player.Profile.IsBot,
-                    botPartIndex: Player.Profile.HarmonyIndex);
+            engine.OnComboIncrement += OnComboIncrement;
+            engine.OnComboReset += OnComboReset;
 
-                // Register using the free vocals overload
-                EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, freeVocals: true, _chart, Player.RockMeterPreset);
-            }
-            else
-            {
-                // For Solo/Harmony, use single-part engine
-                engine = new YargVocalsEngine(NoteTrack, SyncTrack, EngineParams, Player.Profile.IsBot);
-                // Register using the indexed overload
-                EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack.Instrument, Player.Profile.HarmonyIndex, _chart, Player.RockMeterPreset);
-            }
-
-            _onStarPowerPhraseHitHandler = _ => OnStarPowerPhraseHit();
-            engine.OnStarPowerPhraseHit += _onStarPowerPhraseHitHandler;
+            engine.OnStarPowerPhraseHit += _ => OnStarPowerPhraseHit();
             engine.OnStarPowerStatus += OnStarPowerStatus;
             engine.OnStarPowerReady += OnStarPowerReady;
 
-            engine.OnTargetNoteChanged += OnTargetNoteChangedHandler;
-
-            _onPhraseHitHandler = (percent, fullPoints, isLastPhrase) =>
+            engine.OnTargetNoteChanged += (note) =>
             {
+                _lastTargetNote = note;
+            };
+
+            engine.OnPhraseHit += (percent, fullPoints, isLastPhrase) =>
+            {
+                _phrasePercents.Add((float) percent);
                 if (!fullPoints)
                 {
                     IsFc = false;
@@ -390,36 +224,22 @@ namespace YARG.Gameplay.Player
 
                 LastCombo = Combo;
 
-                // Capture the phrase score for the score screen's phrase summary. The event fires
-                // once per non-empty phrase in chronological order, so this list stays in song order.
-                _phrasePercents.Add((float) percent);
-
                 ShowTextNotifications(isLastPhrase);
 
-                // Multi-mic free vocals shows its banner via OnPartyVocalsPhrase
-                // (AWESOME / DOUBLE AWESOME / TRIPLE AWESOME) — suppress the legacy
-                // percent-based text so we don't stack two phrase notifications.
-                bool multiMicFree = Engine is PartyVocalsCoordinatorEngine;
-                if (!multiMicFree)
-                {
-                    _hud.ShowPhraseHit(percent, Combo);
-                }
+                // Order is important here. ShowVocalPhraseResult() will skip showing AWESOME! if other, more important notifications are already showing.
+                _hud.ShowPhraseHit(percent, Combo);
             };
-            engine.OnPhraseHit += _onPhraseHitHandler;
 
-            _onNoteHitHandler = (_, note) =>
+            engine.OnNoteHit += (_, note) =>
             {
-                // Free Vocals doesn't spawn percussion visuals, so the pool is empty —
-                // calling HitPercussionNote would NRE in Pool.Return.
-                if (note.IsPercussion && !Player.Profile.IsFreeVocals)
+                if (note.IsPercussion)
                 {
                     _percussionTrack.HitPercussionNote(note);
                     _percussionHits++;
                 }
             };
-            engine.OnNoteHit += _onNoteHitHandler;
 
-            _onNoteMissedHandler = (_, _) =>
+            engine.OnNoteMissed += (_, _) =>
             {
                 if (LastCombo >= 2)
                 {
@@ -427,84 +247,52 @@ namespace YARG.Gameplay.Player
                 }
 
                 LastCombo = Combo;
-            };
-            engine.OnNoteMissed += _onNoteMissedHandler;
 
-            _onSingHandler = (singing) =>
+                _hud.SetFullCombo(false);
+            };
+
+            engine.OnSing += (singing) =>
             {
                 _lastSingTime = singing
                     ? GameManager.InputTime
                     : null;
             };
-            engine.OnSing += _onSingHandler;
 
-            _onHitHandler = (hitting) =>
+            engine.OnHit += (hitting) =>
             {
-                // Only refresh _lastHitTime on hit; let IsInThreshold's window do
-                // the decay on miss. Multi-mic engines fire OnHit(false) every
-                // tick when no mic is on a note, which would otherwise snap the
-                // trail off on every pitch-tracker dropout. Solo gets a side
-                // benefit: missed-note trails decay over ~50ms instead of
-                // cutting instantly.
-                if (hitting) _lastHitTime = GameManager.InputTime;
+                _lastHitTime = hitting
+                    ? GameManager.InputTime
+                    : null;
             };
-            engine.OnHit += _onHitHandler;
+
+            if (_handlesCountdown)
+            {
+                if (Player.Profile.CurrentInstrument == Instrument.Vocals)
+                {
+                    engine.BuildCountdownsFromSelectedPart();
+                }
+                else
+                {
+                    engine.BuildCountdownsFromAllParts(_allVocalParts);
+                }
+
+                engine.OnCountdownChange += (countdownLength, endTime) =>
+                {
+                    GameManager.VocalTrack.UpdateCountdown(countdownLength, endTime);
+                };
+            }
 
             return engine;
-        }
-
-        protected void OnPartyVocalsPhrase(PhraseGrade grade, IReadOnlyList<PartyPartResult> parts, bool isLastPhrase)
-        {
-            _phraseGrades.Add(grade);
-            _phrasePartResults.Add(parts);
-
-            if (grade == PhraseGrade.Miss)
-            {
-                // No awesome banner for a missed phrase — fall back to the legacy
-                // percent-based "Messy / Okay / Good / Strong" text so the player still
-                // gets phrase feedback.
-                double bestMeter = 0;
-                for (int i = 0; i < parts.Count; i++)
-                {
-                    if (parts[i].Meter > bestMeter) bestMeter = parts[i].Meter;
-                }
-                double threshold = EngineParams.PhraseHitPercent;
-                double percent = threshold > 0 ? bestMeter / threshold : 0;
-                _hud.ShowPhraseHit(percent, Combo);
-                return;
-            }
-            _hud.ShowPartyVocalsGrade(grade);
         }
 
         protected override void ResetVisuals()
         {
             _lastTargetNote = null;
-        }
-
-        // The phrase/percussion captures live Unity-side (the engine doesn't store them), so they
-        // must be cleared by hand whenever the engine resets and reprocesses — otherwise the
-        // re-fired OnPhraseHit/OnNoteHit events would append duplicates (e.g. on replay seek).
-        private void ResetScoreScreenCaptures()
-        {
-            _phrasePercents.Clear();
-            _phraseGrades.Clear();
-            _phrasePartResults.Clear();
-            _percussionHits = 0;
-        }
-
-        public override void SetReplayTime(double time)
-        {
-            // Base resets the engine and reprocesses inputs up to `time`; clear first so the
-            // re-fired events rebuild the captures from scratch.
-            ResetScoreScreenCaptures();
-
-            base.SetReplayTime(time);
+            _hud.SetFullCombo(IsFc);
         }
 
         public override void ResetPracticeSection()
         {
-            ResetScoreScreenCaptures();
-
             Engine.Reset(true);
 
             if (NoteTrack.Notes.Count > 0)
@@ -532,22 +320,20 @@ namespace YARG.Gameplay.Player
 
         protected override void UpdateInputs(double time)
         {
+            // Push all inputs from mic
+            if (!Player.IsReplay && _inputContext != null)
+            {
+                foreach (var input in _inputContext.GetInputsFromMic())
+                {
+                    var i = input;
+                    OnGameInput(ref i);
+                }
+            }
+
             base.UpdateInputs(time);
-
-            if (_inputContext is null)
-            {
-                return;
-            }
-
-            // Get input from the microphone
-            foreach (var input in _inputContext.GetInputsFromMic())
-            {
-                var copy = input;
-                OnGameInput(ref copy);
-            }
         }
 
-        protected bool IsInThreshold(double currentTime, double? lastTime)
+        private bool IsInThreshold(double currentTime, double? lastTime)
         {
             if (lastTime is null)
             {
@@ -580,18 +366,6 @@ namespace YARG.Gameplay.Player
             // Update HUD
             _hud.UpdateInfo(fill, displayMultiplier,
                 (float) Engine.GetStarPowerBarAmount(), Engine.EngineStats.IsStarPowerActive);
-
-            // Update per-HARM fill for Party Vocals (multi-mic via coordinator)
-            if (Engine is PartyVocalsCoordinatorEngine coordinator)
-            {
-                _hud.UpdateHarmFill(coordinator.CanonicalMeters, coordinator.AwesomeThreshold,
-                    coordinator.PartInCurrentPhrase, coordinator.PartInNextPhrase, coordinator.CurrentPhraseProgress,
-                    coordinator.CurrentPhraseDurationSeconds);
-            }
-            else
-            {
-                _hud.HideHarmFill();
-            }
         }
 
         protected override void OnStarPowerReady()
@@ -600,7 +374,7 @@ namespace YARG.Gameplay.Player
             _hud.ShowNotification(TextNotificationType.StarPowerReady);
         }
 
-        protected void ShowTextNotifications(bool isLastPhrase)
+        private void ShowTextNotifications(bool isLastPhrase)
         {
             if (SettingsManager.Settings.DisableTextNotifications.Value)
             {
@@ -638,7 +412,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        protected float GetNeedleRotation(float pitchDist)
+        private float GetNeedleRotation(float pitchDist)
         {
             const float NEEDLE_ROT_MAX = 12f;
 
@@ -653,7 +427,6 @@ namespace YARG.Gameplay.Player
             return distPercent * NEEDLE_ROT_MAX;
         }
 
-        
         private float ApplyPitchDeadZone(float pitchDist, float deadZoneInSemitones)
         {
             if (pitchDist >= 0.0f)
@@ -664,8 +437,26 @@ namespace YARG.Gameplay.Player
             return Mathf.Min(0.0f, pitchDist + deadZoneInSemitones);
         }
 
+        private void SetOutline(bool enableOutline)
+        {
+            if (_outlineEnabled == enableOutline)
+            {
+                return;
+            }
+            MaterialPropertyInstance.Instance.SetFloat(OutlineWidthID, enableOutline ? OUTLINE_WIDTH : 0f);
+            // Not sure if I need to set this every time, but it was being weird if I didn't
+            MaterialPropertyInstance.Instance.SetColor(OutlineColorID, VocalTrack.Colors[Player.Profile.HarmonyIndex]);
+            _needleRenderer.SetPropertyBlock(MaterialPropertyInstance.Instance);
+            _outlineEnabled = enableOutline;
+        }
+
         private void UpdateSingNeedle()
         {
+            const float NEEDLE_POS_LERP = 30f;
+            const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
+
+            const float NEEDLE_ROT_LERP = 25f;
+
             // Get the appropriate sing time
             var singTime = GameManager.InputTime;
 
@@ -674,26 +465,25 @@ namespace YARG.Gameplay.Player
             // not in a constant stream.
             if (!IsInThreshold(singTime, _lastSingTime) || _shouldHideNeedle)
             {
-                // Hide needle if there's no singing
+                // Hide the needle if there's no singing
                 if (_needleVisualContainer.activeSelf)
                 {
                     _needleVisualContainer.SetActive(false);
+                    _hittingParticleGroup.Stop();
                 }
-                _hittingParticleGroup.Stop();
             }
             else
             {
-                // Show needle if it's hidden
+                float lerpRate = NEEDLE_POS_LERP;
+
+                // Show needle
                 if (!_needleVisualContainer.activeSelf)
                 {
                     _needleVisualContainer.SetActive(true);
+
+                    // Lerp X times faster if we've just started showing the needle
+                    lerpRate *= NEEDLE_POS_SNAP_MULTIPLIER;
                 }
-
-                float lerpRate = 30f;
-                const float NEEDLE_POS_SNAP_MULTIPLIER = 10f;
-
-                // Lerp faster if we've just started showing the needle
-                lerpRate *= NEEDLE_POS_SNAP_MULTIPLIER;
 
                 var transformCache = transform;
                 float lastNotePitch = _lastTargetNote?.PitchAtSongTime(GameManager.SongTime) ?? -1f;
@@ -705,6 +495,7 @@ namespace YARG.Gameplay.Player
                     {
                         _hittingParticleGroup.Play();
                     }
+                    SetOutline(!GameManager.Rewinding);
 
                     float pitch;
                     float targetRotation = 0f;
@@ -715,6 +506,7 @@ namespace YARG.Gameplay.Player
                         pitch = lastNotePitch;
 
                         // Rotate the needle a little bit depending on how off it is (unless it's non-pitched)
+                        // Get how off the player is
                         (float pitchDist, _) = GetPitchDistanceIgnoringOctave(lastNotePitch, Engine.PitchSang);
                         targetRotation = GetNeedleRotation(pitchDist);
                     }
@@ -729,15 +521,33 @@ namespace YARG.Gameplay.Player
                     var lerp = Mathf.Lerp(transformCache.localPosition.z, z, Time.deltaTime * lerpRate);
                     transformCache.localPosition = new Vector3(0f, 0f, lerp);
                     _needleTransform.rotation = Quaternion.Lerp(_needleTransform.rotation,
-                        Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * 25f);
+                        Quaternion.Euler(0f, targetRotation + 90f, 0f), Time.deltaTime * NEEDLE_ROT_LERP);
                 }
                 else
                 {
                     // Stop particles if not hitting
                     _hittingParticleGroup.Stop();
+                    SetOutline(false);
 
-                    // Get the pitch anchored to the correct octave for smooth needle tracking
-                    float pitch = AnchorPitchToOctave(Engine.PitchSang, lastNotePitch);
+                    // Since the player is not hitting the note here, we need to offset it correctly.
+                    // Get the pitch, and move to the correct octave.
+                    float pitch = Engine.PitchSang;
+                    if (_lastTargetNote is not null && !_lastTargetNote.IsNonPitched)
+                    {
+                        (_, int octaveShift) = GetPitchDistanceIgnoringOctave(lastNotePitch, pitch);
+
+                        int lastNoteOctave = (int) (lastNotePitch / 12f);
+
+                        // Set the pitch's octave to the target one
+                        pitch = Engine.PitchSang % 12f;
+                        pitch += 12f * (lastNoteOctave + octaveShift);
+                    }
+                    else
+                    {
+                        // Hard code a value of one octave up to
+                        // make the needle sit more in the middle
+                        pitch += 12f;
+                    }
 
                     // Set the position of the needle
                     var z = GameManager.VocalTrack.GetPosForPitch(pitch);
@@ -746,7 +556,7 @@ namespace YARG.Gameplay.Player
 
                     // Lerp the rotation to none
                     _needleTransform.rotation = Quaternion.Lerp(_needleTransform.rotation,
-                        Quaternion.Euler(0f, 90f, 0f), Time.deltaTime * 25f);
+                        Quaternion.Euler(0f, 90f, 0f), Time.deltaTime * NEEDLE_ROT_LERP);
                 }
             }
         }
@@ -759,10 +569,6 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Party Vocals percussion only occurs on a solo VOCALS resolved track (harmony
-            // charts have no percussion), so HasPercussion below self-scopes this to the
-            // fallback-to-solo case — the percussion-mode UI matches solo Vocals there and
-            // stays inert on harmony charts.
             while (ShouldAdvancePhraseIndex(time))
             {
                 _phraseIndex++;
@@ -811,10 +617,6 @@ namespace YARG.Gameplay.Player
 
         private void SetPercussionMode(bool show)
         {
-            // Applies to both solo and Party Vocals. For party, _shouldHideNeedle is
-            // honored per-mic in PartyVocalsPlayer.UpdateVisuals (each slot is gated on
-            // it), so this blanks every needle + trail during a percussion section, the
-            // same way solo hides its single needle.
             _hud.SetHUDShowing(!show);
             _percussionTrack.ShowPercussionFret(show);
             _shouldHideNeedle = show;
@@ -846,14 +648,14 @@ namespace YARG.Gameplay.Player
 
             _phraseIndex = -1;
 
-            UnsubscribeEngineEvents();
+            // Removed by EngineManager
+            EngineContainer = null;
+
             Engine = CreateEngine();
+            Engine.SetSpeed(GameManager.SongSpeed >= 1 ? GameManager.SongSpeed : 1);
             ResetPracticeSection();
         }
 
-        // Ported from upstream #1502: include vocal phrases whose start falls before the
-        // practice section but whose notes are fully contained within it (some HMX charts
-        // start a phrase before the section marker).
         private static bool IsVocalPhraseInPracticeRange(VocalNote note, uint start, uint end)
         {
             if (note.Tick >= start && note.Tick < end)
@@ -870,19 +672,14 @@ namespace YARG.Gameplay.Player
             // Vocals has no stem muting
         }
 
-        
-        private bool IsDeviceConnected(MicDevice device)
-        {
-            if (device is YARG.Audio.BASS.BassMicDevice bassMicDevice)
-            {
-                return bassMicDevice.IsDeviceStillValid();
-            }
-
-            return true;
-        }
-
         protected override bool InterceptInput(ref GameInput input)
         {
+            var minimumTime = System.Math.Max(BaseEngine.LastQueuedInputTime, BaseEngine.CurrentTime);
+            if (input.Time < minimumTime)
+            {
+                input = new GameInput(minimumTime, input.Action, input.Integer);
+            }
+
             return false;
         }
 
@@ -894,33 +691,7 @@ namespace YARG.Gameplay.Player
         /// </returns>
         /// <param name="target">The target note (as MIDI pitch).</param>
         /// <param name="other">The other note (as MIDI pitch).</param>
-        /// <summary>
-        /// Anchors the sung pitch to the correct octave relative to a reference note.
-        /// Prefer the octave closest to the reference note for smoother needle tracking.
-        /// Rejected alternative: midpoint of all parts (less stable during quick pitch changes).
-        /// </summary>
-        protected float AnchorPitchToOctave(float sungPitch, float referenceNotePitch)
-        {
-            if (referenceNotePitch < 0f)
-            {
-                // No reference note (callers pass the -1 sentinel) or a non-pitched/talky
-                // note (Pitch < 0): add one octave to keep the needle in the middle of the
-                // track. Uses the parameter rather than _lastTargetNote so per-mic Party
-                // Vocals callers — which don't populate _lastTargetNote — anchor to their
-                // own line instead of always falling through here and jumping an octave up.
-                return sungPitch + 12f;
-            }
-
-            // Find the octave shift that makes sungPitch closest to the reference
-            (_, int octaveShift) = GetPitchDistanceIgnoringOctave(referenceNotePitch, sungPitch);
-
-            // Apply the octave shift
-            int referenceOctave = (int) (referenceNotePitch / 12f);
-            float normalized = sungPitch % 12f;
-            return normalized + 12f * (referenceOctave + octaveShift);
-        }
-
-        protected static (float Distance, int OctaveShift) GetPitchDistanceIgnoringOctave(float target, float other)
+        private static (float Distance, int OctaveShift) GetPitchDistanceIgnoringOctave(float target, float other)
         {
             // Normalize the parameters
             target %= 12f;
@@ -952,34 +723,7 @@ namespace YARG.Gameplay.Player
         public override (ReplayFrame Frame, ReplayStats Stats) ConstructReplayData()
         {
             var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
-
             return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
-        }
-
-        private void InheritStarPowerFlagsFromSoloTrack()
-        {
-            if (NoteTrack.Notes.Any(n => n.IsStarPower)) return;
-
-            var soloPart = _chart.Vocals.Parts.FirstOrDefault();
-            if (soloPart == null) return;
-
-            var spNotes = soloPart.CloneAsInstrumentDifficulty().Notes
-                .Where(n => n.IsStarPower)
-                .ToList();
-            if (spNotes.Count == 0) return;
-
-            foreach (var note in NoteTrack.Notes)
-            {
-                if (note.IsStarPower) continue;
-                foreach (var sp in spNotes)
-                {
-                    if (note.Tick >= sp.Tick && note.Tick < sp.Tick + sp.TickLength)
-                    {
-                        note.Flags |= NoteFlags.StarPower;
-                        break;
-                    }
-                }
-            }
         }
     }
 }

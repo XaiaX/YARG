@@ -19,15 +19,6 @@ namespace YARG.Gameplay.HUD
         private const float FADE_ANIM_LENGTH = 0.5f;
         private const double HIDE_DELAY = 1;
 
-        // RB4-style behavior: switch from the numeric countdown to "GET READY" when
-        // the displayed value drops to GET_READY_THRESHOLD or below — measured in
-        // whichever unit the current DisplayStyle uses (measures or seconds), so
-        // the swap point lines up with what the user sees. Set to <= 0 to keep
-        // YARG's classic count-all-the-way-down behavior.
-        private const int GET_READY_THRESHOLD = 2;
-        private const int HIDE_AT_VALUE = 1;
-        private const string GET_READY_TEXT = "GET READY";
-
         public static CountdownDisplayMode DisplayStyle;
 
         [SerializeField]
@@ -44,7 +35,7 @@ namespace YARG.Gameplay.HUD
         private Coroutine _currentCoroutine;
 
         private bool _displayActive;
-        private string _displayedCountdownText;
+        private int _displayedCountdownValue = int.MinValue;
 
         public void UpdateCountdown(double countdownLength, double endTime)
         {
@@ -59,28 +50,7 @@ namespace YARG.Gameplay.HUD
             {
                 return;
             }
-
-            int displayValue = 0;
-            switch (DisplayStyle)
-            {
-                case CountdownDisplayMode.Seconds:
-                    displayValue = (int) Math.Ceiling(timeRemaining);
-                    break;
-                case CountdownDisplayMode.Measures:
-                    var syncTrack = GameManager.Chart.SyncTrack;
-                    // This is floored to snap the end time to the start of the measure
-                    double endMeasure = Math.Floor(syncTrack.GetMeasurePosition(endTime));
-                    double currentMeasure = syncTrack.GetMeasurePosition(currentTime);
-                    displayValue = (int) Math.Ceiling(endMeasure - currentMeasure);
-                    break;
-            }
-
-            // Hide when the displayed value would drop to HIDE_AT_VALUE so the wheel
-            // is fully faded out by the time the next note line crosses the highway —
-            // matches RB4 (gone by the "1" mark). Wall-clock floor still prevents the
-            // wheel from popping in for a sub-fade-length blink on tiny gaps.
-            bool shouldDisplay = displayValue > HIDE_AT_VALUE
-                && timeRemaining > HIDE_DELAY + FADE_ANIM_LENGTH;
+            bool shouldDisplay = timeRemaining > HIDE_DELAY + FADE_ANIM_LENGTH;
 
             if (GameManager.IsPractice)
             {
@@ -100,13 +70,23 @@ namespace YARG.Gameplay.HUD
                 return;
             }
 
-            if (GET_READY_THRESHOLD > 0 && displayValue <= GET_READY_THRESHOLD)
+            switch (DisplayStyle)
             {
-                SetCountdownText(GET_READY_TEXT);
-            }
-            else
-            {
-                SetCountdownText(displayValue.ToString());
+                case CountdownDisplayMode.Seconds:
+                {
+                    SetCountdownValue((int) Math.Ceiling(timeRemaining));
+                    break;
+                }
+                case CountdownDisplayMode.Measures:
+                {
+                    var syncTrack = GameManager.Chart.SyncTrack;
+                    // This is floored to snap the end time to the start of the measure
+                    double endMeasure = Math.Floor(syncTrack.GetMeasurePosition(endTime));
+                    double currentMeasure = syncTrack.GetMeasurePosition(currentTime);
+                    int remainingMeasures = (int) Math.Ceiling(endMeasure - currentMeasure);
+                    SetCountdownValue(remainingMeasures);
+                    break;
+                }
             }
 
             _progressBar.fillAmount = (float) (timeRemaining / countdownLength);
@@ -119,18 +99,18 @@ namespace YARG.Gameplay.HUD
             _canvasGroup.alpha = 0f;
             gameObject.SetActive(true);
             _displayActive = false;
-            _displayedCountdownText = null;
+            _displayedCountdownValue = int.MinValue;
         }
 
-        private void SetCountdownText(string text)
+        private void SetCountdownValue(int value)
         {
-            if (_displayedCountdownText == text)
+            if (_displayedCountdownValue == value)
             {
                 return;
             }
 
-            _displayedCountdownText = text;
-            _countdownText.SetText(text);
+            _displayedCountdownValue = value;
+            _countdownText.SetText(value.ToString());
         }
 
         private void ToggleDisplay(bool isActive)

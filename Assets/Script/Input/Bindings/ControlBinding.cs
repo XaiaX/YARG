@@ -11,10 +11,6 @@ namespace YARG.Input
 {
     public delegate void GameInputProcessed(ref GameInput input);
 
-    // Menu-only metadata channel. Gameplay continues to use GameInputProcessed so
-    // physical device details never enter replay or gameplay input contracts.
-    public delegate void MenuInputProcessed(InputControl source, ref GameInput input);
-
     public class ActuationSettings
     {
         public static readonly ActuationSettings Default = new();
@@ -41,7 +37,6 @@ namespace YARG.Input
         /// Fired when an input event has been processed by this binding.
         /// </summary>
         public event GameInputProcessed InputProcessed;
-        public event MenuInputProcessed MenuInputProcessed;
 
         /// <summary>
         /// The unlocalized name for this binding.
@@ -69,10 +64,6 @@ namespace YARG.Input
         public bool Enabled { get; protected set; } = false;
 
         protected double _lastEventTime;
-        // The most recent physical control is carried into deferred/debounced menu emissions.
-        // Derived bindings need this for frame-level state transitions, while gameplay still
-        // receives only the existing GameInput payload.
-        protected InputControl _lastInputControl;
 
         public ControlBinding(string name, int action)
         {
@@ -147,54 +138,29 @@ namespace YARG.Input
         protected void FireInputEvent(double time, int value)
         {
             var input = new GameInput(time, Action, value);
-            FireInputEvent(_lastInputControl, ref input);
-        }
-
-        protected void FireInputEvent(InputControl source, double time, int value)
-        {
-            var input = new GameInput(time, Action, value);
-            FireInputEvent(source, ref input);
+            FireInputEvent(ref input);
         }
 
         protected void FireInputEvent(double time, float value)
         {
             var input = new GameInput(time, Action, value);
-            FireInputEvent(_lastInputControl, ref input);
-        }
-
-        protected void FireInputEvent(InputControl source, double time, float value)
-        {
-            var input = new GameInput(time, Action, value);
-            FireInputEvent(source, ref input);
+            FireInputEvent(ref input);
         }
 
         protected virtual void FireInputEvent(double time, bool value)
         {
             var input = new GameInput(time, Action, value);
-            FireInputEvent(_lastInputControl, ref input);
-        }
-
-        protected void FireInputEvent(InputControl source, double time, bool value)
-        {
-            var input = new GameInput(time, Action, value);
-            FireInputEvent(source, ref input);
+            FireInputEvent(ref input);
         }
 
         protected void FireInputEvent(ref GameInput input)
-        {
-            FireInputEvent(_lastInputControl, ref input);
-        }
-
-        protected void FireInputEvent(InputControl source, ref GameInput input)
         {
             if (!Enabled) return;
 
             try
             {
-                _lastInputControl = source ?? _lastInputControl;
                 _lastEventTime = input.Time;
                 InputProcessed?.Invoke(ref input);
-                MenuInputProcessed?.Invoke(_lastInputControl, ref input);
             }
             catch (Exception ex)
             {
@@ -208,7 +174,6 @@ namespace YARG.Input
     {
         public InputControl<TState> Control { get; }
         public TState               State   { get; protected set; }
-        internal InputControl LastInputControl { get; set; }
 
         public event Action<TState> StateChanged;
 
@@ -478,7 +443,7 @@ namespace YARG.Input
 
                     // Reset binding state to prevent phantom inputs
                     binding.ResetState();
-                    OnStateChanged(binding, binding.LastInputControl, InputManager.CurrentInputTime);
+                    OnStateChanged(binding, InputManager.CurrentInputTime);
                     FireStateChanged();
 
                     _bindings.RemoveAt(i);
@@ -542,6 +507,11 @@ namespace YARG.Input
             InputEventPtr eventPtr,
             long monitorIndex)
         {
+            if (InputManager.IsEditorUpdate)
+            {
+                return;
+            }
+
             if (!eventPtr.valid)
             {
                 YargLogger.LogFormatError("Invalid eventPtr received for control {0}!", control);
@@ -562,13 +532,9 @@ namespace YARG.Input
                 return;
             }
 
-            // Preserve the physical control for the menu-only metadata channel. The
-            // profile may bind both a keyboard and controller, so a device-set query
-            // cannot replace this per-event origin.
-            _lastInputControl = control;
-            binding.LastInputControl = control;
-            binding.UpdateState(eventPtr.time);
-            OnStateChanged(binding, control, eventPtr.time);
+            double inputTime = InputManager.ClampInputTime(time);
+            binding.UpdateState(inputTime);
+            OnStateChanged(binding, inputTime);
             FireStateChanged();
         }
 
@@ -577,7 +543,7 @@ namespace YARG.Input
         {
         }
 
-        protected abstract void OnStateChanged(TBinding binding, InputControl source, double time);
+        protected abstract void OnStateChanged(TBinding binding, double time);
 
         protected void FireStateChanged()
         {

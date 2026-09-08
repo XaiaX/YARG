@@ -8,23 +8,16 @@ namespace YARG.Settings.Metadata
 
         public string[] Buttons { get; private set; }
 
-        /// <summary>
-        /// Optional predicate used for runtime-only actions. The settings tab omits this
-        /// button row when the predicate is false.
-        /// </summary>
-        public Func<bool> VisibilityPredicate { get; }
+        public ButtonRowMetadata(string button, bool isAdvanced = false)
+            : this(button, null, isAdvanced)
+        {
+        }
 
-        public ButtonRowMetadata(string button, bool isAdvanced = false, Func<bool> visibilityPredicate = null)
-            : base(isAdvanced)
+        public ButtonRowMetadata(string button, Func<bool> visibleWhen, bool isAdvanced = false)
+            : base(isAdvanced, visibleWhen)
         {
             UnlocalizedSearchNames = new[] { $"Button.{button}" };
             Buttons = new[] { button };
-            VisibilityPredicate = visibilityPredicate;
-        }
-
-        public ButtonRowMetadata(string button, Func<bool> visibilityPredicate)
-            : this(button, false, visibilityPredicate)
-        {
         }
 
         public ButtonRowMetadata(bool isAdvanced, params string[] buttons)

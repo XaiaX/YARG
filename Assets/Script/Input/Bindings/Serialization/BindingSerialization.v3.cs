@@ -12,27 +12,10 @@ using YARG.Core.Logging;
 
 namespace YARG.Input.Serialization
 {
-    // Version 3: No structural changes from v2, snapshot before mic-list migration.
+    // Version 3: Supports multiple microphones per profile.
 
     // Unchanged data types
     using SerializedInputDeviceV3 = SerializedInputDeviceV0;
-    public class SerializedMicV3
-    {
-        public string DisplayName;
-
-        [JsonConstructor]
-        public SerializedMicV3()
-        {
-            DisplayName = string.Empty;
-        }
-
-        public SerializedMicV3(SerializedMic serialized)
-        {
-            DisplayName = serialized.Name;
-        }
-
-        public SerializedMic Deserialize() => new(DisplayName);
-    }
 
     public class SerializedBindingsV3
     {
@@ -62,40 +45,12 @@ namespace YARG.Input.Serialization
 
             return deserialized;
         }
-
-        public static SerializedBindings MigrateToCurrent(SerializedBindingsV3 from)
-        {
-            var deserialized = new SerializedBindings();
-            foreach (var (id, bind) in from.Profiles)
-            {
-                var migratedBind = new SerializedProfileBindings();
-                migratedBind.Devices.AddRange(bind.Devices.Select(device => device.Deserialize()));
-
-                // Convert single microphone to list
-                if (bind.Microphone is not null)
-                {
-                    migratedBind.Microphones.Add(bind.Microphone.Deserialize());
-                }
-
-                foreach (var (gameMode, bindings) in bind.ModeMappings)
-                {
-                    migratedBind.ModeMappings[gameMode] = bindings.Deserialize(bind);
-                }
-
-                if (bind.MenuMappings is not null)
-                    migratedBind.MenuMappings = bind.MenuMappings.Deserialize(bind);
-
-                deserialized.Profiles[id] = migratedBind;
-            }
-
-            return deserialized;
-        }
     }
 
     public class SerializedProfileBindingsV3
     {
         public List<SerializedInputDeviceV3> Devices = new();
-        public SerializedMicV3? Microphone;
+        public List<SerializedMicV3> Microphones = new();
 
         public Dictionary<GameMode, SerializedBindingCollectionV3> ModeMappings = new();
         public SerializedBindingCollectionV3? MenuMappings;
@@ -107,8 +62,13 @@ namespace YARG.Input.Serialization
         {
             Devices.AddRange(serialized.Devices.Select((device) => new SerializedInputDeviceV3(device)));
 
-            if (serialized.Microphone is not null)
-                Microphone = new SerializedMicV3(serialized.Microphone);
+            foreach (var mic in serialized.Microphones)
+            {
+                if (mic is not null)
+                {
+                    Microphones.Add(new SerializedMicV3(mic));
+                }
+            }
 
             foreach (var (gameMode, bindings) in serialized.ModeMappings)
             {
@@ -122,7 +82,14 @@ namespace YARG.Input.Serialization
         public SerializedProfileBindings Deserialize()
         {
             var deserialized = new SerializedProfileBindings();
-            if (Microphone is not null) deserialized.Microphones.Add(Microphone.Deserialize());
+
+            foreach (var mic in Microphones)
+            {
+                if (mic is not null)
+                {
+                    deserialized.Microphones.Add(mic.Deserialize());
+                }
+            }
 
             deserialized.Devices.AddRange(Devices.Select((device) => device.Deserialize()));
 
@@ -264,4 +231,66 @@ namespace YARG.Input.Serialization
         public bool ShouldSerializeParameters() => Parameters.Count > 0;
     }
 
+    public class SerializedMicV3
+    {
+        public string BaseName;
+        public int Channel;
+
+        public string DisplayName;
+
+        [JsonConstructor]
+        public SerializedMicV3()
+        {
+            BaseName = string.Empty;
+            DisplayName = string.Empty;
+        }
+
+        public SerializedMicV3(SerializedMic serialized)
+        {
+            BaseName = serialized.BaseName;
+            Channel = serialized.Channel;
+            DisplayName = string.Empty;
+        }
+
+        public SerializedMic Deserialize()
+        {
+            if (!string.IsNullOrEmpty(BaseName))
+            {
+                return new SerializedMic(BaseName, Channel);
+            }
+
+            if (!string.IsNullOrEmpty(DisplayName))
+            {
+                if (InputDeviceInfo.TryParseDisplayName(DisplayName, out var parsedBaseName, out var parsedChannel))
+                {
+                    return new SerializedMic(parsedBaseName, parsedChannel);
+                }
+
+                return new SerializedMic(DisplayName, 0);
+            }
+
+            return new SerializedMic(BaseName ?? string.Empty, Channel);
+        }
+
+        public bool ShouldSerializeDisplayName() => string.IsNullOrEmpty(BaseName);
+        public bool ShouldSerializeBaseName() => !string.IsNullOrEmpty(BaseName);
+        public bool ShouldSerializeChannel() => !string.IsNullOrEmpty(BaseName);
+    }
+
+    public static partial class BindingSerialization
+    {
+        private static SerializedBindingsV3 SerializeBindingsV3(SerializedBindings serialized)
+        {
+            return new SerializedBindingsV3(serialized);
+        }
+
+        private static SerializedBindings? DeserializeBindingsV3(JObject obj)
+        {
+            var serialized = obj.ToObject<SerializedBindingsV3>();
+            if (serialized is null || serialized.Version != SerializedBindingsV3.VERSION)
+                return null;
+
+            return serialized.Deserialize();
+        }
+    }
 }

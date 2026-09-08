@@ -23,7 +23,7 @@ namespace YARG.Menu.Settings.Visuals
         // compare equal to a default(Color) sentinel and skip the initial render.
         private Color? _lastRenderedValue;
 
-        protected override void RefreshVisual()
+        public override void RefreshVisual()
         {
             // Early-exit: if the value hasn't changed since our last render,
             // skip redundant UI writes. This prevents O(N) text-rebuild work

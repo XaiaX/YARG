@@ -19,24 +19,19 @@ namespace YARG.Input
         public YargProfile Profile { get; }
 
         private const int MICROPHONE_CAP = 7;
-
-        private readonly List<MicDevice> _microphones = new();
-        private readonly List<SerializedMic> _unresolvedMics = new();
-        public IReadOnlyList<MicDevice> Microphones => _microphones;
-
-        /// <summary>
-        /// Maximum number of microphones this profile may bind, derived from its
-        /// GameMode. PartyVocals = 7; everything else (Solo Vocals / Harmony) = 1.
-        /// Single source of truth — both <see cref="AddMicrophone"/> and any UI that
-        /// gates "Add" buttons should consult this rather than re-deriving the cap.
-        /// </summary>
         public int MicrophoneCap => Profile.GameMode == GameMode.PartyVocals ? MICROPHONE_CAP : 1;
+        private readonly List<SerializedMic> _unresolvedMics = new();
+        private readonly List<MicDevice> _microphones = new();
 
         /// <summary>
-        /// First-microphone accessor preserved for single-mic readers (Vocals, Harmony, Free profiles).
-        /// Returns null if no microphones are bound. Setter is intentionally not provided; use AddMicrophone / RemoveMicrophone.
+        ///     The first microphone, for gameplay that only supports one at a time.
         /// </summary>
         public MicDevice Microphone => _microphones.Count > 0 ? _microphones[0] : null;
+
+        /// <summary>
+        ///     Every microphone assigned to this profile.
+        /// </summary>
+        public List<MicDevice> Microphones => _microphones;
 
         public List<InputDevice> InputDevices => _devices;
 
@@ -76,10 +71,10 @@ namespace YARG.Input
             }
         }
 
-        public event MenuInputProcessed MenuInputProcessed
+        public event GameInputProcessed MenuInputProcessed
         {
-            add    => MenuBindings.MenuInputProcessed += value;
-            remove => MenuBindings.MenuInputProcessed -= value;
+            add    => MenuBindings.InputProcessed += value;
+            remove => MenuBindings.InputProcessed -= value;
         }
 
         public ProfileBindings(YargProfile profile)
@@ -116,7 +111,21 @@ namespace YARG.Input
                 }
             }
 
-            _unresolvedMics.AddRange(bindings.Microphones ?? new List<SerializedMic>());
+            if (bindings.Microphones.Count > 0)
+            {
+                foreach (var mic in bindings.Microphones)
+                {
+                    if (mic is not null)
+                    {
+                        _unresolvedMics.Add(mic);
+                    }
+                }
+            }
+            else if (bindings.Microphone is not null)
+            {
+                // Legacy files (v0-v2) only had a single microphone
+                _unresolvedMics.Add(bindings.Microphone);
+            }
 
             if (bindings.ModeMappings is not null)
             {
@@ -149,7 +158,15 @@ namespace YARG.Input
                 serialized.Devices.Add(device);
             }
 
-            serialized.Microphones.AddRange(_unresolvedMics);
+            foreach (var mic in _microphones)
+            {
+                serialized.Microphones.Add(mic.Serialize());
+            }
+
+            foreach (var mic in _unresolvedMics)
+            {
+                serialized.Microphones.Add(mic);
+            }
 
             foreach (var (mode, bindings) in _bindsByGameMode)
             {
@@ -179,84 +196,32 @@ namespace YARG.Input
                     OnDeviceAdded(device);
             }
 
-            // Two-pass mic resolver.
-            // Pass 1: exact StableId match. Pass 2: name match against unmatched devices in slot order.
+            ResolveMicrophones();
+        }
 
-            var remainingUnresolved = _unresolvedMics.ToList();
-            var available = GlobalAudioHandler.GetAllInputDevices();
-
-            // Pass 1: StableId exact match (match on string, only create device on hit).
-            for (int i = remainingUnresolved.Count - 1; i >= 0; i--)
+        public void ResolveMicrophones()
+        {
+            for (int i = _unresolvedMics.Count - 1; i >= 0; i--)
             {
-                var unresolved = remainingUnresolved[i];
-                if (string.IsNullOrEmpty(unresolved.StableId)) continue;
-
-                int matchIdx = -1;
-                for (int j = 0; j < available.Count; j++)
+                var mic = _unresolvedMics[i];
+                var device = GlobalAudioHandler.GetInputDevice(mic.BaseName, mic.Channel);
+                if (device != null)
                 {
-                    if (MicDevice.ComputeStableId(available[j].id, available[j].name) == unresolved.StableId)
-                    {
-                        matchIdx = j;
-                        break;
-                    }
-                }
-
-                if (matchIdx >= 0)
-                {
-                    var (id, name) = available[matchIdx];
-                    var device = GlobalAudioHandler.CreateInputDevice(id, name);
-                    if (device != null)
-                    {
-                        var result = TryAddMicrophoneInternal(device);
-                        if (result == MicAddResult.Added)
-                        {
-                            available.RemoveAt(matchIdx);
-                            _unresolvedMics.Remove(unresolved);
-                            remainingUnresolved.RemoveAt(i);
-                        }
-                        else
-                        {
-                            _unresolvedMics.Remove(unresolved);
-                            remainingUnresolved.RemoveAt(i);
-                        }
-                    }
+                    _unresolvedMics.RemoveAt(i);
+                    AddMicrophone(device);
                 }
             }
+        }
 
-            // Pass 2: Name match against still-available devices, in original slot order.
-            foreach (var unresolved in remainingUnresolved.ToList())
+        public void ReleaseMicrophones()
+        {
+            foreach (var mic in _microphones)
             {
-                int matchIdx = -1;
-                for (int j = 0; j < available.Count; j++)
-                {
-                    if (available[j].name == unresolved.Name)
-                    {
-                        matchIdx = j;
-                        break;
-                    }
-                }
-
-                if (matchIdx >= 0)
-                {
-                    var (id, name) = available[matchIdx];
-                    var device = GlobalAudioHandler.CreateInputDevice(id, name);
-                    if (device != null)
-                    {
-                        var result = TryAddMicrophoneInternal(device);
-                        if (result == MicAddResult.Added)
-                        {
-                            available.RemoveAt(matchIdx);
-                            _unresolvedMics.Remove(unresolved);
-                        }
-                        else
-                        {
-                            _unresolvedMics.Remove(unresolved);
-                        }
-                    }
-                }
+                _unresolvedMics.Add(mic.Serialize());
+                mic.Dispose();
             }
 
-            // Pass 3: still-unmatched entries stay in _unresolvedMics for later OnDeviceAdded events.
+            _microphones.Clear();
         }
 
         public void EnableInputs()
@@ -482,63 +447,27 @@ namespace YARG.Input
 
         public bool AddMicrophone(MicDevice microphone)
         {
-            return TryAddMicrophoneInternal(microphone) == MicAddResult.Added;
-        }
-
-        private enum MicAddResult { Added, CapExceeded, DuplicateId }
-
-        private MicAddResult TryAddMicrophoneInternal(MicDevice microphone)
-        {
-            if (_microphones.Count >= MicrophoneCap)
-            {
-                microphone.Dispose();
-                return MicAddResult.CapExceeded;
-            }
-
-            var stableId = microphone.StableId;
-            if (_microphones.Any(m => m.StableId == stableId))
-            {
-                microphone.Dispose();
-                return MicAddResult.DuplicateId;
-            }
-
+            if (_microphones.Count >= MicrophoneCap || _microphones.Any(m => m.Serialize().BaseName == microphone.Serialize().BaseName && m.Serialize().Channel == microphone.Serialize().Channel)) return false;
             _microphones.Add(microphone);
-            _unresolvedMics.Add(microphone.Serialize());
-
-            return MicAddResult.Added;
+            var serialized = microphone.Serialize();
+            _unresolvedMics.RemoveAll(m => m.BaseName == serialized.BaseName && m.Channel == serialized.Channel);
+            return true;
         }
 
         public bool RemoveMicrophone(MicDevice microphone)
         {
-            // Remove by reference equality
-            int index = _microphones.IndexOf(microphone);
-            if (index >= 0)
-            {
-                _microphones.RemoveAt(index);
-                // Dispose immediately so BASS releases the underlying device handle.
-                // Without this, the OS mic stays locked until GC, and re-opening the
-                // Add Device dialog won't list it as available.
-                microphone.Dispose();
-                var micStableId = microphone.StableId;
-                // Guard against null match-all: if either side is null (e.g. a stale
-                // pre-resolve entry that never got its StableId populated), skip the
-                // unresolved-list cleanup rather than purging every null-StableId entry.
-                if (!string.IsNullOrEmpty(micStableId))
-                {
-                    _unresolvedMics.RemoveAll(m => m.StableId == micStableId);
-                }
-                return true;
-            }
-
-            return false;
+            if (!_microphones.Remove(microphone)) return false;
+            microphone.Dispose();
+            return true;
         }
 
         public void RemoveAllMicrophones()
         {
-            foreach (var microphone in _microphones)
+            foreach (var mic in _microphones)
             {
-                microphone.Dispose();
+                mic.Dispose();
             }
+
             _microphones.Clear();
             _unresolvedMics.Clear();
         }
@@ -550,12 +479,7 @@ namespace YARG.Input
                 OnDeviceRemoved(device);
             }
 
-            foreach (var microphone in _microphones)
-            {
-                microphone.Dispose();
-            }
-            _microphones.Clear();
-            _unresolvedMics.Clear();
+            ReleaseMicrophones();
         }
     }
 }

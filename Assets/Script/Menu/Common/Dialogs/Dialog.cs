@@ -9,7 +9,6 @@ using YARG.Helpers.Extensions;
 using YARG.Localization;
 using YARG.Menu.Data;
 using YARG.Menu.Navigation;
-using YARG.Menu.Persistent;
 
 namespace YARG.Menu.Dialogs
 {
@@ -46,8 +45,6 @@ namespace YARG.Menu.Dialogs
                     ctx => NavigationGroup.SelectNext(ctx.IsRepeat)),
                 new NavigationScheme.Entry(MenuAction.Green, "Menu.Common.Confirm",
                     () => NavigationGroup.ConfirmSelection()),
-                new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Cancel",
-                    () => DialogManager.Instance.ClearDialog()),
             }, null);
         }
 
@@ -64,24 +61,18 @@ namespace YARG.Menu.Dialogs
         public ColoredButton AddDialogButton(string localizeKey, UnityAction action)
         {
             var button = Instantiate(_dialogButtonPrefab, _dialogButtonContainer);
-            RegisterNavigatable(button);
+
+            // Add the navigatable button, and select it
+            var nav = button.GetComponentInChildren<NavigatableUnityButton>();
+            if (nav != null)
+            {
+                _navigationGroup.AddNavigatable(nav);
+            }
 
             button.Text.text = Localize.Key(localizeKey);
             button.OnClick.AddListener(action);
 
             return button;
-        }
-
-        protected void RegisterNavigatable(Component root)
-        {
-            var navigatable = root.GetComponentInChildren<NavigatableBehaviour>();
-            if (navigatable != null)
-                _navigationGroup.AddNavigatable(navigatable);
-        }
-
-        public void SelectLast()
-        {
-            _navigationGroup.SelectLast();
         }
 
         public virtual ColoredButton AddDialogButton(string localizeKey, Color backgroundColor, UnityAction action)
@@ -121,9 +112,11 @@ namespace YARG.Menu.Dialogs
         {
         }
 
+        public bool IsOpen => this != null && gameObject.activeSelf;
+
         public UniTask WaitUntilClosed()
         {
-            return UniTask.WaitUntil(() => this == null || !gameObject.activeSelf);
+            return UniTask.WaitUntil(() => !IsOpen);
         }
     }
 }

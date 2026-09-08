@@ -51,8 +51,7 @@ namespace YARG.Menu.Persistent
             SetDimmed(rampProgress);
         }
 
-        private void OnMenuInput(YargPlayer player, UnityEngine.InputSystem.InputDevice device,
-            MenuInputSource source, ref GameInput input)
+        private void OnMenuInput(YargPlayer player, ref GameInput input)
         {
             ResetTimer();
         }

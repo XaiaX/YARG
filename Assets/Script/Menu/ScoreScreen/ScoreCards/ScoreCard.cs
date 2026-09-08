@@ -114,39 +114,24 @@ namespace YARG.Menu.ScoreScreen
         private TextMeshProUGUI _offsetHistogramRightAxisLabel;
         private readonly List<RectTransform> _offsetHistogramBarPool = new();
 
-        protected bool IsHighScore;
-        protected T Stats;
-        protected float AverageMultiplier;
+        protected bool  IsHighScore;
+        protected T     Stats;
+        protected bool  IsReplay;
 
         public YargPlayer Player { get; private set; }
-
-        protected virtual bool ShouldShowOffsetHistogram => true;
-
-        protected RectTransform AdvancedStatsRect => _advancedStatsRect;
-
-        protected Color AdvancedAccentColor => _colorizer != null ? _colorizer.CurrentColor : Color.white;
-
-        protected TextMeshProUGUI CreateStatLabel(Transform parent, string name, TextAlignmentOptions alignment)
-        {
-            return CreateHistogramLabel(parent, name, alignment);
-        }
 
         private void Awake()
         {
             _colorizer = GetComponent<ScoreCardColorizer>();
         }
 
-        public void Initialize(bool isHighScore, YargPlayer player, T stats, float averageMultiplier)
+        public void Initialize(bool isHighScore, YargPlayer player, T stats, bool isReplay)
         {
             IsHighScore = isHighScore;
             Player = player;
             Stats = stats;
-            AverageMultiplier = averageMultiplier;
+            IsReplay  = isReplay;
         }
-
-        // Asset name for the difficulty-ring instrument icon. Overridden by cards that need a
-        // context-specific icon (e.g. Vocals uses the harmony part-count mic icon).
-        protected virtual string GetDifficultyRingAsset() => Player.Profile.CurrentInstrument.ToResourceName();
 
         public virtual void SetCardContents()
         {
@@ -157,7 +142,7 @@ namespace YARG.Menu.ScoreScreen
 
             if (_difficultyRing != null)
             {
-                _difficultyRing.SetInfo(GetDifficultyRingAsset(),
+                _difficultyRing.SetInfo(Player.Profile.CurrentInstrument.ToResourceName(),
                     Player.Profile.CurrentInstrument,
                     GlobalVariables.State.CurrentSong[Player.Profile.CurrentInstrument]);
             }
@@ -179,7 +164,7 @@ namespace YARG.Menu.ScoreScreen
                 _colorizer.SetCardColor(ScoreCardColorizer.ScoreCardColor.Gray);
                 ShowTag("Bot");
             }
-            else if (Player.IsReplay)
+            else if (IsReplay)
             {
                 if (Stats.IsFullCombo)
                 {
@@ -202,10 +187,15 @@ namespace YARG.Menu.ScoreScreen
                 _colorizer.SetCardColor(ScoreCardColorizer.ScoreCardColor.Blue);
                 ShowTag("High Score");
             }
-            else
+            else if (!GlobalVariables.State.IsReplay)
             {
                 _colorizer.SetCardColor(ScoreCardColorizer.ScoreCardColor.Blue);
                 ShowTag(SettingsManager.Settings.NoFail.Value != NoFailMode.Off ? "Completed" : "Cleared");
+            }
+            else
+            {
+                _colorizer.SetCardColor(ScoreCardColorizer.ScoreCardColor.Blue);
+                _tagGameObject.SetActive(false);
             }
 
             _score.text = Stats.TotalScore.ToString("N0");
@@ -217,20 +207,13 @@ namespace YARG.Menu.ScoreScreen
             _notesMissedContainer.gameObject.SetActive(Stats.NotesMissed != 0);
             _starpowerPhrases.text = $"{ColorizePrimary(Stats.StarPowerPhrasesHit)} / " +
                 $"{ColorizeSecondary(Stats.TotalStarPowerPhrases)}";
-            _averageMultiplier.text = ColorizePrimary(AverageMultiplier.ToString("0.00"));
+            _averageMultiplier.text = ColorizePrimary(Stats.AverageMultiplier.ToString("0.00"));
             _bandBonusScore.text = ColorizePrimary(Stats.BandBonusScore.ToString("N0"));
             _averageOffset.text = $"{ColorizePrimary(Math.Round(Stats.GetAverageOffset() * 1000, MidpointRounding.AwayFromZero))} {ColorizeSecondary("ms")}";
             _starPowerActivations.text = ColorizePrimary(Stats.StarPowerActivationCount);
             string timeInStarPower = TimeSpan.FromSeconds(Stats.TimeInStarPower).ToString(@"m\:ss");
             _timeInStarPower.text = ColorizePrimary(timeInStarPower);
-            if (ShouldShowOffsetHistogram)
-            {
-                BuildOffsetHistogram();
-            }
-            else
-            {
-                SetOffsetHistogramActive(false);
-            }
+            BuildOffsetHistogram();
 
             // Set engine preset tag
             var enginePresetId = Player.EnginePreset.Id;

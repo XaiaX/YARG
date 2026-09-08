@@ -19,7 +19,6 @@ namespace YARG.Gameplay.HUD
             nameof(SettingsManager.Settings.SfxVolume),
             nameof(SettingsManager.Settings.VocalMonitoring),
             nameof(SettingsManager.Settings.MetronomeVolume),
-            nameof(SettingsManager.Settings.MuteOnMissVolume),
         };
 
         private static readonly List<string> _calibrationSettings = new()
@@ -27,7 +26,8 @@ namespace YARG.Gameplay.HUD
             nameof(SettingsManager.Settings.AudioCalibration),
             nameof(SettingsManager.Settings.VideoCalibration),
             nameof(SettingsManager.Settings.AutoCalibrateAudio),
-            nameof(SettingsManager.Settings.AutoCalibrateVideo)
+            nameof(SettingsManager.Settings.AutoCalibrateVideo),
+            nameof(SettingsManager.Settings.AutoCalibrateOffset)
         };
     }
 }
