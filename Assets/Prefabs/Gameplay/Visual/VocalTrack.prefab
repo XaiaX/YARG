@@ -1333,6 +1333,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _vocalPlayerPrefab: {fileID: 6598301681565966518, guid: 5a7016f19e8745444809c16b7ca55fe6, type: 3}
+  _partyVocalPlayerPrefab: {fileID: 6598301681565966518, guid: 9f931be0d195443ca85c602a66623a92, type: 3}
   _percussionTrackPrefab: {fileID: 3867995854415630723, guid: d5d6f807910836d4682b18bfaa00a257, type: 3}
   _trackRenderer: {fileID: 5801866609487356704}
   _trackMaterials:
