@@ -4,6 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
+using YARG.Core;
 using YARG.Helpers.Extensions;
 using YARG.Core.Engine;
 using YARG.Core.Extensions;
@@ -142,9 +143,12 @@ namespace YARG.Menu.ScoreScreen
 
             if (_difficultyRing != null)
             {
-                _difficultyRing.SetInfo(Player.Profile.CurrentInstrument.ToResourceName(),
-                    Player.Profile.CurrentInstrument,
-                    GlobalVariables.State.CurrentSong[Player.Profile.CurrentInstrument]);
+                Instrument ringInstrument = Player.Profile.GameMode == GameMode.PartyVocals
+                    ? (GlobalVariables.State.CurrentSong.VocalsCount >= 2 ? Instrument.Harmony : Instrument.Vocals)
+                    : Player.Profile.CurrentInstrument;
+                _difficultyRing.SetInfo(ringInstrument.ToResourceName(),
+                    ringInstrument,
+                    GlobalVariables.State.CurrentSong[ringInstrument]);
             }
 
             // Set percent

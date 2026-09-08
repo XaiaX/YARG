@@ -1265,7 +1265,7 @@ namespace YARG.Menu.DifficultySelect
                         if (player.SittingOut) continue;
                         if (player == primaryPlayer) continue;
 
-                        if (player.Profile.GameMode == GameMode.Vocals)
+                        if (player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals)
                         {
                             player.Profile.ApplySessionModifiers(primaryPlayer.Profile);
                         }

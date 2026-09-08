@@ -220,7 +220,12 @@ namespace YARG.Menu.History
                 return;
             }
 
-            if (IsAnalysisUnsupported(data)) return;
+            if (IsAnalysisUnsupported(data))
+            {
+                DialogManager.Instance.ShowMessage("Score Card Unavailable",
+                    "Party Vocals replay score cards are not yet supported. You can still watch this replay.");
+                return;
+            }
 
             var results = ReplayAnalyzer.AnalyzeReplay(chart, _entry, data);
             bool replayConsistent = results.All(r => r.Passed);

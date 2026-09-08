@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.AddressableAssets;
+using YARG.Core;
 using YARG.Core.Engine.Vocals;
 using YARG.Helpers.Extensions;
 
@@ -11,9 +12,17 @@ namespace YARG.Menu.ScoreScreen
         {
             base.SetCardContents();
 
-            // Set background icon
+            // Party Vocals uses the same part-count icon convention as the gameplay HUD.
+            string iconName = Player.Profile.GameMode == GameMode.PartyVocals
+                ? GlobalVariables.State.CurrentSong.VocalsCount switch
+                {
+                    >= 3 => "harmVocals",
+                    2 => "twoVocals",
+                    _ => "vocals",
+                }
+                : Player.Profile.CurrentInstrument.ToResourceName();
             _instrumentIcon.sprite = Addressables
-                .LoadAssetAsync<Sprite>($"InstrumentIcons[{Player.Profile.CurrentInstrument.ToResourceName()}]")
+                .LoadAssetAsync<Sprite>($"InstrumentIcons[{iconName}]")
                 .WaitForCompletion();
         }
 
