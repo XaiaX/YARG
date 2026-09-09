@@ -262,10 +262,12 @@ namespace YARG.Gameplay.Player
 
         public void Initialize(VocalsTrack vocalsTrack, YargPlayer primaryPlayer, float? trackSpeed)
         {
-            _originalVocalsTrack = vocalsTrack;
+            // Keep the resolved source pristine for each player's independent modifiers.
+            // The visual baseline and working track belong only to this highway.
+            _originalVocalsTrack = vocalsTrack.Clone();
 
-            // Apply the modifiers of the primary player. All players should have the
-            // same modifier(s) chosen.
+            // The shared highway reflects the primary player's modifiers, even when
+            // replay or stale roster profiles have different modifiers.
             for (int i = 0; i < _originalVocalsTrack.Parts.Count; i++)
             {
                 primaryPlayer.Profile.ApplyVocalModifiers(_originalVocalsTrack.Parts[i], i);
