@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using YARG.Core;
@@ -464,7 +465,12 @@ namespace YARG.Gameplay
                 _players = new List<BasePlayer>();
 
                 bool vocalTrackInitialized = false;
-                var effectiveVocalTracks = new Dictionary<(GameMode gameMode, Instrument instrument, PartyVocalsChartPreference preference), VocalsTrack>();
+                // There is one visual vocal highway, so there must be one chart selection.
+                // Resolve from the first participating vocalist without changing sticky preferences.
+                var vocalPrimary = YargPlayers.FirstOrDefault(player => !player.SittingOut &&
+                    player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals);
+                var effectiveVocalTrack = vocalPrimary == null ? null :
+                    VocalChartSelection.ResolveMultitrack(Chart, vocalPrimary.Profile);
 
                 int index = -1;
                 int highwayIndex = -1;
@@ -481,6 +487,17 @@ namespace YARG.Gameplay
                         {
                             mic.Reset();
                         }
+                    }
+
+                    // Persisted profiles and replay rosters can bypass difficulty selection.
+                    // Honor the first active vocal mode rather than create a mixed session.
+                    if (!player.SittingOut && vocalPrimary != null &&
+                        player.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals &&
+                        player.Profile.GameMode != vocalPrimary.Profile.GameMode)
+                    {
+                        YargLogger.LogWarning($"Sitting out conflicting vocal player '{player.Profile.Name}': " +
+                            $"session vocal mode is {vocalPrimary.Profile.GameMode}.");
+                        player.SittingOut = true;
                     }
 
                     // Skip if the player is sitting out
@@ -532,14 +549,6 @@ namespace YARG.Gameplay
                     }
                     else
                     {
-                        var vocalTrackKey = (player.Profile.GameMode, player.Profile.CurrentInstrument,
-                            player.Profile.PartyVocalsChartPreference);
-                        if (!effectiveVocalTracks.TryGetValue(vocalTrackKey, out var effectiveVocalTrack))
-                        {
-                            effectiveVocalTrack = VocalChartSelection.ResolveMultitrack(Chart, player.Profile);
-                            effectiveVocalTracks.Add(vocalTrackKey, effectiveVocalTrack);
-                        }
-
                         // Initialize the vocal track if it hasn't been already, and hide lyric bar
                         if (!vocalTrackInitialized)
                         {
@@ -549,8 +558,8 @@ namespace YARG.Gameplay
                             VocalTrack.transform.position = new Vector3(highwayIndex * TRACK_SPACING_X, 100, 0);
                             _trackViewManager.CreateVocalTrackView(highwayIndex);
 
-                            // The visual track is shared, so initialize it from the first vocal player's
-                            // effective selection. Each player below retains its own resolved track.
+                            // Visuals, player engines, and party coordinators all use the
+                            // primary vocalist's session-wide selection.
                             VocalTrack.Initialize(effectiveVocalTrack, player, Song.VocalScrollSpeedScalingFactor);
 
                             if (SettingsManager.Settings.KeepLyricBar.Value &&

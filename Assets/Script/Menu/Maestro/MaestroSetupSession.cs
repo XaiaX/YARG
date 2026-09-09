@@ -1091,6 +1091,10 @@ namespace YARG.Menu.Maestro
 
         private bool IsModeAvailableForPlayer(MaestroStagedPlayer player)
         {
+            if (IsVocal(player.GameMode))
+                return GetPossibleInstruments(player.GameMode)
+                    .Any(instrument => IsNativeInstrumentAvailable(player, player.GameMode, instrument));
+
             if (IsModeAvailable(player.GameMode))
                 return true;
 
@@ -1142,11 +1146,13 @@ namespace YARG.Menu.Maestro
                 {
                     foreach (var prior in _players.Values)
                     {
-                        if (prior.ProfileId == target.ProfileId || prior.SittingOut)
+                        // Later profiles cannot displace the first participating vocalist.
+                        // A conflicting mode has no available part, including for remote drafts.
+                        if (prior.ProfileId == target.ProfileId)
+                            break;
+                        if (prior.SittingOut || !IsVocal(prior.GameMode))
                             continue;
-                        if ((prior.GameMode is GameMode.Vocals or GameMode.PartyVocals) &&
-                            (prior.Instrument is Instrument.Vocals or Instrument.Harmony))
-                            return prior.Instrument == instrument;
+                        return prior.GameMode == mode && prior.Instrument == instrument;
                     }
                 }
 

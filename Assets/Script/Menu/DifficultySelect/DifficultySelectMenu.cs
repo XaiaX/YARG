@@ -1555,6 +1555,23 @@ namespace YARG.Menu.DifficultySelect
 
         private bool HasPlayableInstrument(SongEntry entry, in Instrument instrument)
         {
+            // The first participating vocalist reserves the session's vocal mode.
+            // Reject every part for the other mode so it uses the existing no-part
+            // flow (sit out/disconnect), rather than offering a mismatched Ready.
+            if (CurrentPlayer.Profile.GameMode is GameMode.Vocals or GameMode.PartyVocals)
+            {
+                for (int i = 0; i < _playerIndex; i++)
+                {
+                    var previous = PlayerContainer.Players[i];
+                    if (previous.SittingOut ||
+                        previous.Profile.GameMode is not (GameMode.Vocals or GameMode.PartyVocals))
+                        continue;
+                    if (previous.Profile.GameMode != CurrentPlayer.Profile.GameMode)
+                        return false;
+                    break;
+                }
+            }
+
             // Party Vocals is playable when either vocal chart exists.
             if (instrument == Instrument.PartyVocals)
                 return entry.HasInstrument(Instrument.Vocals) || entry.HasInstrument(Instrument.Harmony);
@@ -1572,6 +1589,7 @@ namespace YARG.Menu.DifficultySelect
                 for (int i = 0; i < _playerIndex; i++)
                 {
                     var player = PlayerContainer.Players[i];
+                    if (player.SittingOut) continue;
                     var playerInstrument = player.Profile.CurrentInstrument;
                     if (playerInstrument is Instrument.Vocals or Instrument.Harmony)
                     {

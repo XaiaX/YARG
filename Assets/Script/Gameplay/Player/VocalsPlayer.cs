@@ -123,12 +123,14 @@ namespace YARG.Gameplay.Player
 
             // Get the notes from the specific harmony or solo part
 
-            EffectiveVocalTrack = effectiveVocalTrack;
-            EffectiveVocalPartIndex = Mathf.Clamp(Player.Profile.HarmonyIndex, 0, effectiveVocalTrack.Parts.Count - 1);
-            _allVocalParts = effectiveVocalTrack.Parts;
+            // Modifiers and engines mutate notes. Keep every player's working track
+            // separate from the shared load-time chart and from every other player.
+            EffectiveVocalTrack = effectiveVocalTrack.Clone();
+            EffectiveVocalPartIndex = Mathf.Clamp(Player.Profile.HarmonyIndex, 0, EffectiveVocalTrack.Parts.Count - 1);
+            _allVocalParts = EffectiveVocalTrack.Parts;
             _handlesCountdown = vocalIndex == 0;
 
-            var track = effectiveVocalTrack.Parts[EffectiveVocalPartIndex];
+            var track = EffectiveVocalTrack.Parts[EffectiveVocalPartIndex];
             player.Profile.ApplyVocalModifiers(track, EffectiveVocalPartIndex);
 
             OriginalNoteTrack = track.CloneAsInstrumentDifficulty();
