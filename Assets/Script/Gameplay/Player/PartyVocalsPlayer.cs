@@ -443,14 +443,14 @@ namespace YARG.Gameplay.Player
             IReadOnlyList<VocalsPart> allParts, InstrumentDifficulty<VocalNote> baseTrack)
         {
             var merged = new List<VocalNote>();
-            var seen = new HashSet<(uint tick, uint tickEnd)>();
+            var seen = new HashSet<(VocalNoteType type, uint tick, uint tickEnd)>();
 
             foreach (var part in allParts)
             {
                 foreach (var phrase in part.NotePhrases)
                 {
                     var note = phrase.PhraseParentNote;
-                    if (seen.Add((note.Tick, note.TickEnd)))
+                    if (seen.Add((note.Type, note.Tick, note.TickEnd)))
                     {
                         merged.Add(note);
                     }

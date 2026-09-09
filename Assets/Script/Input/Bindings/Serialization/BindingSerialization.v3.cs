@@ -235,6 +235,7 @@ namespace YARG.Input.Serialization
     {
         public string BaseName;
         public int Channel;
+        public string StableId;
 
         public string DisplayName;
 
@@ -242,6 +243,7 @@ namespace YARG.Input.Serialization
         public SerializedMicV3()
         {
             BaseName = string.Empty;
+            StableId = null;
             DisplayName = string.Empty;
         }
 
@@ -249,6 +251,7 @@ namespace YARG.Input.Serialization
         {
             BaseName = serialized.BaseName;
             Channel = serialized.Channel;
+            StableId = serialized.StableId;
             DisplayName = string.Empty;
         }
 
@@ -256,7 +259,7 @@ namespace YARG.Input.Serialization
         {
             if (!string.IsNullOrEmpty(BaseName))
             {
-                return new SerializedMic(BaseName, Channel);
+                return new SerializedMic(BaseName, Channel, StableId);
             }
 
             if (!string.IsNullOrEmpty(DisplayName))

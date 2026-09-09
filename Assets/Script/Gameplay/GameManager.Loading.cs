@@ -464,7 +464,7 @@ namespace YARG.Gameplay
                 _players = new List<BasePlayer>();
 
                 bool vocalTrackInitialized = false;
-                VocalsTrack effectiveVocalTrack = null;
+                var effectiveVocalTracks = new Dictionary<(GameMode gameMode, Instrument instrument, PartyVocalsChartPreference preference), VocalsTrack>();
 
                 int index = -1;
                 int highwayIndex = -1;
@@ -532,6 +532,14 @@ namespace YARG.Gameplay
                     }
                     else
                     {
+                        var vocalTrackKey = (player.Profile.GameMode, player.Profile.CurrentInstrument,
+                            player.Profile.PartyVocalsChartPreference);
+                        if (!effectiveVocalTracks.TryGetValue(vocalTrackKey, out var effectiveVocalTrack))
+                        {
+                            effectiveVocalTrack = VocalChartSelection.ResolveMultitrack(Chart, player.Profile);
+                            effectiveVocalTracks.Add(vocalTrackKey, effectiveVocalTrack);
+                        }
+
                         // Initialize the vocal track if it hasn't been already, and hide lyric bar
                         if (!vocalTrackInitialized)
                         {
@@ -541,9 +549,8 @@ namespace YARG.Gameplay
                             VocalTrack.transform.position = new Vector3(highwayIndex * TRACK_SPACING_X, 100, 0);
                             _trackViewManager.CreateVocalTrackView(highwayIndex);
 
-                            // Resolve once for the shared visual track and all vocal engines.
-                            // Sticky Party Vocals preferences remain unchanged when falling back.
-                            effectiveVocalTrack = VocalChartSelection.ResolveMultitrack(Chart, player.Profile);
+                            // The visual track is shared, so initialize it from the first vocal player's
+                            // effective selection. Each player below retains its own resolved track.
                             VocalTrack.Initialize(effectiveVocalTrack, player, Song.VocalScrollSpeedScalingFactor);
 
                             if (SettingsManager.Settings.KeepLyricBar.Value &&

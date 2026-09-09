@@ -123,9 +123,6 @@ namespace YARG.Menu.History
             if (!data.Frames.Any(frame => frame.Profile.GameMode == YARG.Core.GameMode.PartyVocals))
                 return false;
 
-            YargLogger.LogWarning("Party Vocals replay analysis not yet supported");
-            DialogManager.Instance.ShowMessage("Replay Analysis Unavailable",
-                "Party Vocals replay analysis not yet supported. You can still watch this replay.");
             return true;
         }
 
@@ -162,7 +159,13 @@ namespace YARG.Menu.History
             }
             if (_entry.CensorshipEnabled) chart.ApplyCensorship();
 
-            if (IsAnalysisUnsupported(data)) return;
+            if (IsAnalysisUnsupported(data))
+            {
+                YargLogger.LogWarning("Party Vocals replay analysis not yet supported");
+                DialogManager.Instance.ShowMessage("Replay Analysis Unavailable",
+                    "Party Vocals replay analysis not yet supported. You can still watch this replay.");
+                return;
+            }
 
             var results = ReplayAnalyzer.AnalyzeReplay(chart, _entry, data);
             for (int i = 0; i < results.Length; i++)
