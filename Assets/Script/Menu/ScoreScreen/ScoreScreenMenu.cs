@@ -265,7 +265,17 @@ namespace YARG.Menu.ScoreScreen
                 _ => Mathf.Max(0.5f, 4f / _scoreCards.Count),
             };
             foreach (var scoreCard in _scoreCards)
-                ((Component) scoreCard).transform.localScale = Vector3.one * cardScale;
+            {
+                var cardTransform = (RectTransform) ((Component) scoreCard).transform;
+                cardTransform.localScale = Vector3.one * cardScale;
+            }
+
+            // The score container intentionally does not control child widths. Tell it to
+            // include each card's transform scale when calculating slot positions, so the
+            // allocated slot matches the already-scaled visual card width.
+            var cardLayout = _cardContainer.GetComponent<HorizontalLayoutGroup>();
+            cardLayout.childScaleWidth = true;
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform) _cardContainer);
 
             // Mark that the music library should refresh when next opened
             if (GlobalVariables.State.ScoreScreenStats.Value.PlayerScores.Any(e => !e.Player.Profile.IsBot))
@@ -303,7 +313,7 @@ namespace YARG.Menu.ScoreScreen
         {
             var cardRect = _cardContainer.GetChild(0) as RectTransform;
             var layoutGroup = _cardContainer.GetComponent<HorizontalLayoutGroup>();
-            _horizontalScrollStep = cardRect.rect.width + layoutGroup.spacing;
+            _horizontalScrollStep = cardRect.rect.width * cardRect.localScale.x + layoutGroup.spacing;
         }
 
         private static void PlayScoreVox(int fcCount, int highScoreCount)
