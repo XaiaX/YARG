@@ -262,7 +262,7 @@ namespace YARG.Menu.ScoreScreen
             {
                 <= 4 => 1f,
                 5 => 0.8f,
-                _ => Mathf.Max(0.5f, 4f / _scoreCards.Count),
+                _ => Mathf.Max(0.52f, 4f / _scoreCards.Count),
             };
             foreach (var scoreCard in _scoreCards)
             {
