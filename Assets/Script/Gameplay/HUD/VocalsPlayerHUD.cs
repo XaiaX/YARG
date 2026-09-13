@@ -55,7 +55,8 @@ namespace YARG.Gameplay.HUD
             new(1f, 0.85490196f, 0.34901961f, 1f);
         private const float HARM_RIM_FADE_SPEED = 8f;
         private const float HARM_VISUAL_LERP = 12f;
-        private const float COUNT_IN_SATURATION = 0.15f;
+        private const float COUNT_IN_SATURATION = 0.22f;
+        private const float COUNT_IN_BEAT_SATURATION = 0.5f;
         private const float COUNT_IN_VALUE_TARGET = 0.9f;
         private const float COUNT_IN_VALUE_LERP = 0.4f;
 
@@ -181,9 +182,7 @@ namespace YARG.Gameplay.HUD
             if (fill != null)
             {
                 float target = _harmFillTargets[index];
-                fill.fillAmount = target == 0f
-                    ? 0f
-                    : Mathf.Lerp(fill.fillAmount, target, lerp);
+                fill.fillAmount = Mathf.Lerp(fill.fillAmount, target, lerp);
 
                 var fillColor = Color.Lerp(fill.color, _harmColorTargets[index], lerp);
                 fillColor.a = Mathf.Lerp(fill.color.a, _harmFillAlphaTargets[index], lerp);
@@ -426,10 +425,12 @@ namespace YARG.Gameplay.HUD
             }
         }
 
-        private static Color GetCountInColor(Color laneColor)
+        private Color GetCountInColor(Color laneColor)
         {
             Color.RGBToHSV(laneColor, out float hue, out float saturation, out float value);
-            return Color.HSVToRGB(hue, saturation * COUNT_IN_SATURATION,
+            float beatProgress = (float) GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage;
+            float saturationMultiplier = Mathf.Lerp(COUNT_IN_BEAT_SATURATION, COUNT_IN_SATURATION, beatProgress);
+            return Color.HSVToRGB(hue, saturation * saturationMultiplier,
                 Mathf.Lerp(value, COUNT_IN_VALUE_TARGET, COUNT_IN_VALUE_LERP));
         }
 
