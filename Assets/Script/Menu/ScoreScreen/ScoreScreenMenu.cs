@@ -275,6 +275,20 @@ namespace YARG.Menu.ScoreScreen
             // allocated slot matches the already-scaled visual card width.
             var cardLayout = _cardContainer.GetComponent<HorizontalLayoutGroup>();
             cardLayout.childScaleWidth = true;
+            if (cardScale < 1f)
+            {
+                cardLayout.padding.left = 16;
+                cardLayout.padding.right = 16;
+                cardLayout.spacing = 10f;
+                cardLayout.childAlignment = TextAnchor.MiddleLeft;
+            }
+            else
+            {
+                cardLayout.padding.left = 25;
+                cardLayout.padding.right = 25;
+                cardLayout.spacing = 25f;
+                cardLayout.childAlignment = TextAnchor.MiddleCenter;
+            }
             LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform) _cardContainer);
 
             // Mark that the music library should refresh when next opened

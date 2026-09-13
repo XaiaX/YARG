@@ -55,6 +55,9 @@ namespace YARG.Gameplay.HUD
             new(1f, 0.85490196f, 0.34901961f, 1f);
         private const float HARM_RIM_FADE_SPEED = 8f;
         private const float HARM_VISUAL_LERP = 12f;
+        private const float COUNT_IN_SATURATION = 0.15f;
+        private const float COUNT_IN_VALUE_TARGET = 0.9f;
+        private const float COUNT_IN_VALUE_LERP = 0.4f;
 
         [Space]
         [SerializeField]
@@ -382,7 +385,7 @@ namespace YARG.Gameplay.HUD
             _harmFillAlphaTargets[index] = songPresent && (current || countIn) ? 1f : 0f;
             _harmColorTargets[index] = !songPresent
                 ? laneColor.WithAlpha(0f)
-                : laneColor;
+                : countIn && !current ? GetCountInColor(laneColor) : laneColor;
 
             // Current/count-in parts use black; charted gaps restore the authored gray.
             // Only genuinely empty parts are transparent.
@@ -421,6 +424,13 @@ namespace YARG.Gameplay.HUD
                 if (_harmRims[index] != null)
                     _harmRims[index].color = Color.white.WithAlpha(0f);
             }
+        }
+
+        private static Color GetCountInColor(Color laneColor)
+        {
+            Color.RGBToHSV(laneColor, out float hue, out float saturation, out float value);
+            return Color.HSVToRGB(hue, saturation * COUNT_IN_SATURATION,
+                Mathf.Lerp(value, COUNT_IN_VALUE_TARGET, COUNT_IN_VALUE_LERP));
         }
 
         private void CacheHarmonyImages()
