@@ -428,8 +428,9 @@ namespace YARG.Gameplay.Player
 
         public VocalsPlayer CreatePlayer(YargPlayer player)
         {
-            VocalsPlayer prefab = player.Profile.GameMode == GameMode.PartyVocals
-                && _partyVocalPlayerPrefab != null
+            bool isPartyVocals = player.Profile.GameMode == GameMode.PartyVocals;
+            bool partyPrefabAvailable = _partyVocalPlayerPrefab != null;
+            VocalsPlayer prefab = isPartyVocals && partyPrefabAvailable
                 ? _partyVocalPlayerPrefab
                 : _vocalPlayerPrefab;
             var spawned = Instantiate(prefab, _playerContainer);

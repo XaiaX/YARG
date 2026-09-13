@@ -5,6 +5,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using YARG.Core.Engine.Vocals;
+using YARG.Core.Engine.Vocals.Engines;
 using YARG.Gameplay.Vocals;
 using YARG.Core.Game;
 using YARG.Helpers.Extensions;
@@ -27,10 +28,33 @@ namespace YARG.Gameplay.HUD
         [SerializeField] private Image _harm1Fill;
         [SerializeField] private Image _harm2Fill;
         [SerializeField] private Image _harm3Fill;
+        [SerializeField] private Image _harm1Background;
+        [SerializeField] private Image _harm2Background;
+        [SerializeField] private Image _harm3Background;
+        [SerializeField] private Image _harm1Rim;
+        [SerializeField] private Image _harm2Rim;
+        [SerializeField] private Image _harm3Rim;
         [SerializeField] private GameObject _harmFillContainer;
+        private readonly Image[] _harmFills = new Image[3];
+        private readonly Image[] _harmBackgrounds = new Image[3];
+        private readonly Image[] _harmRims = new Image[3];
         private readonly float[] _harmFillTargets = new float[3];
+        private readonly float[] _harmFillAlphaTargets = new float[3];
         private readonly Color[] _harmColorTargets = new Color[3];
+        private readonly Color[] _harmBackgroundColorTargets = new Color[3];
+        private readonly Color[] _harmBackgroundBaseColors = new Color[3];
+        private readonly Color[] _harmRimColorTargets = new Color[3];
+        private readonly float[] _harmRimAlphaTargets = new float[3];
         private readonly bool[] _harmPartPresent = new bool[3];
+        private readonly bool[] _harmPartAvailable = new bool[3];
+        private readonly bool[] _harmPartCountIn = new bool[3];
+        private bool _harmImagesCached;
+        private bool _partyHarmonyVisuals;
+
+        private static readonly Color PARTY_FC_RIM_COLOR =
+            new(1f, 0.85490196f, 0.34901961f, 1f);
+        private const float HARM_RIM_FADE_SPEED = 8f;
+        private const float HARM_VISUAL_LERP = 12f;
 
         [Space]
         [SerializeField]
@@ -98,6 +122,8 @@ namespace YARG.Gameplay.HUD
             }
 
             _starPowerFill.fillAmount = 0f;
+
+            CacheHarmonyImages();
         }
 
         private void Update()
@@ -125,6 +151,13 @@ namespace YARG.Gameplay.HUD
                 _starPowerPulse.color = Color.white.WithAlpha(0);
             }
 
+            if (_partyHarmonyVisuals && _harmFillContainer != null && _harmFillContainer.activeSelf)
+            {
+                UpdateHarmonyMeter(0);
+                UpdateHarmonyMeter(1);
+                UpdateHarmonyMeter(2);
+            }
+
             if (!_isFc)
             {
                 var spRimAlpha = Mathf.Clamp01(_starPowerRim.color.a + (_isSp ? 1 : -1) * 3f * Time.deltaTime);
@@ -132,6 +165,55 @@ namespace YARG.Gameplay.HUD
 
                 _grooveRim.color = Color.white.WithAlpha(grooveRimAlpha);
                 _starPowerRim.color = Color.white.WithAlpha(spRimAlpha);
+            }
+        }
+
+        private void UpdateHarmonyMeter(int index)
+        {
+            var fill = _harmFills[index];
+            var background = _harmBackgrounds[index];
+            var rim = _harmRims[index];
+            float lerp = Mathf.Clamp01(Time.deltaTime * HARM_VISUAL_LERP);
+
+            if (fill != null)
+            {
+                float target = _harmFillTargets[index];
+                fill.fillAmount = target == 0f
+                    ? 0f
+                    : Mathf.Lerp(fill.fillAmount, target, lerp);
+
+                var fillColor = Color.Lerp(fill.color, _harmColorTargets[index], lerp);
+                fillColor.a = Mathf.Lerp(fill.color.a, _harmFillAlphaTargets[index], lerp);
+                fill.color = fillColor;
+            }
+
+            if (background != null)
+            {
+                // Apply black/current or authored gray/inactive without fading alpha.
+                background.color = _harmBackgroundColorTargets[index];
+            }
+
+            if (rim != null)
+            {
+                var rimColor = _harmRimColorTargets[index];
+                if (!_harmPartAvailable[index])
+                {
+                    // An absent part is hidden immediately, including after reset or
+                    // a rewind to a chart with fewer parts.
+                    rimColor.a = 0f;
+                }
+                else if (_harmPartPresent[index])
+                {
+                    // The active phrase rim is fully visible. Count-in uses the eased
+                    // path below so entering the next phrase does not pop the rim.
+                    rimColor.a = 1f;
+                }
+                else
+                {
+                    float rimLerp = Mathf.Clamp01(Time.deltaTime * HARM_RIM_FADE_SPEED);
+                    rimColor.a = Mathf.Lerp(rim.color.a, _harmRimAlphaTargets[index], rimLerp);
+                }
+                rim.color = rimColor;
             }
         }
 
@@ -244,20 +326,164 @@ namespace YARG.Gameplay.HUD
         {
             if (_harmFillContainer == null) return;
             _harmFillContainer.SetActive(true);
-            var fills = new[] { _harm1Fill, _harm2Fill, _harm3Fill };
+            _partyHarmonyVisuals = false;
             double scale = awesomeThreshold > 0 ? 1.0 / awesomeThreshold : 1.0;
-            for (int i = 0; i < fills.Length; i++)
+            for (int i = 0; i < 3; i++)
             {
-                if (fills[i] == null) continue;
                 bool present = partInCurrentPhrase != null && partInCurrentPhrase(i);
-                _harmFillTargets[i] = present && i < meters.Count ? (float) System.Math.Min(1.0, meters[i] * scale) : 1f;
-                _harmColorTargets[i] = present ? YARG.Gameplay.Player.VocalTrack.Colors[i] : new Color(.1f, .1f, .1f);
-                if (!present && partInNextPhrase != null && partInNextPhrase(i)) _harmFillTargets[i] = 1f - (float) phraseProgress;
-                _harmPartPresent[i] = present;
+                float meter = present && i < meters.Count
+                    ? (float) System.Math.Min(1.0, meters[i] * scale)
+                    : 0f;
+                SetHarmonyMeterTarget(i, meter, present, present, false, false);
             }
         }
 
-        public void HideHarmFill() => _harmFillContainer?.SetActive(false);
+        /// <summary>
+        /// Updates the Party Vocals per-part meters from the coordinator's live state.
+        /// This is intentionally polled by the owning player during its visual update:
+        /// coordinator meters are speculative and can change several times per frame,
+        /// so a phrase event would be too coarse for the HUD.
+        /// </summary>
+        public void UpdatePartyVocalsMeters(PartyVocalsCoordinatorEngine coordinator, bool globalFc)
+        {
+            if (_harmFillContainer == null || coordinator == null)
+                return;
+
+            CacheHarmonyImages();
+            _partyHarmonyVisuals = true;
+            _harmFillContainer.SetActive(true);
+            double scale = coordinator.AwesomeThreshold > 0
+                ? 1.0 / coordinator.AwesomeThreshold
+                : 1.0;
+            float phraseProgress = Mathf.Clamp01((float) coordinator.CurrentPhraseProgress);
+            for (int i = 0; i < 3; i++)
+            {
+                // PartHasContent is based on every phrase in the selected effective track,
+                // not just the coordinator's current/next phrase. This keeps a charted part
+                // visible during gaps while allowing genuinely absent HARM parts to hide.
+                bool songPresent = coordinator.PartHasContent(i);
+                bool current = coordinator.PartInCurrentPhrase(i);
+                bool next = !current && coordinator.PartInNextPhrase(i);
+                float meter = current && i < coordinator.CanonicalMeters.Count
+                    ? Mathf.Clamp01((float) (coordinator.CanonicalMeters[i] * scale))
+                    : next ? 1f - phraseProgress : 0f;
+                SetHarmonyMeterTarget(i, meter, current, songPresent, next, globalFc);
+            }
+        }
+
+        private void SetHarmonyMeterTarget(int index, float target, bool current,
+            bool songPresent, bool countIn, bool globalFc)
+        {
+            CacheHarmonyImages();
+            var laneColor = YARG.Gameplay.Player.VocalTrack.Colors[index];
+            bool enteredCountIn = countIn && !_harmPartCountIn[index];
+
+            _harmFillTargets[index] = Mathf.Clamp01(target);
+            _harmFillAlphaTargets[index] = songPresent && (current || countIn) ? 1f : 0f;
+            _harmColorTargets[index] = !songPresent
+                ? laneColor.WithAlpha(0f)
+                : laneColor;
+
+            // Current/count-in parts use black; charted gaps restore the authored gray.
+            // Only genuinely empty parts are transparent.
+            _harmBackgroundColorTargets[index] = current || countIn
+                ? Color.black
+                : _harmBackgroundBaseColors[index];
+            _harmBackgroundColorTargets[index].a = songPresent ? 1f : 0f;
+
+            // Harmony rims are a player-level FC indicator, never a lane indicator. They
+            // appear only for the current or count-in phrase; charted gaps retain the
+            // authored background but have no rim.
+            _harmRimColorTargets[index] = globalFc ? PARTY_FC_RIM_COLOR : Color.white;
+            _harmRimAlphaTargets[index] = songPresent && (current || countIn) ? 1f : 0f;
+            _harmPartPresent[index] = current;
+            _harmPartAvailable[index] = songPresent;
+            _harmPartCountIn[index] = countIn;
+
+            // Count-in entry is the only point at which the fill amount is snapped. The
+            // following polls target 1 - CurrentPhraseProgress, so it drains from full
+            // instead of repeatedly interpolating upward from zero.
+            if (enteredCountIn && _harmFills[index] != null)
+                _harmFills[index].fillAmount = 1f;
+
+            // An absent part must be hidden as a whole immediately. In particular, do not
+            // let the previous phrase's fill/background/rim interpolation flash during a
+            // reset, rewind, or transition to a chart with fewer HARM parts.
+            if (!songPresent)
+            {
+                if (_harmFills[index] != null)
+                {
+                    _harmFills[index].fillAmount = 0f;
+                    _harmFills[index].color = laneColor.WithAlpha(0f);
+                }
+                if (_harmBackgrounds[index] != null)
+                    _harmBackgrounds[index].color = _harmBackgroundColorTargets[index];
+                if (_harmRims[index] != null)
+                    _harmRims[index].color = Color.white.WithAlpha(0f);
+            }
+        }
+
+        private void CacheHarmonyImages()
+        {
+            if (_harmImagesCached) return;
+            _harmFills[0] = _harm1Fill;
+            _harmFills[1] = _harm2Fill;
+            _harmFills[2] = _harm3Fill;
+            _harmBackgrounds[0] = _harm1Background;
+            _harmBackgrounds[1] = _harm2Background;
+            _harmBackgrounds[2] = _harm3Background;
+            _harmRims[0] = _harm1Rim;
+            _harmRims[1] = _harm2Rim;
+            _harmRims[2] = _harm3Rim;
+
+            for (int i = 0; i < _harmBackgrounds.Length; i++)
+            {
+                _harmBackgroundBaseColors[i] = _harmBackgrounds[i] != null
+                    ? _harmBackgrounds[i].color
+                    : Color.white;
+            }
+            _harmImagesCached = true;
+        }
+
+        public void HideHarmFill()
+        {
+            _partyHarmonyVisuals = false;
+            ResetHarmonyVisuals();
+            // The HUD hierarchy can be destroyed before its owning player.
+            // Unity's null comparison also detects destroyed native objects.
+            if (_harmFillContainer != null)
+                _harmFillContainer.SetActive(false);
+        }
+
+        private void ResetHarmonyVisuals()
+        {
+            CacheHarmonyImages();
+            for (int i = 0; i < 3; i++)
+            {
+                _harmFillTargets[i] = 0f;
+                _harmFillAlphaTargets[i] = 0f;
+                _harmColorTargets[i] = YARG.Gameplay.Player.VocalTrack.Colors[i].WithAlpha(0f);
+                _harmBackgroundColorTargets[i] = _harmBackgroundBaseColors[i].WithAlpha(0f);
+                _harmRimColorTargets[i] = Color.white;
+                _harmRimAlphaTargets[i] = 0f;
+                _harmPartPresent[i] = false;
+                _harmPartAvailable[i] = false;
+                _harmPartCountIn[i] = false;
+                if (_harmFills[i] != null)
+                {
+                    _harmFills[i].fillAmount = 0f;
+                    _harmFills[i].color = _harmColorTargets[i];
+                }
+                if (_harmBackgrounds[i] != null)
+                    _harmBackgrounds[i].color = _harmBackgroundColorTargets[i];
+                if (_harmRims[i] != null)
+                {
+                    var color = _harmRimColorTargets[i];
+                    color.a = 0f;
+                    _harmRims[i].color = color;
+                }
+            }
+        }
 
         public void ShowPartyVocalsGrade(PhraseGrade grade)
         {
@@ -280,6 +506,27 @@ namespace YARG.Gameplay.HUD
                     _starPowerRim.color = Color.white.WithAlpha(1f);
                 }
                 _fcRing.gameObject.SetActive(false);
+            }
+
+            if (!_partyHarmonyVisuals)
+            {
+                return;
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+                if (_harmRims[i] == null)
+                {
+                    continue;
+                }
+
+                // Rim color is global player state, never the HARM lane color. Preserve
+                // the currently eased alpha; SetHarmonyMeterTarget controls whether this
+                // part should be visible for the current/next phrase.
+                var color = isFullCombo ? PARTY_FC_RIM_COLOR : Color.white;
+                color.a = _harmRims[i].color.a;
+                _harmRims[i].color = color;
+                _harmRimColorTargets[i] = color;
             }
         }
     }

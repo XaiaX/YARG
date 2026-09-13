@@ -489,18 +489,18 @@ namespace YARG.Menu.DifficultySelect
                     var lockedPreference = GetLockedPartyVocalsPreference();
                     if (lockedPreference is { } locked)
                         player.Profile.PartyVocalsChartPreference = locked;
-                    bool hasHarm = song.HasInstrument(Instrument.Harmony);
-                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
+                    bool hasHarm = VocalChartSelection.HasHarmonyContent(song.Chart);
+                    bool hasSolo = VocalChartSelection.HasSoloContent(song.Chart);
                     bool realChoice = hasHarm && hasSolo && lockedPreference is null;
                     bool willSingSolo = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
                         ? hasSolo : !hasHarm;
-                    instrumentItem = CreateItem(LocalizeHeader("Instrument"),
+                    instrumentItem = CreateItem(LocalizeHeader("PartyVocals"),
                         willSingSolo ? "Solo" : "Harmony",
-                        _lastMenuState == State.PartyVocalsChartChoice, () =>
+                        _lastMenuState == State.PartyVocalsChartChoice, _ringsItemPrefab, () =>
                         {
                             _menuState = State.PartyVocalsChartChoice;
                             UpdateForPlayer();
-                        }, interactable: realChoice);
+                        }, realChoice);
                 }
                 else
                 {
@@ -522,26 +522,55 @@ namespace YARG.Menu.DifficultySelect
                 // instrument gets a backdrop circle behind its ring; the rest
                 // are dimmed, deeper while another field has focus (the black
                 // unfocused row hides the circle and shrinks the dim contrast).
-                if (_difficultyRing != null && _possibleInstruments.Count > 0)
+                // Party Vocals uses the same ring-capable item, but keeps its
+                // PartyVocals sentinel for navigation while displaying one ring
+                // for each actual Solo/Harmony chart on the current song.
+                if (_difficultyRing != null && _possibleInstruments.Count > 0 &&
+                    instrumentItem.TryGetComponent<DifficultyItemRings>(out var ringHost))
                 {
                     const float ringSize = 40f;
 
                     var song = GlobalVariables.State.CurrentSong;
-                    var rings = instrumentItem.GetComponent<DifficultyItemRings>()
-                        .AttachRingRow(_difficultyRing, _possibleInstruments.Count, ringSize);
-
                     var currentInstrument = player.Profile.CurrentInstrument;
+                    bool isPartyVocals = player.Profile.GameMode == GameMode.PartyVocals;
+                    Instrument effectiveVocalInstrument = currentInstrument;
+                    Instrument[] displayInstruments;
+                    if (isPartyVocals)
+                    {
+                        bool hasSolo = VocalChartSelection.HasSoloContent(song.Chart);
+                        bool hasHarmony = VocalChartSelection.HasHarmonyContent(song.Chart);
+                        int displayCount = (hasSolo ? 1 : 0) + (hasHarmony ? 1 : 0);
+                        displayInstruments = new Instrument[displayCount];
+                        int displayIndex = 0;
+                        if (hasSolo)
+                            displayInstruments[displayIndex++] = Instrument.Vocals;
+                        if (hasHarmony)
+                            displayInstruments[displayIndex] = Instrument.Harmony;
+
+                        effectiveVocalInstrument = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo &&
+                            hasSolo
+                            ? Instrument.Vocals
+                            : hasHarmony ? Instrument.Harmony : Instrument.Vocals;
+                    }
+                    else
+                    {
+                        displayInstruments = _possibleInstruments.ToArray();
+                    }
+
+                    var rings = ringHost.AttachRingRow(_difficultyRing, displayInstruments.Length, ringSize);
                     DifficultyRing selectedRing = null;
 
-                    for (int i = 0; i < _possibleInstruments.Count; i++)
+                    for (int i = 0; i < displayInstruments.Length; i++)
                     {
-                        var instrument = _possibleInstruments[i];
+                        var ringInstrument = displayInstruments[i];
                         rings[i].SetInfo(
-                            GetInstrumentRingAsset(instrument, song.VocalsCount),
-                            instrument,
-                            GetTierValues(song, instrument));
+                            GetInstrumentRingAsset(ringInstrument, song.VocalsCount),
+                            ringInstrument,
+                            GetTierValues(song, ringInstrument));
 
-                        if (instrument == currentInstrument)
+                        if (isPartyVocals
+                            ? ringInstrument == effectiveVocalInstrument
+                            : ringInstrument == currentInstrument)
                         {
                             // Extra size is in the ring's native units; scale it
                             // so the circle extends four *screen* pixels per
@@ -1472,10 +1501,11 @@ namespace YARG.Menu.DifficultySelect
             return FinishCreateItem(btn, header, body, selected, a, interactable);
         }
 
-        private DifficultyItem CreateItem(string header, string body, bool selected, GameObject itemPrefab, UnityAction a)
+        private DifficultyItem CreateItem(string header, string body, bool selected, GameObject itemPrefab,
+            UnityAction a, bool interactable = true)
         {
             var btn = Instantiate(itemPrefab, _container).GetComponent<DifficultyItem>();
-            return FinishCreateItem(btn, header, body, selected, a);
+            return FinishCreateItem(btn, header, body, selected, a, interactable);
         }
 
         private DifficultyItem FinishCreateItem(DifficultyItem btn, string header, string body,

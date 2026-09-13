@@ -69,10 +69,21 @@ namespace YARG.Gameplay.Player
 
         private int _phraseIndex = -1;
 
+        // Runtime-only phrase summary data consumed by the score screen. These remain read-only
+        // to callers; the engine event handlers below are the sole writers.
         protected readonly List<float> _phrasePercents = new();
+        public IReadOnlyList<float> PhrasePercents => _phrasePercents;
+
         protected readonly List<PhraseGrade> _phraseGrades = new();
+        public IReadOnlyList<PhraseGrade> PhraseGrades => _phraseGrades;
+
         protected readonly List<IReadOnlyList<PartyPartResult>> _phrasePartResults = new();
+        public IReadOnlyList<IReadOnlyList<PartyPartResult>> PhrasePartResults => _phrasePartResults;
+
         protected int _percussionHits;
+        private int _percussionTotalFromChart;
+        public int PercussionHits => _percussionHits;
+        public int PercussionTotal => _percussionTotalFromChart;
 
         protected const int NEEDLES_COUNT = 7;
 
@@ -88,14 +99,18 @@ namespace YARG.Gameplay.Player
                 foreach (var part in parts)
                     bestMeter = System.Math.Max(bestMeter, part.Meter);
                 double threshold = EngineParams.PhraseHitPercent;
-                _hud.ShowPhraseHit(threshold > 0 ? bestMeter / threshold : 0, Combo);
+                if (_hud != null)
+                    _hud.ShowPhraseHit(threshold > 0 ? bestMeter / threshold : 0, Combo);
                 return;
             }
-            _hud.ShowPartyVocalsGrade(grade);
+            if (_hud != null)
+                _hud.ShowPartyVocalsGrade(grade);
         }
 
         protected VocalsTrack EffectiveVocalTrack { get; private set; }
         protected int EffectiveVocalPartIndex { get; private set; }
+        public int EffectiveHarmonyPartIndex => EffectiveVocalPartIndex;
+        public double AwesomeThreshold => EngineParams.PhraseHitPercent;
 
         public virtual void Initialize(int index, int vocalIndex, YargPlayer player, SongChart chart,
             VocalsPlayerHUD hud, VocalPercussionTrack percussionTrack, int? lastHighScore, float trackSpeed,
@@ -136,6 +151,13 @@ namespace YARG.Gameplay.Player
             OriginalNoteTrack = track.CloneAsInstrumentDifficulty();
             NoteTrack = OriginalNoteTrack;
 
+            // Count from chart data rather than mutable note hit state. Party Vocals' coordinator
+            // scores every effective vocal part, so its denominator must match that same scope.
+            _percussionTotalFromChart = Player.Profile.GameMode == GameMode.PartyVocals
+                ? EffectiveVocalTrack.Parts.Sum(part => part.Notes
+                    .Sum(phrase => phrase.ChildNotes.Count(note => note.IsPercussion)))
+                : NoteTrack.Notes.Sum(phrase => phrase.ChildNotes.Count(note => note.IsPercussion));
+
             _phraseIndex = -1;
             _previousStarPowerPercent = 0.0;
 
@@ -164,7 +186,9 @@ namespace YARG.Gameplay.Player
             _hud.ShowPlayerName(player, needleIndex);
 
             // Create and start an input context for the mics
-            if (!Player.IsReplay && player.Bindings.Microphones.Count > 0)
+            // Bots synthesize engine input and must not consume a human's device queue
+            // (or disable its output when the bot player is destroyed).
+            if (!Player.IsReplay && !player.Profile.IsBot && player.Bindings.Microphones.Count > 0)
             {
                 _inputContext = new MicInputContext(player.Bindings.Microphones, GameManager);
                 _inputContext.Start();
@@ -245,7 +269,8 @@ namespace YARG.Gameplay.Player
                 ShowTextNotifications(isLastPhrase);
 
                 // Order is important here. ShowVocalPhraseResult() will skip showing AWESOME! if other, more important notifications are already showing.
-                _hud.ShowPhraseHit(percent, Combo);
+                if (_hud != null)
+                    _hud.ShowPhraseHit(percent, Combo);
             };
 
             BaseEngine<VocalNote, VocalsEngineParameters, VocalsStats>.NoteHitEvent noteHit = (_, note) =>
@@ -266,7 +291,8 @@ namespace YARG.Gameplay.Player
 
                 LastCombo = Combo;
 
-                _hud.SetFullCombo(false);
+                if (_hud != null)
+                    _hud.SetFullCombo(false);
             };
 
             Action<bool> sing = (singing) =>
@@ -329,7 +355,8 @@ namespace YARG.Gameplay.Player
         protected override void ResetVisuals()
         {
             _lastTargetNote = null;
-            _hud.SetFullCombo(IsFc);
+            if (_hud != null)
+                _hud.SetFullCombo(IsFc);
         }
 
         public override void ResetPracticeSection()
@@ -412,15 +439,17 @@ namespace YARG.Gameplay.Player
                 ? engineStats.ScoreMultiplier / 2
                 : engineStats.ScoreMultiplier;
 
-            // Update HUD
-            _hud.UpdateInfo(fill, displayMultiplier,
-                (float) Engine.GetStarPowerBarAmount(), Engine.EngineStats.IsStarPowerActive);
+            // The HUD may be destroyed independently during gameplay teardown.
+            if (_hud != null)
+                _hud.UpdateInfo(fill, displayMultiplier,
+                    (float) Engine.GetStarPowerBarAmount(), Engine.EngineStats.IsStarPowerActive);
         }
 
         protected override void OnStarPowerReady()
         {
             base.OnStarPowerReady();
-            _hud.ShowNotification(TextNotificationType.StarPowerReady);
+            if (_hud != null)
+                _hud.ShowNotification(TextNotificationType.StarPowerReady);
         }
 
         protected void ShowTextNotifications(bool isLastPhrase)
@@ -437,13 +466,15 @@ namespace YARG.Gameplay.Player
 
             if (!_hotStartChecked && isMaxMultiplier && IsFc)
             {
-                _hud.ShowNotification(TextNotificationType.HotStart);
+                if (_hud != null)
+                    _hud.ShowNotification(TextNotificationType.HotStart);
                 _hotStartChecked = true;
             }
 
             if (LastHighScore != null && !_newHighScoreShown && Score > LastHighScore)
             {
-                _hud.ShowNotification(TextNotificationType.NewHighScore);
+                if (_hud != null)
+                    _hud.ShowNotification(TextNotificationType.NewHighScore);
                 _newHighScoreShown = true;
             }
 
@@ -453,11 +484,13 @@ namespace YARG.Gameplay.Player
             }
             if (IsFc)
             {
-                _hud.ShowNotification(TextNotificationType.FullCombo);
+                if (_hud != null)
+                    _hud.ShowNotification(TextNotificationType.FullCombo);
             }
             else if (isMaxMultiplier)
             {
-                _hud.ShowNotification(TextNotificationType.StrongFinish);
+                if (_hud != null)
+                    _hud.ShowNotification(TextNotificationType.StrongFinish);
             }
         }
 
@@ -666,7 +699,8 @@ namespace YARG.Gameplay.Player
 
         private void SetPercussionMode(bool show)
         {
-            _hud.SetHUDShowing(!show);
+            if (_hud != null)
+                _hud.SetHUDShowing(!show);
             _percussionTrack.ShowPercussionFret(show);
             _shouldHideNeedle = show;
         }

@@ -4,7 +4,10 @@ using DG.Tweening;
 using DG.Tweening.Core;
 using DG.Tweening.Plugins.Options;
 using UnityEngine;
+using YARG.Core;
 using YARG.Core.Audio;
+using YARG.Core.Logging;
+using YARG.Helpers;
 using YARG.Settings;
 
 namespace YARG.Gameplay

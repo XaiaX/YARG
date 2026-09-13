@@ -53,6 +53,7 @@ namespace YARG.Gameplay.Player
         }
 
         private readonly List<Slot> _slots = new();
+        private VocalsPlayerHUD _partyHud;
 
         // Per-sub-engine OnTargetNoteChanged unsubscribers. Each sub-engine reports
         // the note ITS mic is on; we record it per-slot so each needle snaps to its
@@ -122,14 +123,29 @@ namespace YARG.Gameplay.Player
                 _micCount = 1;
             }
 
+            _partyHud = hud;
             base.Initialize(index, vocalIndex, player, chart, hud, percussionTrack, lastHighScore, trackSpeed, effectiveVocalTrack);
+            if (_partyHud != null)
+                _partyHud.HideHarmFill();
+
+            // VocalsPlayer.Initialize creates its base context from every bound microphone.
+            // Party routes that context as mic 0 and separately creates contexts for mics 1+;
+            // leaving the base context multi-device therefore duplicates every secondary mic
+            // into mic 0. Replace it with the single mic-0 context before Party routing starts.
+            if (!Player.IsReplay && !player.Profile.IsBot && effectiveMics is { Count: > 0 })
+            {
+                _inputContext?.Stop();
+                _inputContext = new MicInputContext(new List<MicDevice> { effectiveMics[0] }, GameManager);
+                _inputContext.Start();
+            }
 
             // Always use per-mic slots (even for _micCount == 1). The engine is a
             // PartyVocalsCoordinatorEngine, not a regular VocalsEngine — the base
             // single-needle path doesn't drive the coordinator's sub-engines, so
             // bots and real-mic visuals would break on solo-only charts where
             // _micCount == 1.
-            if (_micCount < 1) return;
+            if (_micCount < 1)
+                return;
 
             // Hide the base single needle + trail — we own per-mic clones.
             _needleVisualContainer.SetActive(false);
@@ -178,6 +194,7 @@ namespace YARG.Gameplay.Player
                     _additionalMicContexts.Add(ctx);
                 }
             }
+
         }
 
         private void RouteMicInputs(int micIndex, MicInputContext context)
@@ -261,11 +278,14 @@ namespace YARG.Gameplay.Player
 
             // Stamp per-mic singing recency via coordinator flags.
             StampMicSingTimes(liveCoordinator);
+
         }
 
         protected override void ResetVisuals()
         {
             base.ResetVisuals();
+            if (_partyHud != null)
+                _partyHud.HideHarmFill();
 
             for (int i = 0; i < _slots.Count; i++)
             {
@@ -274,7 +294,8 @@ namespace YARG.Gameplay.Player
                 s.LastOnNoteTime = null;
                 s.TargetNote = null;
                 s.LastResolvedPart = -1;
-                s.Particles.Stop();
+                if (s.Particles != null)
+                    s.Particles.Stop();
                 if (s.Transform.gameObject.activeSelf)
                     s.Transform.gameObject.SetActive(false);
                 _slots[i] = s;
@@ -284,6 +305,10 @@ namespace YARG.Gameplay.Player
         protected override void UpdateVisuals(double visualTime)
         {
             base.UpdateVisuals(visualTime);
+            if (_partyHud != null && Engine is PartyVocalsCoordinatorEngine meterCoordinator)
+            {
+                _partyHud.UpdatePartyVocalsMeters(meterCoordinator, IsFc);
+            }
 
             if (_slots.Count == 0) return;
 
@@ -312,7 +337,8 @@ namespace YARG.Gameplay.Player
                 {
                     if (slot.Transform.gameObject.activeSelf)
                         slot.Transform.gameObject.SetActive(false);
-                    slot.Particles.Stop();
+                    if (slot.Particles != null)
+                        slot.Particles.Stop();
                     continue;
                 }
 
@@ -405,7 +431,7 @@ namespace YARG.Gameplay.Player
                     slot.Particles.transform.localPosition = new Vector3(0f, 0f, slot.Transform.localPosition.z);
                     slot.Particles.Play();
                 }
-                else
+                else if (slot.Particles != null)
                 {
                     slot.Particles.Stop();
                 }
@@ -501,7 +527,6 @@ namespace YARG.Gameplay.Player
                 EngineParams, Player.Profile.IsBot,
                 micCount: _micCount,
                 botPartIndex: EffectiveVocalPartIndex);
-
             // Register using the free vocals overload
             EngineContainer = GameManager.EngineManager.Register(coordinator, NoteTrack, freeVocals: true, _chart, Player.RockMeterPreset);
 
@@ -509,6 +534,7 @@ namespace YARG.Gameplay.Player
             _coordinatorStarPowerHandler = _ => OnStarPowerPhraseHit();
             coordinator.OnStarPowerPhraseHit += _coordinatorStarPowerHandler;
             coordinator.OnStarPowerStatus += OnStarPowerStatus;
+            coordinator.OnStarPowerReady += OnStarPowerReady;
 
             // The coordinator itself does not fire OnTargetNoteChanged — sub-engines do.
             // Subscribe each sub-engine to record ITS mic's note into that mic's slot,
@@ -532,6 +558,8 @@ namespace YARG.Gameplay.Player
                 if (!fullPoints)
                 {
                     IsFc = false;
+                    if (_partyHud != null)
+                        _partyHud.SetFullCombo(false);
                 }
 
                 LastCombo = Combo;
@@ -593,6 +621,8 @@ namespace YARG.Gameplay.Player
             if (Engine is PartyVocalsCoordinatorEngine coordinator)
             {
                 coordinator.OnStarPowerPhraseHit -= _coordinatorStarPowerHandler;
+                coordinator.OnStarPowerStatus -= OnStarPowerStatus;
+                coordinator.OnStarPowerReady -= OnStarPowerReady;
                 coordinator.OnPhraseHit -= _coordinatorPhraseHitHandler;
                 coordinator.OnNoteHit -= _coordinatorNoteHitHandler;
                 coordinator.OnNoteMissed -= _coordinatorNoteMissedHandler;
@@ -616,13 +646,21 @@ namespace YARG.Gameplay.Player
                 s.LastOnNoteTime = null;
                 s.TargetNote = null;
                 s.LastResolvedPart = -1;
-                s.Particles.Stop();
+                if (s.Particles != null)
+                    s.Particles.Stop();
                 _slots[i] = s;
             }
         }
 
         protected override void FinishDestruction()
         {
+            // Release input/event ownership before touching the independently destroyed HUD.
+            foreach (var ctx in _additionalMicContexts)
+                ctx.Stop();
+            _additionalMicContexts.Clear();
+            base.FinishDestruction();
+            _inputContext = null;
+
             foreach (var slot in _slots)
             {
                 if (slot.MaterialHandle.IsValid())
@@ -637,14 +675,9 @@ namespace YARG.Gameplay.Player
             }
             _slots.Clear();
 
-            // Stop additional mic input contexts
-            foreach (var ctx in _additionalMicContexts)
-            {
-                ctx.Stop();
-            }
-            _additionalMicContexts.Clear();
-
-            base.FinishDestruction();
+            if (_partyHud != null)
+                _partyHud.HideHarmFill();
+            _partyHud = null;
         }
 
         public override (ReplayFrame Frame, ReplayStats Stats) ConstructReplayData()
@@ -665,7 +698,8 @@ namespace YARG.Gameplay.Player
             for (int i = 0; i < _slots.Count; i++)
             {
                 var s = _slots[i];
-                s.Particles.Stop();
+                if (s.Particles != null)
+                    s.Particles.Stop();
                 _slots[i] = s;
             }
         }

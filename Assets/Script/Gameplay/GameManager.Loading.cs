@@ -116,7 +116,6 @@ namespace YARG.Gameplay
             ApplySampleNormalization();
 
             YargLogger.LogFormatInfo("Loading song {0} - {1}", Song.Name, Song.Artist);
-
             if (ReplayInfo != null)
             {
                 if (!SongContainer.SongsByHash.TryGetValue(GlobalVariables.State.CurrentReplay.SongChecksum, out var songs))
@@ -463,7 +462,6 @@ namespace YARG.Gameplay
             try
             {
                 _players = new List<BasePlayer>();
-
                 bool vocalTrackInitialized = false;
                 // There is one visual vocal highway, so there must be one chart selection.
                 // Resolve from the first participating vocalist without changing sticky preferences.
@@ -561,7 +559,6 @@ namespace YARG.Gameplay
                             // Visuals, player engines, and party coordinators all use the
                             // primary vocalist's session-wide selection.
                             VocalTrack.Initialize(effectiveVocalTrack, player, Song.VocalScrollSpeedScalingFactor);
-
                             if (SettingsManager.Settings.KeepLyricBar.Value &&
                                 SettingsManager.Settings.LyricDisplay.Value != LyricDisplayMode.Disabled)
                             {
@@ -583,13 +580,17 @@ namespace YARG.Gameplay
                         var percussionTrack = VocalTrack.CreatePercussionTrack();
                         percussionTrack.TrackSpeed = VocalTrack.TrackSpeed;
                         vocalsPlayer.Initialize(index, vocalIndex, player, Chart, playerHud, percussionTrack, lastHighScore, VocalTrack.TrackSpeed, effectiveVocalTrack);
-
                         _players.Add(vocalsPlayer);
                     }
 
+                    // Party Vocals is a gameplay instrument; use the session's selected vocal chart for audio.
+                    var stemInstrument = player.Profile.CurrentInstrument == Instrument.PartyVocals
+                        ? effectiveVocalTrack.Instrument
+                        : player.Profile.CurrentInstrument;
+
                     // Add (or increase total of) the stem state
                     var hasStem = false;
-                    foreach (var stem in player.Profile.CurrentInstrument.ToSongStems())
+                    foreach (var stem in stemInstrument.ToSongStems())
                     {
                         var transformedStem = stem;
                         if (stem == SongStem.Bass && !_stemStates.ContainsKey(SongStem.Bass))
