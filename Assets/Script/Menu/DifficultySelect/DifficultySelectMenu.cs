@@ -489,8 +489,8 @@ namespace YARG.Menu.DifficultySelect
                     var lockedPreference = GetLockedPartyVocalsPreference();
                     if (lockedPreference is { } locked)
                         player.Profile.PartyVocalsChartPreference = locked;
-                    bool hasHarm = VocalChartSelection.HasHarmonyContent(song.Chart);
-                    bool hasSolo = VocalChartSelection.HasSoloContent(song.Chart);
+                    bool hasHarm = song.HasInstrument(Instrument.Harmony);
+                    bool hasSolo = song.HasInstrument(Instrument.Vocals);
                     bool realChoice = hasHarm && hasSolo && lockedPreference is null;
                     bool willSingSolo = player.Profile.PartyVocalsChartPreference == PartyVocalsChartPreference.Solo
                         ? hasSolo : !hasHarm;
@@ -537,8 +537,8 @@ namespace YARG.Menu.DifficultySelect
                     Instrument[] displayInstruments;
                     if (isPartyVocals)
                     {
-                        bool hasSolo = VocalChartSelection.HasSoloContent(song.Chart);
-                        bool hasHarmony = VocalChartSelection.HasHarmonyContent(song.Chart);
+                        bool hasSolo = song.HasInstrument(Instrument.Vocals);
+                        bool hasHarmony = song.HasInstrument(Instrument.Harmony);
                         int displayCount = (hasSolo ? 1 : 0) + (hasHarmony ? 1 : 0);
                         displayInstruments = new Instrument[displayCount];
                         int displayIndex = 0;

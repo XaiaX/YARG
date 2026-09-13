@@ -154,8 +154,8 @@ namespace YARG.Gameplay.Player
             // Count from chart data rather than mutable note hit state. Party Vocals' coordinator
             // scores every effective vocal part, so its denominator must match that same scope.
             _percussionTotalFromChart = Player.Profile.GameMode == GameMode.PartyVocals
-                ? EffectiveVocalTrack.Parts.Sum(part => part.Notes
-                    .Sum(phrase => phrase.ChildNotes.Count(note => note.IsPercussion)))
+                ? EffectiveVocalTrack.Parts.Sum(part => part.NotePhrases
+                    .Sum(phrase => phrase.PhraseParentNote.ChildNotes.Count(note => note.IsPercussion)))
                 : NoteTrack.Notes.Sum(phrase => phrase.ChildNotes.Count(note => note.IsPercussion));
 
             _phraseIndex = -1;
