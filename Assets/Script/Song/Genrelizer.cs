@@ -205,11 +205,10 @@ namespace YARG.Song
         {
             if (_mappings.ContainsKey(key))
             {
-                YargLogger.LogError($"Tried to add redundant genre mapping key {key}!");
-            } else
-            {
-                _mappings.Add(key, mapping);
+                return;
             }
+
+            _mappings.Add(key, mapping);
         }
 
         private static void _readGenreMappings() {

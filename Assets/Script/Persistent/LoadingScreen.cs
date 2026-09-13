@@ -21,7 +21,9 @@ namespace YARG
         public TextMeshProUGUI LoadingPhrase;
         public TextMeshProUGUI SubPhrase;
 
-        public static bool IsActive => Instance.gameObject.activeSelf;
+        // LoadingScreen is persistent, but callers can still run during application or
+        // scene teardown after its singleton has been destroyed.
+        public static bool IsActive => Instance != null && Instance.gameObject.activeSelf;
 
         private async void Start()
         {

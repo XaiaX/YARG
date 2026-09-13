@@ -36,7 +36,15 @@ namespace YARG.Menu.Persistent
 
         private void Update()
         {
-            var currentScene = GlobalVariables.Instance.CurrentScene;
+            // IdleDimmer is persistent too, so it may receive one last Update while the
+            // global singleton is being torn down.
+            var globalVariables = GlobalVariables.Instance;
+            if (globalVariables == null)
+            {
+                return;
+            }
+
+            var currentScene = globalVariables.CurrentScene;
             bool isGameplay = currentScene is SceneIndex.Gameplay;
             bool isNotFocused = !Application.isFocused;
             bool didReceiveInput = CheckKeyboardMouse();

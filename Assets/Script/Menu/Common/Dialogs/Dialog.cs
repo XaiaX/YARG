@@ -58,7 +58,9 @@ namespace YARG.Menu.Dialogs
 
         private void OnDisable()
         {
-            Navigator.Instance.PopScheme();
+            // Dialogs can be destroyed while the persistent scene is tearing down.
+            if (Navigator.Instance != null)
+                Navigator.Instance.PopScheme();
         }
 
         public virtual void Initialize()
