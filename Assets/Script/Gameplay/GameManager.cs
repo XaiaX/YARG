@@ -4,6 +4,7 @@ using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
 using YARG.Core.Engine;
@@ -236,6 +237,12 @@ namespace YARG.Gameplay
 
         private void OnDestroy()
         {
+            if (YargPlayers?.Any(player => player.Profile.GameMode == GameMode.PartyVocals) == true)
+            {
+                YargLogger.LogInfo($"[PartyVocalsDiag] GameManager.OnDestroy song={Song?.Name} started={IsSongStarted} " +
+                    $"loadState={_loadState} players={_players?.Count ?? -1} songTime={_songRunner?.SongTime ?? -1} " +
+                    $"songLength={SongLength}");
+            }
             YargLogger.LogInfo("Exiting song");
 
             if (Navigator.Instance != null)
@@ -344,6 +351,12 @@ namespace YARG.Gameplay
             // End song if needed (required for the [end] event)
             if (_songRunner.SongTime >= SongLength)
             {
+                if (YargPlayers.Any(player => player.Profile.GameMode == GameMode.PartyVocals))
+                {
+                    YargLogger.LogDebug($"[PartyVocalsDiag] EndSong check songTime={_songRunner.SongTime} songLength={SongLength} " +
+                        $"endDelay={SONG_END_DELAY} practice={IsPractice} replayInfo={ReplayInfo != null} " +
+                        $"playingWithReplay={GlobalVariables.State.PlayingWithReplay}");
+                }
                 if (EndSong())
                 {
                     return;
@@ -642,23 +655,39 @@ namespace YARG.Gameplay
 
         private bool EndSong()
         {
+            bool partyVocalsSession = YargPlayers.Any(player => player.Profile.GameMode == GameMode.PartyVocals);
+            if (partyVocalsSession)
+            {
+                YargLogger.LogInfo($"[PartyVocalsDiag] EndSong begin songTime={_songRunner.SongTime} songLength={SongLength} " +
+                    $"practice={IsPractice} replayInfo={ReplayInfo != null} " +
+                    $"playingWithReplay={GlobalVariables.State.PlayingWithReplay}");
+            }
             _crowdClapScheduler?.Dispose();
             // Dispose the crowd handler
             CrowdEventHandler?.Dispose();
 
             if (IsPractice)
             {
+                if (partyVocalsSession)
+                    YargLogger.LogInfo("[PartyVocalsDiag] EndSong early return: practice reset");
                 PracticeManager.ResetPractice();
                 return false;
             }
 
             if (_songRunner.SongTime < SongLength + SONG_END_DELAY)
             {
+                if (partyVocalsSession)
+                {
+                    YargLogger.LogDebug($"[PartyVocalsDiag] EndSong early return: waiting for end delay " +
+                        $"remaining={SongLength + SONG_END_DELAY - _songRunner.SongTime}");
+                }
                 return false;
             }
 
             if (!GlobalVariables.State.PlayingWithReplay && ReplayInfo != null)
             {
+                if (partyVocalsSession)
+                    YargLogger.LogInfo("[PartyVocalsDiag] EndSong transition: replay viewer pause");
                 Pause(false);
                 return true;
             }
@@ -678,12 +707,24 @@ namespace YARG.Gameplay
             // Pass the score info to the stats screen
             GlobalVariables.State.ScoreScreenStats = new ScoreScreenStats
             {
-                PlayerScores = _players.Select(player => new PlayerScoreCard
+                PlayerScores = _players.Select(player =>
                 {
-                    IsHighScore = player.Score > player.LastHighScore,
-                    Player = player.Player,
-                    Stats = player.BaseStats,
-                    IsReplay = player.Player.IsReplay
+                    var vocalPlayer = player as VocalsPlayer;
+                    bool partyVocals = player.Player.Profile.GameMode == GameMode.PartyVocals;
+                    return new PlayerScoreCard
+                    {
+                        IsHighScore = player.Score > player.LastHighScore,
+                        Player = player.Player,
+                        Stats = player.BaseStats,
+                        IsReplay = player.Player.IsReplay,
+                        VocalPhrasePercents = partyVocals ? vocalPlayer?.PhrasePercents : null,
+                        VocalPhraseGrades = partyVocals ? vocalPlayer?.PhraseGrades : null,
+                        VocalPhrasePartResults = partyVocals ? vocalPlayer?.PhrasePartResults : null,
+                        VocalAwesomeThreshold = partyVocals ? vocalPlayer?.AwesomeThreshold ?? 0 : 0,
+                        VocalHarmonyPartIndex = partyVocals ? vocalPlayer?.EffectiveHarmonyPartIndex ?? 0 : 0,
+                        VocalPercussionHits = partyVocals ? vocalPlayer?.PercussionHits ?? 0 : 0,
+                        VocalPercussionTotal = partyVocals ? vocalPlayer?.PercussionTotal ?? 0 : 0,
+                    };
                 }).ToArray(),
                 BandScore = BandScore,
                 BandStars = (int) BandStars,
@@ -704,6 +745,9 @@ namespace YARG.Gameplay
             RecordScores(replayInfo);
 
             // Go to the score screen
+            if (partyVocalsSession)
+                YargLogger.LogInfo($"[PartyVocalsDiag] EndSong transition: ScoreScene players={_players.Count} " +
+                    $"bandScore={BandScore} replaySaved={replayInfo != null}");
             GlobalVariables.Instance.LoadScene(SceneIndex.Score);
             return true;
         }
@@ -768,10 +812,34 @@ namespace YARG.Gameplay
                 {
                     return;
                 }
-                var results = ReplayAnalyzer.AnalyzeReplay(Chart, replayInfo, ReplayData);
-                foreach (var result in results)
+
+                // Party Vocals gameplay uses a coordinator over the resolved multitrack and
+                // packs mic identity into the flat input stream. ReplayFrame preserves neither
+                // the resolved source parts nor coordinator metadata, so ReplayAnalyzer cannot
+                // faithfully recreate this mode yet. Do not substitute a solo engine: retain
+                // the already validated human live scores and make the limitation explicit.
+                bool hasPartyVocalsReplay = ReplayData.Frames.Any(frame =>
+                    frame.Profile.GameMode == GameMode.PartyVocals);
+                if (hasPartyVocalsReplay)
                 {
-                    humanBandScore += result.ResultStats.TotalScore + result.ResultStats.BandBonusScore;
+                    YargLogger.LogWarning("[PartyVocalsDiag] Skipping bot-removal replay simulation: " +
+                        "Party Vocals coordinator cannot be reconstructed from ReplayFrame data; " +
+                        "using validated human live scores.");
+                    foreach (var player in _players)
+                    {
+                        if (ScoreContainer.IsSoloScoreValid(SongSpeed, player.Player))
+                        {
+                            humanBandScore += player.Score + player.BaseStats.BandBonusScore;
+                        }
+                    }
+                }
+                else
+                {
+                    var results = ReplayAnalyzer.AnalyzeReplay(Chart, replayInfo, ReplayData);
+                    foreach (var result in results)
+                    {
+                        humanBandScore += result.ResultStats.TotalScore + result.ResultStats.BandBonusScore;
+                    }
                 }
                 var humanStarScoreCutoffs = EngineManager.GetStarScoreCutoffs(starScoreCutoffsList);
                 // Determine where in the cutoffs humanBandScore is
@@ -825,6 +893,8 @@ namespace YARG.Gameplay
 
         public void ForceQuitSong()
         {
+            if (YargPlayers?.Any(player => player.Profile.GameMode == GameMode.PartyVocals) == true)
+                YargLogger.LogInfo("[PartyVocalsDiag] ForceQuitSong transition: MenuScene");
             GlobalVariables.State = PersistentState.Default;
             GlobalVariables.Instance.LoadScene(SceneIndex.Menu);
         }

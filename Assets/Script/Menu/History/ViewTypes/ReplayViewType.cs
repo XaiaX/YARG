@@ -161,9 +161,10 @@ namespace YARG.Menu.History
 
             if (IsAnalysisUnsupported(data))
             {
-                YargLogger.LogWarning("Party Vocals replay analysis not yet supported");
+                // ReplayFrame does not yet preserve the coordinator state needed for accurate
+                // Party Vocals reconstruction. Leave playback available and do not analyze.
                 DialogManager.Instance.ShowMessage("Replay Analysis Unavailable",
-                    "Party Vocals replay analysis not yet supported. You can still watch this replay.");
+                    "Party Vocals replay analysis is not yet supported. You can still watch this replay.");
                 return;
             }
 
@@ -201,9 +202,6 @@ namespace YARG.Menu.History
                 return;
             }
 
-            GlobalVariables.State.CurrentSong = _songEntry;
-            GlobalVariables.State.CurrentReplay = _entry;
-
             var replayOptions = new ReplayReadOptions
             {
                 KeepFrameTimes = GlobalVariables.VerboseReplays
@@ -225,10 +223,15 @@ namespace YARG.Menu.History
 
             if (IsAnalysisUnsupported(data))
             {
+                // ReplayFrame cannot reconstruct the coordinator state needed for a faithful
+                // Party Vocals score card. Leave history state unchanged and keep playback available.
                 DialogManager.Instance.ShowMessage("Score Card Unavailable",
                     "Party Vocals replay score cards are not yet supported. You can still watch this replay.");
                 return;
             }
+
+            GlobalVariables.State.CurrentSong = _songEntry;
+            GlobalVariables.State.CurrentReplay = _entry;
 
             var results = ReplayAnalyzer.AnalyzeReplay(chart, _entry, data);
             bool replayConsistent = results.All(r => r.Passed);

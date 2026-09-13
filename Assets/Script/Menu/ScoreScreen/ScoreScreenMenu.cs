@@ -188,7 +188,9 @@ namespace YARG.Menu.ScoreScreen
 
             _cancellationToken?.Cancel();
             _cancellationToken?.Dispose();
-            Navigator.Instance.PopScheme();
+            // The persistent navigation singleton may already be gone during application
+            // teardown; score-screen cleanup must not turn that into a recurring NRE.
+            Navigator.Instance?.PopScheme();
         }
 
         private void CreateScoreCards(ScoreScreenStats scoreScreenStats)
@@ -235,7 +237,11 @@ namespace YARG.Menu.ScoreScreen
                     case GameMode.PartyVocals:
                     {
                         card = Instantiate(_vocalsCardPrefab, _cardContainer);
-                        ((ScoreCard<VocalsStats>)card).Initialize(score.IsHighScore, score.Player, score.Stats as VocalsStats, score.IsReplay);
+                        var vocalsCard = (VocalsScoreCard) card;
+                        vocalsCard.Initialize(score.IsHighScore, score.Player, score.Stats as VocalsStats, score.IsReplay);
+                        vocalsCard.SetPhraseSummary(score.VocalPhrasePercents, score.VocalPhraseGrades,
+                            score.VocalPhrasePartResults, score.VocalAwesomeThreshold, score.VocalHarmonyPartIndex,
+                            score.VocalPercussionHits, score.VocalPercussionTotal);
                         break;
                     }
                     case GameMode.ProKeys:
@@ -250,6 +256,16 @@ namespace YARG.Menu.ScoreScreen
                 card.SetCardContents();
                 _scoreCards.Add(card);
             }
+
+            // Keep result cards readable while fitting the historical multi-player layouts.
+            float cardScale = _scoreCards.Count switch
+            {
+                <= 4 => 1f,
+                5 => 0.8f,
+                _ => Mathf.Max(0.5f, 4f / _scoreCards.Count),
+            };
+            foreach (var scoreCard in _scoreCards)
+                ((Component) scoreCard).transform.localScale = Vector3.one * cardScale;
 
             // Mark that the music library should refresh when next opened
             if (GlobalVariables.State.ScoreScreenStats.Value.PlayerScores.Any(e => !e.Player.Profile.IsBot))
@@ -398,6 +414,20 @@ namespace YARG.Menu.ScoreScreen
             {
                 YargLogger.LogFormatError("Replay did not load. {0}", result);
                 _analyzingReplay = false;
+                return true;
+            }
+
+            if (data.Frames.Any(frame => frame.Profile.GameMode == GameMode.PartyVocals))
+            {
+                // Party Vocals gameplay uses a coordinator over resolved multitrack parts,
+                // while ReplayFrame currently stores only one profile/parameter set and the
+                // packed flat inputs. Do not substitute a solo engine or report a false
+                // inconsistency until coordinator reconstruction is serialized.
+                YargLogger.LogWarning("[PartyVocalsDiag] Skipping score-screen replay analysis: " +
+                    "Party Vocals coordinator cannot be reconstructed from ReplayFrame data.");
+                _analyzingReplay = false;
+                // Party replay frames do not contain enough coordinator state for a faithful
+                // reconstruction. Keep the validated live score and skip analysis silently.
                 return true;
             }
 
@@ -681,7 +711,9 @@ namespace YARG.Menu.ScoreScreen
                 buttons.Add(_addFavoriteButtonEntry);
             }
 
-            if (_scoreCards.Any(card => card is not ScoreCard<VocalsStats>))
+            bool hasAdvancedStats = _scoreCards.Any(card => card is not ScoreCard<VocalsStats> ||
+                card is VocalsScoreCard { HasPartyPhraseSummary: true });
+            if (hasAdvancedStats)
             {
                 buttons.Add(_showAdvancedButtonEntry);
             }
