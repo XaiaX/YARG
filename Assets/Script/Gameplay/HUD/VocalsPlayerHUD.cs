@@ -48,6 +48,7 @@ namespace YARG.Gameplay.HUD
         private readonly bool[] _harmPartPresent = new bool[3];
         private readonly bool[] _harmPartAvailable = new bool[3];
         private readonly bool[] _harmPartCountIn = new bool[3];
+        private readonly long[] _harmCountInTargetTicks = { -1, -1, -1 };
         private bool _harmImagesCached;
         private bool _partyHarmonyVisuals;
 
@@ -55,10 +56,7 @@ namespace YARG.Gameplay.HUD
             new(1f, 0.85490196f, 0.34901961f, 1f);
         private const float HARM_RIM_FADE_SPEED = 8f;
         private const float HARM_VISUAL_LERP = 12f;
-        private const float COUNT_IN_SATURATION = 0.22f;
-        private const float COUNT_IN_BEAT_SATURATION = 0.5f;
-        private const float COUNT_IN_VALUE_TARGET = 0.9f;
-        private const float COUNT_IN_VALUE_LERP = 0.4f;
+        private const float HARM_COUNT_IN_RIM_FINAL_FRACTION = 0.25f;
 
         [Space]
         [SerializeField]
@@ -182,9 +180,16 @@ namespace YARG.Gameplay.HUD
             if (fill != null)
             {
                 float target = _harmFillTargets[index];
-                fill.fillAmount = Mathf.Lerp(fill.fillAmount, target, lerp);
+                if (_harmPartCountIn[index])
+                    fill.fillAmount = target;
+                else
+                    fill.fillAmount = Mathf.Lerp(fill.fillAmount, target, lerp);
 
-                var fillColor = Color.Lerp(fill.color, _harmColorTargets[index], lerp);
+                // Count-in color is derived from the continuous denominator-pulse strength;
+                // apply it directly so frame-rate smoothing cannot distort the scheduled phase.
+                var fillColor = _harmPartCountIn[index]
+                    ? _harmColorTargets[index]
+                    : Color.Lerp(fill.color, _harmColorTargets[index], lerp);
                 fillColor.a = Mathf.Lerp(fill.color.a, _harmFillAlphaTargets[index], lerp);
                 fill.color = fillColor;
             }
@@ -336,7 +341,7 @@ namespace YARG.Gameplay.HUD
                 float meter = present && i < meters.Count
                     ? (float) System.Math.Min(1.0, meters[i] * scale)
                     : 0f;
-                SetHarmonyMeterTarget(i, meter, present, present, false, false);
+                SetHarmonyMeterTarget(i, meter, present, present, false, -1, false);
             }
         }
 
@@ -357,54 +362,74 @@ namespace YARG.Gameplay.HUD
             double scale = coordinator.AwesomeThreshold > 0
                 ? 1.0 / coordinator.AwesomeThreshold
                 : 1.0;
-            float phraseProgress = Mathf.Clamp01((float) coordinator.CurrentPhraseProgress);
             for (int i = 0; i < 3; i++)
             {
                 // PartHasContent is based on every phrase in the selected effective track,
                 // not just the coordinator's current/next phrase. This keeps a charted part
                 // visible during gaps while allowing genuinely absent HARM parts to hide.
                 bool songPresent = coordinator.PartHasContent(i);
-                bool current = coordinator.PartInCurrentPhrase(i);
-                bool next = !current && coordinator.PartInNextPhrase(i);
-                float meter = current && i < coordinator.CanonicalMeters.Count
-                    ? Mathf.Clamp01((float) (coordinator.CanonicalMeters[i] * scale))
-                    : next ? 1f - phraseProgress : 0f;
-                SetHarmonyMeterTarget(i, meter, current, songPresent, next, globalFc);
+                var countInState = coordinator.GetCountInState(i);
+                // The canonical phrase supplies active-meter presentation. Count-in is the one
+                // permitted exception: the Core schedule exposes it only before the first actual
+                // onset after song start or a lane-inactive phrase. Once onset is reached, that
+                // schedule ends and silent child-run gaps cannot reactivate it.
+                bool canonicalCurrent = coordinator.PartInCurrentMasterPhraseWithContent(i);
+                bool countIn = countInState.IsPending;
+                // A different HARM lane can advance the canonical phrase before this lane's
+                // first note. Preserve this lane's pending countdown through that transition;
+                // the half-open Core state ends exactly at this lane's actual onset.
+                bool current = canonicalCurrent && !countIn;
+                float meter = countIn ? (float) countInState.FillAmount
+                    : current && i < coordinator.CanonicalMeters.Count
+                        ? Mathf.Clamp01((float) (coordinator.CanonicalMeters[i] * scale))
+                        : 0f;
+                SetHarmonyMeterTarget(i, meter, current, songPresent, countIn, countInState.TargetTick, globalFc,
+                    countInState.PulseStrength, countInState.WindowBeats, countInState.FillAmount);
             }
         }
 
         private void SetHarmonyMeterTarget(int index, float target, bool current,
-            bool songPresent, bool countIn, bool globalFc)
+            bool songPresent, bool countIn, long targetTick, bool globalFc, double pulseStrength = 0.0,
+            int windowBeats = 32, double countInFillAmount = 0.0)
         {
             CacheHarmonyImages();
             var laneColor = YARG.Gameplay.Player.VocalTrack.Colors[index];
-            bool enteredCountIn = countIn && !_harmPartCountIn[index];
+            bool enteredCountIn = countIn && (_harmCountInTargetTicks[index] != targetTick);
 
             _harmFillTargets[index] = Mathf.Clamp01(target);
             _harmFillAlphaTargets[index] = songPresent && (current || countIn) ? 1f : 0f;
             _harmColorTargets[index] = !songPresent
                 ? laneColor.WithAlpha(0f)
-                : countIn && !current ? GetCountInColor(laneColor) : laneColor;
+                : countIn && !current ? GetCountInColor(laneColor, (float)pulseStrength) : laneColor;
 
-            // Current/count-in parts use black; charted gaps restore the authored gray.
+            // Only an active playable meter uses black. Count-in retains the prefab-authored
+            // medium gray so its draining fill reads as an upcoming-part indicator instead.
             // Only genuinely empty parts are transparent.
-            _harmBackgroundColorTargets[index] = current || countIn
+            _harmBackgroundColorTargets[index] = current
                 ? Color.black
                 : _harmBackgroundBaseColors[index];
             _harmBackgroundColorTargets[index].a = songPresent ? 1f : 0f;
 
-            // Harmony rims are a player-level FC indicator, never a lane indicator. They
-            // appear only for the current or count-in phrase; charted gaps retain the
-            // authored background but have no rim.
+            // Harmony rims are a player-level FC indicator, never a lane indicator. Keep the
+            // rim hidden through most of a count-in, then fade it in over the final quarter so
+            // the pending indicator transitions toward the active-meter presentation at onset.
             _harmRimColorTargets[index] = globalFc ? PARTY_FC_RIM_COLOR : Color.white;
-            _harmRimAlphaTargets[index] = songPresent && (current || countIn) ? 1f : 0f;
+            float countInRimAlpha = countIn
+                ? Mathf.InverseLerp(HARM_COUNT_IN_RIM_FINAL_FRACTION, 0f, (float) countInFillAmount)
+                : 0f;
+            _harmRimAlphaTargets[index] = songPresent
+                ? current ? 1f : countInRimAlpha
+                : 0f;
             _harmPartPresent[index] = current;
             _harmPartAvailable[index] = songPresent;
+            bool exitedCountIn = _harmPartCountIn[index] && !countIn;
             _harmPartCountIn[index] = countIn;
+            _harmCountInTargetTicks[index] = countIn ? targetTick : -1;
+            if (exitedCountIn && _harmFills[index] != null)
+                _harmFills[index].fillAmount = 0f;
 
-            // Count-in entry is the only point at which the fill amount is snapped. The
-            // following polls target 1 - CurrentPhraseProgress, so it drains from full
-            // instead of repeatedly interpolating upward from zero.
+            // Fill resets only when the actual child-note re-entry target changes; master
+            // phrase boundaries and empty phrases cannot restart an in-progress countdown.
             if (enteredCountIn && _harmFills[index] != null)
                 _harmFills[index].fillAmount = 1f;
 
@@ -425,13 +450,15 @@ namespace YARG.Gameplay.HUD
             }
         }
 
-        private Color GetCountInColor(Color laneColor)
+        private Color GetCountInColor(Color laneColor, float pulseStrength)
         {
             Color.RGBToHSV(laneColor, out float hue, out float saturation, out float value);
-            float beatProgress = (float) GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage;
-            float saturationMultiplier = Mathf.Lerp(COUNT_IN_BEAT_SATURATION, COUNT_IN_SATURATION, beatProgress);
-            return Color.HSVToRGB(hue, saturation * saturationMultiplier,
-                Mathf.Lerp(value, COUNT_IN_VALUE_TARGET, COUNT_IN_VALUE_LERP));
+            // Each denominator pulse is bright/desaturated, then smoothly fades back to
+            // the dimmer authored-saturation resting color over its cell.
+            pulseStrength = Mathf.Clamp01(pulseStrength);
+            float pulseSaturation = Mathf.Lerp(saturation, saturation * 0.22f, pulseStrength);
+            float pulseValue = Mathf.Lerp(Mathf.Max(0.15f, value - 0.18f), Mathf.Min(1f, value + 0.18f), pulseStrength);
+            return Color.HSVToRGB(hue, pulseSaturation, pulseValue);
         }
 
         private void CacheHarmonyImages()
@@ -480,6 +507,7 @@ namespace YARG.Gameplay.HUD
                 _harmPartPresent[i] = false;
                 _harmPartAvailable[i] = false;
                 _harmPartCountIn[i] = false;
+                _harmCountInTargetTicks[i] = -1;
                 if (_harmFills[i] != null)
                 {
                     _harmFills[i].fillAmount = 0f;
