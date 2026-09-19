@@ -350,7 +350,9 @@ namespace YARG.Gameplay
         {
             try
             {
-                Chart = Song.LoadChart(GetEliteDrumsDownchartOutputs());
+                var eliteDrumsDownchartOutputs = GetEliteDrumsDownchartOutputs();
+                YargLogger.LogInfo($"[ED-log] LoadChart request: outputs={(eliteDrumsDownchartOutputs == null ? "<null>" : string.Join(",", eliteDrumsDownchartOutputs))}");
+                Chart = Song.LoadChart(eliteDrumsDownchartOutputs);
                 if (Chart != null)
                 {
                     var isReplay = GlobalVariables.State.IsReplay || GlobalVariables.State.PlayingWithReplay;
@@ -377,6 +379,12 @@ namespace YARG.Gameplay
 
         private IReadOnlyCollection<Instrument> GetEliteDrumsDownchartOutputs()
         {
+            string playerState = string.Join(";", YargPlayers.Select(player =>
+                player.Profile.GameMode + ":" + player.Profile.CurrentInstrument +
+                ":target=" + (player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>") +
+                ":sittingOut=" + player.SittingOut));
+            YargLogger.LogInfo("[ED-log] State: toggle=" +
+                SettingsManager.Settings.EnableEliteDrumsDowncharts.Value + " players=" + playerState);
             if (!SettingsManager.Settings.EnableEliteDrumsDowncharts.Value) return null;
             List<Instrument> outputs = null;
             foreach (var player in YargPlayers)
@@ -386,6 +394,9 @@ namespace YARG.Gameplay
                 outputs ??= new List<Instrument>();
                 if (!outputs.Contains(target)) outputs.Add(target);
             }
+            YargLogger.LogInfo("[ED-log] Targets=" +
+                (outputs == null ? "<null>" : string.Join(",", outputs)) +
+                " Players=" + playerState);
             return outputs;
         }
 

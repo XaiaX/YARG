@@ -8,6 +8,7 @@ using YARG.Core.Chart;
 using YARG.Core.Engine;
 using YARG.Core.Engine.Drums;
 using YARG.Core.Engine.Drums.Engines;
+using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Logging;
 using YARG.Core.Parsing;
@@ -190,7 +191,9 @@ namespace YARG.Gameplay.Player
 
         protected override InstrumentDifficulty<DrumNote> GetNotes(SongChart chart)
         {
-            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument).Clone();
+            bool useEliteDrumsDownchart = EliteDrumsDownchartRules.IsDownchartTargetActive(Player.Profile);
+            YargLogger.LogInfo($"[ED-log] DrumsPlayer selecting track instrument={Player.Profile.CurrentInstrument} target={Player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} useDownchart={useEliteDrumsDownchart}");
+            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument, useEliteDrumsDownchart).Clone();
             var instrumentDifficulty = track.GetDifficulty(Player.Profile.CurrentDifficulty);
             return instrumentDifficulty;
         }
