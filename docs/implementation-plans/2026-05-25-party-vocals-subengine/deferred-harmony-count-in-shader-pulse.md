@@ -43,3 +43,49 @@ keep all pulse-driven HUD elements phase-consistent.
   sufficient replacement for all denominator schedules.
 - This is a future rendering optimization/design task, not a change requested
   for the current count-in fix.
+
+## Separate deferred UI consistency: advanced score summary order
+
+Gameplay vertically lays out Party Vocals harmony meters in musical order:
+**HARM2 (high) → HARM1/lead → HARM3 (low)**. The advanced end-of-song Party
+Vocals summary must use the same visual ordering.
+
+The likely implementation point is
+`Assets/Script/Menu/ScoreScreen/ScoreCards/VocalsPhraseHistogram.cs`. Its party
+bar construction currently follows raw part-index order (`HARM1`, `HARM2`,
+`HARM3`) when assigning vertical bands and colors. A future change should apply
+an explicit presentation-order mapping—without changing stored `PartIndex`,
+scoring, tally semantics, or raw chart-part associations—so its top-to-bottom
+bands match the gameplay HUD:
+
+```text
+raw part index:  1      0            2
+shown as:       HARM2  HARM1/lead   HARM3
+vertical order: top    middle       bottom
+```
+
+Validate the result with solo, duet, and trio charts, including charts with a
+missing/empty harmony lane, and confirm the score summary colors and tallies
+remain associated with their original raw parts.
+
+## Separate deferred HUD layout: lead-only Party Vocals
+
+When a player selects Party Vocals for a chart containing only the lead
+`VOCALS` part (no actual HARM2/HARM3 content), hide the entire gameplay harmony
+meter container, including the HARM1 meter. The regular combo meter already
+represents the sole lead-vocal performance, so an additional HARM1 meter is
+redundant and leaves an unnecessary gap below the star-power meter.
+
+Use the resolved chart/coordinator part availability rather than the selected
+Party Vocals mode alone: duet and trio layouts must remain visible. The current
+duet presentation is already top-aligned and should **not** be re-packed,
+centered, or otherwise moved.
+
+Do **not** move notifications or the player-name display when hiding the
+lead-only harmony container. They should remain in their established locations,
+where players expect them. This future task changes only the visibility of the
+redundant lead-only harmony-meter area.
+
+Validate lead-only, duet, and trio charts in Party Vocals mode, including a
+chart with an empty/malformed harmony upgrade lane; lead-only hides the whole
+container, while duet/trio preserve their current placement and behavior.

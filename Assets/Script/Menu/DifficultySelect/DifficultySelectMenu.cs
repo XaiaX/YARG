@@ -920,6 +920,13 @@ namespace YARG.Menu.DifficultySelect
             _modifierItems.Clear();
             _itemModifiers.Clear();
 
+            if (profile.GameMode == GameMode.PartyVocals)
+            {
+                AddProfileToggle(LocalizeHeader("DisablePartyVocalsCountIns"),
+                    SettingsManager.Settings.DisablePartyVocalsCountIns.Value,
+                    on => SettingsManager.Settings.DisablePartyVocalsCountIns.Value = on);
+            }
+
             if (SupportsLeftyFlip(profile.GameMode))
             {
                 // Takes effect at track build time since this menu precedes gameplay.
@@ -1014,7 +1021,8 @@ namespace YARG.Menu.DifficultySelect
             => mode is GameMode.FiveFretGuitar or GameMode.ProKeys;
 
         private bool HasAccessibilityOptions(YargProfile profile)
-            => SupportsLeftyFlip(profile.GameMode)
+            => profile.GameMode == GameMode.PartyVocals
+                || SupportsLeftyFlip(profile.GameMode)
                 || SupportsRangeShifts(profile.GameMode)
                 || _possibleModifiers.Any(m => (m & ACCESSIBILITY_MODIFIERS) != 0);
 
@@ -1094,6 +1102,12 @@ namespace YARG.Menu.DifficultySelect
         private string BuildAccessibilitySummary(YargProfile profile)
         {
             string text = "";
+
+            if (profile.GameMode == GameMode.PartyVocals &&
+                SettingsManager.Settings.DisablePartyVocalsCountIns.Value)
+            {
+                text += LocalizeHeader("DisablePartyVocalsCountIns") + "\n";
+            }
 
             if (SupportsLeftyFlip(profile.GameMode) && profile.LeftyFlip)
             {

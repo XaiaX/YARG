@@ -64,11 +64,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: YARG.Menu.Maestro::MaestroPlayerRow
   _selectOnHover: 1
+  _selectOnClick: 1
+  _selectedVisual: {fileID: 8264499524861937193}
   _name: {fileID: 6762365780682806489}
   _gameModeIcon: {fileID: 4223734016499881122}
   _setup: {fileID: 5623166077032289895}
   _modifiers: {fileID: 2732159970328998188}
-  _selectedVisual: {fileID: 8264499524861937193}
 --- !u!114 &8477254894791059809
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -406,7 +407,7 @@ RectTransform:
   m_Father: {fileID: 1000000000000000001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.02, y: 0.5}
-  m_AnchorMax: {x: 0.10, y: 0.5}
+  m_AnchorMax: {x: 0.1, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 48}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -428,7 +429,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -480,8 +481,8 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 1000000000000000001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.10, y: 0}
-  m_AnchorMax: {x: 0.30, y: 1}
+  m_AnchorMin: {x: 0.1, y: 0}
+  m_AnchorMax: {x: 0.3, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: -24, y: -12}
   m_Pivot: {x: 0.5, y: 0.5}

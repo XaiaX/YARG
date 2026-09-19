@@ -536,6 +536,7 @@ namespace YARG.Settings
 
             public SliderSetting SongBackgroundOpacity { get; } = new(1f, 0f, 1f);
             public ToggleSetting StaticVocalsMode { get; } = new(false);
+            public ToggleSetting DisablePartyVocalsCountIns { get; } = new(false);
             public ToggleSetting UseThreeLaneLyricsInHarmony { get; } = new(true);
             public ToggleSetting EnableTrackEffects { get; } = new(true);
             public ToggleSetting EnableHighwayAnimation { get; } = new(true);

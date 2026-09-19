@@ -341,7 +341,7 @@ namespace YARG.Gameplay.HUD
                 float meter = present && i < meters.Count
                     ? (float) System.Math.Min(1.0, meters[i] * scale)
                     : 0f;
-                SetHarmonyMeterTarget(i, meter, present, present, false, -1, false);
+                SetHarmonyMeterTarget(i, meter, present, present, false, false, -1, false);
             }
         }
 
@@ -358,6 +358,24 @@ namespace YARG.Gameplay.HUD
 
             CacheHarmonyImages();
             _partyHarmonyVisuals = true;
+
+            // Lead-only Party Vocals: the combo meter already represents the sole
+            // lead-vocal performance, so hide the entire harmony container, HARM1
+            // included. This keys on the coordinator's resolved per-part availability
+            // (never on Party Vocals selection alone): duet/trio availability keeps the
+            // container visible with its exact current placement. PartHasContent is
+            // bounds-safe, so a resolved track with fewer than three parts — and empty
+            // or malformed harmony upgrade lanes — evaluates as no harmony content.
+            bool leadOnly = coordinator.PartHasContent(0)
+                && !coordinator.PartHasContent(1)
+                && !coordinator.PartHasContent(2);
+            if (leadOnly)
+            {
+                if (_harmFillContainer.activeSelf)
+                    _harmFillContainer.SetActive(false);
+                return;
+            }
+
             _harmFillContainer.SetActive(true);
             double scale = coordinator.AwesomeThreshold > 0
                 ? 1.0 / coordinator.AwesomeThreshold
@@ -374,23 +392,26 @@ namespace YARG.Gameplay.HUD
                 // onset after song start or a lane-inactive phrase. Once onset is reached, that
                 // schedule ends and silent child-run gaps cannot reactivate it.
                 bool canonicalCurrent = coordinator.PartInCurrentMasterPhraseWithContent(i);
-                bool countIn = countInState.IsPending;
+                bool pendingCountIn = countInState.IsPending;
+                bool suppressCountIn = SettingsManager.Settings.DisablePartyVocalsCountIns.Value;
+                bool countIn = pendingCountIn && !suppressCountIn;
                 // A different HARM lane can advance the canonical phrase before this lane's
-                // first note. Preserve this lane's pending countdown through that transition;
-                // the half-open Core state ends exactly at this lane's actual onset.
-                bool current = canonicalCurrent && !countIn;
+                // first note. The raw pending state, not its optional visual treatment, keeps
+                // the lane inactive until the Core schedule ends exactly at the actual onset.
+                bool current = canonicalCurrent && !pendingCountIn;
                 float meter = countIn ? (float) countInState.FillAmount
                     : current && i < coordinator.CanonicalMeters.Count
                         ? Mathf.Clamp01((float) (coordinator.CanonicalMeters[i] * scale))
                         : 0f;
-                SetHarmonyMeterTarget(i, meter, current, songPresent, countIn, countInState.TargetTick, globalFc,
-                    countInState.PulseStrength, countInState.WindowBeats, countInState.FillAmount);
+                SetHarmonyMeterTarget(i, meter, current, songPresent, countIn, pendingCountIn && suppressCountIn,
+                    countInState.TargetTick, globalFc, countInState.PulseStrength, countInState.WindowBeats,
+                    countInState.FillAmount);
             }
         }
 
         private void SetHarmonyMeterTarget(int index, float target, bool current,
-            bool songPresent, bool countIn, long targetTick, bool globalFc, double pulseStrength = 0.0,
-            int windowBeats = 32, double countInFillAmount = 0.0)
+            bool songPresent, bool countIn, bool suppressedPendingCountIn, long targetTick, bool globalFc,
+            double pulseStrength = 0.0, int windowBeats = 32, double countInFillAmount = 0.0)
         {
             CacheHarmonyImages();
             var laneColor = YARG.Gameplay.Player.VocalTrack.Colors[index];
@@ -425,8 +446,13 @@ namespace YARG.Gameplay.HUD
             bool exitedCountIn = _harmPartCountIn[index] && !countIn;
             _harmPartCountIn[index] = countIn;
             _harmCountInTargetTicks[index] = countIn ? targetTick : -1;
-            if (exitedCountIn && _harmFills[index] != null)
+            if ((exitedCountIn || suppressedPendingCountIn) && _harmFills[index] != null)
+            {
                 _harmFills[index].fillAmount = 0f;
+                _harmFills[index].color = laneColor.WithAlpha(0f);
+            }
+            if (suppressedPendingCountIn && _harmRims[index] != null)
+                _harmRims[index].color = _harmRimColorTargets[index].WithAlpha(0f);
 
             // Fill resets only when the actual child-note re-entry target changes; master
             // phrase boundaries and empty phrases cannot restart an in-progress countdown.

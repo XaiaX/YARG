@@ -1406,6 +1406,17 @@ namespace YARG.Menu.Maestro
         private void AddAccessibilityOptions(ListDialog dialog, MaestroStagedPlayer player,
             IReadOnlyList<Modifier> modifiers, int rightSelectionIndex)
         {
+            if (player.GameMode == GameMode.PartyVocals)
+            {
+                AddAdjustmentToggle(dialog,
+                    Localize.Key("Menu.DifficultySelect", "DisablePartyVocalsCountIns"),
+                    SettingsManager.Settings.DisablePartyVocalsCountIns.Value, enabled =>
+                    {
+                        SettingsManager.Settings.DisablePartyVocalsCountIns.Value = enabled;
+                        RefreshView();
+                    });
+            }
+
             if (MaestroSelectionRules.SupportsLeftyFlip(player.GameMode))
             {
                 AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "LeftyFlip"),
@@ -1499,7 +1510,8 @@ namespace YARG.Menu.Maestro
 
         private bool HasAccessibilityOptions(MaestroStagedPlayer player)
         {
-            return MaestroSelectionRules.SupportsLeftyFlip(player.GameMode) ||
+            return player.GameMode == GameMode.PartyVocals ||
+                MaestroSelectionRules.SupportsLeftyFlip(player.GameMode) ||
                 MaestroSelectionRules.SupportsRangeShifts(player.GameMode) ||
                 player.GameMode == GameMode.ProKeys ||
                 Session.GetAvailableAccessibilityModifiers(_selectedProfileId).Count > 0;

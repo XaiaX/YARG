@@ -493,6 +493,7 @@ MonoBehaviour:
   _loadingPhrase: {fileID: 6308926435231887573}
   _warningMessage: {fileID: 1551244186665827240}
   _warningMessageContainer: {fileID: 1670055410609939572}
+  _directSummaryCanvasGroup: {fileID: 0}
   _songTitleText: {fileID: 7778603426334286436}
   _artistText: {fileID: 4129190891411151634}
   _sourceIcon: {fileID: 4587722383312202436}

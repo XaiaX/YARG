@@ -332,7 +332,8 @@ namespace YARG.Menu.ScoreScreen
         }
 
         // Party-mode Awesome bar: a full-height bar split into one band per available harmony part
-        // (lowest part number at the bottom), plus a thin status buffer at the very bottom that is
+        // (stacked in musical presentation order: HARM2 on top, HARM1/lead in the middle, HARM3 at
+        // the bottom), plus a thin status buffer at the very bottom that is
         // gold when the phrase ranked Awesome/Double/Triple and dark grey when it was a Miss. Each
         // band fills solid with its harmony line color if that part reached Awesome; otherwise it
         // fills from the band's bottom to (meter / threshold) in the harmony color dimmed 10%.
@@ -358,7 +359,8 @@ namespace YARG.Menu.ScoreScreen
             // Party bars retain their actual segment count and per-part colors.
             int colorOffset = synthesizedLegacySummary ? Mathf.Clamp(harmonyPartIndex, 0, 2) : 0;
 
-            // One segment per available harmony part (HARM1/HARM2/HARM3, bottom -> top), so a duet
+            // One segment per available harmony part (bottom -> top in musical presentation order:
+            // HARM3, HARM1/lead, HARM2 — i.e. HARM2 on top, matching the gameplay harmony HUD), so a duet
             // (2 parts) renders two equal-height bands instead of leaving the top third empty. Each
             // fill carries a subtle vertical gradient (full color -> 20% darker at the bottom). An
             // absent part renders as a full fill dimmed 75% (a "gap") — exempt from the odd-bar
@@ -378,6 +380,24 @@ namespace YARG.Menu.ScoreScreen
                         meters[pr.PartIndex] = pr.Meter;
                     }
                 }
+            }
+
+            // Bands stack in musical presentation order, matching the gameplay harmony HUD:
+            // HARM3 at the bottom, HARM1/lead in the middle, HARM2 on top. Duets (raw parts
+            // 0 + 1) and solos (raw part 0) already present HARM2 above HARM1, so only the trio
+            // mapping differs from ascending raw order. Every band keeps its raw PartIndex —
+            // availability, meters, and colors below stay keyed to the raw part.
+            var presentationOrder = new int[SEGMENTS];
+            for (int p = 0; p < SEGMENTS; p++)
+            {
+                presentationOrder[p] = p;
+            }
+
+            if (SEGMENTS == 3)
+            {
+                presentationOrder[0] = 2; // HARM3 — bottom
+                presentationOrder[1] = 0; // HARM1/lead — middle
+                presentationOrder[2] = 1; // HARM2 — top
             }
 
             float stripe = oddBar ? PARTY_STRIPE_DIM : 0f;
@@ -408,42 +428,44 @@ namespace YARG.Menu.ScoreScreen
 
             for (int p = 0; p < SEGMENTS; p++)
             {
+                int partIndex = presentationOrder[p];
+
                 // Gap below this band = the black divider.
                 AddBarImage(bar, $"Div {p}", y, gapH, Color.black, 0.8f);
                 float bandBottom = SnapToScreenPixel(bar, y + gapH);
                 float bandTop = (p == SEGMENTS - 1) ? barHeight : SnapToScreenPixel(bar, bandBottom + bandHAvg);
                 float bandH = bandTop - bandBottom;
-                Color lineColor = HarmonyColor(p + colorOffset);
+                Color lineColor = HarmonyColor(partIndex + colorOffset);
 
-                if (!available[p])
+                if (!available[partIndex])
                 {
                     // Absent part: no fill — the striped background shows through ("transparent").
                     y = bandTop;
                     continue;
                 }
 
-                bool awesome = awesomeThreshold > 0 && meters[p] >= awesomeThreshold;
+                bool awesome = awesomeThreshold > 0 && meters[partIndex] >= awesomeThreshold;
 
                 // Lane background: darkened harmony color covering the stripes for this segment.
                 // Deliberately NOT subject to the odd-bar stripe: this is a constant "part is
                 // available" marker (harmony x0.25) in every bar so the available/absent
                 // distinction reads consistently across the row. Only the meter fill alternates.
-                AddBarImage(bar, $"Track {p}", bandBottom, bandH,
+                AddBarImage(bar, $"Track {partIndex}", bandBottom, bandH,
                     Dim(lineColor, 1f - PARTY_TRACK_DIM), 1f);
 
                 // Meter fill (gradient) on top of the track: full when Awesome, partial otherwise.
                 float fillDim = (awesome ? 0f : PARTY_DIM_NOT_AWESOME) + stripe;
                 float fillFrac = awesome ? 1f
-                    : Mathf.Clamp01(awesomeThreshold > 0 ? (float) (meters[p] / awesomeThreshold) : 0f);
+                    : Mathf.Clamp01(awesomeThreshold > 0 ? (float) (meters[partIndex] / awesomeThreshold) : 0f);
                 float fillTop = awesome ? bandTop : SnapToScreenPixel(bar, bandBottom + fillFrac * bandH);
                 float height = fillTop - bandBottom;
-                AddBarRawImage(bar, $"Part {p}", bandBottom, height, segGradient,
+                AddBarRawImage(bar, $"Part {partIndex}", bandBottom, height, segGradient,
                     Dim(lineColor, 1f - fillDim), 1f);
 
                 // Cap highlight across the fill top, only when the segment isn't completely full.
                 if (!awesome && height > onePixel)
                 {
-                    AddBarImage(bar, $"Cap {p}", fillTop - onePixel, onePixel,
+                    AddBarImage(bar, $"Cap {partIndex}", fillTop - onePixel, onePixel,
                         BarCapColor, 0.20f);
                 }
 

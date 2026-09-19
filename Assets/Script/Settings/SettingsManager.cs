@@ -293,6 +293,7 @@ namespace YARG.Settings
                 nameof(Settings.FrameGraph),
                 nameof(Settings.ReverbImplementation),
                 new HeaderMetadata("Accessibility"),
+                nameof(Settings.DisablePartyVocalsCountIns),
                 nameof(Settings.FontScaling),
                 new HeaderMetadata("OutputConfiguration"),
                 new FieldMetadata(nameof(Settings.OutputMode), visibleWhen: IsWindows),
