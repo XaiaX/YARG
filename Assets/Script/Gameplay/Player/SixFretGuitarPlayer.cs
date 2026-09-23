@@ -220,6 +220,14 @@ namespace YARG.Gameplay.Player
 
             for (int laneIndex = 0; laneIndex < LaneCount; laneIndex++)
             {
+                var lane = BRELanes[laneIndex];
+                if (lane == null)
+                {
+                    // Slot left null by a rolled-back (pool-exhausted) StartBRE attempt or a
+                    // reset; there is no lane to light.
+                    continue;
+                }
+
                 double mostRecentTime = 0;
                 foreach (var (fret, lanePosition) in HighwayOrdering)
                 {
@@ -230,7 +238,7 @@ namespace YARG.Gameplay.Player
                 }
 
                 var normalizedTimeSinceLastHit = CodaSection.GetNormalizedTimeSinceLastHit(visualTime, mostRecentTime);
-                BRELanes[laneIndex].SetEmissionColor(emissionColor, normalizedTimeSinceLastHit);
+                lane.SetEmissionColor(emissionColor, normalizedTimeSinceLastHit);
             }
         }
 

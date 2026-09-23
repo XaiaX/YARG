@@ -91,6 +91,48 @@ namespace YARG.Gameplay.Player
 
         protected LaneElement[] BRELanes;
 
+        /// <summary>
+        /// Clears every BRE lane slot reference. Used when a StartBRE attempt fails to acquire a
+        /// complete set of lanes and when ResetVisuals returns all pooled objects, so coda
+        /// emission code can never dereference a stale, returned, or never-acquired lane slot.
+        /// Lanes referenced at the time of the call are NOT returned here; callers that acquired
+        /// lanes in the failed attempt must return them to the pool themselves.
+        /// </summary>
+        protected void ResetBRELanes()
+        {
+            if (BRELanes == null)
+            {
+                return;
+            }
+
+            Array.Clear(BRELanes, 0, BRELanes.Length);
+        }
+
+        /// <summary>
+        /// Returns every lane held by a previous successful StartBRE attempt to the pool and
+        /// clears the slots. Called at the start of a new StartBRE attempt so reentry never
+        /// abandons (leaks) the previous lanes: after a failed attempt every slot is null and
+        /// every previously held lane is accounted for in the pool, whether the new attempt
+        /// succeeds or fails.
+        /// </summary>
+        protected void ReleasePriorBRELanes()
+        {
+            if (BRELanes == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < BRELanes.Length; i++)
+            {
+                if (BRELanes[i] != null)
+                {
+                    LanePool.Return(BRELanes[i]);
+                }
+            }
+
+            Array.Clear(BRELanes, 0, BRELanes.Length);
+        }
+
         public virtual void Initialize(int index, YargPlayer player, SongChart chart, TrackView trackView,
             StemMixer mixer, int? lastHighScore)
         {
@@ -151,6 +193,10 @@ namespace YARG.Gameplay.Player
             LanePool.ReturnAllObjects();
             BeatlinePool.ReturnAllObjects();
 
+            // Every pooled lane was just returned; drop BRE lane references so coda emissions
+            // can never touch a lane that has gone back to the pool (or was reused since).
+            ResetBRELanes();
+
             HitWindowDisplay.SetHitWindowSize();
         }
     }
@@ -169,7 +215,7 @@ namespace YARG.Gameplay.Player
 
         public InstrumentDifficulty<TNote> NoteTrack { get; private set; }
 
-        private InstrumentDifficulty<TNote> OriginalNoteTrack { get; set; }
+        protected InstrumentDifficulty<TNote> OriginalNoteTrack { get; private set; }
 
         private int _currentMultiplier;
         private int _previousMultiplier;
@@ -177,6 +223,12 @@ namespace YARG.Gameplay.Player
         private bool _isHotStartChecked;
         private bool _previousBassGrooveState;
         private bool _newHighScoreShown;
+
+        /// <summary>
+        /// Ensures a foreign-poolable lane pool misconfiguration is only logged once per
+        /// player instead of on every failed native lane take.
+        /// </summary>
+        private bool _loggedForeignLanePoolable;
 
         private double _previousStarPowerAmount;
 
@@ -786,18 +838,50 @@ namespace YARG.Gameplay.Player
         {
             RescaleLanesForBRE();
 
+            // Reentry (a new BRE phrase while a previous attempt's lanes are still held) must
+            // not orphan those lanes: return them to the pool and clear the slots BEFORE the
+            // new allocation attempt, so the capacity check and the transactional rollback
+            // below always operate on a fully-owned lane set.
+            ReleasePriorBRELanes();
+
             if (!LanePool.CanSpawnAmount(BRELanes.Length))
             {
-                return;
+                BeforeNativeLaneAllocation(BRELanes.Length);
+                if (!LanePool.CanSpawnAmount(BRELanes.Length))
+                {
+                    return;
+                }
             }
 
+            // BRE lane acquisition is transactional: lanes are staged locally and only
+            // committed to BRELanes once every required lane has been acquired. If any lane
+            // is unavailable, every lane taken in this attempt is returned to the pool and
+            // BRELanes is reset, so coda emissions can never dereference a stale or
+            // unfilled slot. (Lanes held by a previous successful attempt were already
+            // released above, so the reset cannot orphan them.) A complete acquisition
+            // behaves exactly as before.
+            var acquiredLanes = new List<LaneElement>(BRELanes.Length);
             for (int i = 0; i < BRELanes.Length; i++)
             {
-                var newLane = (LaneElement) LanePool.TakeWithoutEnabling();
+                if (!LanePool.CanSpawnAmount(1))
+                {
+                    BeforeNativeLaneAllocation(1);
+                }
+
+                var newLane = TakeNativeLane();
 
                 if (newLane == null)
                 {
                     YargLogger.LogWarning("Attempted to spawn BRE lane, but it's at its cap!");
+
+                    // Roll back: give back every lane this attempt acquired. All slots are
+                    // then cleared so nothing later reads a half-built or stale BRE lane set.
+                    foreach (var acquiredLane in acquiredLanes)
+                    {
+                        LanePool.Return(acquiredLane);
+                    }
+
+                    ResetBRELanes();
                     return;
                 }
 
@@ -807,13 +891,90 @@ namespace YARG.Gameplay.Player
 
                 newLane.SetEmissionColor(0);
 
-                BRELanes[i] = newLane;
+                acquiredLanes.Add(newLane);
+            }
+
+            for (int i = 0; i < acquiredLanes.Count; i++)
+            {
+                BRELanes[i] = acquiredLanes[i];
             }
         }
 
         protected virtual void OnNoteSpawned(TNote parentNote)
         {
             SpawnLanesFromNote(parentNote);
+        }
+
+        protected virtual bool ShouldSpawnNativeLane(TNote note)
+        {
+            return true;
+        }
+
+        /// <summary>
+        /// Whether an existing spawned lane may be extended by the native adjacency combiner.
+        /// Lanes owned by the Elite visual adapter carry descriptor state and are never
+        /// native-combined: each descriptor spans exactly its own first..last event.
+        /// </summary>
+        protected virtual bool ShouldExtendExistingLane(LaneElement lane)
+        {
+            return true;
+        }
+
+        protected virtual void BeforeNativeLaneAllocation(int count)
+        {
+        }
+
+        protected virtual void AfterNativeLaneAllocation(LaneElement lane)
+        {
+        }
+
+        /// <summary>
+        /// Takes a native lane from the shared lane pool, or returns null when no native lane
+        /// is available. The shared pool may also hold non-LaneElement poolables; a foreign
+        /// item is parked out of the free stack unchanged (matching the Elite visual
+        /// adapter), so it can never circulate back and poison later takes. The allocation
+        /// hook only ever observes a validated, non-null lane element.
+        /// </summary>
+        protected LaneElement TakeNativeLane()
+        {
+            var poolable = LanePool.TakeWithoutEnabling();
+            if (poolable == null)
+            {
+                return null;
+            }
+
+            if (poolable is not LaneElement lane)
+            {
+                // Foreign IPoolable in the shared lane pool (pool misconfiguration): fail
+                // safely. The take already moved it into Pool.AllSpawned, which parks it out
+                // of the free stack. Do NOT Return() it: that would run DisableIntoPool on an
+                // item we do not own and push it back onto the free stack, where it would be
+                // handed out again and poison every later take (native and adapter alike).
+                // The parked item is recovered unchanged by ReturnAllObjects on the next full
+                // reset. Treat this as pool exhaustion.
+                LogForeignLanePoolableOnce(poolable);
+                return null;
+            }
+
+            AfterNativeLaneAllocation(lane);
+            return lane;
+        }
+
+        /// <summary>
+        /// Warns once per player about a foreign poolable in the shared lane pool; a pool
+        /// misconfiguration surfaces on every native take, so repeated logging would spam.
+        /// </summary>
+        private void LogForeignLanePoolableOnce(IPoolable poolable)
+        {
+            if (_loggedForeignLanePoolable)
+            {
+                return;
+            }
+
+            _loggedForeignLanePoolable = true;
+            YargLogger.LogWarning($"Lane pool handed out a non-LaneElement poolable " +
+                $"({poolable.GetType().Name}); it was parked out of the free stack unchanged. " +
+                "Check the LanePool prefab configuration.");
         }
 
         protected virtual void SpawnLanesFromNote(TNote parentNote)
@@ -823,15 +984,10 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            if (!LanePool.CanSpawnAmount(1))
-            {
-                return;
-            }
-
             bool containsLaneStart = false;
             foreach (var childNote in parentNote.AllNotes)
             {
-                if (childNote.IsLaneStart)
+                if (childNote.IsLaneStart && ShouldSpawnNativeLane(childNote))
                 {
                     containsLaneStart = true;
                     break;
@@ -840,6 +996,15 @@ namespace YARG.Gameplay.Player
 
             if (containsLaneStart)
             {
+                if (!LanePool.CanSpawnAmount(1))
+                {
+                    BeforeNativeLaneAllocation(1);
+                    if (!LanePool.CanSpawnAmount(1))
+                    {
+                        return;
+                    }
+                }
+
                 var laneStartNotes = new Dictionary<int, TNote>();
                 var laneEndTimes = new Dictionary<int, double>();
 
@@ -853,12 +1018,12 @@ namespace YARG.Gameplay.Player
                     bool containsLaneEnd = false;
                     foreach (var childNote in noteRef.AllNotes)
                     {
-                        if (childNote.IsLaneEnd)
+                        if (childNote.IsLaneEnd && ShouldSpawnNativeLane(childNote))
                         {
                             containsLaneEnd = true;
                         }
 
-                        if (childNote.IsLane)
+                        if (childNote.IsLane && ShouldSpawnNativeLane(childNote))
                         {
                             if (!laneStartNotes.ContainsKey(childNote.LaneNote))
                             {
@@ -891,8 +1056,26 @@ namespace YARG.Gameplay.Player
 
                     // Extend a previous lane if possible instead of creating two adjoining lanes at the same index
                     bool extendExisting = false;
-                    foreach (LaneElement existingLane in LanePool.AllSpawned)
+                    foreach (var poolable in LanePool.AllSpawned)
                     {
+                        // The shared pool can hold foreign IPoolables parked out of the free
+                        // stack by a failed native take (see TakeNativeLane). Iterate by the
+                        // poolable interface and skip them (and nulls) instead of casting:
+                        // a direct LaneElement cast throws InvalidCastException on the next
+                        // native lane start after a foreign item is parked.
+                        if (poolable is not LaneElement existingLane)
+                        {
+                            continue;
+                        }
+
+                        if (!ShouldExtendExistingLane(existingLane))
+                        {
+                            // Descriptor-owned adapter lanes are invisible to the native combiner:
+                            // never matched, never extended, and never allowed to consume the
+                            // first-match slot a native lane at the same index relies on.
+                            continue;
+                        }
+
                         if (existingLane.ContainsIndex(laneIndex))
                         {
                             if (startTime - existingLane.EndTime <= LaneElement.COMBINE_LANE_THRESHOLD)
@@ -933,7 +1116,16 @@ namespace YARG.Gameplay.Player
                     }
 
                     // Create a new lane element at this index
-                    var newLane = (LaneElement) LanePool.TakeWithoutEnabling();
+                    if (!LanePool.CanSpawnAmount(1))
+                    {
+                        BeforeNativeLaneAllocation(1);
+                    }
+
+                    var newLane = TakeNativeLane();
+                    if (newLane == null)
+                    {
+                        continue;
+                    }
                     newLane.SetTimeRange(startTime, endTime);
                     InitializeSpawnedLane(newLane, note);
                     ModifyLaneFromNote(newLane, firstLaneNote);
@@ -943,19 +1135,20 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        public override void SetPracticeSection(uint start, uint end)
+        protected virtual InstrumentDifficulty<TNote> CreatePracticeTrack(uint start, uint end)
         {
             var practiceNotes = OriginalNoteTrack.Notes.Where(n => n.Tick >= start && n.Tick < end).ToList();
 
             YargLogger.LogFormatDebug("Practice notes: {0}", practiceNotes.Count);
 
-            var instrument = OriginalNoteTrack.Instrument;
-            var difficulty = OriginalNoteTrack.Difficulty;
-            var phrases = OriginalNoteTrack.Phrases;
-            var textEvents = OriginalNoteTrack.TextEvents;
-            var shiftEvents = OriginalNoteTrack.RangeShiftEvents;
+            return new InstrumentDifficulty<TNote>(OriginalNoteTrack.Instrument, OriginalNoteTrack.Difficulty,
+                practiceNotes, OriginalNoteTrack.Phrases, OriginalNoteTrack.TextEvents,
+                OriginalNoteTrack.RangeShiftEvents);
+        }
 
-            NoteTrack = new InstrumentDifficulty<TNote>(instrument, difficulty, practiceNotes, phrases, textEvents, shiftEvents);
+        public override void SetPracticeSection(uint start, uint end)
+        {
+            NoteTrack = CreatePracticeTrack(start, end);
             Notes = NoteTrack.Notes;
 
             ResetNoteCounters();

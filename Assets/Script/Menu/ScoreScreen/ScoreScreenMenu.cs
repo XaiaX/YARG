@@ -402,14 +402,6 @@ namespace YARG.Menu.ScoreScreen
         {
             _analyzingReplay = true;
 
-            var chart = songEntry.LoadChart();
-            if (chart == null)
-            {
-                YargLogger.LogError("Chart did not load");
-                _analyzingReplay = false;
-                return true;
-            }
-
             if (GlobalVariables.State.ScoreScreenStats.Value.PlayerScores.All(e => e.Player.Profile.IsBot))
             {
                 YargLogger.LogInfo("No human players in ReplayEntry.");
@@ -424,21 +416,36 @@ namespace YARG.Menu.ScoreScreen
                 return true;
             }
 
-            if (replayEntry.CensorshipEnabled)
-            {
-                chart.ApplyCensorship();
-            }
-
             var replayOptions = new ReplayReadOptions
             {
                 KeepFrameTimes = GlobalVariables.VerboseReplays
             };
-            var (result, data) = ReplayIO.TryLoadData(replayEntry, replayOptions);
-            if (result != ReplayReadResult.Valid)
+            var load = ScoreScreenReplayLoad.TryReadThenLoadChart(
+                () =>
+                {
+                    var replayResult = ReplayIO.TryLoadData(replayEntry, replayOptions);
+                    return (replayResult.Result == ReplayReadResult.Valid, replayResult.Data);
+                },
+                data => data.GetEliteDrumsDownchartOutputs(),
+                outputs => songEntry.LoadChart(outputs));
+            if (!load.Success)
             {
-                YargLogger.LogFormatError("Replay did not load. {0}", result);
                 _analyzingReplay = false;
                 return true;
+            }
+
+            var data = load.Data;
+            var chart = load.Chart;
+            if (chart == null)
+            {
+                YargLogger.LogError("Chart did not load");
+                _analyzingReplay = false;
+                return true;
+            }
+
+            if (replayEntry.CensorshipEnabled)
+            {
+                chart.ApplyCensorship();
             }
 
             if (data.Frames.Any(frame => frame.Profile.GameMode == GameMode.PartyVocals))

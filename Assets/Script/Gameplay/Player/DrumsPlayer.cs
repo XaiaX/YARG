@@ -136,6 +136,11 @@ namespace YARG.Gameplay.Player
 
         public DrumsEngineParameters EngineParams { get; private set; }
 
+        // Elite visual descriptors are supplied by Core and remain separate from native/kick lanes.
+        private EliteDrumVisualAdapter _eliteDrumVisualAdapter;
+        private int _eliteVisualDescriptorIndex;
+        private IReadOnlyList<EliteDrumVisualDescriptorV1> _eliteVisualDescriptors = Array.Empty<EliteDrumVisualDescriptorV1>();
+
         [Header("Drums Specific")]
         [SerializeField]
         private bool _fiveLaneMode;
@@ -191,11 +196,33 @@ namespace YARG.Gameplay.Player
 
         protected override InstrumentDifficulty<DrumNote> GetNotes(SongChart chart)
         {
-            bool useEliteDrumsDownchart = EliteDrumsDownchartRules.IsDownchartTargetActive(Player.Profile);
-            YargLogger.LogInfo($"[ED-log] DrumsPlayer selecting track instrument={Player.Profile.CurrentInstrument} target={Player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} useDownchart={useEliteDrumsDownchart}");
-            var track = chart.GetDrumsTrack(Player.Profile.CurrentInstrument, useEliteDrumsDownchart).Clone();
+            // Keep selection identical to replay analysis and chart loading. Clone the selected
+            // track because modifiers and activation flags are applied to the gameplay copy.
+            var track = DrumDifficultySelector.SelectTrack(chart, Player.Profile).Clone();
             var instrumentDifficulty = track.GetDifficulty(Player.Profile.CurrentDifficulty);
+            YargLogger.LogInfo($"[ED-log] DrumsPlayer selected instrument={Player.Profile.CurrentInstrument} " +
+                $"target={Player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} " +
+                $"difficulty={Player.Profile.CurrentDifficulty}");
             return instrumentDifficulty;
+        }
+
+        /// <summary>
+        /// Production seam for the live Elite fill parameter gate. Replay parameters are
+        /// authoritative and are intentionally excluded from this decision.
+        /// </summary>
+        public static bool ShouldUseEliteFillRulesetV1(YargProfile profile,
+            InstrumentDifficulty<DrumNote> selectedDifficulty, bool isReplay)
+        {
+            if (isReplay || profile is null || selectedDifficulty is null ||
+                selectedDifficulty.Difficulty == Difficulty.Beginner ||
+                !EliteDrumsDownchartRules.IsDownchartTargetActive(profile) ||
+                selectedDifficulty.Instrument != profile.CurrentInstrument)
+            {
+                return false;
+            }
+
+            return selectedDifficulty.EliteDrumVisualDescriptors.Any(descriptor =>
+                descriptor.RulesetEligible && descriptor.VisualIdentity is { Enabled: true });
         }
 
         protected override DrumsEngine CreateEngine()
@@ -210,12 +237,23 @@ namespace YARG.Gameplay.Player
 
             if (!Player.IsReplay)
             {
-                // Create the engine params from the engine preset
-                EngineParams = Player.EnginePreset.Drums.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds, mode);
+                // Create the engine params from the engine preset. The generated Elite
+                // path opts into V1 only after the selected track proves it has eligible
+                // generated metadata/descriptors; native and disabled states stay legacy.
+                var presetParams = Player.EnginePreset.Drums.Create(
+                    StarMultiplierThresholds, SoloBonusStarMultiplierThresholds, mode);
+                EngineParams = ShouldUseEliteFillRulesetV1(Player.Profile, NoteTrack, false)
+                    ? new DrumsEngineParameters(presetParams.HitWindow, presetParams.MaxMultiplier,
+                        presetParams.StarMultiplierThresholds, presetParams.SoloBonusStarMultiplierThresholds,
+                        presetParams.Mode, presetParams.NoStarPowerOverlap, presetParams.EnableLanes,
+                        DrumsEngineParameters.ELITE_FILL_RULESET_V1,
+                        DrumsEngineParameters.DEFAULT_ENTRY_GRACE_MULTIPLIER)
+                    : presetParams;
             }
             else
             {
-                // Otherwise, get from the replay
+                // Otherwise, get from the replay. Never override a recorded ruleset-0
+                // payload based on the current chart/profile state.
                 EngineParams = (DrumsEngineParameters) Player.EngineParameterOverride;
             }
 
@@ -304,12 +342,160 @@ namespace YARG.Gameplay.Player
 
             base.FinishInitialization();
             LaneElement.DefineLaneScale(Player.Profile.CurrentInstrument, _fiveLaneMode ? 5 : 4);
+            InitializeEliteVisualAdapter();
+        }
+
+        private void InitializeEliteVisualAdapter()
+        {
+            // Kick and native lanes remain owned by TrackPlayer. The adapter owns only future
+            // Core-provided Elite descriptor lanes, so it cannot combine or consume native lanes.
+            if (!EliteDrumsDownchartRules.IsDownchartTargetActive(Player.Profile))
+            {
+                return;
+            }
+
+            if (LanePool == null)
+            {
+                YargLogger.LogWarning("[EliteDrumsVisuals] Lane pool unavailable; adapter preflight deferred.");
+                return;
+            }
+
+            _eliteDrumVisualAdapter = EliteDrumVisualAdapterFactory.Create(
+                LanePool,
+                Player.Profile.CurrentInstrument,
+                LaneCount,
+                ResolveEliteVisualAppearance);
+
+        }
+
+        private void SpawnEliteVisualDescriptors(double visualTime)
+        {
+            if (NoteTrack == null)
+            {
+                return;
+            }
+
+            _eliteVisualDescriptors = NoteTrack.EliteDrumVisualDescriptors;
+            SpawnEliteVisualDescriptors(_eliteVisualDescriptors,
+                Player.Profile.CurrentDifficulty, Engine.IsCodaActive, visualTime + SpawnTimeOffset);
+        }
+
+        private void SpawnEliteVisualDescriptors(
+            IReadOnlyList<EliteDrumVisualDescriptorV1> descriptors, Difficulty difficulty,
+            bool codaActive, double visualTime)
+        {
+            if (_eliteDrumVisualAdapter == null || difficulty == Difficulty.Beginner)
+            {
+                return;
+            }
+
+            double visibleThrough = visualTime;
+            while (_eliteVisualDescriptorIndex < descriptors.Count &&
+                descriptors[_eliteVisualDescriptorIndex].FirstPhysicalEventTime <= visibleThrough)
+            {
+                var descriptor = descriptors[_eliteVisualDescriptorIndex++];
+                // V1 descriptors are hand-fill visuals only. Fail closed for a kick
+                // target even if malformed metadata reaches the Unity seam.
+                if (!descriptor.RulesetEligible || descriptor.CodaExcluded || descriptor.FinalPad.Pad == 0)
+                {
+                    continue;
+                }
+
+                _eliteDrumVisualAdapter.TrySpawn(descriptor, difficulty, codaActive);
+            }
+
+            _eliteDrumVisualAdapter.RetryPending(difficulty, codaActive);
+        }
+
+        // Reflection-accessible production seam used by the Unity behavior test. It exercises the
+        // same descriptor enumerator used by UpdateVisuals, with a Core descriptor collection.
+        private void SpawnEliteVisualDescriptorsForTest(
+            IReadOnlyList<EliteDrumVisualDescriptorV1> descriptors, Difficulty difficulty,
+            bool codaActive, double visualTime) =>
+            SpawnEliteVisualDescriptors(descriptors, difficulty, codaActive, visualTime);
+
+        private void ResetEliteVisuals()
+        {
+            _eliteVisualDescriptorIndex = 0;
+            _eliteDrumVisualAdapter?.Reset();
+        }
+
+        protected override void BeforeNativeLaneAllocation(int count)
+        {
+            _eliteDrumVisualAdapter?.ReleaseForNative(Math.Max(0, count));
+        }
+
+        protected override void AfterNativeLaneAllocation(LaneElement lane)
+        {
+            _eliteDrumVisualAdapter?.ForgetIfReused(lane);
+        }
+
+        public override void Rewind(double visualTime)
+        {
+            base.Rewind(visualTime);
+            ResetEliteVisuals();
+            _eliteVisualDescriptorIndex = GetDescriptorIndexAtOrAfter(visualTime + SpawnTimeOffset);
+        }
+
+        private int GetDescriptorIndexAtOrAfter(double time)
+        {
+            var descriptors = _eliteVisualDescriptors.Count > 0
+                ? _eliteVisualDescriptors
+                : NoteTrack?.EliteDrumVisualDescriptors;
+            if (descriptors == null) return 0;
+            int index = 0;
+            // Keep the descriptor whose interval straddles the rewind horizon. Its first physical
+            // event may be before the horizon, but its lane is still visible until the last event.
+            while (index < descriptors.Count && descriptors[index].LastPhysicalEventTime <= time)
+            {
+                index++;
+            }
+            return index;
+        }
+
+        internal static IReadOnlyList<EliteDrumVisualDescriptorV1> ProjectEliteVisualDescriptors(
+            IReadOnlyList<EliteDrumVisualDescriptorV1> descriptors, uint start, uint end)
+        {
+            return descriptors.Where(descriptor => descriptor.AuthoredStartTick < end &&
+                descriptor.AuthoredEndTick > start).ToList();
+        }
+
+        protected override InstrumentDifficulty<DrumNote> CreatePracticeTrack(uint start, uint end)
+        {
+            var practiceTrack = base.CreatePracticeTrack(start, end);
+            var projectedDescriptors = ProjectEliteVisualDescriptors(
+                OriginalNoteTrack.EliteDrumVisualDescriptors, start, end);
+
+            // The projected list replaces the full descriptor collection the cursor and the
+            // adapter are positioned against. Reset both at the swap point: a cursor left over
+            // from the full collection can sit beyond the projected list (silently disabling
+            // every descriptor spawn in the section), and lanes already spawned from the full
+            // collection would linger as stale adapter-owned lanes outside the practice
+            // section.
+            _eliteDrumVisualAdapter?.Reset();
+            _eliteVisualDescriptorIndex = 0;
+            _eliteVisualDescriptors = projectedDescriptors;
+
+            practiceTrack.SetEliteDrumVisualDescriptors(projectedDescriptors);
+            return practiceTrack;
         }
 
         public override void ResetPracticeSection()
         {
+            // Re-sync the descriptor cache from the CURRENT NoteTrack before anything else
+            // runs: the reset below (ResetVisuals, engine rebuild, and the respawn paths that
+            // follow) consults this cache for native-ownership decisions, which must not
+            // observe a projection left over from an earlier practice section or from
+            // non-practice play.
+            if (NoteTrack != null)
+            {
+                _eliteVisualDescriptors = NoteTrack.EliteDrumVisualDescriptors;
+            }
+
             base.ResetPracticeSection();
             _fretArray.ResetAll();
+            _eliteVisualDescriptorIndex = 0;
+            _eliteDrumVisualAdapter?.Reset();
         }
 
         protected override void ResetLastHitTimes()
@@ -454,14 +640,53 @@ namespace YARG.Gameplay.Player
 
         protected override void ResetVisuals()
         {
+            // Return descriptor-owned lanes before TrackPlayer resets the shared pool. This keeps
+            // adapter ownership explicit and prevents native/kick lanes from being combined with it.
+            ResetEliteVisuals();
             base.ResetVisuals();
 
             _fretArray.ResetAll();
         }
 
+        protected override void FinishDestruction()
+        {
+            ResetEliteVisuals();
+            _eliteDrumVisualAdapter = null;
+            base.FinishDestruction();
+        }
+
         protected override void InitializeSpawnedNote(IPoolable poolable, DrumNote note)
         {
             ((DrumsNoteElement) poolable).NoteRef = note;
+        }
+
+        protected override bool ShouldSpawnNativeLane(DrumNote note)
+        {
+            var descriptors = _eliteVisualDescriptors.Count > 0
+                ? _eliteVisualDescriptors
+                : NoteTrack?.EliteDrumVisualDescriptors;
+            return !IsAdapterOwnedGeneratedLane(note, descriptors);
+        }
+
+        protected override bool ShouldExtendExistingLane(LaneElement lane)
+        {
+            // Descriptor-owned lanes are never native-combined: the adapter alone defines
+            // their span (first..last physical event), and the native combiner must not
+            // extend them across phrase boundaries.
+            return !(_eliteDrumVisualAdapter?.OwnsLane(lane) ?? false);
+        }
+
+        private static bool IsAdapterOwnedGeneratedLane(DrumNote note,
+            IReadOnlyList<EliteDrumVisualDescriptorV1> descriptors)
+        {
+            if (note?.ConversionOrigin is not { } origin || descriptors == null)
+            {
+                return false;
+            }
+
+            return descriptors.Any(descriptor => descriptor != null && descriptor.RulesetEligible &&
+                !descriptor.CodaExcluded && descriptor.FinalPad.Pad != 0 &&
+                descriptor.VisualIdentity is { Enabled: true } && descriptor.Origins.Contains(origin));
         }
 
         protected override void SpawnLanesFromNote(DrumNote parentNote)
@@ -470,11 +695,6 @@ namespace YARG.Gameplay.Player
             base.SpawnLanesFromNote(parentNote);
 
             if (!Engine.BaseParameters.EnableLanes)
-            {
-                return;
-            }
-
-            if (!LanePool.CanSpawnAmount(NumberOfDedicatedKickLanes))
             {
                 return;
             }
@@ -521,14 +741,37 @@ namespace YARG.Gameplay.Player
 
                 if (kickLaneEnd is not null)
                 {
-                    var newLane = (LaneElement)LanePool.TakeWithoutEnabling();
+                    if (!LanePool.CanSpawnAmount(NumberOfDedicatedKickLanes))
+                    {
+                        BeforeNativeLaneAllocation(NumberOfDedicatedKickLanes);
+                        if (!LanePool.CanSpawnAmount(NumberOfDedicatedKickLanes))
+                        {
+                            return;
+                        }
+                    }
+
+                    var newLane = TakeNativeLane();
+                    if (newLane == null)
+                    {
+                        return;
+                    }
                     newLane.SetTimeRange(kickLaneStart.Time, kickLaneEnd.Time);
                     InitializeSpawnedLane(newLane, kickLaneStart);
                     ModifyLaneFromNote(newLane, kickLaneStart);
 
                     if (NumberOfDedicatedKickLanes == 2)
                     {
-                        var newDoubleKickLane = (LaneElement) LanePool.TakeWithoutEnabling();
+                        if (!LanePool.CanSpawnAmount(1))
+                        {
+                            BeforeNativeLaneAllocation(1);
+                        }
+
+                        var newDoubleKickLane = TakeNativeLane();
+                        if (newDoubleKickLane == null)
+                        {
+                            LanePool.Return(newLane);
+                            return;
+                        }
                         newDoubleKickLane.SetTimeRange(kickLaneStart.Time, kickLaneEnd.Time);
 
                         var doubleKickHighwayOrderingInfo = _highwayOrdering[DOUBLE_KICK_FRET_INDEX];
@@ -553,6 +796,22 @@ namespace YARG.Gameplay.Player
                     newLane.EnableFromPool();
                 }
             }
+        }
+
+        private EliteDrumVisualAppearance ResolveEliteVisualAppearance(EliteDrumFinalPadIdentity finalPad)
+        {
+            var highwayOrderingInfo = GetHighwayOrderingInfo(finalPad.Pad);
+            if (highwayOrderingInfo.Position < 0)
+            {
+                highwayOrderingInfo = new HighwayOrderingInfo(CenteredPosition, finalPad.Pad);
+            }
+
+            var color = _fiveLaneMode
+                ? Player.ColorProfile.FiveLaneDrums.GetNoteColor(highwayOrderingInfo.ColorIndex)
+                : Player.ColorProfile.FourLaneDrums.GetNoteColor(highwayOrderingInfo.ColorIndex);
+            return new EliteDrumVisualAppearance(
+                highwayOrderingInfo.Position,
+                color.ToUnityColor());
         }
 
         protected override void InitializeSpawnedLane(LaneElement lane, DrumNote note)
@@ -919,22 +1178,38 @@ namespace YARG.Gameplay.Player
         protected override void UpdateVisuals(double visualTime)
         {
             base.UpdateVisuals(visualTime);
+            SpawnEliteVisualDescriptors(visualTime);
 
             if (Engine.IsCodaActive)
             {
                 // Set emission color of BRE lanes depending on time since last hit
-
-                foreach (var (highwayOrderingIndex, breLaneIndex) in _highwayOrderingIndexToBreLaneIndex)
-                {
-                    var mostRecentTime = _breLaneIndexToMostRecentTime[breLaneIndex];
-                    var normalizedTimeSinceLastHit = CodaSection.GetNormalizedTimeSinceLastHit(visualTime, mostRecentTime);
-                    BRELanes[highwayOrderingIndex].SetEmissionColor(normalizedTimeSinceLastHit);
-                }
+                UpdateBreLaneEmissions(visualTime);
             }
 
             UpdateHitTimes();
             UpdateAnimTimes();
             UpdateFretArray();
+        }
+
+        /// <summary>
+        /// Sets the emission color of BRE lanes depending on the most recent pad hit per lane.
+        /// Slots left null by a rolled-back (pool-exhausted) StartBRE attempt, or cleared by a
+        /// reset, are skipped: there is no lane to light.
+        /// </summary>
+        private void UpdateBreLaneEmissions(double visualTime)
+        {
+            foreach (var (highwayOrderingIndex, breLaneIndex) in _highwayOrderingIndexToBreLaneIndex)
+            {
+                var lane = BRELanes[highwayOrderingIndex];
+                if (lane == null)
+                {
+                    continue;
+                }
+
+                var mostRecentTime = _breLaneIndexToMostRecentTime[breLaneIndex];
+                var normalizedTimeSinceLastHit = CodaSection.GetNormalizedTimeSinceLastHit(visualTime, mostRecentTime);
+                lane.SetEmissionColor(normalizedTimeSinceLastHit);
+            }
         }
 
         private void InitializeHitTimes()

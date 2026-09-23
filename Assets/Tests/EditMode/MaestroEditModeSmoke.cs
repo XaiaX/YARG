@@ -572,8 +572,8 @@ namespace YARG.Tests.EditMode
                 Does.Contain("EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile)"),
                 "Elite row selection must require the centralized active-target predicate, matching gameplay.");
             Assert.That(script.text,
-                Does.Contain("!EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile)"),
-                "A native row is selected only while no downchart target is active — a stale target falls back to the native row.");
+                Does.Contain("IsNativeInstrumentSelected(CurrentPlayer.Profile, instrument)"),
+                "Native row selection must require instrument equality and no active downchart target.");
         }
 
         [Test]

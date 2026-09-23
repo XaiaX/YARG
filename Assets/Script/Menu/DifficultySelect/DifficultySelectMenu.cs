@@ -732,6 +732,37 @@ namespace YARG.Menu.DifficultySelect
             };
         }
 
+        private static bool IsNativeInstrumentSelected(YargProfile profile, Instrument instrument)
+        {
+            return profile.CurrentInstrument == instrument &&
+                !EliteDrumsDownchartRules.IsDownchartTargetActive(profile);
+        }
+
+        private static void SelectNativeInstrument(YargProfile profile, Instrument instrument)
+        {
+            // Choosing a native row is an explicit opt-out from any generated
+            // downchart, even when its output format equals the current instrument.
+            profile.EliteDrumsDownchartTarget = null;
+            profile.CurrentInstrument = instrument;
+        }
+
+        private static void SelectEliteDrumsDownchartTarget(YargProfile profile, Instrument target)
+        {
+            // Keep this assignment deliberately strict: the offered target list is
+            // validated by the menu, while Core remains responsible for rejecting
+            // malformed or unavailable target requests at selection time.
+            profile.EliteDrumsDownchartTarget = target;
+            profile.CurrentInstrument = target;
+            profile.PreferredInstrument = target;
+        }
+
+        private static bool IsStaleEliteDrumsDownchartTarget(YargProfile profile,
+            IReadOnlyCollection<Instrument> offeredTargets)
+        {
+            return profile.EliteDrumsDownchartTarget is { } target &&
+                !offeredTargets.Contains(target);
+        }
+
         private void CreateInstrumentMenu()
         {
             YargLogger.LogInfo($"[ED-log] Difficulty Select entered instrument menu: player={CurrentPlayer.Profile.GameMode} current={CurrentPlayer.Profile.CurrentInstrument} target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} available={_eliteDrumsDownchartAvailable} offered={string.Join(",", _eliteDrumsDownchartTargets)}");
@@ -739,7 +770,7 @@ namespace YARG.Menu.DifficultySelect
 
             foreach (var instrument in _possibleInstruments)
             {
-                bool selected = CurrentPlayer.Profile.CurrentInstrument == instrument;
+                bool selected = IsNativeInstrumentSelected(CurrentPlayer.Profile, instrument);
                 // Instrument name with its charted tier on a smaller, dimmed
                 // second line (mirroring the header text style).
                 string label = GetInstrumentDisplayName(instrument, CurrentPlayer.Profile.GameMode)
@@ -747,8 +778,8 @@ namespace YARG.Menu.DifficultySelect
 
                 CreateItem(label, selected, () =>
                 {
+                    SelectNativeInstrument(CurrentPlayer.Profile, instrument);
                     var preferredInstrument = CurrentPlayer.Profile.PreferredInstrument;
-                    CurrentPlayer.Profile.CurrentInstrument = instrument;
 
                     // Re-resolve after an instrument switch in case the raw harmony index is out
                     // of range for this song (ChangePlayer's check can be masked by the
@@ -781,9 +812,7 @@ namespace YARG.Menu.DifficultySelect
                 CreateItem(EliteDrumsDownchartLabel(target), selected, () =>
                 {
                     Debug.LogError($"[ED-log] Elite target row clicked: target={target} playerIndex={_playerIndex} mode={CurrentPlayer.Profile.GameMode} beforeTarget={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"}");
-                    CurrentPlayer.Profile.EliteDrumsDownchartTarget = target;
-                    CurrentPlayer.Profile.CurrentInstrument = target;
-                    CurrentPlayer.Profile.PreferredInstrument = target;
+                    SelectEliteDrumsDownchartTarget(CurrentPlayer.Profile, target);
                     UpdatePossibleDifficulties();
                     Debug.LogError($"[ED-log] Elite target row after UpdatePossibleDifficulties: target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={CurrentPlayer.Profile.CurrentInstrument}");
                     _menuState = State.Main;
@@ -1370,8 +1399,9 @@ namespace YARG.Menu.DifficultySelect
                 foreach (var target in MaestroSelectionRules.GetEliteDrumsDownchartTargets(profile.GameMode))
                     AddOfferedEliteDrumsDownchartTarget(target);
 
-            if (profile.EliteDrumsDownchartTarget is { } staleTarget && !_eliteDrumsDownchartTargets.Contains(staleTarget))
+            if (IsStaleEliteDrumsDownchartTarget(profile, _eliteDrumsDownchartTargets))
             {
+                var staleTarget = profile.EliteDrumsDownchartTarget.Value;
                 Debug.LogError($"[ED-log] UpdatePossibleDifficulties clearing stale target={staleTarget} offered={string.Join(",", _eliteDrumsDownchartTargets)} mode={profile.GameMode}");
                 YargLogger.LogInfo($"[ED-log] Difficulty Select cleared stale target {staleTarget}: " +
                     $"offered={string.Join(",", _eliteDrumsDownchartTargets)}, songs={_songList.Count}, mode={profile.GameMode}");

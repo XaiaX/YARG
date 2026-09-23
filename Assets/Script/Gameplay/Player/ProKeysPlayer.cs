@@ -396,9 +396,17 @@ namespace YARG.Gameplay.Player
             {
                 for (var i = 0; i < BRELanes.Length; i++)
                 {
+                    var lane = BRELanes[i];
+                    if (lane == null)
+                    {
+                        // Slot left null by a rolled-back (pool-exhausted) StartBRE attempt or
+                        // a reset; there is no lane to light.
+                        continue;
+                    }
+
                     var mostRecentTime = _breLaneIndexToMostRecentTime[i];
                     var normalizedTimeSinceLastHit = CodaSection.GetNormalizedTimeSinceLastHit(visualTime, mostRecentTime);
-                    BRELanes[i].SetEmissionColor(normalizedTimeSinceLastHit);
+                    lane.SetEmissionColor(normalizedTimeSinceLastHit);
                 }
             }
         }
@@ -630,21 +638,43 @@ namespace YARG.Gameplay.Player
         protected override void StartBRE(double timeStart, double timeEnd)
         {
             _breLaneParameters = GetLaneParameters(timeStart);
+
+            // Reentry replaces the lane array; return the lanes held by a previous successful
+            // attempt to the pool first so a reentrant StartBRE never orphans them, no matter
+            // whether this attempt succeeds or fails (matching base TrackPlayer.StartBRE).
+            ReleasePriorBRELanes();
             BRELanes = new LaneElement[_breLaneParameters.Count];
 
             _actionToBreLaneIndex = GetLaneIndexes(GetLeftmostWhiteKeyAtTime(timeStart));
 
             if (!LanePool.CanSpawnAmount(BRELanes.Length))
             {
+                // Nothing was acquired in this attempt; the freshly allocated (all-null)
+                // array is already reset, so coda emissions skip rather than dereference.
                 return;
             }
 
+            // BRE lane acquisition is transactional: lanes are staged locally and only
+            // committed to BRELanes once every required lane has been acquired. If any lane
+            // is unavailable, every lane taken in this attempt is returned to the pool and
+            // BRELanes is reset, so coda emissions can never dereference a stale or
+            // unfilled slot. A complete acquisition behaves exactly as before.
+            var acquiredLanes = new List<LaneElement>(BRELanes.Length);
             for (int i = 0; i < BRELanes.Length; i++)
             {
-                var newLane = (LaneElement) LanePool.TakeWithoutEnabling();
+                var newLane = TakeNativeLane();
                 if (newLane == null)
                 {
                     YargLogger.LogWarning("Attempted to spawn BRE lane, but it's at its cap!");
+
+                    // Roll back: give back every lane this attempt acquired and drop all BRE
+                    // lane references so nothing later reads a half-built or stale BRE lane set.
+                    foreach (var acquiredLane in acquiredLanes)
+                    {
+                        LanePool.Return(acquiredLane);
+                    }
+
+                    ResetBRELanes();
                     return;
                 }
 
@@ -659,7 +689,12 @@ namespace YARG.Gameplay.Player
 
                 newLane.SetEmissionColor(0);
 
-                BRELanes[i] = newLane;
+                acquiredLanes.Add(newLane);
+            }
+
+            for (int i = 0; i < acquiredLanes.Count; i++)
+            {
+                BRELanes[i] = acquiredLanes[i];
             }
         }
 

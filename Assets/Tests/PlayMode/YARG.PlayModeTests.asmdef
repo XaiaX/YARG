@@ -1,12 +1,10 @@
 {
-    "name": "YARG.EditModeTests",
-    "rootNamespace": "YARG.Tests.EditMode",
+    "name": "YARG.PlayModeTests",
+    "rootNamespace": "YARG.Tests.PlayMode",
     "references": [
         "YARG.Core.Package"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

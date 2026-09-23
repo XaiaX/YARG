@@ -265,9 +265,17 @@ namespace YARG.Assets.Script.Gameplay.Player
                 // Set emission color of BRE lanes depending on time since last hit
                 foreach (var (fret, highwayOrderingIndex) in _highwayOrdering)
                 {
+                    var lane = BRELanes[highwayOrderingIndex];
+                    if (lane == null)
+                    {
+                        // Slot left null by a rolled-back (pool-exhausted) StartBRE attempt or
+                        // a reset; there is no lane to light.
+                        continue;
+                    }
+
                     var mostRecentTime = _fretToMostRecentTime[(FiveFretGuitarFret)fret];
                     var normalizedTimeSinceLastHit = CodaSection.GetNormalizedTimeSinceLastHit(visualTime, mostRecentTime);
-                    BRELanes[highwayOrderingIndex].SetEmissionColor(normalizedTimeSinceLastHit);
+                    lane.SetEmissionColor(normalizedTimeSinceLastHit);
                 }
             }
 

@@ -8,6 +8,7 @@ using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
 using YARG.Core.Engine;
+using YARG.Core.Game;
 using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
@@ -379,6 +380,16 @@ namespace YARG.Gameplay
 
         private IReadOnlyCollection<Instrument> GetEliteDrumsDownchartOutputs()
         {
+            // Replay provenance is authoritative. A replay must load the generated outputs it
+            // recorded with even when this machine has disabled the live experimental toggle.
+            if (ReplayData != null)
+            {
+                var replayOutputs = ReplayData.GetEliteDrumsDownchartOutputs();
+                YargLogger.LogInfo("[ED-log] Replay outputs=" +
+                    (replayOutputs == null ? "<null>" : string.Join(",", replayOutputs)));
+                return replayOutputs;
+            }
+
             string playerState = string.Join(";", YargPlayers.Select(player =>
                 player.Profile.GameMode + ":" + player.Profile.CurrentInstrument +
                 ":target=" + (player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>") +
@@ -386,14 +397,18 @@ namespace YARG.Gameplay
             YargLogger.LogInfo("[ED-log] State: toggle=" +
                 SettingsManager.Settings.EnableEliteDrumsDowncharts.Value + " players=" + playerState);
             if (!SettingsManager.Settings.EnableEliteDrumsDowncharts.Value) return null;
+
             List<Instrument> outputs = null;
             foreach (var player in YargPlayers)
             {
-                if (player.SittingOut || player.Profile.EliteDrumsDownchartTarget is null) continue;
-                var target = player.Profile.EliteDrumsDownchartTarget.Value;
+                if (player.SittingOut || !EliteDrumsDownchartRules.IsDownchartTargetActive(player.Profile))
+                    continue;
+
+                var target = player.Profile.EliteDrumsDownchartTarget!.Value;
                 outputs ??= new List<Instrument>();
                 if (!outputs.Contains(target)) outputs.Add(target);
             }
+
             YargLogger.LogInfo("[ED-log] Targets=" +
                 (outputs == null ? "<null>" : string.Join(",", outputs)) +
                 " Players=" + playerState);
