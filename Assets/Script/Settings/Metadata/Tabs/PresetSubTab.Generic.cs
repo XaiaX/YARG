@@ -283,6 +283,22 @@ namespace YARG.Settings.Metadata
             (nameof(ColorProfile.ProKeys),        "Pro Keys",         GameMode.ProKeys),
         };
 
+        // Engine presets have a vocals section, but ColorProfile does not. Keep
+        // Vocals out of the shared Color Profile selector while exposing it in
+        // the Engine selector.
+        private static readonly (string SubSection, string Label, GameMode Mode)[] EngineInstrumentModes =
+        {
+            (nameof(ColorProfile.FiveFretGuitar), "Five Fret Guitar", GameMode.FiveFretGuitar),
+            (nameof(ColorProfile.SixFretGuitar),  "Six Fret Guitar",  GameMode.SixFretGuitar),
+            (nameof(ColorProfile.FourLaneDrums),  "Four Lane Drums",  GameMode.FourLaneDrums),
+            (nameof(ColorProfile.FiveLaneDrums),  "Five Lane Drums",  GameMode.FiveLaneDrums),
+            (nameof(ColorProfile.ProKeys),        "Pro Keys",         GameMode.ProKeys),
+            (nameof(EnginePreset.Vocals),         "Vocals",            GameMode.Vocals),
+        };
+
+        private (string SubSection, string Label, GameMode Mode)[] PreviewInstrumentModes =>
+            typeof(T) == typeof(EnginePreset) ? EngineInstrumentModes : InstrumentModes;
+
         private static bool TryGetModeForSubSection(string subSection, out GameMode mode)
         {
             foreach (var row in InstrumentModes)
@@ -646,6 +662,11 @@ namespace YARG.Settings.Metadata
                     }
                 }
 
+                if (value == "Vocals")
+                {
+                    return Localize.Key($"Enum.GameMode.{nameof(EnginePreset.Vocals)}");
+                }
+
                 return value;
             }
         }
@@ -704,8 +725,9 @@ namespace YARG.Settings.Metadata
             }
 
             // --- Instrument selector dropdown ---
-            string currentLabel = InstrumentModes[0].Label;
-            foreach (var (_, label, mode) in InstrumentModes)
+            var instrumentModes = PreviewInstrumentModes;
+            string currentLabel = instrumentModes[0].Label;
+            foreach (var (_, label, mode) in instrumentModes)
             {
                 if (mode == PreviewOptions.GameMode)
                 {
@@ -722,7 +744,7 @@ namespace YARG.Settings.Metadata
 
             var modeDropdown = new InstrumentDropdownSetting(currentLabel, selected =>
             {
-                foreach (var (_, label, gameMode) in InstrumentModes)
+                foreach (var (_, label, gameMode) in instrumentModes)
                 {
                     if (label == selected)
                     {
@@ -755,7 +777,7 @@ namespace YARG.Settings.Metadata
                 }
             });
 
-            foreach (var (_, label, _) in InstrumentModes)
+            foreach (var (_, label, _) in instrumentModes)
                 modeDropdown.Add(label);
 
             var instrumentVisual = CreateField(PreviewControlsContainer, navGroup,
