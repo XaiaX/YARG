@@ -480,7 +480,8 @@ namespace YARG.Menu.Navigation
         private bool ShouldBlockInputs()
         {
             bool blockedByTextInput = IsTextInputFocused() && _textInputSchemeCount <= 0;
-            return DisableMenuInputs || _inputBlockState.IsBlocked || LoadingScreen.IsActive || blockedByTextInput;
+            return ControllerLockEnabled || DisableMenuInputs || _inputBlockState.IsBlocked ||
+                LoadingScreen.IsActive || blockedByTextInput;
         }
 
         private static bool IsTextInputFocused()
