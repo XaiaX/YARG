@@ -173,7 +173,7 @@ namespace YARG.Menu.DifficultySelect
 
         private void OnEnable()
         {
-            Debug.LogError($"[ED-log] OnEnable instance={GetInstanceID()} players={PlayerContainer.Players.Count} state={_menuState}");
+            YargLogger.LogInfo($"[ED-log] OnEnable instance={GetInstanceID()} players={PlayerContainer.Players.Count} state={_menuState}");
             string subHeaderKey = GlobalVariables.State.IsPractice ? "Practice" : "Quickplay";
             _subHeader.text = Localize.Key("Menu.Main.Options", subHeaderKey);
 
@@ -349,7 +349,7 @@ namespace YARG.Menu.DifficultySelect
 
         private void UpdateForPlayer()
         {
-            Debug.LogError($"[ED-log] UpdateForPlayer instance={GetInstanceID()} playerIndex={_playerIndex} state={_menuState} mode={CurrentPlayer.Profile.GameMode} instrument={CurrentPlayer.Profile.CurrentInstrument} target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} players={PlayerContainer.Players.Count}");
+            YargLogger.LogInfo($"[ED-log] UpdateForPlayer instance={GetInstanceID()} playerIndex={_playerIndex} state={_menuState} mode={CurrentPlayer.Profile.GameMode} instrument={CurrentPlayer.Profile.CurrentInstrument} target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} players={PlayerContainer.Players.Count}");
             // Set player text
             var profile = CurrentPlayer.Profile;
             _text.text = $"<sprite name=\"{GetProfileIconSprite(CurrentPlayer)}\"> {profile.Name}";
@@ -454,7 +454,7 @@ namespace YARG.Menu.DifficultySelect
 
         private void CreateMainMenu()
         {
-            Debug.LogError($"[ED-log] CreateMainMenu instance={GetInstanceID()} playerIndex={_playerIndex} mode={CurrentPlayer.Profile.GameMode} instrument={CurrentPlayer.Profile.CurrentInstrument} target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"}");
+            YargLogger.LogInfo($"[ED-log] CreateMainMenu instance={GetInstanceID()} playerIndex={_playerIndex} mode={CurrentPlayer.Profile.GameMode} instrument={CurrentPlayer.Profile.CurrentInstrument} target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"}");
             var player = CurrentPlayer;
 
             if (player.IsMissingMicrophone)
@@ -811,10 +811,10 @@ namespace YARG.Menu.DifficultySelect
                     EliteDrumsDownchartRules.IsDownchartTargetActive(CurrentPlayer.Profile);
                 CreateItem(EliteDrumsDownchartLabel(target), selected, () =>
                 {
-                    Debug.LogError($"[ED-log] Elite target row clicked: target={target} playerIndex={_playerIndex} mode={CurrentPlayer.Profile.GameMode} beforeTarget={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"}");
+                    YargLogger.LogInfo($"[ED-log] Elite target row clicked: target={target} playerIndex={_playerIndex} mode={CurrentPlayer.Profile.GameMode} beforeTarget={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"}");
                     SelectEliteDrumsDownchartTarget(CurrentPlayer.Profile, target);
                     UpdatePossibleDifficulties();
-                    Debug.LogError($"[ED-log] Elite target row after UpdatePossibleDifficulties: target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={CurrentPlayer.Profile.CurrentInstrument}");
+                    YargLogger.LogInfo($"[ED-log] Elite target row after UpdatePossibleDifficulties: target={CurrentPlayer.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={CurrentPlayer.Profile.CurrentInstrument}");
                     _menuState = State.Main;
                     UpdateForPlayer();
                 });
@@ -1383,7 +1383,7 @@ namespace YARG.Menu.DifficultySelect
                     _possibleInstruments.Add(instrument);
             }
 
-            Debug.LogError($"[ED-log] UpdatePossibleDifficulties before target={profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={profile.CurrentInstrument} mode={profile.GameMode}");
+            YargLogger.LogInfo($"[ED-log] UpdatePossibleDifficulties before target={profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={profile.CurrentInstrument} mode={profile.GameMode}");
             _eliteDrumsDownchartAvailable = SettingsManager.Settings.EnableEliteDrumsDowncharts.Value &&
                 profile.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums;
             if (!_eliteDrumsDownchartAvailable || !EliteDrumsDownchartRules.IsValidTarget(profile.EliteDrumsDownchartTarget))
@@ -1402,13 +1402,13 @@ namespace YARG.Menu.DifficultySelect
             if (IsStaleEliteDrumsDownchartTarget(profile, _eliteDrumsDownchartTargets))
             {
                 var staleTarget = profile.EliteDrumsDownchartTarget.Value;
-                Debug.LogError($"[ED-log] UpdatePossibleDifficulties clearing stale target={staleTarget} offered={string.Join(",", _eliteDrumsDownchartTargets)} mode={profile.GameMode}");
+                YargLogger.LogInfo($"[ED-log] UpdatePossibleDifficulties clearing stale target={staleTarget} offered={string.Join(",", _eliteDrumsDownchartTargets)} mode={profile.GameMode}");
                 YargLogger.LogInfo($"[ED-log] Difficulty Select cleared stale target {staleTarget}: " +
                     $"offered={string.Join(",", _eliteDrumsDownchartTargets)}, songs={_songList.Count}, mode={profile.GameMode}");
                 profile.EliteDrumsDownchartTarget = null;
             }
 
-            Debug.LogError($"[ED-log] UpdatePossibleDifficulties after offered={string.Join(",", _eliteDrumsDownchartTargets)} target={profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={profile.CurrentInstrument}");
+            YargLogger.LogInfo($"[ED-log] UpdatePossibleDifficulties after offered={string.Join(",", _eliteDrumsDownchartTargets)} target={profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={profile.CurrentInstrument}");
             // Native instrument resolution remains unchanged unless an explicit target is active.
             if (profile.EliteDrumsDownchartTarget is null && _possibleInstruments.Contains(profile.PreferredInstrument))
                 profile.CurrentInstrument = profile.PreferredInstrument;

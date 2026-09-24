@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
@@ -317,6 +318,16 @@ namespace YARG.Gameplay
                 ToggleDebugEnabled();
             }
 
+            // In-game vocal volume adjustment (prototype shortcut)
+            if (Keyboard.current.leftBracketKey.wasPressedThisFrame)
+            {
+                AdjustVocalVolume(-0.1f);
+            }
+            if (Keyboard.current.rightBracketKey.wasPressedThisFrame)
+            {
+                AdjustVocalVolume(0.1f);
+            }
+
             // Skip the rest if paused
             if (_songRunner.Paused)
             {
@@ -614,6 +625,32 @@ namespace YARG.Gameplay
                 player.SendInputsOnResume();
             }
 
+        }
+
+        /// <summary>
+        /// Prototype shortcut: adjust vocal stem volume with [ and ] keys during gameplay.
+        /// </summary>
+        private Coroutine _vocalVolumeToastCoroutine;
+
+        private void AdjustVocalVolume(float delta)
+        {
+            var setting = SettingsManager.Settings.VocalsVolume;
+            float oldValue = setting.Value;
+            setting.Value = Mathf.Clamp01(setting.Value + delta);
+            if (Mathf.Approximately(oldValue, setting.Value))
+                return;
+
+            if (_vocalVolumeToastCoroutine != null)
+                StopCoroutine(_vocalVolumeToastCoroutine);
+            _vocalVolumeToastCoroutine = StartCoroutine(ShowVocalVolumeToast());
+        }
+
+        private IEnumerator ShowVocalVolumeToast()
+        {
+            yield return new WaitForSecondsRealtime(0.4f);
+            int pct = Mathf.RoundToInt(SettingsManager.Settings.VocalsVolume.Value * 100f);
+            ToastManager.ToastInformation($"Vocal Volume: {pct}%");
+            _vocalVolumeToastCoroutine = null;
         }
 
         public void SetPaused(bool paused)

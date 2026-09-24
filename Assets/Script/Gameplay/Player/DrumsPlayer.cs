@@ -200,9 +200,11 @@ namespace YARG.Gameplay.Player
             // track because modifiers and activation flags are applied to the gameplay copy.
             var track = DrumDifficultySelector.SelectTrack(chart, Player.Profile).Clone();
             var instrumentDifficulty = track.GetDifficulty(Player.Profile.CurrentDifficulty);
-            YargLogger.LogInfo($"[ED-log] DrumsPlayer selected instrument={Player.Profile.CurrentInstrument} " +
-                $"target={Player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} " +
-                $"difficulty={Player.Profile.CurrentDifficulty}");
+            DrumsEngine.TraceEliteLane($"selected target={Player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} " +
+                $"instrument={Player.Profile.CurrentInstrument} chartInstrument={instrumentDifficulty.Instrument} " +
+                $"difficulty={Player.Profile.CurrentDifficulty} replay={Player.IsReplay} " +
+                $"eliteTargetActive={EliteDrumsDownchartRules.IsDownchartTargetActive(Player.Profile)} " +
+                $"v1Gate={ShouldUseEliteFillRulesetV1(Player.Profile, instrumentDifficulty, Player.IsReplay)}");
             return instrumentDifficulty;
         }
 
@@ -902,6 +904,8 @@ namespace YARG.Gameplay.Player
 
         protected override void OnNoteHit(int index, DrumNote note)
         {
+            DrumsEngine.TraceEliteLane($"Unity OnNoteHit index={index} tick={note.Tick} pad={note.Pad} " +
+                $"origin={note.ConversionOrigin?.ToString() ?? "none"} combo={Engine.EngineStats.Combo}");
             base.OnNoteHit(index, note);
             OnNoteHitOrMissed(note);
 
@@ -925,8 +929,16 @@ namespace YARG.Gameplay.Player
             AnimateFret(animationIndex, Fret.AnimType.CorrectNormal);
         }
 
+        protected override void OnOverhit()
+        {
+            DrumsEngine.TraceEliteLane($"Unity OnOverhit currentTime={Engine.CurrentTime:F6} combo={Engine.EngineStats.Combo}");
+            base.OnOverhit();
+        }
+
         protected override void OnNoteMissed(int index, DrumNote note)
         {
+            DrumsEngine.TraceEliteLane($"Unity OnNoteMissed index={index} tick={note.Tick} pad={note.Pad} " +
+                $"origin={note.ConversionOrigin?.ToString() ?? "none"} combo={Engine.EngineStats.Combo}");
             base.OnNoteMissed(index, note);
             OnNoteHitOrMissed(note);
 
@@ -1025,6 +1037,9 @@ namespace YARG.Gameplay.Player
 
         private void OnPadHit(DrumsAction action, bool wasNoteHit, bool wasNoteHitCorrectly, bool wasOverhitInLane, DrumNoteType type, float velocity)
         {
+            DrumsEngine.TraceEliteLane($"Unity OnPadHit time={Engine.CurrentTime:F6} action={action} pad={DrumsActionToPad(action)} " +
+                $"noteHit={wasNoteHit} correct={wasNoteHitCorrectly} lane={wasOverhitInLane} type={type} velocity={velocity:F3} " +
+                $"combo={Engine.EngineStats.Combo}");
             var fret = DrumsActionToPad(action);
 
             // This is done here for drums rather than in-engine because engine doesn't know about pad ordering

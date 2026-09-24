@@ -1141,9 +1141,15 @@ namespace YARG.Gameplay.Player
 
             YargLogger.LogFormatDebug("Practice notes: {0}", practiceNotes.Count);
 
-            return new InstrumentDifficulty<TNote>(OriginalNoteTrack.Instrument, OriginalNoteTrack.Difficulty,
+            var practiceTrack = new InstrumentDifficulty<TNote>(OriginalNoteTrack.Instrument, OriginalNoteTrack.Difficulty,
                 practiceNotes, OriginalNoteTrack.Phrases, OriginalNoteTrack.TextEvents,
                 OriginalNoteTrack.RangeShiftEvents);
+            // Practice reuses the original physical notes, including their conversion origins.
+            // Preserve the authored phrase records too: without them the Elite V1 engine
+            // mistakes overlapping hand lanes for one flattened, auto-hitting native lane.
+            practiceTrack.SetEliteDrumAuthoredLanePhraseRecords(OriginalNoteTrack.EliteDrumAuthoredLanePhraseRecords);
+            practiceTrack.SetEliteDrumVisualDescriptors(OriginalNoteTrack.EliteDrumVisualDescriptors);
+            return practiceTrack;
         }
 
         public override void SetPracticeSection(uint start, uint end)
