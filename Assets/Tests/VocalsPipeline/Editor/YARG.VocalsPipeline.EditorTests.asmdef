@@ -1,0 +1,14 @@
+{
+    "name": "YARG.VocalsPipeline.EditorTests",
+    "rootNamespace": "YARG.Tests.VocalsPipeline",
+    "references": ["YARG.Vocals.Pitch", "YARG.Core.Package"],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["nunit.framework.dll", "ZString.dll"],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+    "optionalUnityReferences": ["TestAssemblies"],
+    "noEngineReferences": false
+}

@@ -3,7 +3,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using ManagedBass;
-using UnityEngine;
 using YARG.Audio.PitchDetection;
 using YARG.Core.Audio;
 using YARG.Core.Logging;
@@ -29,31 +28,23 @@ namespace YARG.Audio.BASS
     /// </summary>
     internal sealed class BassMicAnalyzer : IDisposable
     {
-        private const float HIT_THRESHOLD_DB  = 25f;
-        private const float SILENCE_FLOOR_DB  = -160f;
-        private const float CALIBRATION_GAIN  = 180f;
-        private const float UNAVAILABLE_VALUE = -1f;
-
-        private const int AMPLITUDE_STRIDE   = 4;
-        private const int IDLE_SLEEP_MS      = 1;
+        private const int IDLE_SLEEP_MS = 1;
 
         private readonly object                          _analysisLock = new();
-        private readonly float[]                         _frameBuffer;
         private readonly Func<double>                    _getInputTime;
         private readonly Func<bool>                      _isOutputRecording;
         private readonly ConcurrentQueue<MicOutputFrame> _outputFrames = new();
-        private readonly PitchTracker                    _pitchTracker;
-
-        private readonly float[] _readBuffer;
-
-        private readonly IBassMicSampleSource _source;
-        private readonly Thread               _worker;
-        private          bool                 _failureLogged;
-        private          int                  _frameSamples;
-        private          float?               _lastAmplitude;
-
-        private float? _lastPitch;
-        private bool   _paused;
+        private readonly VocalsFrameProcessor            _processor;
+        private readonly float[]                         _readBuffer;
+        private readonly IBassMicSampleSource             _source;
+        private readonly Thread                           _worker;
+        private bool _failureLogged;
+        private bool _paused;
+#if UNITY_EDITOR && UNITY_INCLUDE_TESTS
+        internal Action? TestFrameCompleted;
+        internal Action? TestPauseCompleted;
+        internal Action<Exception>? TestWorkerFailed;
+#endif
 
         private volatile bool _stopRequested;
 
@@ -65,8 +56,7 @@ namespace YARG.Audio.BASS
 
             int samplesPerFrame = checked(source.SampleRate * MicDevice.RECORD_PERIOD_MS / 1000);
             _readBuffer = new float[samplesPerFrame];
-            _frameBuffer = new float[samplesPerFrame];
-            _pitchTracker = new PitchTracker(source.SampleRate);
+            _processor = new VocalsFrameProcessor(source.SampleRate);
 
             _worker = new Thread(ReadLoop)
             {
@@ -132,6 +122,10 @@ namespace YARG.Audio.BASS
             }
             catch (Exception exception)
             {
+#if UNITY_EDITOR && UNITY_INCLUDE_TESTS
+                try { TestWorkerFailed?.Invoke(exception); }
+                catch (Exception) { /* Test observers must never mask the worker failure. */ }
+#endif
                 YargLogger.LogException(exception, "Microphone analysis worker failed");
             }
         }
@@ -153,6 +147,10 @@ namespace YARG.Audio.BASS
 
                 ClearState();
                 _paused = true;
+#if UNITY_EDITOR && UNITY_INCLUDE_TESTS
+                try { TestPauseCompleted?.Invoke(); }
+                catch (Exception) { /* Test observers must not alter pause behavior. */ }
+#endif
             }
         }
 
@@ -189,93 +187,22 @@ namespace YARG.Audio.BASS
                 }
                 else
                 {
-                    AssembleFrames(_readBuffer, samplesRead, readTime, backlogBytes);
+                    _processor.Process(_readBuffer, samplesRead, backlogBytes, readTime,
+                        SettingsManager.Settings.MicrophoneSensitivity.Value,
+                        (frame, _) => _outputFrames.Enqueue(frame));
+#if UNITY_EDITOR && UNITY_INCLUDE_TESTS
+                    try { TestFrameCompleted?.Invoke(); }
+                    catch (Exception) { /* Test observers must not alter processing. */ }
+#endif
                 }
 
                 return true;
             }
         }
 
-        private void AssembleFrames(float[] samples, int sampleCount, double readTime, int backlogBytesBeforeRead)
-        {
-            int backlogSamples = backlogBytesBeforeRead / sizeof(float);
-            int offset = 0;
-
-            while (offset < sampleCount)
-            {
-                int frameSpace = _frameBuffer.Length - _frameSamples;
-                int samplesToCopy = Math.Min(sampleCount - offset, frameSpace);
-                Array.Copy(samples, offset, _frameBuffer, _frameSamples, samplesToCopy);
-
-                _frameSamples += samplesToCopy;
-                offset += samplesToCopy;
-
-                int samplesStillAhead = Math.Max(0, backlogSamples - offset);
-                double frameEndTime = readTime - samplesStillAhead / (double) _source.SampleRate;
-
-                if (_frameSamples == _frameBuffer.Length)
-                {
-                    AnalyzeFrame(_frameBuffer, frameEndTime);
-                    _frameSamples = 0;
-                }
-            }
-        }
-
-        private void AnalyzeFrame(float[] samples, double frameEndTime)
-        {
-            float amplitude = MeasureAmplitude(samples);
-
-            if (_lastAmplitude is { } previousAmplitude && amplitude - previousAmplitude >= HIT_THRESHOLD_DB)
-            {
-                double midpoint = frameEndTime - MicDevice.RECORD_PERIOD_MS / 2000.0;
-                _outputFrames.Enqueue(new MicOutputFrame(midpoint, true, UNAVAILABLE_VALUE, UNAVAILABLE_VALUE));
-            }
-
-            _lastAmplitude = amplitude;
-
-            if (amplitude < SettingsManager.Settings.MicrophoneSensitivity.Value)
-            {
-                _lastPitch = null;
-                return;
-            }
-
-            _lastPitch = _pitchTracker.ProcessBuffer(samples) ?? _lastPitch;
-
-            if (_lastPitch is { } pitch)
-            {
-                _outputFrames.Enqueue(new MicOutputFrame(frameEndTime, false, pitch, amplitude));
-            }
-        }
-
-        private static float MeasureAmplitude(ReadOnlySpan<float> samples)
-        {
-            float sumOfSquares = 0f;
-            int sampleCount = 0;
-
-            for (int i = 0; i < samples.Length; i += AMPLITUDE_STRIDE)
-            {
-                sumOfSquares += samples[i] * samples[i];
-                sampleCount++;
-            }
-
-            float rootMeanSquare = Mathf.Sqrt(sumOfSquares / sampleCount);
-            float decibels = 20f * Mathf.Log10(rootMeanSquare * CALIBRATION_GAIN);
-
-            if (decibels < SILENCE_FLOOR_DB || float.IsNaN(decibels))
-            {
-                return SILENCE_FLOOR_DB;
-            }
-
-            return decibels;
-        }
-
         private void ClearState()
         {
-            _lastPitch = null;
-            _lastAmplitude = null;
-            _frameSamples = 0;
-            Array.Clear(_frameBuffer, 0, _frameBuffer.Length);
-            _pitchTracker.Reset();
+            _processor.Reset();
             _outputFrames.Clear();
         }
 
