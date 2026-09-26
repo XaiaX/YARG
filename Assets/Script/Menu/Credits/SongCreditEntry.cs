@@ -206,7 +206,7 @@ namespace YARG.Menu.Credits
             // For future use
             // Add(song.CharterProGuitar);
             // Add(song.CharterProBass);
-            // Add(song.CharterEliteDrums);
+            Add(song.CharterEliteDrums);
 
             // Sort credit entries alphabetically
             credits.Sort();
