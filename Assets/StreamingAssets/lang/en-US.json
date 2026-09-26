@@ -1999,6 +1999,10 @@
 				"Description": "Adds an \"Elite (Downchart)\" option to instrument selection for drum players. It plays the Elite Drums chart automatically downcharted to the selected drum format, instead of the native chart. Experimental.",
 				"Name": "Enable Access To Elite Drums Downcharts"
 			},
+			"UseCumulativeSongUpdates": {
+				"Description": "Experimental: apply numbered songs_updates folders in order. After changing this setting, re-scan your song library (or restart) for it to take effect.",
+				"Name": "Cumulative Song Updates"
+			},
 			"EnablePlaybackBuffer": {
 				"Description": "Buffers audio data by decoding ahead-of-time in chunks. Improves audio stability on low-performance devices, at the cost of added latency on sound effects.",
 				"Name": "Use Audio Playback Buffer"

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using YARG.Core.Audio;
@@ -778,6 +779,28 @@ namespace YARG.Settings
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
+            // Fires both on real user changes and once during settings load
+            // (ForceInvokeCallback). Only an actual value change should trigger a
+            // rebuild; the load-time invocation just records the starting value.
+            private static bool _cumulativeUpdatesBaselineSet;
+            private static bool _cumulativeUpdatesBaseline;
+
+            public ToggleSetting UseCumulativeSongUpdates { get; } = new(false, value =>
+            {
+                if (!_cumulativeUpdatesBaselineSet)
+                {
+                    _cumulativeUpdatesBaselineSet = true;
+                    _cumulativeUpdatesBaseline = value;
+                    return;
+                }
+                if (value == _cumulativeUpdatesBaseline)
+                {
+                    return;
+                }
+                _cumulativeUpdatesBaseline = value;
+                DialogManager.Instance.ShowMessage("Song Library Rescan Required",
+                    "The song update mode has changed. Re-scan your song library from the Songs settings tab (or restart the game) for the new behavior to take effect.");
+            });
 
             public void ShowMaestroPairingPin()
             {

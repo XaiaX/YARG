@@ -2,7 +2,9 @@
     "name": "YARG.EditModeTests",
     "rootNamespace": "YARG.Tests.EditMode",
     "references": [
-        "YARG.Core.Package"
+        "YARG.Core.Package",
+        "YARG.SongRefreshCoordinator",
+        "UniTask"
     ],
     "includePlatforms": [
         "Editor"

@@ -288,6 +288,7 @@ namespace YARG.Settings
                 nameof(Settings.MaestroGoDirectlyToSummary),
                 nameof(Settings.SuppressReplayAnalysisDialogs),
                 nameof(Settings.EnableEliteDrumsDowncharts),
+                nameof(Settings.UseCumulativeSongUpdates),
                 new ButtonRowMetadata(nameof(Settings.ShowMaestroPairingPin), () => Settings.MaestroEnable.Value),
                 nameof(Settings.SaveScoresWithBots),
                 nameof(Settings.FrameGraph),

@@ -91,6 +91,14 @@ namespace YARG.Song
 
     public static class SongContainer
     {
+        private static readonly SongRefreshCoordinator _refreshCoordinator = new(quick =>
+        {
+            var context = _pendingRefreshContext;
+            _pendingRefreshContext = null;
+            return RunRefreshCore(quick, context);
+        });
+        private static LoadingContext _pendingRefreshContext;
+        public static bool IsRebuildingLibrary => _refreshCoordinator.IsRebuilding;
         private static SongCache _songCache = new();
         private static SortedSongs _sortedSongs = new();
         private static SongEntry[] _songs = Array.Empty<SongEntry>();
@@ -147,7 +155,13 @@ namespace YARG.Song
         private static bool AllowedByRating(SongRating rating) => rating <= SettingsManager.Settings.MaxSongRating.Value;
 
 #nullable enable
-        public static async UniTask RunRefresh(bool quick, LoadingContext? context = null)
+        public static UniTask RunRefresh(bool quick, LoadingContext? context = null)
+        {
+            _pendingRefreshContext = context;
+            return _refreshCoordinator.Request(quick);
+        }
+
+        private static async UniTask RunRefreshCore(bool quick, LoadingContext? context)
 #nullable disable
         {
             var directories = new List<string>(SettingsManager.Settings.SongFolders);
@@ -157,6 +171,7 @@ namespace YARG.Song
                 directories.Add(setlistPath);
             }
 
+            bool useCumulativeSongUpdates = SettingsManager.Settings.UseCumulativeSongUpdates.Value;
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var previousSongCache = _songCache;
             SongCache refreshedSongCache = null;
@@ -166,7 +181,8 @@ namespace YARG.Song
                     PathHelper.SongCachePath,
                     PathHelper.BadSongsPath,
                     SettingsManager.Settings.UseFullDirectoryForPlaylists.Value,
-                    directories);
+                    directories,
+                    useCumulativeSongUpdates);
             });
 
             while (task.Status == UniTaskStatus.Pending)
@@ -177,6 +193,9 @@ namespace YARG.Song
                 }
                 await UniTask.NextFrame();
             }
+
+            // A failed scan must not replace the library with a null or partial cache.
+            await task;
 
             PlaylistContainer.ReplaceUpdatedSongHashes(
                 FindUpdatedSongHashes(previousSongCache, refreshedSongCache));
