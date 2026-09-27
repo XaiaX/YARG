@@ -13,6 +13,7 @@ using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Player;
+using YARG.Gameplay.Visuals;
 using YARG.Menu;
 using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
@@ -538,7 +539,29 @@ namespace YARG.Gameplay
                         player.RefreshPresets();
                     }
 
-                    var lastHighScore = ScoreContainer.GetHighScore(Song.Hash, player.Profile.Id, player.Profile.CurrentInstrument, false)?.Score;
+                    // Resolve from the loaded chart at this difficulty before selecting the score key
+                    // or player prefab. Do not rewrite the profile's preferred instrument.
+                    Instrument? resolvedEliteInstrument = null;
+                    if (player.Profile.GameMode == GameMode.EliteDrums)
+                    {
+                        // Replay identity is recorded; never replace it with a live fallback.
+                        resolvedEliteInstrument = player.IsReplay ? player.Profile.CurrentInstrument :
+                            DrumDifficultySelector.ResolveNativeEliteRequest(Chart, player.Profile,
+                                player.Profile.CurrentDifficulty);
+                        if (resolvedEliteInstrument == null)
+                        {
+                            YargLogger.LogWarning($"Sitting out Elite Drums player '{player.Profile.Name}': no playable native drum track.");
+                            player.SittingOut = true;
+                            continue;
+                        }
+
+                        // CurrentInstrument is per-song playback identity; PreferredInstrument
+                        // remains the user's explicit choice for subsequent songs.
+                        if (!player.IsReplay) player.Profile.CurrentInstrument = resolvedEliteInstrument.Value;
+                    }
+
+                    var scoreInstrument = resolvedEliteInstrument ?? player.Profile.CurrentInstrument;
+                    var lastHighScore = ScoreContainer.GetHighScore(Song.Hash, player.Profile.Id, scoreInstrument, false)?.Score;
                     YargLogger.LogFormatInfo("Current high score for player {0} on {1}: {2}",
                         player.Profile.Name, player.Profile.CurrentInstrument, lastHighScore ?? 0);
 
@@ -551,7 +574,8 @@ namespace YARG.Gameplay
                             GameMode.SixFretGuitar  => _sixFretGuitarPrefab,
                             GameMode.FourLaneDrums  => _fourLaneDrumsPrefab,
                             GameMode.FiveLaneDrums  => _fiveLaneDrumsPrefab,
-                            GameMode.EliteDrums     => Song.HasInstrument(Instrument.FiveLaneDrums) ? _fiveLaneDrumsPrefab : _fourLaneDrumsPrefab,
+                            GameMode.EliteDrums     => resolvedEliteInstrument == Instrument.EliteDrums ||
+                                resolvedEliteInstrument == Instrument.FiveLaneDrums ? _fiveLaneDrumsPrefab : _fourLaneDrumsPrefab,
                             GameMode.ProKeys        => player.Profile.CurrentInstrument is Instrument.ProKeys ? _proKeysPrefab : _fiveLaneKeysPrefab,
                             GameMode.ProGuitar      => _proGuitarPrefab,
                             _                       => null
@@ -560,11 +584,58 @@ namespace YARG.Gameplay
                         // Skip if there's no prefab for the game mode
                         if (prefab == null) continue;
 
-                        var playerObject = Instantiate(prefab,
-                            new Vector3(highwayIndex * TRACK_SPACING_X, 100f, 0f), prefab.transform.rotation);
+                        // Keep the serialized prefab intact: copy its shared TrackPlayer references
+                        // onto a runtime instance of the typed native Elite player.
+                        GameObject playerObject;
+                        if (resolvedEliteInstrument == Instrument.EliteDrums)
+                        {
+                            // Instantiate from an inactive source: no old player Awake/Start can run.
+                            bool sourceWasActive = prefab.activeSelf;
+                            prefab.SetActive(false);
+                            try
+                            {
+                                playerObject = Instantiate(prefab,
+                                    new Vector3(highwayIndex * TRACK_SPACING_X, 100f, 0f), prefab.transform.rotation);
+                            }
+                            finally
+                            {
+                                prefab.SetActive(sourceWasActive);
+                            }
+                        }
+                        else
+                        {
+                            playerObject = Instantiate(prefab,
+                                new Vector3(highwayIndex * TRACK_SPACING_X, 100f, 0f), prefab.transform.rotation);
+                        }
+                        TrackPlayer trackPlayer;
+                        if (resolvedEliteInstrument == Instrument.EliteDrums)
+                        {
+                            var oldPlayer = playerObject.GetComponent<DrumsPlayer>();
+                            if (oldPlayer == null) throw new InvalidOperationException("Five-lane drums prefab has no DrumsPlayer");
+                            var newPlayer = playerObject.AddComponent<EliteDrumsPlayer>();
+                            var fields = typeof(TrackPlayer).GetFields(System.Reflection.BindingFlags.Instance |
+                                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                            foreach (var field in fields)
+                            {
+                                if (field.IsDefined(typeof(SerializeField), true))
+                                    field.SetValue(newPlayer, field.GetValue(oldPlayer));
+                            }
+                            // Auto-property backing fields carry the camera's serialized reference.
+                            newPlayer.SetTrackCameraForNativeElite(oldPlayer.TrackCamera);
+                            newPlayer.SetDrumComponentsForNativeElite(oldPlayer.GetComponentInChildren<FretArray>(true),
+                                oldPlayer.GetComponentInChildren<KickFretFlash>(true));
+                            // This is an inactive, uninitialized runtime clone, never a prefab asset.
+                            // Remove the old component before any child can bind to it in Awake.
+                            DestroyImmediate(oldPlayer);
+                            trackPlayer = newPlayer;
+                            playerObject.SetActive(true);
+                        }
+                        else
+                        {
+                            trackPlayer = playerObject.GetComponent<TrackPlayer>();
+                        }
 
                         // Setup player
-                        var trackPlayer = playerObject.GetComponent<TrackPlayer>();
                         var trackView = _trackViewManager.CreateTrackView();
                         trackPlayer.Initialize(highwayIndex, player, Chart, trackView, _mixer, lastHighScore);
 

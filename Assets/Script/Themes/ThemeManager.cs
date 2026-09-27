@@ -47,7 +47,8 @@ namespace YARG.Themes
             _defaultTheme = _themeContainers[ThemePreset.Default];
         }
 
-        public GameObject CreateNotePrefabFromTheme(ThemePreset preset, VisualStyle style, GameObject noModelPrefab)
+        public GameObject CreateNotePrefabFromTheme(ThemePreset preset, VisualStyle style,
+            GameObject noModelPrefab, string cacheVariant = "")
         {
             // Get the theme container
             var container = GetThemeContainer(preset, style);
@@ -56,7 +57,8 @@ namespace YARG.Themes
                 return null;
             }
 
-            var prefabKey = (style, NOTE_PREFAB_NAME);
+            // Distinct typed native Elite notes must never share the legacy DrumNote pool prefab.
+            var prefabKey = (style, NOTE_PREFAB_NAME + cacheVariant);
 
             // Try to get and return a cached version, otherwise we'll have to create it
             var cached = container.PrefabCache.GetValueOrDefault(prefabKey);

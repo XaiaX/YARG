@@ -22,6 +22,53 @@ namespace YARG.Menu.Maestro
             mode is GameMode.FiveFretGuitar or GameMode.SixFretGuitar
                 or GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums;
 
+        /// <summary>
+        /// Orders available native Elite Drums formats with Pro Drums as the preferred
+        /// fallback, followed by 4-lane and 5-lane. The player's saved preference is
+        /// still honored separately whenever it is available.
+        /// </summary>
+        public static IReadOnlyList<Instrument> OrderNativeInstruments(GameMode mode,
+            IReadOnlyList<Instrument> available)
+        {
+            if (available == null)
+                return Array.Empty<Instrument>();
+            if (available.Count < 2 || mode != GameMode.EliteDrums)
+                return available.ToArray();
+
+            var ordered = new List<Instrument>(available.Count);
+            Instrument[] priority =
+            {
+                Instrument.ProDrums,
+                Instrument.FourLaneDrums,
+                Instrument.FiveLaneDrums,
+            };
+
+            foreach (var instrument in priority)
+            {
+                if (available.Contains(instrument))
+                    ordered.Add(instrument);
+            }
+
+            foreach (var instrument in available)
+            {
+                if (!ordered.Contains(instrument))
+                    ordered.Add(instrument);
+            }
+
+            return ordered;
+        }
+
+        public static Instrument SelectNativeInstrumentFallback(Instrument preferred,
+            GameMode mode, IReadOnlyList<Instrument> available)
+        {
+            if (available == null || available.Count == 0)
+                return preferred;
+            if (available.Contains(preferred))
+                return preferred;
+
+            return OrderNativeInstruments(mode, available)[0];
+        }
+
         public static IReadOnlyList<Instrument> GetEliteDrumsDownchartTargets(GameMode mode)
         {
             return mode switch

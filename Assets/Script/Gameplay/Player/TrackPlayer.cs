@@ -211,7 +211,7 @@ namespace YARG.Gameplay.Player
 
         protected List<TNote> Notes { get; set; }
 
-        protected int NoteIndex { get; private set; }
+        protected int NoteIndex { get; set; }
 
         public InstrumentDifficulty<TNote> NoteTrack { get; private set; }
 
@@ -400,7 +400,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        private void SetupTheme()
+        protected virtual void SetupTheme()
         {
             var (gameMode, instrument) = (Player.Profile.GameMode, Player.Profile.CurrentInstrument);
 
@@ -424,7 +424,7 @@ namespace YARG.Gameplay.Player
             GameManager.EngineManager.OnPlayerRevived += OnPlayerRevived;
         }
 
-        protected void ResetNoteCounters()
+        protected virtual void ResetNoteCounters()
         {
             NoteIndex = 0;
             TotalNotes = Notes.Where(n => !n.IsBigRockEnding).Sum(i => Engine.GetNumberOfNotes(i));
@@ -1212,7 +1212,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        protected void SpawnNote(TNote note)
+        protected virtual void SpawnNote(TNote note)
         {
             var poolable = NotePool.KeyedTakeWithoutEnabling(note);
             if (poolable == null)

@@ -33,7 +33,8 @@ namespace YARG.Menu.Dialogs
 
             base.Initialize();
 
-            // We bind four lane first (at least until Elite Drums actually exists)
+            // Bind generated-target compatibility first; native kit actions remain
+            // available in the binding editor and keyboard defaults.
             _currentMode = CurrentMode.FourLaneDrums;
 
             Title.text = "MIDI Drums (Four Lane) Binding";

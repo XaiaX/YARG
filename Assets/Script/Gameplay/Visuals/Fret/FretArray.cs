@@ -81,23 +81,19 @@ namespace YARG.Gameplay.Visuals
             var fretPrefab = ThemeManager.Instance.CreateFretPrefabFromTheme(themePreset, style);
 
             _frets.Clear();
+            _usedFretIndexes.Clear();
+            _activeFrets.Clear();
+            _pulsingFrets.Clear();
+            var fretsByPosition = new Dictionary<int, Fret>();
             foreach (var (noteType, highwayOrderingInfo) in highwayOrdering)
             {
-                // Check if position was already added (barre chords share the same physical fret object across lanes)
-                if (!_usedFretIndexes.Add(highwayOrderingInfo.Position))
+                // Several authored kit pieces can share one physical highway fret.
+                if (fretsByPosition.TryGetValue(highwayOrderingInfo.Position, out var existingFret))
                 {
-                    // Find an earlier note type at this same position and reuse its fret component
-                    foreach (var (otherNoteType, otherHighwayOrderingInfo) in highwayOrdering)
-                    {
-                        if (otherHighwayOrderingInfo.Position == highwayOrderingInfo.Position)
-                        {
-                            _frets[noteType] = _frets[otherNoteType];
-                            break;
-                        }
-                    }
-
+                    _frets[noteType] = existingFret;
                     continue;
                 }
+                _usedFretIndexes.Add(highwayOrderingInfo.Position);
                 var fret = Instantiate(fretPrefab, transform);
                 fret.SetActive(true);
 
@@ -157,6 +153,7 @@ namespace YARG.Gameplay.Visuals
                 }
 
                 _frets[noteType] = fretComp;
+                fretsByPosition[highwayOrderingInfo.Position] = fretComp;
             }
 
             _kickFrets.Clear();

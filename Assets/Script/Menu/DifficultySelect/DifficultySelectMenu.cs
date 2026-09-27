@@ -1378,10 +1378,22 @@ namespace YARG.Menu.DifficultySelect
 
             foreach (var instrument in allowedInstruments)
             {
-                bool invalidInstrument = _songList.Any(showSong => !HasPlayableInstrument(showSong, instrument));
+                bool invalidInstrument = _songList.Any(showSong =>
+                    profile.GameMode == GameMode.EliteDrums &&
+                    profile.PreferredInstrument == Instrument.EliteDrums &&
+                    profile.EliteDrumsDownchartTarget is null
+                        ? !new[] { Instrument.EliteDrums, Instrument.ProDrums,
+                            Instrument.FourLaneDrums, Instrument.FiveLaneDrums }
+                            .Any(candidate => showSong.HasInstrument(candidate))
+                        : !HasPlayableInstrument(showSong, instrument));
                 if (!invalidInstrument)
                     _possibleInstruments.Add(instrument);
             }
+
+            var orderedInstruments = MaestroSelectionRules.OrderNativeInstruments(
+                profile.GameMode, _possibleInstruments);
+            _possibleInstruments.Clear();
+            _possibleInstruments.AddRange(orderedInstruments);
 
             YargLogger.LogInfo($"[ED-log] UpdatePossibleDifficulties before target={profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={profile.CurrentInstrument} mode={profile.GameMode}");
             _eliteDrumsDownchartAvailable = SettingsManager.Settings.EnableEliteDrumsDowncharts.Value &&
@@ -1410,10 +1422,9 @@ namespace YARG.Menu.DifficultySelect
 
             YargLogger.LogInfo($"[ED-log] UpdatePossibleDifficulties after offered={string.Join(",", _eliteDrumsDownchartTargets)} target={profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={profile.CurrentInstrument}");
             // Native instrument resolution remains unchanged unless an explicit target is active.
-            if (profile.EliteDrumsDownchartTarget is null && _possibleInstruments.Contains(profile.PreferredInstrument))
-                profile.CurrentInstrument = profile.PreferredInstrument;
-            if (profile.EliteDrumsDownchartTarget is null && !_possibleInstruments.Contains(profile.CurrentInstrument) && _possibleInstruments.Count > 0)
-                profile.CurrentInstrument = _possibleInstruments[0];
+            if (profile.EliteDrumsDownchartTarget is null && _possibleInstruments.Count > 0)
+                profile.CurrentInstrument = MaestroSelectionRules.SelectNativeInstrumentFallback(
+                    profile.PreferredInstrument, profile.GameMode, _possibleInstruments);
 
             // Get the possible harmonies for this show
             _maxHarmonyIndex = song.VocalsCount;
@@ -1505,7 +1516,12 @@ namespace YARG.Menu.DifficultySelect
                     bool playable = profile.EliteDrumsDownchartTarget is { } target &&
                         EliteDrumsDownchartRules.IsDownchartTargetActive(profile)
                             ? EliteDrumsDownchartRules.HasTargetDifficulty(showsong, target, difficulty)
-                            : HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty);
+                            : profile.GameMode == GameMode.EliteDrums &&
+                              profile.PreferredInstrument == Instrument.EliteDrums
+                                ? new[] { Instrument.EliteDrums, Instrument.ProDrums,
+                                        Instrument.FourLaneDrums, Instrument.FiveLaneDrums }
+                                    .Any(instrument => showsong[instrument][difficulty])
+                                : HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty);
                     if (!playable)
                     {
                         invalidDifficulty = true;

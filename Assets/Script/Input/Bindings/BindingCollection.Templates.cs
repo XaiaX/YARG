@@ -94,7 +94,6 @@ namespace YARG.Input
         {
             new DrumPadButtonBinding("Drums.Kick", (int) EliteDrumsAction.Kick),
 
-            /*
             new DrumPadButtonBinding("EliteDrums.Stomp", (int) EliteDrumsAction.EliteStomp),
             new DrumPadButtonBinding("EliteDrums.Splash", (int) EliteDrumsAction.EliteSplash),
             new DrumPadButtonBinding("EliteDrums.Snare", (int) EliteDrumsAction.EliteSnare),
@@ -107,7 +106,6 @@ namespace YARG.Input
             new DrumPadButtonBinding("EliteDrums.Tom3", (int) EliteDrumsAction.EliteTom3),
             new DrumPadButtonBinding("EliteDrums.Ride", (int) EliteDrumsAction.EliteRide),
             new DrumPadButtonBinding("EliteDrums.RightCrash", (int) EliteDrumsAction.EliteRightCrash),
-            */
 
             new DrumPadButtonBinding("EliteDrums.FourLaneRedDrum", (int) EliteDrumsAction.FourLaneRedDrum),
             new DrumPadButtonBinding("EliteDrums.FourLaneYellowDrum", (int) EliteDrumsAction.FourLaneYellowDrum),

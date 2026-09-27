@@ -384,13 +384,22 @@ namespace YARG.Menu.ProfileList
             _profileView.PromptRemoveDevice().Forget();
         }
 
+        internal static void ApplyGameModeSelection(YargProfile profile, GameMode gameMode)
+        {
+            profile.GameMode = gameMode;
+
+            // Native Elite is the initial preference; a playable fallback is resolved per song.
+            // Other modes retain their existing first-instrument default.
+            profile.CurrentInstrument = gameMode == GameMode.EliteDrums
+                ? Instrument.EliteDrums
+                : gameMode.PossibleInstruments()[0];
+            profile.PreferredInstrument = profile.CurrentInstrument;
+            profile.EliteDrumsDownchartTarget = null;
+        }
+
         public void ChangeGameMode()
         {
-            _profile.GameMode = _gameModesByIndex[_gameModeDropdown.value];
-
-            // Set the player's instrument to the foremost of their new game mode's possible instruments. This prevents scenarios like
-            // a brand new Keys profile defaulting to 5L Lead Guitar instead of Pro Keys
-            _profile.CurrentInstrument = _profile.GameMode.PossibleInstruments()[0];
+            ApplyGameModeSelection(_profile, _gameModesByIndex[_gameModeDropdown.value]);
 
             _profileView.UpdateDisplay(_profile);
             FiltersMenu.ResetIntensityFiltersForProfile(_profile);

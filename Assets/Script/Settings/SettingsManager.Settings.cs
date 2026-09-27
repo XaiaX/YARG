@@ -256,6 +256,13 @@ namespace YARG.Settings
 
             private static void RefreshSongs()
             {
+                // During JSON deserialization callbacks run before SettingsManager.Settings is assigned.
+                // LoadSettings invokes them again once the container has been initialized.
+                if (!IsInitialized)
+                {
+                    return;
+                }
+
                 SongContainer.RequestContainerRefresh();
                 MusicLibraryMenu.SetReload(MusicLibraryReloadState.Full);
                 HistoryMenu.ForceUpdate = true;

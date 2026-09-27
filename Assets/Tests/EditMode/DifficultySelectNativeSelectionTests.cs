@@ -76,6 +76,55 @@ namespace YARG.Tests.EditMode
                 "Malformed targets must remain rejected by the strict Core predicate.");
         }
 
+        [Test]
+        public void EliteNativeChoices_AreProFirstForAvailabilityAndFallback()
+        {
+            var available = new[]
+            {
+                Instrument.FourLaneDrums,
+                Instrument.FiveLaneDrums,
+                Instrument.ProDrums,
+            };
+
+            var ordered = (IReadOnlyList<Instrument>) MaestroRule("OrderNativeInstruments",
+                GameMode.EliteDrums, available);
+
+            Assert.That(ordered, Is.EqualTo(new[]
+            {
+                Instrument.ProDrums,
+                Instrument.FourLaneDrums,
+                Instrument.FiveLaneDrums,
+            }));
+            Assert.That(MaestroRule("SelectNativeInstrumentFallback",
+                Instrument.EliteDrums, GameMode.EliteDrums, ordered),
+                Is.EqualTo(Instrument.ProDrums));
+        }
+
+        [Test]
+        public void NativeFallback_PreservesAvailablePreference_AndOtherModeOrder()
+        {
+            var eliteAvailable = new[] { Instrument.FourLaneDrums, Instrument.ProDrums };
+            Assert.That(MaestroRule("SelectNativeInstrumentFallback",
+                Instrument.FourLaneDrums, GameMode.EliteDrums, eliteAvailable),
+                Is.EqualTo(Instrument.FourLaneDrums));
+
+            var nonEliteAvailable = new[] { Instrument.FourLaneDrums, Instrument.ProDrums };
+            Assert.That(MaestroRule("OrderNativeInstruments",
+                GameMode.FourLaneDrums, nonEliteAvailable),
+                Is.EqualTo(nonEliteAvailable));
+            Assert.That(MaestroRule("SelectNativeInstrumentFallback",
+                Instrument.FiveLaneDrums, GameMode.FourLaneDrums, nonEliteAvailable),
+                Is.EqualTo(Instrument.FourLaneDrums));
+        }
+
+        private static object MaestroRule(string name, params object[] args)
+        {
+            var type = ProductionType("YARG.Menu.Maestro.MaestroSelectionRules");
+            var method = type.GetMethod(name, BindingFlags.Static | BindingFlags.Public);
+            Assert.That(method, Is.Not.Null);
+            return method.Invoke(null, args);
+        }
+
         private static YargProfile Profile(GameMode mode, Instrument current,
             Instrument preferred, Instrument? target)
         {

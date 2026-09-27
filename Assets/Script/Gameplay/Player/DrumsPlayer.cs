@@ -1131,7 +1131,20 @@ namespace YARG.Gameplay.Player
 
         protected override bool InterceptInput(ref GameInput input)
         {
-            return false;
+            // An Elite-mode fallback keeps native and both generated-target bindings
+            // available. Queue only the action family for this song's resolved chart.
+            if (Player.Profile.GameMode != GameMode.EliteDrums)
+                return false;
+
+            var action = input.GetAction<EliteDrumsAction>();
+            return Player.Profile.CurrentInstrument == Instrument.FiveLaneDrums
+                ? action != EliteDrumsAction.Kick && action is not (EliteDrumsAction.FiveLaneRedDrum or
+                    EliteDrumsAction.FiveLaneBlueDrum or EliteDrumsAction.FiveLaneGreenDrum or
+                    EliteDrumsAction.FiveLaneYellowCymbal or EliteDrumsAction.FiveLaneOrangeCymbal)
+                : action != EliteDrumsAction.Kick && action is not (EliteDrumsAction.FourLaneRedDrum or
+                    EliteDrumsAction.FourLaneYellowDrum or EliteDrumsAction.FourLaneBlueDrum or
+                    EliteDrumsAction.FourLaneGreenDrum or EliteDrumsAction.FourLaneYellowCymbal or
+                    EliteDrumsAction.FourLaneBlueCymbal or EliteDrumsAction.FourLaneGreenCymbal);
         }
 
         private void PlayDrumSoundEffect(DrumsAction action, float velocity)

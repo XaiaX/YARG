@@ -113,9 +113,19 @@ namespace YARG.Input
 
             AddBinding(EliteDrumsAction.Kick, keyboard.spaceKey);
 
-            /* 
-             * Actual ED-specific bindings go here
-             */
+            // Native kit actions coexist with the generated-target compatibility bindings below.
+            AddBinding(EliteDrumsAction.EliteStomp, keyboard.aKey);
+            AddBinding(EliteDrumsAction.EliteSplash, keyboard.qKey);
+            AddBinding(EliteDrumsAction.EliteSnare, keyboard.zKey);
+            AddBinding(EliteDrumsAction.EliteClosedHiHat, keyboard.xKey);
+            AddBinding(EliteDrumsAction.EliteSizzleHiHat, keyboard.wKey);
+            AddBinding(EliteDrumsAction.EliteOpenHiHat, keyboard.sKey);
+            AddBinding(EliteDrumsAction.EliteLeftCrash, keyboard.cKey);
+            AddBinding(EliteDrumsAction.EliteTom1, keyboard.dKey);
+            AddBinding(EliteDrumsAction.EliteTom2, keyboard.fKey);
+            AddBinding(EliteDrumsAction.EliteTom3, keyboard.gKey);
+            AddBinding(EliteDrumsAction.EliteRide, keyboard.vKey);
+            AddBinding(EliteDrumsAction.EliteRightCrash, keyboard.bKey);
 
             AddBinding(EliteDrumsAction.FourLaneRedDrum, keyboard.zKey);
             AddBinding(EliteDrumsAction.FourLaneYellowDrum, keyboard.xKey);
