@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using YARG.Core.Chart;
@@ -55,6 +56,32 @@ namespace YARG.Tests.EditMode
             Assert.That(InvokePolicy("IsNativeAuthoredHandLane", malformed), Is.False);
             Assert.That(InvokeStartPolicy(malformed, firstNote), Is.False);
         }
+
+        [Test]
+        public void AuthoredPhraseBoundsAreClampedToSurvivingMemberOnsets()
+        {
+            var first = new EliteDrumSourceDefinition("first", 0, (int) EliteDrumPad.HiHat,
+                960, 0, 1d);
+            var last = new EliteDrumSourceDefinition("last", 1, (int) EliteDrumPad.HiHat,
+                1920, 0, 2d);
+            var record = new EliteDrumNativeAuthoredLaneRecord(0,
+                PhraseType.EliteDrums_HiHatLane, 480, 2880, new[] { last, first });
+            var survivors = new Dictionary<EliteDrumSourceDefinition, EliteDrumNote>
+            {
+                [first] = CreateNote(EliteDrumPad.HiHat, 960, 1d, first),
+                [last] = CreateNote(EliteDrumPad.HiHat, 1920, 2d, last),
+            };
+            Assert.That(InvokeTimeRange(record, survivors), Is.EqualTo((1d, 2d)),
+                "Visual lane endpoints must follow actual member gems, not marker bounds.");
+            survivors.Remove(last);
+            Assert.That(InvokeTimeRange(record, survivors), Is.Null,
+                "A dropped source must not render a lane the engine rejects.");
+        }
+
+        private static (double Start, double End)? InvokeTimeRange(EliteDrumNativeAuthoredLaneRecord record,
+            Dictionary<EliteDrumSourceDefinition, EliteDrumNote> survivors) =>
+            ((double Start, double End)?) PLAYER_TYPE.GetMethod("GetNativeAuthoredLaneTimeRange",
+                BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { record, survivors });
 
         private static EliteDrumNote CreateNote(EliteDrumPad pad, uint tick, double time,
             EliteDrumSourceDefinition source) => new(pad, DrumNoteType.Neutral,

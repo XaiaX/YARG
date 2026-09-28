@@ -200,6 +200,24 @@ namespace YARG.Gameplay.Player
             return false;
         }
 
+        internal static (double Start, double End)? GetNativeAuthoredLaneTimeRange(
+            EliteDrumNativeAuthoredLaneRecord record,
+            IReadOnlyDictionary<EliteDrumSourceDefinition, EliteDrumNote> surviving)
+        {
+            if (!IsNativeAuthoredHandLane(record) ||
+                !record.MemberSources.All(source => surviving.ContainsKey(source))) return null;
+
+            double start = double.PositiveInfinity;
+            double end = double.NegativeInfinity;
+            foreach (var source in record.MemberSources)
+            {
+                double time = surviving[source].Time;
+                start = Math.Min(start, time);
+                end = Math.Max(end, time);
+            }
+            return end > start ? (start, end) : null;
+        }
+
         internal static bool IsNativeAuthoredHandLane(EliteDrumNativeAuthoredLaneRecord record) =>
             record != null && record.MemberSources.Count >= 2 && !IsFootPad((int) record.AuthoredPad) &&
             record.AuthoredPad != EliteDrumPad.HatPedal && record.MemberSources.All(source =>
@@ -228,9 +246,8 @@ namespace YARG.Gameplay.Player
             }
             foreach (var record in NoteTrack.EliteDrumNativeAuthoredLaneRecords)
             {
-                if (!IsNativeAuthoredHandLane(record) ||
-                    !record.MemberSources.All(source => surviving.ContainsKey(source)) ||
-                    !IsNativeAuthoredLaneStart(record, parentNote))
+                if (!IsNativeAuthoredLaneStart(record, parentNote) ||
+                    GetNativeAuthoredLaneTimeRange(record, surviving) is not { } timeRange)
                 {
                     continue;
                 }
@@ -254,7 +271,9 @@ namespace YARG.Gameplay.Player
                 }
 
                 var info = _ordering[pad];
-                lane.SetTimeRange(SyncTrack.TickToTime(record.StartTick), SyncTrack.TickToTime(record.EndTick));
+                // Match classic drums: the strip spans playable gem onsets, not the
+                // wider authored phrase marker (nor any removed practice members).
+                lane.SetTimeRange(timeRange.Start, timeRange.End);
                 lane.SetIndexRange(info.Position, info.Position);
                 lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, info.Position, LaneCount,
                     Player.ColorProfile.FiveLaneDrums.GetNoteColor(info.ColorIndex).ToUnityColor());
