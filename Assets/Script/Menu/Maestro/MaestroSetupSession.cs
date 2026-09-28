@@ -45,6 +45,8 @@ namespace YARG.Menu.Maestro
         public Difficulty Difficulty { get; internal set; }
         public Modifier Modifiers { get; internal set; }
         public bool LeftyFlip { get; internal set; }
+        public bool AutoHiHatPedal { get; internal set; }
+        public bool NoHiHatPedal { get; internal set; }
         public bool RangeEnabled { get; internal set; }
         public OpenLaneDisplayType OpenLaneDisplayType { get; internal set; }
         public float NoteSpeed { get; internal set; }
@@ -99,6 +101,8 @@ namespace YARG.Menu.Maestro
             Difficulty = player.Profile.CurrentDifficulty;
             Modifiers = player.Profile.CurrentModifiers;
             LeftyFlip = player.Profile.LeftyFlip;
+            AutoHiHatPedal = player.Profile.AutoHiHatPedal;
+            NoHiHatPedal = player.Profile.NoHiHatPedal;
             RangeEnabled = player.Profile.RangeEnabled;
             OpenLaneDisplayType = player.Profile.OpenLaneDisplayType;
             NoteSpeed = player.Profile.NoteSpeed;
@@ -553,6 +557,18 @@ namespace YARG.Menu.Maestro
             }
         }
 
+        public void StageAutoHiHatPedal(Guid profileId, bool enabled)
+        {
+            if (_players.TryGetValue(profileId, out var player) && player.GameMode == GameMode.EliteDrums)
+                player.AutoHiHatPedal = enabled;
+        }
+
+        public void StageNoHiHatPedal(Guid profileId, bool enabled)
+        {
+            if (_players.TryGetValue(profileId, out var player) && player.GameMode == GameMode.EliteDrums)
+                player.NoHiHatPedal = enabled;
+        }
+
         public void StageRangeEnabled(Guid profileId, bool enabled)
         {
             if (_players.TryGetValue(profileId, out var player) &&
@@ -605,6 +621,8 @@ namespace YARG.Menu.Maestro
             public readonly byte HarmonyIndexFallback;
             public readonly Modifier CurrentModifiers;
             public readonly bool LeftyFlip;
+            public readonly bool AutoHiHatPedal;
+            public readonly bool NoHiHatPedal;
             public readonly bool RangeEnabled;
             public readonly OpenLaneDisplayType OpenLaneDisplayType;
             public readonly bool SittingOut;
@@ -627,6 +645,8 @@ namespace YARG.Menu.Maestro
                 HarmonyIndexFallback = profile.HarmonyIndexFallback;
                 CurrentModifiers = profile.CurrentModifiers;
                 LeftyFlip = profile.LeftyFlip;
+                AutoHiHatPedal = profile.AutoHiHatPedal;
+                NoHiHatPedal = profile.NoHiHatPedal;
                 RangeEnabled = profile.RangeEnabled;
                 OpenLaneDisplayType = profile.OpenLaneDisplayType;
                 SittingOut = player.SittingOut;
@@ -646,6 +666,8 @@ namespace YARG.Menu.Maestro
                 Profile.RestoreHarmonyIndexState(EffectiveHarmonyIndex, HarmonyIndexFallback);
                 Profile.RestoreSessionModifiers(CurrentModifiers);
                 Profile.LeftyFlip = LeftyFlip;
+                Profile.AutoHiHatPedal = AutoHiHatPedal;
+                Profile.NoHiHatPedal = NoHiHatPedal;
                 Profile.RangeEnabled = RangeEnabled;
                 Profile.OpenLaneDisplayType = OpenLaneDisplayType;
                 Profile.EliteDrumsDownchartTarget = EliteDrumsDownchartTarget;
@@ -717,6 +739,8 @@ namespace YARG.Menu.Maestro
                     profile.DifficultyFallback = staged.Difficulty;
                     profile.CurrentDifficulty = staged.Difficulty;
                     profile.LeftyFlip = staged.LeftyFlip;
+                    profile.AutoHiHatPedal = staged.AutoHiHatPedal;
+                    profile.NoHiHatPedal = staged.NoHiHatPedal;
                     profile.RangeEnabled = staged.RangeEnabled;
                     profile.OpenLaneDisplayType = staged.OpenLaneDisplayType;
                     if (staged.GameMode is not GameMode.Vocals and not GameMode.PartyVocals)
@@ -1055,6 +1079,10 @@ namespace YARG.Menu.Maestro
 
             try
             {
+                if (mode == GameMode.EliteDrums &&
+                    _songs.All(DrumDifficultySelector.HasNativeEliteCandidate))
+                    return true;
+
                 return GetPossibleInstruments(mode)
                     .Any(instrument => _songs.All(song => HasPlayableInstrument(song, instrument)));
             }
@@ -1111,6 +1139,10 @@ namespace YARG.Menu.Maestro
             if (HasActiveDownchartTarget(player, out var target))
                 return _songs.All(song => HasPlayableDownchartDifficulty(song, target, difficulty));
 
+            if (player.GameMode == GameMode.EliteDrums &&
+                player.PreferredInstrument == Instrument.EliteDrums)
+                return _songs.All(song => DrumDifficultySelector.HasNativeEliteCandidate(song, difficulty));
+
             return _songs.All(song => HasPlayableDifficulty(song, player.Instrument, difficulty));
         }
 
@@ -1139,7 +1171,9 @@ namespace YARG.Menu.Maestro
             try
             {
                 if (!GetPossibleInstruments(mode).Contains(instrument) ||
-                    !_songs.All(song => HasPlayableInstrument(song, instrument)))
+                    !(mode == GameMode.EliteDrums && instrument == Instrument.EliteDrums
+                        ? _songs.All(DrumDifficultySelector.HasNativeEliteCandidate)
+                        : _songs.All(song => HasPlayableInstrument(song, instrument))))
                     return false;
 
                 if (instrument is Instrument.Vocals or Instrument.Harmony)

@@ -53,7 +53,8 @@ namespace YARG.Menu.DifficultySelect
         // Modifiers relocated from the Modifiers menu to the Accessibility menu.
         // RangeCompress is folded into the "No Range Shifts" toggle there.
         private const Modifier ACCESSIBILITY_MODIFIERS =
-            Modifier.OpensToGreens | Modifier.NoKicks | Modifier.UnpitchedOnly | Modifier.RangeCompress;
+            Modifier.OpensToGreens | Modifier.NoKicks | Modifier.NoHiHat |
+            Modifier.UnpitchedOnly | Modifier.RangeCompress;
 
         // Backdrop circle marking the selected instrument's ring — translucent
         // black (a blue tint blended into the row's blue selection highlight).
@@ -973,6 +974,14 @@ namespace YARG.Menu.DifficultySelect
                     on => profile.LeftyFlip = on);
             }
 
+            if (profile.GameMode == GameMode.EliteDrums)
+            {
+                AddProfileToggle(LocalizeHeader("AutoHiHatPedal"), profile.AutoHiHatPedal,
+                    on => profile.AutoHiHatPedal = on);
+                AddProfileToggle(LocalizeHeader("NoHiHatPedal"), profile.NoHiHatPedal,
+                    on => profile.NoHiHatPedal = on);
+            }
+
             if (SupportsRangeShifts(profile.GameMode))
             {
                 // One positive "No Range Shifts" switch backed by both range
@@ -1157,6 +1166,14 @@ namespace YARG.Menu.DifficultySelect
                 && (!profile.RangeEnabled || profile.IsModifierActive(Modifier.RangeCompress)))
             {
                 text += LocalizeHeader("NoRangeShifts") + "\n";
+            }
+
+            if (profile.GameMode == GameMode.EliteDrums)
+            {
+                if (profile.AutoHiHatPedal && !profile.NoHiHatPedal)
+                    text += LocalizeHeader("AutoHiHatPedal") + "\n";
+                if (profile.NoHiHatPedal)
+                    text += LocalizeHeader("NoHiHatPedal") + "\n";
             }
 
             foreach (var modifier in _possibleModifiers)
@@ -1380,11 +1397,9 @@ namespace YARG.Menu.DifficultySelect
             {
                 bool invalidInstrument = _songList.Any(showSong =>
                     profile.GameMode == GameMode.EliteDrums &&
-                    profile.PreferredInstrument == Instrument.EliteDrums &&
+                    instrument == Instrument.EliteDrums &&
                     profile.EliteDrumsDownchartTarget is null
-                        ? !new[] { Instrument.EliteDrums, Instrument.ProDrums,
-                            Instrument.FourLaneDrums, Instrument.FiveLaneDrums }
-                            .Any(candidate => showSong.HasInstrument(candidate))
+                        ? !DrumDifficultySelector.HasNativeEliteCandidate(showSong)
                         : !HasPlayableInstrument(showSong, instrument));
                 if (!invalidInstrument)
                     _possibleInstruments.Add(instrument);
@@ -1518,9 +1533,7 @@ namespace YARG.Menu.DifficultySelect
                             ? EliteDrumsDownchartRules.HasTargetDifficulty(showsong, target, difficulty)
                             : profile.GameMode == GameMode.EliteDrums &&
                               profile.PreferredInstrument == Instrument.EliteDrums
-                                ? new[] { Instrument.EliteDrums, Instrument.ProDrums,
-                                        Instrument.FourLaneDrums, Instrument.FiveLaneDrums }
-                                    .Any(instrument => showsong[instrument][difficulty])
+                                ? DrumDifficultySelector.HasNativeEliteCandidate(showsong, difficulty)
                                 : HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty);
                     if (!playable)
                     {

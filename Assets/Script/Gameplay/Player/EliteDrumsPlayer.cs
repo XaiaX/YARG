@@ -111,13 +111,14 @@ namespace YARG.Gameplay.Player
             }
 
             var engine = new EliteDrumsEngine(NoteTrack, SyncTrack, EngineParams,
-                Player.Profile.IsBot, true);
+                Player.Profile.IsBot, true, Player.Profile.EffectiveAutoHiHatPedal);
             EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack, Chart, Player.RockMeterPreset);
             HitWindow = EngineParams.HitWindow;
             engine.OnNoteHit += OnNoteHit;
             engine.OnNoteMissed += OnNoteMissed;
             engine.OnOverhit += OnOverhit;
             engine.OnPadHit += OnPadHit;
+            engine.OnPedalAssisted += OnPedalAssisted;
             engine.OnSoloStart += OnSoloStart;
             engine.OnSoloEnd += OnSoloEnd;
             engine.OnCodaStart += OnCodaStart;
@@ -167,8 +168,97 @@ namespace YARG.Gameplay.Player
                 if (parent.IsBigRockEnding) continue;
                 foreach (var note in parent.AllNotes)
                 {
-                    if (!note.IsInvisibleTerminator) TotalNotes++;
+                    if (!note.IsInvisibleTerminator &&
+                        !(Player.Profile.EffectiveAutoHiHatPedal && note.Pad == (int) EliteDrumPad.HatPedal)) TotalNotes++;
                 }
+            }
+        }
+
+        internal static bool IsNativeAuthoredLaneStart(EliteDrumNativeAuthoredLaneRecord record,
+            EliteDrumNote parentNote)
+        {
+            if (record == null || parentNote == null)
+            {
+                return false;
+            }
+
+            if (!IsNativeAuthoredHandLane(record)) return false;
+            var firstSource = record.MemberSources[0];
+            if (firstSource == null)
+            {
+                return false;
+            }
+
+            foreach (var note in parentNote.AllNotes)
+            {
+                if (ReferenceEquals(note.SourceDefinition, firstSource))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool IsNativeAuthoredHandLane(EliteDrumNativeAuthoredLaneRecord record) =>
+            record != null && record.MemberSources.Count >= 2 && !IsFootPad((int) record.AuthoredPad) &&
+            record.AuthoredPad != EliteDrumPad.HatPedal && record.MemberSources.All(source =>
+                source != null && source.Pad == (int) record.AuthoredPad &&
+                source.StartTick >= record.StartTick && source.StartTick < record.EndTick);
+
+        protected override void OnNoteSpawned(EliteDrumNote parentNote)
+        {
+            base.OnNoteSpawned(parentNote);
+            if (!Engine.BaseParameters.EnableLanes)
+            {
+                return;
+            }
+
+            // Native authored roll phrases are independent of the generic note lane flags.
+            // Only render records that resolve to playable members in this exact chart,
+            // matching the typed engine's fail-closed source membership.
+            var surviving = new Dictionary<EliteDrumSourceDefinition, EliteDrumNote>();
+            foreach (var parent in NoteTrack.Notes)
+            {
+                foreach (var member in parent.AllNotes)
+                {
+                    if (!member.IsInvisibleTerminator && member.SourceDefinition != null)
+                        surviving.TryAdd(member.SourceDefinition, member);
+                }
+            }
+            foreach (var record in NoteTrack.EliteDrumNativeAuthoredLaneRecords)
+            {
+                if (!IsNativeAuthoredHandLane(record) ||
+                    !record.MemberSources.All(source => surviving.ContainsKey(source)) ||
+                    !IsNativeAuthoredLaneStart(record, parentNote))
+                {
+                    continue;
+                }
+
+                // Kick/pedal markers do not have a hand lane in the five-lane presentation.
+                int pad = (int) record.AuthoredPad;
+                if (IsFootPad(pad) || pad == (int) EliteDrumPad.HatPedal)
+                {
+                    continue;
+                }
+
+                if (!LanePool.CanSpawnAmount(1))
+                {
+                    BeforeNativeLaneAllocation(1);
+                }
+
+                var lane = TakeNativeLane();
+                if (lane == null)
+                {
+                    continue;
+                }
+
+                var info = _ordering[pad];
+                lane.SetTimeRange(SyncTrack.TickToTime(record.StartTick), SyncTrack.TickToTime(record.EndTick));
+                lane.SetIndexRange(info.Position, info.Position);
+                lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, info.Position, LaneCount,
+                    Player.ColorProfile.FiveLaneDrums.GetNoteColor(info.ColorIndex).ToUnityColor());
+                lane.EnableFromPool();
             }
         }
 
@@ -196,6 +286,11 @@ namespace YARG.Gameplay.Player
 
         protected override void RescaleLanesForBRE() =>
             LaneElement.DefineLaneScale(Instrument.FiveLaneDrums, LaneCount, true);
+
+        private void OnPedalAssisted(EliteDrumNote note)
+        {
+            (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.HitNote();
+        }
 
         protected override void OnNoteHit(int index, EliteDrumNote note)
         {

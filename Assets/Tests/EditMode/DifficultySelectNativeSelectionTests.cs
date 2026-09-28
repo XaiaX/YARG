@@ -101,6 +101,24 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void MixedShowEliteRequest_KeepsPreferredIdentityUntilChartResolution()
+        {
+            // Selection offers the native Elite request even when each song's actual
+            // native drum format differs. The loaded chart resolves playback per song.
+            var profile = Profile(GameMode.EliteDrums, Instrument.ProDrums,
+                Instrument.EliteDrums, null);
+            var available = new[] { Instrument.EliteDrums };
+
+            var selected = (Instrument) MaestroRule("SelectNativeInstrumentFallback",
+                profile.PreferredInstrument, profile.GameMode, available);
+            Invoke("SelectNativeInstrument", profile, selected);
+
+            Assert.That(profile.PreferredInstrument, Is.EqualTo(Instrument.EliteDrums));
+            Assert.That(profile.CurrentInstrument, Is.EqualTo(Instrument.EliteDrums));
+            Assert.That(profile.EliteDrumsDownchartTarget, Is.Null);
+        }
+
+        [Test]
         public void NativeFallback_PreservesAvailablePreference_AndOtherModeOrder()
         {
             var eliteAvailable = new[] { Instrument.FourLaneDrums, Instrument.ProDrums };

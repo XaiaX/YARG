@@ -1427,6 +1427,22 @@ namespace YARG.Menu.Maestro
                     });
             }
 
+            if (player.GameMode == GameMode.EliteDrums)
+            {
+                AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "AutoHiHatPedal"),
+                    player.AutoHiHatPedal, enabled =>
+                {
+                    Session.StageAutoHiHatPedal(_selectedProfileId, enabled);
+                    RefreshView();
+                });
+                AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "NoHiHatPedal"),
+                    player.NoHiHatPedal, enabled =>
+                {
+                    Session.StageNoHiHatPedal(_selectedProfileId, enabled);
+                    RefreshView();
+                });
+            }
+
             if (MaestroSelectionRules.SupportsRangeShifts(player.GameMode))
             {
                 AddAdjustmentToggle(dialog,

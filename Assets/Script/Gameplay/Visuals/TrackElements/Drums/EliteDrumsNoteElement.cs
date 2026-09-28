@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using YARG.Core.Chart;
+using YARG.Core.Game;
 using YARG.Gameplay.Player;
 using YARG.Helpers.Extensions;
 using YARG.Themes;
@@ -46,13 +47,7 @@ namespace YARG.Gameplay.Visuals
             transform.localPosition = foot ? Vector3.zero :
                 new Vector3(GetElementX(lane, Player.LaneCount), 0, 0);
             var groups = IsStarPowerVisible ? StarPowerNoteGroups : NoteGroups;
-            // Pedal events share the yellow lane's geometry but keep their own input identity.
-            // V1 deliberately distinguishes stomp (ghost drum) from splash (accent drum).
-            int group = foot ? KICK : NoteRef.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal
-                ? NoteRef.IsSplash ? ACCENT : GHOST
-                : NoteRef.IsAccent ? (EliteDrumsPlayer.IsCymbal(NoteRef.Pad) ? CYMBAL_ACCENT : ACCENT) :
-                NoteRef.IsGhost ? (EliteDrumsPlayer.IsCymbal(NoteRef.Pad) ? CYMBAL_GHOST : GHOST) :
-                EliteDrumsPlayer.IsCymbal(NoteRef.Pad) && Player.Player.Profile.UseCymbalModels ? CYMBAL : NORMAL;
+            int group = GetGemGroup(NoteRef, Player.Player.Profile.UseCymbalModels);
             NoteGroup = groups[group];
             NoteGroup.SetActive(true);
             NoteGroup.Initialize();
@@ -73,25 +68,63 @@ namespace YARG.Gameplay.Visuals
             UpdateColor();
         }
 
+        internal static int GetGemGroup(EliteDrumNote note, bool useCymbalModels)
+        {
+            // The authored flam flag is a visual cue in native V1, not a second scored hit.
+            if (note.IsFlam) return ACCENT;
+            if (EliteDrumsPlayer.IsFootPad(note.Pad)) return KICK;
+            // Pedal events share the hi-hat lane but retain their own ghost/accent shapes.
+            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
+                return note.IsSplash ? ACCENT : GHOST;
+            bool cymbal = EliteDrumsPlayer.IsCymbal(note.Pad);
+            if (note.IsAccent) return cymbal ? CYMBAL_ACCENT : ACCENT;
+            if (note.IsGhost) return cymbal ? CYMBAL_GHOST : GHOST;
+            return cymbal && useCymbalModels ? CYMBAL : NORMAL;
+        }
+
+        internal static (bool FourLane, int Index) GetGemColorSlot(EliteDrumNote note)
+        {
+            if (note.IsFlam)
+                return (true, (int) ColorProfile.FourLaneDrumsFret.RedDrum);
+
+            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.Kick)
+                return (false, note.IsDoubleKick ? (int) ColorProfile.FiveLaneDrumsFret.DoubleKick :
+                    (int) ColorProfile.FiveLaneDrumsFret.Kick);
+
+            // Pedal events stay on the hi-hat lane with ghost/accent models; only their gem color changes.
+            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
+                return (true, note.IsSplash ? (int) ColorProfile.FourLaneDrumsFret.DoubleKick :
+                    (int) ColorProfile.FourLaneDrumsFret.Kick);
+
+            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HiHat)
+                return (true, note.HatState switch
+                {
+                    EliteDrumNote.EliteDrumsHatState.Open => (int) ColorProfile.FourLaneDrumsFret.BlueCymbal,
+                    EliteDrumNote.EliteDrumsHatState.Closed => (int) ColorProfile.FourLaneDrumsFret.GreenCymbal,
+                    _ => (int) ColorProfile.FourLaneDrumsFret.YellowCymbal,
+                });
+
+            return (EliteDrumNote.EliteDrumPad) note.Pad switch
+            {
+                EliteDrumNote.EliteDrumPad.Tom1 => (true, (int) ColorProfile.FourLaneDrumsFret.YellowDrum),
+                EliteDrumNote.EliteDrumPad.Tom2 => (true, (int) ColorProfile.FourLaneDrumsFret.BlueDrum),
+                EliteDrumNote.EliteDrumPad.Tom3 => (true, (int) ColorProfile.FourLaneDrumsFret.GreenDrum),
+                _ => (false, EliteDrumsPlayer.GetColorIndex(note.Pad)),
+            };
+        }
+
         private void UpdateColor()
         {
             if (NoteGroup == null || NoteRef.WasHit) return;
-            var colors = Player.Player.ColorProfile.FiveLaneDrums;
-            int colorIndex = EliteDrumsPlayer.GetColorIndex(NoteRef.Pad);
-            var proColors = Player.Player.ColorProfile.FourLaneDrums;
-            bool kick = EliteDrumsPlayer.IsFootPad(NoteRef.Pad);
-            bool pedal = NoteRef.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal;
-            int proColorIndex = NoteRef.IsDoubleKick || pedal
-                ? (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.DoubleKick
-                : (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.Kick;
-            // Kick uses the Pro drum 1x/2x colors (orange/purple); pedal placeholders
-            // use purple against the yellow hand hi-hat, without changing their lane.
-            var original = kick || pedal ? proColors.GetNoteColor(proColorIndex) : colors.GetNoteColor(colorIndex);
-            var starPowerColor = kick || pedal ? proColors.GetNoteStarPowerColor(proColorIndex) :
-                colors.GetNoteStarPowerColor(colorIndex);
-            var color = NoteRef.WasMissed ? colors.Miss : IsStarPowerVisible ? starPowerColor : original;
+            var fiveLane = Player.Player.ColorProfile.FiveLaneDrums;
+            var fourLane = Player.Player.ColorProfile.FourLaneDrums;
+            var (useFourLane, index) = GetGemColorSlot(NoteRef);
+            var original = useFourLane ? fourLane.GetNoteColor(index) : fiveLane.GetNoteColor(index);
+            var starPowerColor = useFourLane ? fourLane.GetNoteStarPowerColor(index) :
+                fiveLane.GetNoteStarPowerColor(index);
+            var color = NoteRef.WasMissed ? fiveLane.Miss : IsStarPowerVisible ? starPowerColor : original;
             NoteGroup.SetColorWithEmission(color.ToUnityColor(), original.ToUnityColor());
-            NoteGroup.SetMetalColor(colors.GetMetalColor(IsStarPowerVisible).ToUnityColor());
+            NoteGroup.SetMetalColor(fiveLane.GetMetalColor(IsStarPowerVisible).ToUnityColor());
         }
     }
 }

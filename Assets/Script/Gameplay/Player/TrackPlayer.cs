@@ -1148,6 +1148,9 @@ namespace YARG.Gameplay.Player
             // Preserve the authored phrase records too: without them the Elite V1 engine
             // mistakes overlapping hand lanes for one flattened, auto-hitting native lane.
             practiceTrack.SetEliteDrumAuthoredLanePhraseRecords(OriginalNoteTrack.EliteDrumAuthoredLanePhraseRecords);
+            practiceTrack.SetEliteDrumNativeAuthoredLaneRecords(
+                OriginalNoteTrack.SliceEliteDrumNativeAuthoredLaneRecords(start, end));
+            practiceTrack.SetNativeElitePedalsFiltered(OriginalNoteTrack.NativeElitePedalsFiltered);
             practiceTrack.SetEliteDrumVisualDescriptors(OriginalNoteTrack.EliteDrumVisualDescriptors);
             return practiceTrack;
         }

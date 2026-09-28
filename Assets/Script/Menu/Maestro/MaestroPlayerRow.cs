@@ -122,6 +122,14 @@ namespace YARG.Menu.Maestro
                     activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "NoRangeShifts"));
                 }
 
+                if (player.GameMode == GameMode.EliteDrums)
+                {
+                    if (player.AutoHiHatPedal && !player.NoHiHatPedal)
+                        activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "AutoHiHatPedal"));
+                    if (player.NoHiHatPedal)
+                        activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "NoHiHatPedal"));
+                }
+
                 if (player.GameMode == GameMode.ProKeys)
                 {
                     string openLane = player.OpenLaneDisplayType switch

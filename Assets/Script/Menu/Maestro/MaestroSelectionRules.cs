@@ -12,7 +12,7 @@ namespace YARG.Menu.Maestro
     public static class MaestroSelectionRules
     {
         public const Modifier AccessibilityModifiers =
-            Modifier.NoKicks | Modifier.UnpitchedOnly |
+            Modifier.NoKicks | Modifier.NoHiHat | Modifier.UnpitchedOnly |
             Modifier.RangeCompress;
 
         public static bool IsAccessibilityModifier(Modifier modifier) =>
