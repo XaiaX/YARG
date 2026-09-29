@@ -25,6 +25,7 @@ namespace YARG.Gameplay.Player
     {
         private const int FIXED_LANE_COUNT = 5;
         private readonly Dictionary<int, HighwayOrderingInfo> _ordering = new();
+        private EliteDrumsAction? _pendingOverhitAction;
 
         [SerializeField] private FretArray _fretArray;
         [SerializeField] private KickFretFlash _kickFretFlash;
@@ -116,7 +117,7 @@ namespace YARG.Gameplay.Player
             HitWindow = EngineParams.HitWindow;
             engine.OnNoteHit += OnNoteHit;
             engine.OnNoteMissed += OnNoteMissed;
-            engine.OnOverhit += OnOverhit;
+            engine.OnOverhit += OnEliteOverhit;
             engine.OnPadHit += OnPadHit;
             engine.OnPedalAssisted += OnPedalAssisted;
             engine.OnSoloStart += OnSoloStart;
@@ -337,12 +338,11 @@ namespace YARG.Gameplay.Player
             (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.MissNote();
         }
 
-        private void OnPadHit(EliteDrumsAction action, bool noteWasHit, bool bonus,
-            bool wasOverhitInLane, DrumNoteType type, float velocity)
+        private void OnEliteOverhit()
         {
-            if (Engine.IsCodaActive)
-                CurrentCoda.HitLane(Engine.CurrentTime, (int) action);
-            if (noteWasHit) return;
+            base.OnOverhit();
+            if (_pendingOverhitAction is not { } action) return;
+
             int pad = action switch
             {
                 EliteDrumsAction.Kick => (int) EliteDrumPad.Kick,
@@ -358,8 +358,57 @@ namespace YARG.Gameplay.Player
                 EliteDrumsAction.EliteRightCrash => (int) EliteDrumPad.RightCrash,
                 _ => -1
             };
+            _pendingOverhitAction = null;
             if (IsFootPad(pad)) _fretArray.PlayKickFretAnimation();
             else if (_ordering.ContainsKey(pad)) _fretArray.PlayMissAnimation(pad);
+        }
+
+        private void OnPadHit(EliteDrumsAction action, bool noteWasHit, bool bonus,
+            bool wasOverhitInLane, DrumNoteType type, float velocity)
+        {
+            if (Engine.IsCodaActive)
+                CurrentCoda.HitLane(Engine.CurrentTime, (int) action);
+
+            _pendingOverhitAction = noteWasHit ? null : action;
+            if (noteWasHit || wasOverhitInLane || _pendingOverhitAction is null) return;
+
+            // Native Elite does not penalize pedal motion, or inputs before/after
+            // the chart and during countdown/coda. Give those inputs hit feedback
+            // rather than waiting for an overhit that will never be raised.
+            if (action is EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash ||
+                Engine.NoteIndex == 0 || Engine.NoteIndex >= Notes.Count ||
+                Engine.IsWaitCountdownActive || Engine.IsCodaActive)
+            {
+                AnimateUnmatchedAction(action);
+                _pendingOverhitAction = null;
+            }
+        }
+
+        private void AnimateUnmatchedAction(EliteDrumsAction action)
+        {
+            int pad = action switch
+            {
+                EliteDrumsAction.Kick => (int) EliteDrumPad.Kick,
+                EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash => (int) EliteDrumPad.HatPedal,
+                EliteDrumsAction.EliteSnare => (int) EliteDrumPad.Snare,
+                EliteDrumsAction.EliteClosedHiHat or EliteDrumsAction.EliteOpenHiHat or
+                    EliteDrumsAction.EliteSizzleHiHat => (int) EliteDrumPad.HiHat,
+                EliteDrumsAction.EliteLeftCrash => (int) EliteDrumPad.LeftCrash,
+                EliteDrumsAction.EliteTom1 => (int) EliteDrumPad.Tom1,
+                EliteDrumsAction.EliteTom2 => (int) EliteDrumPad.Tom2,
+                EliteDrumsAction.EliteTom3 => (int) EliteDrumPad.Tom3,
+                EliteDrumsAction.EliteRide => (int) EliteDrumPad.Ride,
+                EliteDrumsAction.EliteRightCrash => (int) EliteDrumPad.RightCrash,
+                _ => -1
+            };
+            if (IsFootPad(pad))
+            {
+                _kickFretFlash.PlayHitAnimation();
+                _fretArray.PlayKickFretAnimation();
+                CameraPositioner.Bounce();
+            }
+            else if (IsCymbal(pad) && Player.Profile.UseCymbalModels) _fretArray.PlayCymbalHitAnimation(pad);
+            else if (_ordering.ContainsKey(pad)) _fretArray.PlayHitAnimation(pad);
         }
 
         protected override void OnCodaStart(CodaSection coda)
@@ -377,6 +426,7 @@ namespace YARG.Gameplay.Player
         protected override void ResetVisuals()
         {
             base.ResetVisuals();
+            _pendingOverhitAction = null;
             _fretArray.ResetAll();
         }
 

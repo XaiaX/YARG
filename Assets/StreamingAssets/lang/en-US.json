@@ -1125,6 +1125,7 @@
 			"StatusBar": "Status Bar",
 			"AdvancedDMXSettings": "Advanced sACN and DMX settings",
 			"Experimental": "Experimental",
+			"EliteDrums": "Elite Drums",
 			"HUD": "HUD",
 			"Gameplay": "Gameplay",
 			"CrowdFX": "Crowd FX",
@@ -2001,6 +2002,14 @@
 			"EnableEliteDrumsDowncharts": {
 				"Description": "Adds an \"Elite (Downchart)\" option to instrument selection for drum players. It plays the Elite Drums chart automatically downcharted to the selected drum format, instead of the native chart. Experimental.",
 				"Name": "Enable Access To Elite Drums Downcharts"
+			},
+			"OffsetEliteTomCymbalGems": {
+				"Name": "Offset Elite Tom/Cymbal Gems",
+				"Description": "Experimental: for simultaneous Elite tom and cymbal hits sharing a lane, offset the gems so they touch at the lane center and extend into adjacent lanes. When disabled, show smaller side-by-side gems within the shared lane."
+			},
+			"SplitEliteFlamGems": {
+				"Name": "Show Paired Normal Gems for Elite Flams",
+				"Description": "When enabled, optionally shows normal gems alongside Elite flam notes. This is visual-only and does not change gameplay or note detection. Off by default."
 			},
 			"UseCumulativeSongUpdates": {
 				"Description": "Experimental: apply numbered songs_updates folders in order. After changing this setting, re-scan your song library (or restart) for it to take effect.",
