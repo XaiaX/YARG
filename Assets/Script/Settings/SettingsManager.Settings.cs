@@ -788,6 +788,7 @@ namespace YARG.Settings
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
             public ToggleSetting OffsetEliteTomCymbalGems { get; } = new(false);
             public ToggleSetting SplitEliteFlamGems { get; } = new(false);
+            public ToggleSetting RawMidiLogging { get; } = new(false);
             // Fires both on real user changes and once during settings load
             // (ForceInvokeCallback). Only an actual value change should trigger a
             // rebuild; the load-time invocation just records the starting value.

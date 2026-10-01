@@ -234,6 +234,7 @@ namespace YARG.Gameplay
             CountdownDisplay.DisplayStyle = SettingsManager.Settings.CountdownDisplay.Value;
 
             _frameTimes = new List<double>();
+            SettingsManager.Settings.RawMidiLogging.OnChange += OnRawMidiLoggingChanged;
         }
 
         private void OnDestroy()
@@ -254,6 +255,8 @@ namespace YARG.Gameplay
             // Unsubscribe from other events
             SettingsManager.Settings.NoFail.OnChange -= OnNoFailModeChanged;
             SettingsManager.Settings.MuteOnMissVolume.OnChange -= OnMuteOnMissVolumeChanged;
+            SettingsManager.Settings.RawMidiLogging.OnChange -= OnRawMidiLoggingChanged;
+            RawMidiLogger.Stop();
             EngineManager.OnSongFailed -= OnSongFailed;
             EngineManager.OnCodaStart -= StartCoda;
             EngineManager.OnCodaEnd -= EndCoda;
@@ -1112,6 +1115,23 @@ namespace YARG.Gameplay
         }
         // If we go from no fail to fail, we need to reinitialize the happiness state so we avoid
         // the possibility of an instant fail. Yes, this is cheeseable since toggling no fail resets happiness.
+        private void OnRawMidiLoggingChanged(bool enabled)
+        {
+            if (!IsSongStarted)
+            {
+                return;
+            }
+
+            if (enabled)
+            {
+                RawMidiLogger.Start();
+            }
+            else
+            {
+                RawMidiLogger.Stop();
+            }
+        }
+
         private void OnNoFailModeChanged(NoFailMode mode)
         {
             // If we're going from no fail to fail and happiness would result in a player being in the red, reset happiness

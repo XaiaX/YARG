@@ -94,7 +94,8 @@ namespace YARG.Tests.EditMode
             var element = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
             Assert.That(element, Is.Not.Null);
             var select = element.GetMethod("GetGemColorSlot",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
+                null, new[] { typeof(YARG.Core.Chart.EliteDrumNote) }, null);
             Assert.That(select, Is.Not.Null);
             var cases = new[]
             {
@@ -159,7 +160,8 @@ namespace YARG.Tests.EditMode
         {
             var element = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
             var color = element.GetMethod("GetGemColorSlot",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
+                null, new[] { typeof(YARG.Core.Chart.EliteDrumNote) }, null);
             var group = element.GetMethod("GetGemGroup",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
             var lane = Type.GetType("YARG.Gameplay.Player.EliteDrumsPlayer, Assembly-CSharp")
@@ -181,23 +183,29 @@ namespace YARG.Tests.EditMode
                     YARG.Core.Chart.EliteDrumNote.EliteDrumsChannelFlag.None, 1d, 480, false);
                 Assert.That((int) lane.Invoke(null, new object[] { note.Pad }),
                     Is.EqualTo((int) lane.Invoke(null, new object[] { normalNote.Pad })));
+                bool isKick = pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick;
+                bool isPedal = pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal;
+                var expectedColor = isKick ?
+                    (false, (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.DoubleKick) :
+                    (true, isPedal ? (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.Kick :
+                        (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.RedDrum);
                 Assert.That(((bool FourLane, int Index)) color.Invoke(null, new object[] { note }),
-                    Is.EqualTo((true, (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.RedDrum)),
-                    $"Flam color for {pad}");
-                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(3),
-                    $"Flam accent model for {pad}");
+                    Is.EqualTo(expectedColor), $"Flam color for {pad}");
+                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(isKick ? 2 : 3),
+                    $"Flam model for {pad}");
             }
         }
 
         [Test]
         public void SplitEliteFlamSettingDefaultsOff()
         {
-            var settings = Type.GetType("YARG.Settings.SettingsManager+SettingContainer, Assembly-CSharp");
-            Assert.That(settings, Is.Not.Null);
-            var property = settings.GetProperty("SplitEliteFlamGems");
-            Assert.That(property, Is.Not.Null);
-            var toggle = property.GetValue(Activator.CreateInstance(settings));
-            Assert.That((bool) toggle.GetType().GetProperty("Value").GetValue(toggle), Is.False);
+            const string path = "Assets/Script/Settings/SettingsManager.Settings.cs";
+            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+            Assert.That(script, Is.Not.Null, $"Could not load {path}.");
+            // Check the declared default without constructing audio-dependent settings.
+            Assert.That(script.text, Does.Match(
+                @"public\s+ToggleSetting\s+SplitEliteFlamGems\s*\{\s*get;\s*\}\s*=\s*new\s*\(\s*false\s*\)\s*;"),
+                "Split-flam presentation must be declared with an off default.");
         }
 
         [Test]
@@ -226,6 +234,24 @@ namespace YARG.Tests.EditMode
             Assert.That(neutral.IsFlatFlam, Is.True);
             Assert.That(neutral.IsFlam, Is.False);
             Assert.That((bool) isSplit.Invoke(null, new object[] { neutral, true }), Is.True);
+            var kickFlam = MakeFlam(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick,
+                YARG.Core.Chart.DrumNoteType.Neutral,
+                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent);
+            var flatKickFlam = MakeFlam(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick,
+                YARG.Core.Chart.DrumNoteType.Neutral,
+                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, isFlatFlam: true);
+            foreach (var kick in new[] { kickFlam, flatKickFlam })
+            {
+                Assert.That((int) group.Invoke(null, new object[] { kick, false, false }), Is.EqualTo(2),
+                    "Kick flams use the highway-wide KICK model with split flams disabled.");
+                Assert.That((int) group.Invoke(null, new object[] { kick, false, true }), Is.EqualTo(2),
+                    "Kick flams use the highway-wide KICK model with split flams enabled.");
+                var expectedKickColor = (false, (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.DoubleKick);
+                Assert.That(((bool FourLane, int Index)) color.Invoke(null, new object[] { kick, false }),
+                    Is.EqualTo(expectedKickColor), "Kick flam uses the FiveLane DoubleKick color when splitting is disabled.");
+                Assert.That(((bool FourLane, int Index)) color.Invoke(null, new object[] { kick, true }),
+                    Is.EqualTo(expectedKickColor), "Kick flam uses the FiveLane DoubleKick color when splitting is enabled.");
+            }
             Assert.That((int) group.Invoke(null, new object[] { neutral, false, true }), Is.EqualTo(0));
             Assert.That((int) group.Invoke(null, new object[] { neutral, false, false }), Is.EqualTo(3));
             Assert.That((int) element.GetMethod("GetSplitFlamTickOffset",

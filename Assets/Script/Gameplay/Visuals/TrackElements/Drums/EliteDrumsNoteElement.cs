@@ -477,9 +477,9 @@ namespace YARG.Gameplay.Visuals
         {
             if (IsSplitFlam(note, splitEliteFlamGems))
                 return GetSplitGroup(note, useCymbalModels);
+            if (EliteDrumsPlayer.IsFootPad(note.Pad)) return KICK;
             // The authored flam flag is a visual cue in native V1, not a second scored hit.
             if (note.IsFlam || note.IsFlatFlam) return ACCENT;
-            if (EliteDrumsPlayer.IsFootPad(note.Pad)) return KICK;
             // Both playable pedal events use the bar; their 1x/2x colors distinguish stomp and splash.
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
                 return STOMP;
@@ -500,7 +500,8 @@ namespace YARG.Gameplay.Visuals
                 return (true, (int) ColorProfile.FourLaneDrumsFret.RedDrum);
 
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.Kick)
-                return (false, note.IsDoubleKick ? (int) ColorProfile.FiveLaneDrumsFret.DoubleKick :
+                return (false, note.IsDoubleKick || note.IsFlam || note.IsFlatFlam ?
+                    (int) ColorProfile.FiveLaneDrumsFret.DoubleKick :
                     (int) ColorProfile.FiveLaneDrumsFret.Kick);
 
             // Pedal bars stay on the hi-hat lane; splash uses the 2x kick color, stomp the 1x.

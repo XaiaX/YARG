@@ -2007,6 +2007,10 @@
 				"Name": "Offset Elite Tom/Cymbal Gems",
 				"Description": "Experimental: for simultaneous Elite tom and cymbal hits sharing a lane, offset the gems so they touch at the lane center and extend into adjacent lanes. When disabled, show smaller side-by-side gems within the shared lane."
 			},
+			"RawMidiLogging": {
+				"Name": "Log Raw MIDI During Gameplay",
+				"Description": "Records MIDI note-on, note-off, and control-change messages while a song is playing. Saves local CSV files in the midi-logs folder under YARG's data directory; no data is uploaded. Turn off after diagnosing your controller."
+			},
 			"SplitEliteFlamGems": {
 				"Name": "Show Paired Normal Gems for Elite Flams",
 				"Description": "When enabled, optionally shows normal gems alongside Elite flam notes. This is visual-only and does not change gameplay or note detection. Off by default."

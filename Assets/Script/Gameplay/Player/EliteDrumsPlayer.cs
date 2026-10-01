@@ -8,6 +8,7 @@ using YARG.Core.Chart;
 using YARG.Core.Engine.Drums;
 using YARG.Core.Engine.Drums.Engines;
 using YARG.Core.Engine;
+using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
@@ -98,7 +99,8 @@ namespace YARG.Gameplay.Player
         }
 
         protected override InstrumentDifficulty<EliteDrumNote> GetNotes(SongChart chart) =>
-            chart.EliteDrums.Clone().GetDifficulty(Player.Profile.CurrentDifficulty);
+            DrumDifficultySelector.SelectNativeEliteTrack(chart, Player.Profile).Clone()
+                .GetDifficulty(Player.Profile.CurrentDifficulty);
 
         protected override EliteDrumsEngine CreateEngine()
         {

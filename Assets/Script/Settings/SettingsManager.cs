@@ -295,6 +295,7 @@ namespace YARG.Settings
                 new HeaderMetadata("EliteDrums"),
                 nameof(Settings.EnableEliteDrumsDowncharts),
                 nameof(Settings.OffsetEliteTomCymbalGems),
+                nameof(Settings.RawMidiLogging),
                 nameof(Settings.SplitEliteFlamGems),
                 new HeaderMetadata("Accessibility"),
                 nameof(Settings.DisablePartyVocalsCountIns),

@@ -311,6 +311,10 @@ namespace YARG.Gameplay
             // Loaded, enable updates
             enabled = true;
             IsSongStarted = true;
+            if (SettingsManager.Settings.RawMidiLogging.Value)
+            {
+                RawMidiLogger.Start();
+            }
             _songStarted?.Invoke();
         }
 
