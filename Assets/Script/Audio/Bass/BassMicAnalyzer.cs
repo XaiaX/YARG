@@ -38,6 +38,7 @@ namespace YARG.Audio.BASS
         private readonly float[]                         _readBuffer;
         private readonly IBassMicSampleSource             _source;
         private readonly Thread                           _worker;
+        private readonly int _traceSource = VocalsTimingTrace.NewSourceId();
         private bool _failureLogged;
         private bool _paused;
 #if UNITY_EDITOR && UNITY_INCLUDE_TESTS
@@ -57,6 +58,14 @@ namespace YARG.Audio.BASS
             int samplesPerFrame = checked(source.SampleRate * MicDevice.RECORD_PERIOD_MS / 1000);
             _readBuffer = new float[samplesPerFrame];
             _processor = new VocalsFrameProcessor(source.SampleRate);
+            if (VocalsTimingTrace.Enabled)
+            {
+                _processor.Diagnostics = diagnostic =>
+                    VocalsTimingTrace.Emit(VocalsTraceEvent.Decision, _traceSource, diagnostic.FrameEndTime,
+                        diagnostic.Amplitude, diagnostic.GateOpen ? 1 : 0,
+                        diagnostic.Detection == "Fresh" ? 1 : diagnostic.Detection == "Held" ? 2 : 0,
+                        diagnostic.Hit ? 1 : 0, diagnostic.OutputCount);
+            }
 
             _worker = new Thread(ReadLoop)
             {
@@ -172,8 +181,26 @@ namespace YARG.Audio.BASS
                     return false;
                 }
 
+                bool tracing = VocalsTimingTrace.Enabled;
+                long beforeTicks = tracing ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 double readTime = _getInputTime();
                 int samplesRead = _source.Read(_readBuffer.AsSpan());
+                float sensitivity = samplesRead > 0 || tracing
+                    ? SettingsManager.Settings.MicrophoneSensitivity.Value : 0;
+                if (tracing)
+                {
+                    long afterTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    // A diagnostic clock query is isolated from the worker's processing clock.
+                    double afterTime = double.NaN;
+                    try { afterTime = _getInputTime(); } catch (Exception) { }
+                    try
+                    {
+                        VocalsTimingTrace.Emit(VocalsTraceEvent.Read, _traceSource, readTime, afterTime,
+                            beforeTicks, afterTicks, backlogBytes, backlogBytes / sizeof(float), samplesRead,
+                            _source.SampleRate, sensitivity);
+                    }
+                    catch (Exception) { /* Diagnostic source observations must not alter processing. */ }
+                }
 
                 if (samplesRead < 0)
                 {
@@ -188,8 +215,14 @@ namespace YARG.Audio.BASS
                 else
                 {
                     _processor.Process(_readBuffer, samplesRead, backlogBytes, readTime,
-                        SettingsManager.Settings.MicrophoneSensitivity.Value,
-                        (frame, _) => _outputFrames.Enqueue(frame));
+                        sensitivity,
+                        (frame, _) =>
+                        {
+                            _outputFrames.Enqueue(frame);
+                            if (VocalsTimingTrace.Enabled)
+                                VocalsTimingTrace.Emit(VocalsTraceEvent.Output, _traceSource, frame.Time,
+                                    frame.IsHit ? 1 : 0, frame.Pitch, frame.IsHit ? double.NaN : frame.PitchAsMidiNote, frame.Volume);
+                        });
 #if UNITY_EDITOR && UNITY_INCLUDE_TESTS
                     try { TestFrameCompleted?.Invoke(); }
                     catch (Exception) { /* Test observers must not alter processing. */ }
@@ -204,6 +237,8 @@ namespace YARG.Audio.BASS
         {
             _processor.Reset();
             _outputFrames.Clear();
+            if (VocalsTimingTrace.Enabled)
+                VocalsTimingTrace.Emit(VocalsTraceEvent.Reset, _traceSource);
         }
 
         private void LogFailure(string message)

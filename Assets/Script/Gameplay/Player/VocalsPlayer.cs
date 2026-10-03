@@ -203,8 +203,14 @@ namespace YARG.Gameplay.Player
                 _lastTargetNote = note;
             };
 
+            int tracePhrase = 0;
+            int tracePlayer = YARG.Audio.PitchDetection.VocalsTimingTrace.NewSourceId();
             engine.OnPhraseHit += (percent, fullPoints, isLastPhrase) =>
             {
+                if (!Player.IsReplay && YARG.Audio.PitchDetection.VocalsTimingTrace.Enabled)
+                    YARG.Audio.PitchDetection.VocalsTimingTrace.Emit(
+                        YARG.Audio.PitchDetection.VocalsTraceEvent.Phrase, tracePlayer,
+                        tracePhrase++, engine.CurrentTime, percent, fullPoints ? 1 : 0, isLastPhrase ? 1 : 0);
                 if (!fullPoints)
                 {
                     IsFc = false;
@@ -662,6 +668,11 @@ namespace YARG.Gameplay.Player
         protected override bool InterceptInput(ref GameInput input)
         {
             var minimumTime = System.Math.Max(BaseEngine.LastQueuedInputTime, BaseEngine.CurrentTime);
+            if (!Player.IsReplay && YARG.Audio.PitchDetection.VocalsTimingTrace.Enabled)
+                YARG.Audio.PitchDetection.VocalsTimingTrace.Emit(
+                    YARG.Audio.PitchDetection.VocalsTraceEvent.Clamp, 0, input.Time,
+                    System.Math.Max(input.Time, minimumTime), BaseEngine.CurrentTime,
+                    BaseEngine.LastQueuedInputTime, input.Action, input.Integer);
             if (input.Time < minimumTime)
             {
                 input = new GameInput(minimumTime, input.Action, input.Integer);

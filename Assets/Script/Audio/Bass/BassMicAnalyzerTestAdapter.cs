@@ -126,16 +126,16 @@ namespace YARG.Audio.BASS
 
         public bool Reset()
         {
-            // Reset is only valid after the prior transaction has completed. Cancellation
-            // precedes the analyzer lock, which may currently be held by GetBacklogBytes.
+            // Reset is only valid after the prior transaction has completed. Wait for
+            // the worker to pause before taking the analyzer lock: cancellation alone
+            // leaves it repeatedly reacquiring that lock for empty reads.
             lock (_controller)
             {
                 if (!_source.IsValid) throw new ObjectDisposedException(nameof(BassMicAnalyzerTestAdapter));
                 _source.RequireQuiescent();
-                _source.Cancel();
+                PauseAndWait(3000);
                 bool result = _analyzer.Reset();
-                _source.Rearm();
-                _isPaused = false;
+                Resume();
                 return result;
             }
         }

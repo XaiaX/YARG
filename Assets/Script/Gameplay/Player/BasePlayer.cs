@@ -391,6 +391,10 @@ namespace YARG.Gameplay.Player
             LastInputs[input.Action] = input;
 
             double adjustedTime = GameManager.GetInputTime(input.Time);
+            if (this is VocalsPlayer && YARG.Audio.PitchDetection.VocalsTimingTrace.Enabled)
+                YARG.Audio.PitchDetection.VocalsTimingTrace.Emit(
+                    YARG.Audio.PitchDetection.VocalsTraceEvent.Mapping, 0, input.Time, adjustedTime,
+                    InputCalibration, adjustedTime + InputCalibration, input.Action, input.Integer);
             // Apply input offset
             adjustedTime += InputCalibration;
             input = new(adjustedTime, input.Action, input.Integer);

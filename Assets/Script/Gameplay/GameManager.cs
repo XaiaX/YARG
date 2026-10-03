@@ -320,6 +320,20 @@ namespace YARG.Gameplay
             BeatEventHandler.Update(_songRunner.SongTime, _songRunner.VisualTime);
             CrowdEventHandler.Update(_songRunner.SongTime);
 
+            if (YARG.Audio.PitchDetection.VocalsTimingTrace.Enabled)
+            {
+                try
+                {
+                    YARG.Audio.PitchDetection.VocalsTimingTrace.Emit(
+                        YARG.Audio.PitchDetection.VocalsTraceEvent.Playback, 0,
+                        InputManager.CurrentInputTime, _songRunner.InputTime, _songRunner.SongTime,
+                        _songRunner.VisualTime, _songRunner.AudioTime, _songRunner.AudioCalibration,
+                        _songRunner.VideoCalibration, _songRunner.SongOffset, _songRunner.SongSpeed,
+                        _songRunner.Paused ? 1 : 0);
+                }
+                catch (Exception) { /* Playback diagnostics must not interrupt gameplay. */ }
+            }
+
             // Update players
             int totalScore = 0;
             foreach (var player in _players)

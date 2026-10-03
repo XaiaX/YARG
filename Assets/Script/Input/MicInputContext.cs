@@ -54,6 +54,11 @@ namespace YARG.Input
                         gameInput = GameInput.Create(frame.Time, VocalsAction.Hit, true);
                     }
 
+                    if (YARG.Audio.PitchDetection.VocalsTimingTrace.Enabled)
+                        YARG.Audio.PitchDetection.VocalsTimingTrace.Emit(
+                            YARG.Audio.PitchDetection.VocalsTraceEvent.Dequeue, 0,
+                            frame.Time, InputManager.CurrentInputTime, _gameManager.InputTime,
+                            gameInput.Action, gameInput.Integer);
                     yield return gameInput;
                 }
             }

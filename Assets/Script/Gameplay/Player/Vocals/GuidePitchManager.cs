@@ -35,6 +35,7 @@ namespace YARG.Gameplay.Player
         /// </summary>
         private int _enabledHarmonyIndex = -1;
 
+        private readonly int _traceSource = YARG.Audio.PitchDetection.VocalsTimingTrace.NewSourceId();
         private readonly ToneChannel           _toneChannel;
         private readonly VocalsTrack           _vocalsTrack;
         private readonly Action<string, Color> _statusChanged;
@@ -133,7 +134,25 @@ namespace YARG.Gameplay.Player
         /// </summary>
         private void PublishSchedule()
         {
-            if (_toneChannel.SetSchedule(VocalToneSchedule.Build(GetEnabledPart())))
+            var schedule = VocalToneSchedule.Build(GetEnabledPart());
+            bool accepted = _toneChannel.SetSchedule(schedule);
+            if (YARG.Audio.PitchDetection.VocalsTimingTrace.Enabled)
+            {
+                YARG.Audio.PitchDetection.VocalsTimingTrace.Emit(
+                    YARG.Audio.PitchDetection.VocalsTraceEvent.GuideState, _traceSource,
+                    _enabledHarmonyIndex, accepted ? 1 : 0, schedule.Length, VOLUME, FADE_SECONDS);
+                if (accepted)
+                {
+                    for (int i = 0; i < schedule.Length; i++)
+                    {
+                        var segment = schedule[i];
+                        YARG.Audio.PitchDetection.VocalsTimingTrace.Emit(
+                            YARG.Audio.PitchDetection.VocalsTraceEvent.GuideSchedule, _traceSource,
+                            i, segment.StartTime, segment.EndTime, segment.StartPitch, segment.EndPitch);
+                    }
+                }
+            }
+            if (accepted)
             {
                 return;
             }
