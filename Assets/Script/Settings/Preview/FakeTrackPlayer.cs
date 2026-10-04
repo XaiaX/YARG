@@ -228,6 +228,7 @@ namespace YARG.Settings.Preview
         // Renderers for the pro-keys highway overlay quads. Stored for live
         // recoloring on setting change.
         private readonly List<ProKeysOverlayRenderer> _proKeysOverlayRenderers = new();
+        private Material _proKeysOverlayMaterial;
 
         public bool ForceShowHitWindow { get; set; }
 
@@ -307,10 +308,53 @@ namespace YARG.Settings.Preview
             if (!_previewModeSupported)
             {
                 // Vocals has no fret-lane preview yet; leave the highway blank.
+                // The sibling hit-window display depends on initialized engine settings,
+                // so it must not keep updating in this intentionally blank fallback.
+                var hitWindowDisplay = GetComponentInChildren<FakeHitWindowDisplay>(true);
+                if (hitWindowDisplay != null)
+                {
+                    hitWindowDisplay.gameObject.SetActive(false);
+                }
                 return;
             }
 
             CurrentGameModeInfo = gameModeInfo;
+            ConfigureCurrentGameModeInfo();
+            var theme = ThemePreset.Default;
+            var selectedColorProfile = PresetsTab.GetLastSelectedPreset(CustomContentManager.ColorProfiles);
+
+            // If we aren't using Pro Keys, then the passed instrument doesn't really matter; arbitrarily pass Five-Fret Guitar
+            var style = VisualStyleHelpers.GetVisualStyle(SelectedGameMode, CurrentGameModeInfo.UseProKeys ? Instrument.ProKeys : Instrument.FiveFretGuitar);
+
+            InitializeReceptors(selectedColorProfile, theme, style);
+
+            // Create the note prefab (this has to be specially done, because
+            // TrackElements need references to the GameManager)
+            var prefab = FakeNote.CreateFakeNoteFromTheme(theme,
+                CurrentGameModeInfo.NoteVisualStyle ?? style);
+            prefab.transform.parent = transform;
+            prefab.SetActive(false);
+            _notePool.SetPrefabAndReset(prefab);
+
+            // Show hit window if enabled
+            _hitWindow.gameObject.SetActive(SettingsManager.Settings.ShowHitWindow.Value || ForceShowHitWindow);
+            _hitWindow.NoteSpeed = NOTE_SPEED;
+            _trackMaterial.StarpowerMode = ForceStarPower;
+            _trackMaterial.GrooveMode = ForceGroove;
+
+            SettingsMenu.Instance.SettingChanged += OnSettingChanged;
+
+            var highwayRenderer = _cameraPositioner.GetComponent<HighwayCameraRendering>();
+            var camera = _cameraPositioner.GetComponent<Camera>();
+            highwayRenderer.AddPlayerParams(transform.position, camera, 0, 0, 0, 0, false);
+
+            // Force update it as well to make sure it's right before any settings are changed
+            OnSettingChanged();
+        }
+
+        private void ConfigureCurrentGameModeInfo()
+        {
+            CurrentGameModeInfo = _gameModeInfos[SelectedGameMode];
 
             // 5-lane keys shares the guitar color section and lane models in-game
             // (FiveLaneKeysPlayer / FiveLaneKeysNoteElement read ColorProfile.FiveFretGuitar),
@@ -358,62 +402,51 @@ namespace YARG.Settings.Preview
 
                 CurrentGameModeInfo = info;
             }
-            var theme = ThemePreset.Default;
+        }
 
-            // If we aren't using Pro Keys, then the passed instrument doesn't really matter; arbitrarily pass Five-Fret Guitar
-            var style = VisualStyleHelpers.GetVisualStyle(SelectedGameMode, CurrentGameModeInfo.UseProKeys ? Instrument.ProKeys : Instrument.FiveFretGuitar);
-
-            // Create frets and put them on the right layer
-            if (!CurrentGameModeInfo.UseProKeys)
+        private void InitializeReceptors(ColorProfile colorProfile, ThemePreset theme, VisualStyle style)
+        {
+            if (CurrentGameModeInfo.UseHighwayOverlay)
             {
-                if (CurrentGameModeInfo.UseHighwayOverlay)
-                {
-                    // Pro-keys: initialize the fret array with an EMPTY ordering
-                    // (no visible frets) to trigger the same rendering setup that
-                    // other game modes rely on, then draw the overlay on top.
-                    _fretArray.Initialize(
-                        new Dictionary<int, int>(),
-                        1, null, null,
-                        theme, style);
-                    CreateProKeysOverlay(ColorProfile.Default.ProKeys);
-                }
-                else
-                {
-                    _fretArray.UseKickFrets = CurrentGameModeInfo.UseKickFrets;
-                    _fretArray.Initialize(
-                        CurrentGameModeInfo.HighwayOrdering,
-                        CurrentGameModeInfo.LaneCount,
-                        CurrentGameModeInfo.KickFretPrefab,
-                        CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
-                        theme,
-                        style
-                    );
-                }
-                _fretArray.transform.SetLayerRecursive(LayerMask.NameToLayer("Settings Preview"));
+                // Piano-style Pro Keys has no physical fret provider; present its
+                // highway overlay without asking the fret array for a fret prefab.
+                CreateProKeysOverlay(colorProfile.ProKeys);
+            }
+            else if (CurrentGameModeInfo.FretColorProvider != null)
+            {
+                _fretArray.UseKickFrets = CurrentGameModeInfo.UseKickFrets;
+                _fretArray.Initialize(
+                    CurrentGameModeInfo.HighwayOrdering,
+                    CurrentGameModeInfo.LaneCount,
+                    CurrentGameModeInfo.KickFretPrefab,
+                    CurrentGameModeInfo.FretColorProvider(colorProfile),
+                    theme,
+                    style,
+                    SelectedGameMode == GameMode.SixFretGuitar);
             }
 
-            // Create the note prefab (this has to be specially done, because
-            // TrackElements need references to the GameManager)
-            var prefab = FakeNote.CreateFakeNoteFromTheme(theme,
-                CurrentGameModeInfo.NoteVisualStyle ?? style);
-            prefab.transform.parent = transform;
-            prefab.SetActive(false);
-            _notePool.SetPrefabAndReset(prefab);
+            if (_fretArray != null)
+            {
+                _fretArray.transform.SetLayerRecursive(LayerMask.NameToLayer("Settings Preview"));
+            }
+        }
 
-            // Show hit window if enabled
-            _hitWindow.gameObject.SetActive(SettingsManager.Settings.ShowHitWindow.Value || ForceShowHitWindow);
-            _hitWindow.NoteSpeed = NOTE_SPEED;
-            _trackMaterial.StarpowerMode = ForceStarPower;
-            _trackMaterial.GrooveMode = ForceGroove;
-
-            SettingsMenu.Instance.SettingChanged += OnSettingChanged;
-
-            var highwayRenderer = _cameraPositioner.GetComponent<HighwayCameraRendering>();
-            var camera = _cameraPositioner.GetComponent<Camera>();
-            highwayRenderer.AddPlayerParams(transform.position, camera, 0, 0, 0, 0, false);
-
-            // Force update it as well to make sure it's right before any settings are changed
-            OnSettingChanged();
+        private void RefreshReceptorColors(ColorProfile colorProfile)
+        {
+            // Presentation determines whether colors belong to receptor materials
+            // or to the piano-style Pro Keys overlay; UseProKeys alone is not enough.
+            if (CurrentGameModeInfo.UseHighwayOverlay)
+            {
+                RecolorProKeysOverlay(colorProfile.ProKeys);
+            }
+            else if (CurrentGameModeInfo.FretColorProvider != null)
+            {
+                _fretArray.RecolorFrets(
+                    CurrentGameModeInfo.FretColorProvider(colorProfile),
+                    SelectedGameMode == GameMode.FiveFretGuitar
+                        ? FretColorIndexForLefty
+                        : null);
+            }
         }
 
         private void OnSettingChanged()
@@ -447,22 +480,7 @@ namespace YARG.Settings.Preview
                 ((FakeNote)note).OnSettingChanged();
             }
 
-            // Reverse the fret color order for guitar lefty flip. Frets use the default
-            // color profile; reversing their assignment mirrors the layout in place
-            // without moving frets or touching asymmetric theme graphics.
-            if (SelectedGameMode == GameMode.FiveFretGuitar)
-            {
-                _fretArray.RecolorFrets(
-                    CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
-                    FretColorIndexForLefty);
-            }
-            else if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
-            {
-                // Pro-keys: live-recolor the highway overlay sections with the
-                // PRESET's overlay colors (not ColorProfile.Default), so editing
-                // an overlay color live-updates without a rebuild.
-                RecolorProKeysOverlay(colorProfile.ProKeys);
-            }
+            RefreshReceptorColors(colorProfile);
         }
 
         /// <summary>
@@ -660,9 +678,15 @@ namespace YARG.Settings.Preview
 
         private void OnDestroy()
         {
-            if (_previewModeSupported)
+            if (_previewModeSupported && SettingsMenu.Instance != null)
             {
                 SettingsMenu.Instance.SettingChanged -= OnSettingChanged;
+            }
+
+            if (_proKeysOverlayMaterial != null)
+            {
+                Destroy(_proKeysOverlayMaterial);
+                _proKeysOverlayMaterial = null;
             }
         }
 
@@ -690,6 +714,17 @@ namespace YARG.Settings.Preview
             _proKeysOverlayRenderers.Clear();
             var layerMask = LayerMask.NameToLayer("Settings Preview");
 
+            if (_proKeysOverlayMaterial == null)
+            {
+                var shader = Shader.Find("Sprites-Default-Overlay");
+                if (shader == null)
+                {
+                    throw new InvalidOperationException("Could not find the highway-aware sprite shader for the Pro Keys preview overlay.");
+                }
+
+                _proKeysOverlayMaterial = new Material(shader);
+            }
+
             // Use SpriteRenderers so the transparent overlays do not occlude the
             // highway. The gameplay overlay uses the same per-key geometry and
             // edge texture, but its material also depends on gameplay fade state.
@@ -715,6 +750,7 @@ namespace YARG.Settings.Preview
                     overlayLayer.Band.Center, 0.01f, PRO_KEYS_OVERLAY_Z_CENTER);
 
                 var sr = overlay.AddComponent<SpriteRenderer>();
+                sr.sharedMaterial = _proKeysOverlayMaterial;
                 sr.sprite = overlayLayer.IsEdge ? edgeSprite : whiteSprite;
                 sr.flipX = overlayLayer.FlipX;
                 sr.sortingOrder = overlayLayer.IsEdge ? 1 : 0;

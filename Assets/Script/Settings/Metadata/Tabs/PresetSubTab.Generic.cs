@@ -563,7 +563,10 @@ namespace YARG.Settings.Metadata
             // nav order: navigating down past the last field reaches them, instead
             // of them lurking invisibly above the first field (which read as the
             // list "wrapping to nowhere").
-            BuildPreviewControls(navGroup);
+            if (SettingsMenu.Instance?.CurrentTab is PresetsTab)
+            {
+                BuildPreviewControls(navGroup);
+            }
         }
 
         private const string PV_HEADER = "Preview Options";
@@ -699,23 +702,22 @@ namespace YARG.Settings.Metadata
             if (PreviewBuilder is not TrackPreviewBuilder tpb) return;
             if (SettingsMenu.Instance?.PreviewContainerUI == null) return;
 
-            // The preview container's parent is the Sidebar. The Header is a
-            // child of the Sidebar that contains Setting Name / Description text.
-            // We add our controls container as a child of the Sidebar, positioned
-            // just below the Header and above the Preview Container.
-            var sidebar = SettingsMenu.Instance.PreviewContainerUI.parent;
-            if (sidebar == null) return;
+            // Parent these controls to the preview UI so SettingsMenu's preview
+            // teardown owns their lifetime. SettingsMenu preserves this child only
+            // across preview rebuilds while Presets remains the active tab.
+            var previewContainer = SettingsMenu.Instance.PreviewContainerUI;
+            if (previewContainer == null) return;
 
-            // Clear any previous controls (avoids duplicates on rebuild, and
-            // removes the previous tab's dropdown when switching preset types)
-            if (PreviewControlsContainer != null)
+            // Reuse only controls that still belong to this live preview container.
+            // This also handles Unity's deferred destruction during tab changes.
+            if (PreviewControlsContainer != null && PreviewControlsContainer.parent == previewContainer)
             {
                 PreviewControlsContainer.DestroyChildren();
             }
             else
             {
                 var go = new GameObject("PreviewControls");
-                go.transform.SetParent(sidebar, false);
+                go.transform.SetParent(previewContainer, false);
                 var rect = go.AddComponent<RectTransform>();
 
                 // The sidebar's Header (Setting Name/Description) is a fixed
@@ -726,8 +728,11 @@ namespace YARG.Settings.Metadata
                 rect.anchorMin = new Vector2(0f, 1f);
                 rect.anchorMax = new Vector2(1f, 1f);
                 rect.pivot = new Vector2(0.5f, 1f);
-                rect.offsetMin = new Vector2(20f, -199f);
-                rect.offsetMax = new Vector2(-20f, -135f);
+                rect.offsetMin = new Vector2(20f, -74f);
+                rect.offsetMax = new Vector2(-20f, -10f);
+
+                var layoutElement = go.AddComponent<LayoutElement>();
+                layoutElement.ignoreLayout = true;
 
                 var layout = go.AddComponent<HorizontalLayoutGroup>();
                 layout.spacing = 6;
@@ -737,8 +742,10 @@ namespace YARG.Settings.Metadata
                 layout.childForceExpandWidth = true;
                 layout.childForceExpandHeight = false;
 
-                PreviewControlsContainer = go.transform;
+                PresetSubTab.SetPreviewControlsContainer(go.transform);
             }
+
+            var controlsContainer = PresetSubTab.PreviewControlsContainer;
 
             // --- Instrument selector dropdown ---
             var instrumentModes = typeof(T) == typeof(EnginePreset)
@@ -798,7 +805,7 @@ namespace YARG.Settings.Metadata
             foreach (var (_, label, _) in instrumentModes)
                 modeDropdown.Add(label);
 
-            var instrumentVisual = CreateField(PreviewControlsContainer, navGroup,
+            var instrumentVisual = CreateField(controlsContainer, navGroup,
                 "PreviewVisuals", "Instrument", modeDropdown, false);
             instrumentVisual?.HideLabel();
             UseDropdownListNavigation(instrumentVisual, navGroup);
@@ -846,7 +853,7 @@ namespace YARG.Settings.Metadata
                 visualsDropdown.SetValueWithoutNotify(PV_HEADER);
             };
 
-            var visualsVisual = CreateField(PreviewControlsContainer, navGroup, "PreviewVisuals", "Visuals",
+            var visualsVisual = CreateField(controlsContainer, navGroup, "PreviewVisuals", "Visuals",
                 visualsDropdown, false);
             if (visualsVisual != null)
             {
@@ -1388,8 +1395,10 @@ namespace YARG.Settings.Metadata
                     DialogManager.Instance.ClearDialog();
 
                     // Rebuild so the visible color rows re-read the preset values
-                    // (the shared ColorSetting cache is cleared on rebuild).
+                    // (the shared ColorSetting cache is cleared on rebuild), then notify
+                    // once after the complete bulk mutation so the live preview refreshes.
                     SettingsMenu.Instance.RefreshSettingsKeepPosition();
+                    SettingsMenu.Instance.OnSettingChanged();
                 }
 
                 ShowCompactConfirmation(

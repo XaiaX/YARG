@@ -118,6 +118,11 @@ namespace YARG.Gameplay.Visuals
             // Primary half (existing logic)
             Initialize(top, inner, particles, openParticles);
 
+            // Secondary materials are theme-selected instances too. Clear their
+            // caches before recoloring so repeated preset edits remain idempotent.
+            _secondaryTopMaterials.Clear();
+            _secondaryInnerMaterials.Clear();
+
             // Secondary half
             _secondaryOriginalUnityTopColor = secondaryTop.ToUnityColor();
             _secondaryOriginalUnityInnerColor = secondaryInner.ToUnityColor();
@@ -127,7 +132,7 @@ namespace YARG.Gameplay.Visuals
             foreach (var material in ThemeBind.GetSecondaryColoredMaterials())
             {
                 material.color = _secondaryOriginalUnityTopColor;
-                material.SetColor(_emissionColor, _secondaryOriginalEmissionColor);
+                material.SetColor(_secondaryEmissionColor, _secondaryOriginalEmissionColor);
                 _secondaryTopMaterials.Add(material);
             }
 

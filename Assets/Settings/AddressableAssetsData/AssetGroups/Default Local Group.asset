@@ -15,6 +15,11 @@ MonoBehaviour:
   m_GroupName: Default Local Group
   m_GUID: 1fc303ae4b596034592a9c3d3864493f
   m_SerializeEntries:
+  - m_GUID: fb698a9ab78f72e4486acac10d0286d2
+    m_Address: Tests/SettingsMenu
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 00be5b45e060bcc4ea7a4233ed157d47
     m_Address: VocalNeedleTexture/4
     m_ReadOnly: 0

@@ -1,0 +1,21 @@
+{
+    "name": "YARG.PresetPreview.EditorTests",
+    "rootNamespace": "YARG.Tests.PresetPreview",
+    "references": [
+        "YARG.Core.Package"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

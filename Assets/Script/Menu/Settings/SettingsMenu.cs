@@ -69,6 +69,7 @@ namespace YARG.Menu.Settings
         private bool _ready;
         private bool _tabsInitialized;
         private string _pendingTabName;
+        private readonly List<GameObject> _ownedWorldPreviews = new();
 
         private bool _showAdvanced;
 
@@ -375,28 +376,93 @@ namespace YARG.Menu.Settings
                 await UniTask.WaitForEndOfFrame(this);
             }
 
-            DestroyPreview();
+            DestroyPreview(preservePresetControls: tabInfo is PresetsTab);
 
-            if (CurrentTab == null)
+            if (tabInfo == null)
+            {
                 return;
+            }
 
-            // Spawn world preview
-            _previewContainerWorld.gameObject.SetActive(true);
+            // Preserve the serialized world container's null-parent behavior when
+            // no world container is assigned in the SettingsMenu prefab.
+            if (_previewContainerWorld != null)
+            {
+                _previewContainerWorld.gameObject.SetActive(true);
+            }
+
             await tabInfo.BuildPreviewWorld(_previewContainerWorld);
 
-            // Set render texture(s)
+            // Use the original eager shared render target lifecycle before the UI
+            // builder waits for the end-of-frame layout pass.
             CameraPreviewTexture.SetAllPreviews();
 
-            // Spawn UI preview
+            _previewContainerUI.gameObject.SetActive(true);
             await tabInfo.BuildPreviewUI(_previewContainerUI);
+
+            var controls = PresetSubTab.PreviewControlsContainer;
+            if (tabInfo is PresetsTab && controls != null)
+            {
+                controls.SetAsLastSibling();
+                _previewContainerUI.gameObject.SetActive(true);
+            }
         }
 
-        private void DestroyPreview()
+        public static void DestroyPreviewUI(Transform parent, bool preservePresetControls = false)
         {
-            _previewContainerWorld.DestroyChildren();
-            _previewContainerWorld.gameObject.SetActive(false);
+            Transform controls = preservePresetControls ? PresetSubTab.PreviewControlsContainer : null;
+            for (int i = parent.childCount - 1; i >= 0; i--)
+            {
+                var child = parent.GetChild(i);
+                if (child == controls)
+                {
+                    continue;
+                }
 
-            _previewContainerUI.DestroyChildren();
+                Destroy(child.gameObject);
+            }
+
+            if (!preservePresetControls)
+            {
+                PresetSubTab.ClearPreviewControlsReference();
+            }
+        }
+
+        private void DestroyPreview(bool preservePresetControls = false)
+        {
+            CharacterPreviewBuilder.InvalidatePreviewOwner(this);
+
+            if (_previewContainerWorld != null)
+            {
+                _previewContainerWorld.DestroyChildren();
+                _previewContainerWorld.gameObject.SetActive(false);
+            }
+
+            foreach (var previewRoot in _ownedWorldPreviews)
+            {
+                if (previewRoot != null)
+                {
+                    Destroy(previewRoot);
+                }
+            }
+            _ownedWorldPreviews.Clear();
+
+            DestroyPreviewUI(_previewContainerUI, preservePresetControls);
+        }
+
+        public void RegisterWorldPreview(GameObject previewRoot)
+        {
+            if (gameObject.activeInHierarchy && previewRoot != null && !_ownedWorldPreviews.Contains(previewRoot))
+            {
+                _ownedWorldPreviews.Add(previewRoot);
+            }
+        }
+
+        public bool OwnsActiveWorldPreview(Tab ownerTab, GameObject previewRoot)
+        {
+            return gameObject.activeInHierarchy
+                && ReferenceEquals(CurrentTab, ownerTab)
+                && previewRoot != null
+                && _ownedWorldPreviews.Contains(previewRoot);
         }
 
         public void OnSettingChanged()

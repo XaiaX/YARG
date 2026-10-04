@@ -14,6 +14,8 @@ namespace YARG.Settings.Metadata
     public class CharacterPreviewBuilder : IPreviewBuilder
     {
         private static Transform          _worldContainer;
+        private static SettingsMenu       _ownerMenu;
+        private static Tab                _ownerTab;
         private static GameObject         _previewWorld;
         private static GameObject         _previewUI;
         private static GameObject         _characterPrefab;
@@ -35,6 +37,8 @@ namespace YARG.Settings.Metadata
 
         public UniTask BuildPreviewWorld(Transform worldContainer)
         {
+            _ownerMenu = SettingsMenu.Instance;
+            _ownerTab = _ownerMenu != null ? _ownerMenu.CurrentTab : null;
             _worldContainer = worldContainer;
 
             // Instantiate the world first since we may need it if the user subsequently selects a character
@@ -53,6 +57,7 @@ namespace YARG.Settings.Metadata
 
             // Instantiate the preview prefab
             var go = Object.Instantiate(_previewWorld, worldContainer);
+            _ownerMenu?.RegisterWorldPreview(go);
             _worldInstance = go;
             _previewScriptInstance = go.GetComponent<CharacterPreview>();
 
@@ -122,6 +127,9 @@ namespace YARG.Settings.Metadata
             _uiScriptInstance = go.GetComponent<CharacterPreviewUI>();
             _uiScriptInstance.Initialize(_characterInstance);
 
+            var rawImage = go.GetComponentInChildren<RawImage>();
+            rawImage.color = Color.white;
+
             // Enable and wait for layouts to rebuild
             await UniTask.WaitForEndOfFrame(SettingsMenu.Instance);
 
@@ -142,12 +150,29 @@ namespace YARG.Settings.Metadata
             previewTexture.uvRect = rect;
         }
 
+        public static void InvalidatePreviewOwner(SettingsMenu ownerMenu)
+        {
+            if (_ownerMenu != ownerMenu)
+            {
+                return;
+            }
+
+            _ownerMenu = null;
+            _ownerTab = null;
+            _worldContainer = null;
+            _worldInstance = null;
+            _previewScriptInstance = null;
+            _characterInstance = null;
+            _uiInstance = null;
+            _uiScriptInstance = null;
+        }
+
         public static void ChangeCharacter(string path)
         {
+            // Keep the selected path, but only mutate/recreate a character preview
+            // while the exact menu/tab that built it still owns its live world root.
             CharacterFile = path;
-
-            // If the world instance doesn't exist, just skip
-            if (_worldInstance == null)
+            if (_ownerMenu == null || !_ownerMenu.OwnsActiveWorldPreview(_ownerTab, _worldInstance))
             {
                 return;
             }
@@ -196,6 +221,7 @@ namespace YARG.Settings.Metadata
 
                 // Instantiate the preview prefab
                 var go = Object.Instantiate(_previewWorld, _worldContainer);
+                _ownerMenu?.RegisterWorldPreview(go);
                 _previewScriptInstance = go.GetComponent<CharacterPreview>();
                 _worldInstance = go;
 

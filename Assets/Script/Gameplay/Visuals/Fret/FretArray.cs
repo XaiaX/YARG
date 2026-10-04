@@ -37,7 +37,24 @@ namespace YARG.Gameplay.Visuals
         private Transform _rightKickFretPosition;
 
         private readonly Dictionary<int, Fret> _frets = new();
+        private readonly List<FretColorBinding> _fretColorBindings = new();
         private readonly List<KickFret> _kickFrets = new();
+        private readonly List<int> _kickColorIndexes = new();
+        private bool _dualHalfFrets;
+
+        private readonly struct FretColorBinding
+        {
+            public FretColorBinding(Fret fret, int primaryColorIndex, int secondaryColorIndex)
+            {
+                Fret = fret;
+                PrimaryColorIndex = primaryColorIndex;
+                SecondaryColorIndex = secondaryColorIndex;
+            }
+
+            public Fret Fret { get; }
+            public int PrimaryColorIndex { get; }
+            public int SecondaryColorIndex { get; }
+        }
 
         private readonly List<int> _activeFrets  = new();
         private readonly List<int> _pulsingFrets = new();
@@ -80,6 +97,11 @@ namespace YARG.Gameplay.Visuals
         {
             var fretPrefab = ThemeManager.Instance.CreateFretPrefabFromTheme(themePreset, style);
 
+            _dualHalfFrets = dualHalfFrets;
+            _fretColorBindings.Clear();
+            _usedFretIndexes.Clear();
+            _activeFrets.Clear();
+            _pulsingFrets.Clear();
             _frets.Clear();
             foreach (var (noteType, highwayOrderingInfo) in highwayOrdering)
             {
@@ -110,17 +132,9 @@ namespace YARG.Gameplay.Visuals
                 fret.transform.localScale = new Vector3(scale, 1f, 1f);
 
                 var fretComp = fret.GetComponent<Fret>();
-
+                int secondaryColorIndex = -1;
                 if (dualHalfFrets)
                 {
-                    // Primary = first fret (Black), Secondary = second fret (White)
-                    // Since enum order is Black1, White1, Black2, etc., first occurrence is Black
-                    var primaryColor = fretColorProvider.GetFretColor(highwayOrderingInfo.ColorIndex);
-                    var primaryInner = fretColorProvider.GetFretInnerColor(highwayOrderingInfo.ColorIndex);
-                    var primaryParticles = fretColorProvider.GetParticleColor(highwayOrderingInfo.ColorIndex);
-
-                    // Find secondary color (next fret in same position)
-                    int secondaryColorIndex = -1;
                     foreach (var (otherNoteType, otherInfo) in highwayOrdering)
                     {
                         if (otherInfo.Position == highwayOrderingInfo.Position && otherNoteType != noteType)
@@ -129,6 +143,15 @@ namespace YARG.Gameplay.Visuals
                             break;
                         }
                     }
+                }
+
+                if (dualHalfFrets)
+                {
+                    // Primary = first fret (Black), Secondary = second fret (White)
+                    // Since enum order is Black1, White1, Black2, etc., first occurrence is Black
+                    var primaryColor = fretColorProvider.GetFretColor(highwayOrderingInfo.ColorIndex);
+                    var primaryInner = fretColorProvider.GetFretInnerColor(highwayOrderingInfo.ColorIndex);
+                    var primaryParticles = fretColorProvider.GetParticleColor(highwayOrderingInfo.ColorIndex);
 
                     var secondaryColor = secondaryColorIndex != -1
                         ? fretColorProvider.GetFretColor(secondaryColorIndex)
@@ -157,9 +180,14 @@ namespace YARG.Gameplay.Visuals
                 }
 
                 _frets[noteType] = fretComp;
+                _fretColorBindings.Add(new FretColorBinding(
+                    fretComp,
+                    highwayOrderingInfo.ColorIndex,
+                    secondaryColorIndex));
             }
 
             _kickFrets.Clear();
+            _kickColorIndexes.Clear();
             if (kickFretPrefab is not null && UseKickFrets)
             {
                 // Spawn in kick frets
@@ -176,6 +204,8 @@ namespace YARG.Gameplay.Visuals
                 // Add kick frets
                 _kickFrets.Add(leftKick.GetComponent<KickFret>());
                 _kickFrets.Add(rightKick.GetComponent<KickFret>());
+                _kickColorIndexes.Add(0);
+                _kickColorIndexes.Add(0);
             }
 
             // Start with all frets active, they will be set inactive once TrackPlayer figures itself out
@@ -199,16 +229,40 @@ namespace YARG.Gameplay.Visuals
         /// color index each fret uses. Used by the settings preview to reverse the fret
         /// color order for lefty flip without rebuilding the fret array.
         /// </summary>
-        public void RecolorFrets(IFretColorProvider fretColorProvider, Func<int, int> colorIndexRemap)
+        public void RecolorFrets(IFretColorProvider fretColorProvider, Func<int, int> colorIndexRemap = null)
         {
-            foreach (var (noteType, fret) in _frets)
+            int openParticleIndex = (int) FiveFretGuitarFret.Open;
+            foreach (var binding in _fretColorBindings)
             {
-                int colorIndex = colorIndexRemap(noteType);
-                fret.Initialize(
-                    fretColorProvider.GetFretColor(colorIndex),
-                    fretColorProvider.GetFretInnerColor(colorIndex),
-                    fretColorProvider.GetParticleColor(colorIndex),
-                    fretColorProvider.GetParticleColor((int) FiveFretGuitarFret.Open));
+                int primaryColorIndex = colorIndexRemap?.Invoke(binding.PrimaryColorIndex)
+                    ?? binding.PrimaryColorIndex;
+                var primaryColor = fretColorProvider.GetFretColor(primaryColorIndex);
+                var primaryInner = fretColorProvider.GetFretInnerColor(primaryColorIndex);
+                var primaryParticles = fretColorProvider.GetParticleColor(primaryColorIndex);
+                var openParticles = fretColorProvider.GetParticleColor(openParticleIndex);
+
+                if (_dualHalfFrets && binding.SecondaryColorIndex >= 0)
+                {
+                    int secondaryColorIndex = colorIndexRemap?.Invoke(binding.SecondaryColorIndex)
+                        ?? binding.SecondaryColorIndex;
+                    binding.Fret.Initialize(
+                        primaryColor,
+                        primaryInner,
+                        primaryParticles,
+                        openParticles,
+                        fretColorProvider.GetFretColor(secondaryColorIndex),
+                        fretColorProvider.GetFretInnerColor(secondaryColorIndex),
+                        fretColorProvider.GetParticleColor(secondaryColorIndex));
+                }
+                else
+                {
+                    binding.Fret.Initialize(primaryColor, primaryInner, primaryParticles, openParticles);
+                }
+            }
+
+            for (int i = 0; i < _kickFrets.Count; i++)
+            {
+                _kickFrets[i].Initialize(fretColorProvider.GetFretColor(_kickColorIndexes[i]));
             }
         }
 

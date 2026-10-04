@@ -47,7 +47,24 @@ namespace YARG.Settings.Metadata
         // per-tab containers, every visited tab left its own live dropdown
         // stacked at the same sidebar rect, and clicks landed on the most
         // recently created one instead of the current tab's.
-        protected static Transform PreviewControlsContainer;
+        private static Transform _previewControlsContainer;
+
+        public static Transform PreviewControlsContainer => _previewControlsContainer;
+
+        public static void SetPreviewControlsContainer(Transform container)
+        {
+            _previewControlsContainer = container;
+        }
+
+        public static bool IsPreviewControlsContainer(Transform container)
+        {
+            return _previewControlsContainer == container;
+        }
+
+        public static void ClearPreviewControlsReference()
+        {
+            _previewControlsContainer = null;
+        }
 
         // Prefabs needed for this tab type
         private static GameObject _headerPrefab;

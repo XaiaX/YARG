@@ -161,6 +161,7 @@ namespace YARG.Settings.Metadata
                     .WaitForCompletion();
             }
             var trackObj = Object.Instantiate(_trackPreview, worldContainer);
+            SettingsMenu.Instance?.RegisterWorldPreview(trackObj);
             var trackPreview = trackObj.GetComponentInChildren<FakeTrackPlayer>();
             _currentTrackPreview = trackPreview;
 
@@ -188,6 +189,10 @@ namespace YARG.Settings.Metadata
                     .WaitForCompletion();
             }
             var go = Object.Instantiate(_trackPreviewUI, uiContainer);
+
+            var rawImage = go.GetComponentInChildren<RawImage>();
+            rawImage.color = Color.white;
+            rawImage.raycastTarget = false;
 
             // Enable and wait for layouts to rebuild
             await UniTask.WaitForEndOfFrame(SettingsMenu.Instance);

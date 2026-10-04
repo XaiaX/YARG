@@ -1,0 +1,23 @@
+{
+    "name": "YARG.PresetPreview.PlayModeTests",
+    "rootNamespace": "YARG.Tests.PresetPreview.PlayMode",
+    "references": [
+        "YARG.Core.Package",
+        "Unity.Addressables",
+        "Unity.ResourceManager",
+        "Unity.TextMeshPro",
+        "Unity.UGUI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}
