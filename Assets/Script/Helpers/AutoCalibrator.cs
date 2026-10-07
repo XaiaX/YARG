@@ -30,11 +30,11 @@ namespace YARG.Helpers
         private bool IsCalibratingAudio => CalibrationMode == CalibrationType.AUDIO;
         private bool IsCalibratingVideo => CalibrationMode == CalibrationType.VIDEO;
         private bool IsCalibratingOffset => CalibrationMode == CalibrationType.OFFSET;
-        private IntSetting AudioCalibrationSetting => SettingsManager.Settings.AudioCalibration;
-        private IntSetting VideoCalibrationSetting => SettingsManager.Settings.VideoCalibration;
-        private ToggleSetting AutoAudioSetting => SettingsManager.Settings.AutoCalibrateAudio;
-        private ToggleSetting AutoVideoSetting => SettingsManager.Settings.AutoCalibrateVideo;
-        private ToggleSetting AutoOffsetSetting => SettingsManager.Settings.AutoCalibrateOffset;
+        private IntSetting AudioCalibrationSetting => SettingsManager.Settings?.AudioCalibration;
+        private IntSetting VideoCalibrationSetting => SettingsManager.Settings?.VideoCalibration;
+        private ToggleSetting AutoAudioSetting => SettingsManager.Settings?.AutoCalibrateAudio;
+        private ToggleSetting AutoVideoSetting => SettingsManager.Settings?.AutoCalibrateVideo;
+        private ToggleSetting AutoOffsetSetting => SettingsManager.Settings?.AutoCalibrateOffset;
 
         // The current song's specific offset. Set once per song load, before players (and
         // therefore this calibrator) are created.
@@ -49,9 +49,9 @@ namespace YARG.Helpers
         }
 
         private CalibrationType CalibrationMode =>
-            AutoAudioSetting.Value    ? CalibrationType.AUDIO
-            : AutoVideoSetting.Value  ? CalibrationType.VIDEO
-            : AutoOffsetSetting.Value ? CalibrationType.OFFSET
+            AutoAudioSetting?.Value == true ? CalibrationType.AUDIO
+            : AutoVideoSetting?.Value == true ? CalibrationType.VIDEO
+            : AutoOffsetSetting?.Value == true ? CalibrationType.OFFSET
                                        : CalibrationType.DISABLED;
 
         public AutoCalibrator(GameManager gameManager)
@@ -59,11 +59,11 @@ namespace YARG.Helpers
             _gameManager = gameManager;
             _songOffsetSetting = gameManager.SongOffsetOverride;
 
-            AutoAudioSetting.OnChange += OnAutoCalibrateAudioChanged;
-            AutoVideoSetting.OnChange += OnAutoCalibrateVideoChanged;
-            AutoOffsetSetting.OnChange += OnAutoCalibrateOffsetChanged;
-            AudioCalibrationSetting.OnChange += OnAudioCalibrationChanged;
-            VideoCalibrationSetting.OnChange += OnVideoCalibrationChanged;
+            if (AutoAudioSetting != null) AutoAudioSetting.OnChange += OnAutoCalibrateAudioChanged;
+            if (AutoVideoSetting != null) AutoVideoSetting.OnChange += OnAutoCalibrateVideoChanged;
+            if (AutoOffsetSetting != null) AutoOffsetSetting.OnChange += OnAutoCalibrateOffsetChanged;
+            if (AudioCalibrationSetting != null) AudioCalibrationSetting.OnChange += OnAudioCalibrationChanged;
+            if (VideoCalibrationSetting != null) VideoCalibrationSetting.OnChange += OnVideoCalibrationChanged;
             if (_songOffsetSetting != null)
             {
                 _songOffsetSetting.OnChange += OnSongOffsetChanged;
@@ -136,11 +136,11 @@ namespace YARG.Helpers
 
         public void Dispose()
         {
-            AutoAudioSetting.OnChange -= OnAutoCalibrateAudioChanged;
-            AutoVideoSetting.OnChange -= OnAutoCalibrateVideoChanged;
-            AutoOffsetSetting.OnChange -= OnAutoCalibrateOffsetChanged;
-            AudioCalibrationSetting.OnChange -= OnAudioCalibrationChanged;
-            VideoCalibrationSetting.OnChange -= OnVideoCalibrationChanged;
+            if (AutoAudioSetting != null) AutoAudioSetting.OnChange -= OnAutoCalibrateAudioChanged;
+            if (AutoVideoSetting != null) AutoVideoSetting.OnChange -= OnAutoCalibrateVideoChanged;
+            if (AutoOffsetSetting != null) AutoOffsetSetting.OnChange -= OnAutoCalibrateOffsetChanged;
+            if (AudioCalibrationSetting != null) AudioCalibrationSetting.OnChange -= OnAudioCalibrationChanged;
+            if (VideoCalibrationSetting != null) VideoCalibrationSetting.OnChange -= OnVideoCalibrationChanged;
             if (_songOffsetSetting != null)
             {
                 _songOffsetSetting.OnChange -= OnSongOffsetChanged;

@@ -81,7 +81,10 @@ namespace YARG.Gameplay.HUD
 
         private bool ShouldShowPlayer()
         {
-            return !GameManager.IsPractice && SettingsManager.Settings.ShowPlayerNameWhenStartingSong.Value;
+            // Settings may be absent in explicitly initialized runtimes (tests/tooling),
+            // and a display that never resolved a manager is not in a gameplay scene.
+            return GameManager != null && !GameManager.IsPractice &&
+                SettingsManager.Settings?.ShowPlayerNameWhenStartingSong.Value == true;
         }
 
         private IEnumerator FadeoutCoroutine()

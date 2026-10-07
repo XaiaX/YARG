@@ -2,6 +2,7 @@
 using UnityEngine.InputSystem;
 using YARG.Core;
 using YARG.Core.Engine;
+using YARG.Core.Chart;
 using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Core.Replays;
@@ -22,6 +23,29 @@ namespace YARG.Player
         /// persistent Maestro preference lives on <see cref="Profile"/>.
         /// </summary>
         public bool SittingOut;
+
+        public ResolvedDrumPlayback ResolvedDrumPlayback { get; private set; }
+        public InstrumentDifficulty<DrumNote> PlayableDrumDifficulty { get; private set; }
+        public InstrumentDifficulty<EliteDrumNote> PlayableEliteDrumDifficulty { get; private set; }
+
+        public void ClearDrumPlayback()
+        {
+            ResolvedDrumPlayback = null;
+            PlayableDrumDifficulty = null;
+            PlayableEliteDrumDifficulty = null;
+        }
+
+        public void SetDrumPlayback(ResolvedDrumPlayback resolved,
+            InstrumentDifficulty<DrumNote> classic, InstrumentDifficulty<EliteDrumNote> elite)
+        {
+            if (ResolvedDrumPlayback != null) throw new InvalidOperationException("Drum playback already resolved for this song");
+            if (resolved == null || (resolved.RequestedOutput == Instrument.EliteDrums
+                ? elite == null || classic != null : classic == null || elite != null))
+                throw new ArgumentException("Resolved drum output requires exactly one matching playable difficulty");
+            ResolvedDrumPlayback = resolved;
+            PlayableDrumDifficulty = classic;
+            PlayableEliteDrumDifficulty = elite;
+        }
 
         public bool InputsEnabled { get; private set; }
         public ProfileBindings Bindings { get; private set; }
@@ -102,6 +126,7 @@ namespace YARG.Player
             // Swap to the new profile
             Bindings?.Dispose();
             Profile = profile;
+            ClearDrumPlayback();
             Bindings = bindings;
 
             // Resolve bindings

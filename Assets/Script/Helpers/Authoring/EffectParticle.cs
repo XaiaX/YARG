@@ -104,7 +104,9 @@ namespace YARG.Helpers.Authoring
 
         private void SetColor(Color color)
         {
-            if (!_allowColoring) return;
+            // Some authored/theme particle slots may have no system assigned; a null
+            // system simply has nothing to color.
+            if (!_allowColoring || _particleSystem == null) return;
 
             // Get the main particle module
             var m = _particleSystem.main;

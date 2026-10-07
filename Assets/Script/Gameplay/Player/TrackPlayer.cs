@@ -155,7 +155,7 @@ namespace YARG.Gameplay.Player
             ZeroFadePosition = DEFAULT_ZERO_FADE_POS * Player.Profile.HighwayLength;
             FadeSize = Player.CameraPreset.FadeLength;
 
-            _spawnAheadDelay = GameManager.IsPractice ? SettingsManager.Settings.PracticeRestartDelay.Value : 2;
+            _spawnAheadDelay = GameManager.IsPractice ? SettingsManager.Settings?.PracticeRestartDelay.Value ?? 2 : 2;
             if (player.Profile.HighwayLength > 1)
             {
                 FadeSize *= player.Profile.HighwayLength;
@@ -281,7 +281,8 @@ namespace YARG.Gameplay.Player
             Chart = chart;
 
             OriginalNoteTrack = GetNotes(chart);
-            player.Profile.ApplyModifiers(OriginalNoteTrack, chart.SyncTrack);
+            if (player.ResolvedDrumPlayback == null)
+                player.Profile.ApplyModifiers(OriginalNoteTrack, chart.SyncTrack);
 
             NoteTrack = OriginalNoteTrack;
             Notes = NoteTrack.Notes;
@@ -353,7 +354,7 @@ namespace YARG.Gameplay.Player
         {
 
             // If the user doesn't want track effects, generate no effects
-            if (!SettingsManager.Settings.EnableTrackEffects.Value)
+            if (SettingsManager.Settings?.EnableTrackEffects.Value != true)
             {
                 return;
             }
@@ -1373,7 +1374,7 @@ namespace YARG.Gameplay.Player
 
         protected virtual void OnStarPowerPhraseHit(TNote note)
         {
-            if (SettingsManager.Settings.EnableTrackEffects.Value)
+            if (SettingsManager.Settings?.EnableTrackEffects.Value == true)
             {
                 StarPowerEffect.gameObject.SetActive(true);
                 StarPowerEffect.PlayAnimation();
@@ -1395,7 +1396,7 @@ namespace YARG.Gameplay.Player
 
         protected void OnHappinessNearFail()
         {
-            if (SettingsManager.Settings.NoFail.Value == NoFailMode.Off && !GameManager.IsPractice)
+            if (SettingsManager.Settings?.NoFail.Value is NoFailMode.Off or null && !GameManager.IsPractice)
             {
                 TrackMaterial.FailState = 1f;
             }
@@ -1403,7 +1404,7 @@ namespace YARG.Gameplay.Player
 
         protected void OnPlayerFailed(int engineId)
         {
-            if (SettingsManager.Settings.NoFail.Value != NoFailMode.Off
+            if (SettingsManager.Settings?.NoFail.Value is not NoFailMode.Off and not null
                 || engineId != EngineContainer.EngineId
                 || GameManager.IsPractice)
             {

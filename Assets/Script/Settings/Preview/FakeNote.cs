@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using YARG.Core;
+using YARG.Core.Game;
 using YARG.Gameplay;
 using YARG.Gameplay.Player;
 using YARG.Gameplay.Visuals;
@@ -18,6 +19,7 @@ namespace YARG.Settings.Preview
         public struct NoteTypePair
         {
             public ThemeNoteType NoteType;
+            public bool StarPower;
             public NoteGroup Group;
         }
 
@@ -32,10 +34,21 @@ namespace YARG.Settings.Preview
         [SerializeField]
         private List<NoteTypePair> _noteGroups;
 
-        private readonly List<Material> _materials = new();
+        private readonly Dictionary<Material, Material> _materialDefaults = new();
 
         public void EnableFromPool()
         {
+            if (_materialDefaults.Count == 0)
+            {
+                foreach (var renderer in GetComponentsInChildren<MeshRenderer>(true))
+                {
+                    foreach (var material in renderer.materials)
+                    {
+                        if (!_materialDefaults.ContainsKey(material))
+                            _materialDefaults.Add(material, new Material(material));
+                    }
+                }
+            }
             // Disable all note groups
             foreach (var noteGroup in _noteGroups)
             {
@@ -44,7 +57,8 @@ namespace YARG.Settings.Preview
 
             // Find the correct note group, with hierarchical fallback for
             // cymbal variants (CymbalAccent/CymbalGhost → Cymbal → Normal)
-            _currentNoteGroup = FindNoteGroup(NoteRef.NoteType);
+            _currentNoteGroup = FindNoteGroup(NoteRef.NoteType,
+                NoteRef.ForceStarPower ?? FakeTrackPlayer.ForceStarPowerNotes);
 
             if (!NoteRef.CenterNote)
             {
@@ -82,50 +96,55 @@ namespace YARG.Settings.Preview
                 _currentNoteGroup.ResetEmissionAddition();
             }
 
-            // Get all materials
-            _materials.Clear();
-            var meshRenderers = GetComponentsInChildren<MeshRenderer>(true);
-            foreach (var meshRenderer in meshRenderers)
-            {
-                foreach (var material in meshRenderer.materials)
-                {
-                    _materials.Add(material);
-                }
-            }
-
             // Force update position and other properties
             OnSettingChanged();
             Update();
 
-            gameObject.SetActive(true);
+            if (NoteRef != null) gameObject.SetActive(true);
         }
 
-        private NoteGroup FindNoteGroup(ThemeNoteType type)
+        private NoteGroup FindNoteGroup(ThemeNoteType type, bool starPower)
         {
-            // Try the exact type first
-            var pair = _noteGroups.Find(i => i.NoteType == type);
+            if (starPower)
+            {
+                var starPowerPair = _noteGroups.Find(i => i.NoteType == type && i.StarPower);
+                if (starPowerPair.Group != null) return starPowerPair.Group;
+            }
+            // Try the exact regular type first
+            var pair = _noteGroups.Find(i => i.NoteType == type && !i.StarPower);
             if (pair.Group != null) return pair.Group;
 
             // Cymbal variants fall back to Cymbal before Normal
             if (type is ThemeNoteType.CymbalAccent or ThemeNoteType.CymbalGhost)
             {
-                pair = _noteGroups.Find(i => i.NoteType == ThemeNoteType.Cymbal);
+                pair = _noteGroups.Find(i => i.NoteType == ThemeNoteType.Cymbal && !i.StarPower);
                 if (pair.Group != null) return pair.Group;
             }
 
             // Final fallback: Normal
-            return _noteGroups.Find(i => i.NoteType == ThemeNoteType.Normal).Group;
+            return _noteGroups.Find(i => i.NoteType == ThemeNoteType.Normal && !i.StarPower).Group;
         }
 
         public void OnSettingChanged()
         {
-            var cameraPreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.CameraSettings);
-            var colorProfile = PresetsTab.GetLastSelectedPreset(CustomContentManager.ColorProfiles);
-            var highwayPreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.HighwayPresets);
+            var colorProfile = FakeTrackPlayer.ColorProfile;
+            var highwayPreset = FakeTrackPlayer.HighwayPreset;
 
             // Update color
             var info = FakeTrackPlayer.CurrentGameModeInfo;
             var useStarPower = NoteRef.ForceStarPower ?? FakeTrackPlayer.ForceStarPowerNotes;
+            var selectedGroup = FindNoteGroup(NoteRef.NoteType, useStarPower);
+            if (selectedGroup != _currentNoteGroup)
+            {
+                _currentNoteGroup.SetActive(false);
+                _currentNoteGroup = selectedGroup;
+                _currentNoteGroup.SetActive(true);
+                _currentNoteGroup.Initialize();
+                if (NoteRef.NoteType == ThemeNoteType.OpenHOPO)
+                {
+                    _currentNoteGroup.ResetEmissionAddition();
+                }
+            }
 
             // Guitar lefty flip reverses the color order (Green<->Orange, Red<->Blue)
             // without moving notes: look up the mirrored fret's color, but keep the
@@ -163,6 +182,7 @@ namespace YARG.Settings.Preview
             {
                 color = (FakeTrackPlayer.SelectedGameMode switch
                 {
+                    GameMode.EliteDrums => colorProfile.EliteDrums.Miss,
                     GameMode.FiveFretGuitar => colorProfile.FiveFretGuitar.Miss,
                     GameMode.FourLaneDrums  => colorProfile.FourLaneDrums.Miss,
                     GameMode.FiveLaneDrums  => colorProfile.FiveLaneDrums.Miss,
@@ -176,15 +196,8 @@ namespace YARG.Settings.Preview
             // Override dark-strip emission for tap and ghost notes from the
             // color profile. These note types have a strip material with
             // EmissionMultiplier 0 in the prefab; the user can boost it.
-            float stripEmission = NoteRef.NoteType switch
-            {
-                ThemeNoteType.Tap => colorProfile.FiveFretGuitar.TapStripEmission / 100f,
-                ThemeNoteType.Ghost or ThemeNoteType.CymbalGhost =>
-                    FakeTrackPlayer.SelectedGameMode == GameMode.FiveLaneDrums
-                        ? colorProfile.FiveLaneDrums.GhostStripEmission / 100f
-                        : colorProfile.FourLaneDrums.GhostStripEmission / 100f,
-                _ => -1f, // No override
-            };
+            float stripEmission = GetStripEmission(
+                FakeTrackPlayer.SelectedGameMode, NoteRef.NoteType, colorProfile);
             if (stripEmission >= 0f)
             {
                 _currentNoteGroup.OverrideZeroEmission(stripEmission);
@@ -245,6 +258,7 @@ namespace YARG.Settings.Preview
             // Set metal color
             var metalColor = (FakeTrackPlayer.SelectedGameMode switch
             {
+                GameMode.EliteDrums => colorProfile.EliteDrums.GetMetalColor(useStarPower),
                 GameMode.FiveFretGuitar => colorProfile.FiveFretGuitar.GetMetalColor(useStarPower),
                 GameMode.SixFretGuitar => colorProfile.SixFretGuitar.GetMetalColor(useStarPower),
                 GameMode.FourLaneDrums  => colorProfile.FourLaneDrums.GetMetalColor(useStarPower),
@@ -257,10 +271,23 @@ namespace YARG.Settings.Preview
             _currentNoteGroup.SetMetalColor(metalColor);
 
             // Update height
-            transform.localScale = new Vector3(1f, highwayPreset.NoteHeight, 1f);
+            float width = NoteRef.EliteDescriptor?.Width ?? 1f;
+            transform.localScale = new Vector3(width, highwayPreset.NoteHeight, 1f);
+            if (NoteRef.EliteDescriptor is { } elite)
+            {
+                float x = elite.IsBar ? 0f : TrackPlayer.TRACK_WIDTH / info.LaneCount * elite.Fret
+                    - TrackPlayer.TRACK_WIDTH / 2f - 1f / info.LaneCount;
+                if (FakeTrackPlayer.LeftyFlip && !elite.IsBar) x = -x;
+                transform.localPosition = transform.localPosition.WithX(x + elite.Offset);
+            }
         }
 
         protected void Update()
+        {
+            if (NoteRef != null && FakeTrackPlayer != null) RefreshPosition();
+        }
+
+        public void RefreshPosition()
         {
             float z =
                 TrackPlayer.STRIKE_LINE_POS                            // Shift origin to the strike line
@@ -276,21 +303,66 @@ namespace YARG.Settings.Preview
             }
         }
 
+        internal static float GetStripEmission(GameMode gameMode, ThemeNoteType noteType,
+            ColorProfile colorProfile)
+        {
+            return noteType switch
+            {
+                ThemeNoteType.Tap => colorProfile.FiveFretGuitar.TapStripEmission / 100f,
+                ThemeNoteType.Ghost or ThemeNoteType.CymbalGhost => gameMode switch
+                {
+                    GameMode.FourLaneDrums => colorProfile.FourLaneDrums.GhostStripEmission / 100f,
+                    GameMode.FiveLaneDrums => colorProfile.FiveLaneDrums.GhostStripEmission / 100f,
+                    _ => -1f,
+                },
+                _ => -1f,
+            };
+        }
+
         public void DisableIntoPool()
         {
+            foreach (var pair in _noteGroups)
+            {
+                pair.Group.SetActive(false);
+            }
+            foreach (var pair in _materialDefaults)
+            {
+                pair.Key.CopyPropertiesFromMaterial(pair.Value);
+            }
+            transform.localPosition = Vector3.zero;
+            transform.localRotation = Quaternion.identity;
+            transform.localScale = Vector3.one;
+            _currentNoteGroup = null;
+            NoteRef = null;
+            FakeTrackPlayer = null;
             gameObject.SetActive(false);
         }
 
+        private void OnDestroy()
+        {
+            foreach (var pair in _materialDefaults)
+            {
+                Destroy(pair.Key);
+                Destroy(pair.Value);
+            }
+        }
+
         public static GameObject CreateFakeNoteFromTheme(ThemePreset themePreset, VisualStyle style)
+        {
+            var themeContainer = ThemeManager.Instance.GetThemeContainer(themePreset, style);
+            var component = themeContainer.GetThemeComponent();
+            return CreateFakeNoteFromModels(component.GetNoteModelsForVisualStyle(style, false),
+                component.GetNoteModelsForVisualStyle(style, true));
+        }
+
+        public static GameObject CreateFakeNoteFromModels(
+            IReadOnlyDictionary<ThemeNoteType, GameObject> models,
+            IReadOnlyDictionary<ThemeNoteType, GameObject> starPowerModels = null)
         {
             // Create GameObject
             var notePrefab = new GameObject("Note Prefab");
             notePrefab.transform.localPosition = Vector3.zero;
             var fakeNote = notePrefab.AddComponent<FakeNote>();
-
-            // Get models
-            var themeContainer = ThemeManager.Instance.GetThemeContainer(themePreset, style);
-            var models = themeContainer.GetThemeComponent().GetNoteModelsForVisualStyle(style, false);
 
             // Create note groups
             fakeNote._noteGroups = new List<NoteTypePair>();
@@ -301,6 +373,24 @@ namespace YARG.Settings.Preview
                     NoteType = type,
                     Group = NoteGroup.CreateNoteGroupFromTheme(notePrefab.transform, gameObject)
                 });
+            }
+
+            if (starPowerModels != null)
+            {
+                foreach (var (type, model) in starPowerModels)
+                {
+                    fakeNote._noteGroups.Add(new NoteTypePair
+                    {
+                        NoteType = type,
+                        StarPower = true,
+                        Group = NoteGroup.CreateNoteGroupFromTheme(notePrefab.transform, model)
+                    });
+                }
+            }
+
+            foreach (var pair in fakeNote._noteGroups)
+            {
+                pair.Group.SetActive(false);
             }
 
             // Set layer

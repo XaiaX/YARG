@@ -37,6 +37,48 @@ namespace YARG.Scores
         private static readonly Dictionary<HashWrapper, PlayerScoreRecord> PlayerHighPercentages = new();
         private static readonly Dictionary<HashWrapper, GameRecord> BandHighScores = new();
 
+        private static readonly Dictionary<(HashWrapper Song, Guid Player, Instrument Output, Difficulty Tier,
+            DrumScoreCategory Category, HighScoreHistoryMode Mode, Modifier Preferences, int Revision), PlayerScoreRecord> MidiScores = new();
+
+        public static ResolvedDrumPlayback PredictMidiDrumPlayback(SongEntry song, YargProfile profile)
+        {
+            var tier = profile.CurrentDifficulty == Difficulty.ExpertPlus ? Difficulty.Expert : profile.CurrentDifficulty;
+            var modifiers = profile.CurrentModifiers;
+            return DrumOutputResolver.Resolve(song.AuthoredDrumSourceFacts, profile.CurrentInstrument, tier,
+                (modifiers & Modifier.EnableEliteUpconversion) != 0,
+                (modifiers & Modifier.Enable2xKicks) != 0,
+                (modifiers & Modifier.PreferEliteDowncharts) != 0);
+        }
+
+        /// <summary>Use actual resolved playback during gameplay, rather than predicting from profile preferences.</summary>
+        public static PlayerScoreRecord GetMidiDrumHighScore(HashWrapper song, Guid playerId,
+            ResolvedDrumPlayback playback, HighScoreHistoryMode mode)
+        {
+            if (playback == null) return null;
+            return _db.QueryPlayerMidiDrumScore(song, playerId, playback.RequestedOutput,
+                playback.BaseDifficulty, playback.ScoreCategory, mode);
+        }
+
+        public static PlayerScoreRecord GetPredictedMidiDrumHighScore(SongEntry song, YargProfile profile)
+            => GetPredictedMidiDrumHighScore(song, profile, SettingsManager.Settings.HighScoreHistory.Value);
+
+        public static PlayerScoreRecord GetPredictedMidiDrumHighScore(SongEntry song, YargProfile profile,
+            HighScoreHistoryMode mode)
+        {
+            var playback = PredictMidiDrumPlayback(song, profile);
+            if (playback == null) return null;
+            // Kick inclusion changes neither source category nor score comparability.
+            var preferences = profile.CurrentModifiers & (Modifier.EnableEliteUpconversion | Modifier.PreferEliteDowncharts);
+            var key = (song.Hash, profile.Id, playback.RequestedOutput, playback.BaseDifficulty,
+                playback.ScoreCategory, mode, preferences, SongContainer.LibraryRevision);
+            if (!MidiScores.TryGetValue(key, out var score))
+            {
+                score = GetMidiDrumHighScore(song.Hash, profile.Id, playback, mode);
+                MidiScores[key] = score;
+            }
+            return score;
+        }
+
         private static Guid       _currentPlayerId;
         private static string     _currentInstrumentSetKey = string.Empty;
         private static Difficulty _currentDifficulty = Difficulty.Easy;
@@ -159,6 +201,7 @@ namespace YARG.Scores
                 }
 
                 _db.InsertSoloRecords(playerEntries);
+                InvalidateScoreCache();
 
                 // Update cached high scores
                 var songChecksum = HashWrapper.Create(gameRecord.SongChecksum);
@@ -287,6 +330,21 @@ namespace YARG.Scores
             => PlayerContainer.Players.Count(player => !player.Profile.IsBot) != 1;
 
         public static void GetPreferredHighScoresForCurrentPlayers(
+            SongEntry song,
+            out PlayerScoreRecord playerScoreRecord,
+            out GameRecord bandScoreRecord)
+        {
+            var player = PlayerContainer.Players.FirstOrDefault(entry => !entry.Profile.IsBot);
+            if (!UseBandHighScoresForCurrentPlayers && player?.Profile.GameMode == GameMode.EliteDrums)
+            {
+                playerScoreRecord = GetPredictedMidiDrumHighScore(song, player.Profile);
+                bandScoreRecord = null;
+                return;
+            }
+            GetPreferredHighScoresForCurrentPlayers(song.Hash, out playerScoreRecord, out bandScoreRecord);
+        }
+
+        public static void GetPreferredHighScoresForCurrentPlayers(
             HashWrapper songChecksum,
             out PlayerScoreRecord playerScoreRecord,
             out GameRecord bandScoreRecord)
@@ -301,11 +359,14 @@ namespace YARG.Scores
             }
 
             var player = PlayerContainer.Players.First(entry => !entry.Profile.IsBot);
-            playerScoreRecord = player.Profile.GameMode == GameMode.EliteDrums
-                ? GetPreferredHighScoreForInstruments(
-                    songChecksum, player.Profile.Id, MidiDrumkitHelper.Instruments)
-                : GetPreferredHighScore(
-                    songChecksum, player.Profile.Id, player.Profile.CurrentInstrument);
+            if (player.Profile.GameMode == GameMode.EliteDrums)
+            {
+                if (SongContainer.SongsByHash.TryGetValue(songChecksum, out var songs))
+                    playerScoreRecord = GetPredictedMidiDrumHighScore(songs.Pick(), player.Profile);
+                return;
+            }
+            playerScoreRecord = GetPreferredHighScore(
+                songChecksum, player.Profile.Id, player.Profile.CurrentInstrument);
         }
 
         private static PlayerScoreRecord GetHighScoreFromDatabase(HashWrapper songChecksum, Guid playerId, Instrument instrument)
@@ -499,6 +560,7 @@ namespace YARG.Scores
 
         public static void InvalidateScoreCache()
         {
+            MidiScores.Clear();
             _currentPlayerId = Guid.Empty;
             _currentDifficulty = Difficulty.Easy;
             _currentHighScoreHistoryMode = default;
@@ -567,13 +629,19 @@ namespace YARG.Scores
         {
             try
             {
-                List<PlayerScoreWithChecksum> records = profile.GameMode == GameMode.EliteDrums
-                    ? _db.QueryPlayerBestStarsForInstruments(
-                        profile, MidiDrumkitHelper.Instruments, SettingsManager.Settings.HighScoreHistory.Value,
-                        SongContainer.SongsByHash.Keys, SongContainer.LibraryRevision)
-                    : _db.QueryPlayerBestStars(
-                        profile, SettingsManager.Settings.HighScoreHistory.Value, SongContainer.SongsByHash.Keys,
-                        SongContainer.LibraryRevision);
+                if (profile.GameMode == GameMode.EliteDrums)
+                {
+                    var stars = new Dictionary<HashWrapper, StarAmount>();
+                    foreach (var songs in SongContainer.SongsByHash)
+                    {
+                        var score = GetPredictedMidiDrumHighScore(songs.Value.Pick(), profile);
+                        if (score != null) stars[songs.Key] = score.Stars;
+                    }
+                    return stars;
+                }
+                List<PlayerScoreWithChecksum> records = _db.QueryPlayerBestStars(
+                    profile, SettingsManager.Settings.HighScoreHistory.Value, SongContainer.SongsByHash.Keys,
+                    SongContainer.LibraryRevision);
                 Dictionary<HashWrapper, StarAmount> result = new Dictionary<HashWrapper, StarAmount>();
 
                 foreach (PlayerScoreWithChecksum record in records)

@@ -226,7 +226,7 @@ namespace YARG.Menu.MusicLibrary
         private static void FetchHighScores(SongEntry songEntry, out PlayerScoreRecord playerScoreRecord, out GameRecord bandScoreRecord)
         {
             ScoreContainer.GetPreferredHighScoresForCurrentPlayers(
-                songEntry.Hash, out playerScoreRecord, out bandScoreRecord);
+                songEntry, out playerScoreRecord, out bandScoreRecord);
         }
     }
 }

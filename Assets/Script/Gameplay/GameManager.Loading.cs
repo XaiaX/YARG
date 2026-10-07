@@ -84,7 +84,7 @@ namespace YARG.Gameplay
                 _songLoaded += value;
 
                 // Invoke now if already loaded, this event is only fired once
-                if (_mixer != null)
+                if (_mixer != null || _isExternallyInitialized && Chart != null)
                 {
                     value?.Invoke();
                 }
@@ -108,6 +108,11 @@ namespace YARG.Gameplay
 
         private async void Start()
         {
+            if (_isExternallyInitialized)
+            {
+                return;
+            }
+
             // Displays the loading screen
             using var context = new LoadingContext();
             var global = GlobalVariables.Instance;
@@ -488,6 +493,23 @@ namespace YARG.Gameplay
             _songLoaded?.Invoke();
         }
 
+        /// <summary>
+        /// Initializes and registers one already-resolved track player. Normal song loading and
+        /// callers that provide a prepared runtime context share this exact TrackPlayer.Initialize path.
+        /// </summary>
+        public void InitializeTrackPlayer(TrackPlayer trackPlayer, int index, YargPlayer player,
+            SongChart chart, TrackView trackView, StemMixer mixer, int? lastHighScore)
+        {
+            if (trackPlayer == null) throw new ArgumentNullException(nameof(trackPlayer));
+            if (player == null) throw new ArgumentNullException(nameof(player));
+            if (chart == null) throw new ArgumentNullException(nameof(chart));
+            if (trackView == null) throw new ArgumentNullException(nameof(trackView));
+            if (_players == null) _players = new List<BasePlayer>();
+
+            trackPlayer.Initialize(index, player, chart, trackView, mixer, lastHighScore);
+            _players.Add(trackPlayer);
+        }
+
         private void CreatePlayers()
         {
             try
@@ -507,6 +529,7 @@ namespace YARG.Gameplay
                 foreach (var player in YargPlayers)
                 {
                     player.IsScoreValid = true;
+                    player.ClearDrumPlayback();
 
                     if (!player.IsReplay)
                     {
@@ -548,24 +571,38 @@ namespace YARG.Gameplay
                     Instrument? resolvedEliteInstrument = null;
                     if (player.Profile.GameMode == GameMode.EliteDrums)
                     {
-                        // Replay identity is recorded; never replace it with a live fallback.
-                        resolvedEliteInstrument = player.IsReplay ? player.Profile.CurrentInstrument :
-                            DrumDifficultySelector.ResolveNativeEliteRequest(Chart, player.Profile,
-                                player.Profile.CurrentDifficulty);
-                        if (resolvedEliteInstrument == null)
+                        var profile = player.Profile;
+                        if (!player.IsReplay || profile.ReplayDrumPlayback != null)
                         {
-                            YargLogger.LogWarning($"Sitting out Elite Drums player '{player.Profile.Name}': no playable native drum track.");
-                            player.SittingOut = true;
-                            continue;
+                            var resolved = player.IsReplay ? profile.ReplayDrumPlayback :
+                                DrumOutputResolver.Resolve(Chart.AuthoredDrumSources.Tiers.Values
+                                    .Select(source => source.Facts).ToArray(), profile.PreferredInstrument,
+                                    profile.CurrentDifficulty, profile.IsModifierActive(Modifier.EnableEliteUpconversion),
+                                    profile.IsModifierActive(Modifier.Enable2xKicks),
+                                    profile.IsModifierActive(Modifier.PreferEliteDowncharts));
+                            if (resolved == null)
+                                throw new InvalidOperationException(
+                                    $"MIDI Drumkit player '{profile.Name}' has no eligible drum source at the selected difficulty.");
+                            profile.CurrentInstrument = resolved.RequestedOutput;
+                            profile.EliteDrumsDownchartTarget = null;
+                            var playable = DrumPlaybackPreparer.Prepare(Chart, resolved,
+                                notes => profile.ApplyModifiers(notes, Chart.SyncTrack),
+                                notes => profile.ApplyModifiers(notes, Chart.SyncTrack));
+                            player.SetDrumPlayback(resolved, playable.Classic, playable.Elite);
+                            resolvedEliteInstrument = resolved.RequestedOutput;
                         }
-
-                        // CurrentInstrument is per-song playback identity; PreferredInstrument
-                        // remains the user's explicit choice for subsequent songs.
-                        if (!player.IsReplay) player.Profile.CurrentInstrument = resolvedEliteInstrument.Value;
+                        else
+                        {
+                            // Frames without recorded policy retain historical selection/filtering.
+                            resolvedEliteInstrument = profile.CurrentInstrument;
+                        }
                     }
 
                     var scoreInstrument = resolvedEliteInstrument ?? player.Profile.CurrentInstrument;
-                    var lastHighScore = ScoreContainer.GetHighScore(Song.Hash, player.Profile.Id, scoreInstrument, false)?.Score;
+                    var lastHighScore = player.ResolvedDrumPlayback != null
+                        ? ScoreContainer.GetMidiDrumHighScore(Song.Hash, player.Profile.Id,
+                            player.ResolvedDrumPlayback, SettingsManager.Settings.HighScoreHistory.Value)?.Score
+                        : ScoreContainer.GetHighScore(Song.Hash, player.Profile.Id, scoreInstrument, false)?.Score;
                     YargLogger.LogFormatInfo("Current high score for player {0} on {1}: {2}",
                         player.Profile.Name, player.Profile.CurrentInstrument, lastHighScore ?? 0);
 
@@ -641,9 +678,7 @@ namespace YARG.Gameplay
 
                         // Setup player
                         var trackView = _trackViewManager.CreateTrackView();
-                        trackPlayer.Initialize(highwayIndex, player, Chart, trackView, _mixer, lastHighScore);
-
-                        _players.Add(trackPlayer);
+                        InitializeTrackPlayer(trackPlayer, highwayIndex, player, Chart, trackView, _mixer, lastHighScore);
                         _trackViewManager.AddTrackPlayer(trackPlayer);
                     }
                     else

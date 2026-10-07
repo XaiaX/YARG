@@ -57,7 +57,9 @@ namespace YARG.Helpers.Extensions
         /// </summary>
         public static float NoteSpeedScale(this Difficulty difficulty)
         {
-            if (!SettingsManager.Settings.ReduceNoteSpeedByDifficulty.Value)
+            // Settings may be absent in explicitly initialized runtimes (tests/tooling);
+            // absent settings mean no reduction, matching the default profile experience.
+            if (SettingsManager.Settings?.ReduceNoteSpeedByDifficulty.Value != true)
             {
                 return 1f;
             }

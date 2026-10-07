@@ -235,7 +235,9 @@ namespace YARG.Gameplay.Player
 
         protected override void GameplayDestroy()
         {
-            if (!Player.IsReplay)
+            // A gameplay object can be destroyed without full initialization when
+            // instantiated outside the gameplay scene (see GameplayBehaviour.Awake).
+            if (Player != null && !Player.IsReplay)
             {
                 UnsubscribeFromInputEvents();
             }
@@ -391,7 +393,7 @@ namespace YARG.Gameplay.Player
         protected virtual void OnStarPowerStatus(bool active)
         {
             var deploySample = SfxSample.StarPowerDeploy;
-            if (SettingsManager.Settings.UseCrowdCheering.Value &&
+            if (SettingsManager.Settings?.UseCrowdCheering.Value == true &&
                 !GlobalVariables.State.CrowdSfxVenueOverride)
             {
                 deploySample = SfxSample.StarPowerDeployCrowd;

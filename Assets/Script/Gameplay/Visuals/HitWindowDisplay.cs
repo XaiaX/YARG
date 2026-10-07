@@ -21,7 +21,8 @@ namespace YARG.Gameplay.Visuals
             _player = GetComponentInParent<TrackPlayer>();
 
             _transformCache = transform;
-            if (!SettingsManager.Settings.ShowHitWindow.Value)
+            // Settings may be absent in explicitly initialized runtimes (tests/tooling).
+            if (SettingsManager.Settings?.ShowHitWindow.Value != true)
             {
                 gameObject.SetActive(false);
             }

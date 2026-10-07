@@ -167,7 +167,10 @@ namespace YARG.Menu.DifficultySelect
 
         private List<SongEntry> _songList;
 
-        private YargPlayer CurrentPlayer => PlayerContainer.Players[_playerIndex];
+        private IReadOnlyList<YargPlayer> _explicitPlayers;
+
+        private YargPlayer CurrentPlayer =>
+            (_explicitPlayers ?? PlayerContainer.Players)[_playerIndex];
 
         private ScrollRect _scrollRect;
         private Scrollbar _scrollbar;
@@ -608,7 +611,7 @@ namespace YARG.Menu.DifficultySelect
                 }
 
                 CreateItem(LocalizeHeader("Difficulty"),
-                    player.Profile.CurrentDifficulty.ToLocalizedName(),
+                    GetDifficultyLabel(player.Profile.CurrentDifficulty),
                     _lastMenuState == State.Difficulty, () =>
                 {
                     _menuState = State.Difficulty;
@@ -745,6 +748,8 @@ namespace YARG.Menu.DifficultySelect
             // downchart, even when its output format equals the current instrument.
             profile.EliteDrumsDownchartTarget = null;
             profile.CurrentInstrument = instrument;
+            if (profile.GameMode == GameMode.EliteDrums)
+                profile.PreferredInstrument = instrument;
         }
 
         private static void SelectEliteDrumsDownchartTarget(YargProfile profile, Instrument target)
@@ -822,12 +827,31 @@ namespace YARG.Menu.DifficultySelect
             }
         }
 
+        private string GetDifficultyLabel(Difficulty difficulty)
+        {
+            string label = difficulty.ToLocalizedName();
+            var profile = CurrentPlayer.Profile;
+            if (profile.GameMode == GameMode.EliteDrums)
+            {
+                var resolved = MaestroSelectionRules.ResolveMidiDrums(GlobalVariables.State.CurrentSong,
+                    profile.CurrentInstrument, difficulty, profile.CurrentModifiers);
+                if (resolved != null)
+                {
+                    var facts = GlobalVariables.State.CurrentSong.AuthoredDrumSourceFacts.First(fact =>
+                        fact.Source == resolved.SourceFormat && fact.Tier == resolved.SourceDifficulty);
+                    string suffix = facts.KickSuffix(profile.IsModifierActive(Modifier.Enable2xKicks));
+                    if (suffix.Length > 0) label += " " + suffix;
+                }
+            }
+            return label;
+        }
+
         private void CreateDifficultyMenu()
         {
             foreach (var difficulty in _possibleDifficulties)
             {
                 bool selected = CurrentPlayer.Profile.CurrentDifficulty == difficulty;
-                CreateItem(difficulty.ToLocalizedName(), selected, () =>
+                CreateItem(GetDifficultyLabel(difficulty), selected, () =>
                 {
                     CurrentPlayer.Profile.CurrentDifficulty
                         = CurrentPlayer.Profile.DifficultyFallback
@@ -1054,6 +1078,14 @@ namespace YARG.Menu.DifficultySelect
                     profile.RemoveModifiers(modifier);
                 }
 
+                if (profile.GameMode == GameMode.EliteDrums &&
+                    (modifier & YargProfile.MIDI_DRUM_PREFERENCES) != 0)
+                {
+                    _possibleInstruments.Clear();
+                    _possibleInstruments.AddRange(MaestroSelectionRules.GetMidiDrumOutputs(_songList,
+                        profile.CurrentModifiers));
+                    UpdatePossibleDifficulties();
+                }
                 UpdateModifierMenu();
             });
 
@@ -1382,8 +1414,24 @@ namespace YARG.Menu.DifficultySelect
                 return;
             }
 
+            RecomputeSelectionAvailability();
+            CurrentPlayer.SittingOut = false;
+            UpdatePossibleDifficulties();
+            UpdateForPlayer();
+        }
+
+        /// <summary>
+        /// Production availability computation for the current player, shared by the menu
+        /// flow and the explicit-selection entry points. No menu UI is built here.
+        /// </summary>
+        private void RecomputeSelectionAvailability()
+        {
             var profile = CurrentPlayer.Profile;
-            var song = GlobalVariables.State.CurrentSong;
+            profile.InitializeLiveMidiDrumModifiers();
+            // Explicit selection contexts supply the whole show list; the current song
+            // of a single-song selection is simply the first entry.
+            var song = _explicitPlayers != null && _songList.Count > 0
+                ? _songList[0] : GlobalVariables.State.CurrentSong;
 
             // Get the possible instruments for this show and player
             // TODO: We should probably allow players to select instruments that are not in
@@ -1391,28 +1439,26 @@ namespace YARG.Menu.DifficultySelect
             // TODO: We should also let Ekit users choose an option that switches them between
             // each song's native drum format
             _possibleInstruments.Clear();
-            var allowedInstruments = profile.GameMode.PossibleInstrumentsForSong(GlobalVariables.State.CurrentSong);
+            var allowedInstruments = profile.GameMode == GameMode.EliteDrums
+                ? MaestroSelectionRules.GetMidiDrumOutputs(_songList, profile.CurrentModifiers)
+                : profile.GameMode.PossibleInstrumentsForSong(song);
 
             foreach (var instrument in allowedInstruments)
             {
-                bool invalidInstrument = _songList.Any(showSong =>
-                    profile.GameMode == GameMode.EliteDrums &&
-                    instrument == Instrument.EliteDrums &&
-                    profile.EliteDrumsDownchartTarget is null
-                        ? !DrumDifficultySelector.HasNativeEliteCandidate(showSong)
-                        : !HasPlayableInstrument(showSong, instrument));
-                if (!invalidInstrument)
+                if (profile.GameMode == GameMode.EliteDrums ||
+                    _songList.All(showSong => HasPlayableInstrument(showSong, instrument)))
                     _possibleInstruments.Add(instrument);
             }
 
-            var orderedInstruments = MaestroSelectionRules.OrderNativeInstruments(
-                profile.GameMode, _possibleInstruments);
+            var orderedInstruments = profile.GameMode == GameMode.EliteDrums
+                ? _possibleInstruments.ToArray()
+                : MaestroSelectionRules.OrderNativeInstruments(profile.GameMode, _possibleInstruments);
             _possibleInstruments.Clear();
             _possibleInstruments.AddRange(orderedInstruments);
 
             YargLogger.LogInfo($"[ED-log] UpdatePossibleDifficulties before target={profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} instrument={profile.CurrentInstrument} mode={profile.GameMode}");
-            _eliteDrumsDownchartAvailable = SettingsManager.Settings.EnableEliteDrumsDowncharts.Value &&
-                profile.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums or GameMode.EliteDrums;
+            _eliteDrumsDownchartAvailable = (SettingsManager.Settings?.EnableEliteDrumsDowncharts.Value ?? true) &&
+                profile.GameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums;
             if (!_eliteDrumsDownchartAvailable || !EliteDrumsDownchartRules.IsValidTarget(profile.EliteDrumsDownchartTarget))
             {
                 if (profile.EliteDrumsDownchartTarget is not null)
@@ -1447,9 +1493,26 @@ namespace YARG.Menu.DifficultySelect
                 _maxHarmonyIndex = Mathf.Min(_maxHarmonyIndex, showsong.VocalsCount);
             profile.ResolveHarmonyIndex(_maxHarmonyIndex);
             UpdatePossibleModifiers();
-            CurrentPlayer.SittingOut = false;
+        }
+
+        /// <summary>
+        /// Enters an explicit selection context (test/automation entry): the roster and
+        /// show songs come from the caller instead of the global containers, and menu UI
+        /// is never built. Production menus never call this.
+        /// </summary>
+        internal void InitializeSelection(IReadOnlyList<YargPlayer> players, List<SongEntry> songs,
+            int playerIndex)
+        {
+            _explicitPlayers = players;
+            _songList = songs;
+            _playerIndex = playerIndex;
+        }
+
+        /// <summary>Re-runs the production availability computation without menu UI.</summary>
+        internal void RefreshSelectionAvailability()
+        {
+            RecomputeSelectionAvailability();
             UpdatePossibleDifficulties();
-            UpdateForPlayer();
         }
 
         private void AddOfferedEliteDrumsDownchartTarget(Instrument target)
@@ -1525,16 +1588,17 @@ namespace YARG.Menu.DifficultySelect
             // Get the possible difficulties for the player's instrument in the song
             foreach (var difficulty in EnumExtensions<Difficulty>.Values)
             {
+                if (profile.GameMode == GameMode.EliteDrums && difficulty == Difficulty.ExpertPlus) continue;
                 bool invalidDifficulty = false;
                 foreach (var showsong in _songList)
                 {
-                    bool playable = profile.EliteDrumsDownchartTarget is { } target &&
-                        EliteDrumsDownchartRules.IsDownchartTargetActive(profile)
+                    bool playable = profile.GameMode == GameMode.EliteDrums
+                        ? MaestroSelectionRules.ResolveMidiDrums(showsong, profile.CurrentInstrument,
+                            difficulty, profile.CurrentModifiers) != null
+                        : profile.EliteDrumsDownchartTarget is { } target &&
+                          EliteDrumsDownchartRules.IsDownchartTargetActive(profile)
                             ? EliteDrumsDownchartRules.HasTargetDifficulty(showsong, target, difficulty)
-                            : profile.GameMode == GameMode.EliteDrums &&
-                              profile.PreferredInstrument == Instrument.EliteDrums
-                                ? DrumDifficultySelector.HasNativeEliteCandidate(showsong, difficulty)
-                                : HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty);
+                            : HasPlayableDifficulty(showsong, profile.CurrentInstrument, difficulty);
                     if (!playable)
                     {
                         invalidDifficulty = true;

@@ -176,6 +176,12 @@ namespace YARG.Gameplay.Player
 
         private static SongStem GetLastAvailableDrumStem(StemMixer mixer)
         {
+            // Explicitly initialized runtimes (tests, tooling) may have no audio mixer.
+            if (mixer == null)
+            {
+                return SongStem.Drums4;
+            }
+
             if (mixer[SongStem.Drums4] != null)
             {
                 return SongStem.Drums4;
@@ -198,8 +204,10 @@ namespace YARG.Gameplay.Player
         {
             // Keep selection identical to replay analysis and chart loading. Clone the selected
             // track because modifiers and activation flags are applied to the gameplay copy.
-            var track = DrumDifficultySelector.SelectTrack(chart, Player.Profile).Clone();
-            var instrumentDifficulty = track.GetDifficulty(Player.Profile.CurrentDifficulty);
+            var instrumentDifficulty = Player.ResolvedDrumPlayback != null
+                ? Player.PlayableDrumDifficulty
+                : DrumDifficultySelector.SelectTrack(chart, Player.Profile).Clone()
+                    .GetDifficulty(Player.Profile.CurrentDifficulty);
             DrumsEngine.TraceEliteLane($"selected target={Player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} " +
                 $"instrument={Player.Profile.CurrentInstrument} chartInstrument={instrumentDifficulty.Instrument} " +
                 $"difficulty={Player.Profile.CurrentDifficulty} replay={Player.IsReplay} " +
@@ -1079,7 +1087,7 @@ namespace YARG.Gameplay.Player
             if (wasNoteHit || wasOverhitInLane)
             {
                 // If AODSFX is turned on and a note was hit, Play the drum sfx. Without this, drum sfx will only play on misses.
-                if (SettingsManager.Settings.AlwaysOnDrumSFX.Value)
+                if (SettingsManager.Settings?.AlwaysOnDrumSFX.Value == true)
                 {
                     PlayDrumSoundEffect(action, velocity);
                 }
@@ -1089,7 +1097,7 @@ namespace YARG.Gameplay.Player
             bool isDrumFreestyle = IsDrumFreestyle();
 
             // Figure out wether its a drum freestyle or if AODSFX is enabled
-            if (SettingsManager.Settings.AlwaysOnDrumSFX.Value || isDrumFreestyle)
+            if (SettingsManager.Settings?.AlwaysOnDrumSFX.Value == true || isDrumFreestyle)
             {
                 // Play drum sound effect
                 PlayDrumSoundEffect(action, velocity);
@@ -1199,7 +1207,8 @@ namespace YARG.Gameplay.Player
 
         public override (ReplayFrame Frame, ReplayStats Stats) ConstructReplayData()
         {
-            var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
+            var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray(),
+                Player.ResolvedDrumPlayback);
             return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
         }
 
@@ -1458,9 +1467,10 @@ namespace YARG.Gameplay.Player
                 _ => throw new ArgumentOutOfRangeException("Unexpected nondrums instrument")
             };
 
-            // If the player has a dedicated Double Kick lane that's set to Expert+ Only, and isn't playing on Expert+, then the actual amount of lanes is 1 fewer than the size
-            // of the provided ordering because that lane is absent.
-            LaneCount = ordering.Length - (ordering.Contains(DrumsHighwayItem.Kick2xConditional) && Player.Profile.CurrentDifficulty is not Difficulty.ExpertPlus ? 1 : 0);
+            // Resolved playback owns effective 2x content; legacy charts retain Expert+ behavior.
+            bool extraContent = Player.ResolvedDrumPlayback?.EffectiveExtraContent ??
+                Player.Profile.CurrentDifficulty == Difficulty.ExpertPlus;
+            LaneCount = ordering.Length - (ordering.Contains(DrumsHighwayItem.Kick2xConditional) && !extraContent ? 1 : 0);
             NoteScaleFactor = _baselineLaneCount / LaneCount;
 
             // Once we've skipped the conditional Double Kick lane (when not present), we'll have an off-by-one relationship between i and the actual intended position
@@ -1469,7 +1479,7 @@ namespace YARG.Gameplay.Player
             {
                 var item = ordering[i];
 
-                if (item is DrumsHighwayItem.Kick2xConditional && Player.Profile.CurrentDifficulty is not Difficulty.ExpertPlus)
+                if (item is DrumsHighwayItem.Kick2xConditional && !extraContent)
                 {
                     skippedPedalAdjustment = 1;
                     continue;

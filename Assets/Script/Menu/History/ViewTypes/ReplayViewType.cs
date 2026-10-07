@@ -2,7 +2,10 @@
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using YARG.Core;
 using YARG.Core.Logging;
+using YARG.Core.Game;
+using Instrument = YARG.Core.Instrument;
 using YARG.Core.Replays;
 using YARG.Core.Replays.Analyzer;
 using YARG.Core.Song;
@@ -75,8 +78,27 @@ namespace YARG.Menu.History
 
         public override string GetSecondaryText(bool selected)
         {
-            return FormatAs(_artistName, TextType.Secondary, selected);
+            string sourceLabels = _gameInfo.PlayerScoreRecords is { Count: > 0 } records
+                ? string.Join(", ", records
+                    .Where(record => record.Instrument is Instrument.FourLaneDrums or Instrument.ProDrums or
+                        Instrument.FiveLaneDrums or Instrument.EliteDrums)
+                    .Select(record => GetDrumSourceLabel(record.DrumScoreCategory)).Distinct())
+                : string.Empty;
+            string secondaryText = string.IsNullOrEmpty(sourceLabels)
+                ? _artistName
+                : $"{_artistName} · {sourceLabels}";
+            return FormatAs(secondaryText, TextType.Secondary, selected);
         }
+
+        internal static string GetDrumSourceLabel(DrumScoreCategory category) => category switch
+        {
+            DrumScoreCategory.Classic => Localize.Key("Menu.History.DrumSource.Classic"),
+            DrumScoreCategory.NativeElite => Localize.Key("Menu.History.DrumSource.NativeElite"),
+            DrumScoreCategory.FourLaneDerivedElite => Localize.Key("Menu.History.DrumSource.FourLaneDerivedElite"),
+            DrumScoreCategory.FiveLaneDerivedElite => Localize.Key("Menu.History.DrumSource.FiveLaneDerivedElite"),
+            DrumScoreCategory.LegacyUnknownElite => Localize.Key("Menu.History.DrumSource.LegacyUnknownElite"),
+            _ => Localize.Key("Menu.History.DrumSource.LegacyUnknownElite"),
+        };
 
         public override Sprite? GetIcon()
         {
@@ -254,8 +276,12 @@ namespace YARG.Menu.History
                 else
                 {
                     var playerScoreRecord = _gameInfo.PlayerScoreRecords[i];
-                    var currentHighScore = ScoreContainer.GetHighScore(_entry.SongChecksum, playerScoreRecord.PlayerId,
-                        playerResult.Frame.Profile.CurrentInstrument, false);
+                    var replayDrums = playerResult.Frame.Profile.ReplayDrumPlayback;
+                    var currentHighScore = replayDrums != null
+                        ? ScoreContainer.GetMidiDrumHighScore(_entry.SongChecksum, playerScoreRecord.PlayerId,
+                            replayDrums, SettingsManager.Settings.HighScoreHistory.Value)
+                        : ScoreContainer.GetHighScore(_entry.SongChecksum, playerScoreRecord.PlayerId,
+                            playerResult.Frame.Profile.CurrentInstrument, false);
                     isHighScore = currentHighScore != null &&
                         playerScoreRecord.GameRecordId == currentHighScore.GameRecordId;
                 }

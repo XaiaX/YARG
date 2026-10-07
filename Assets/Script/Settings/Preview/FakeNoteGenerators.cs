@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using YARG.Core.Game;
 using YARG.Core.Chart;
 using YARG.Core.Engine.Keys;
 using YARG.Themes;
@@ -40,6 +42,114 @@ namespace YARG.Settings.Preview
 
         IEnumerable<FakeNoteData> CreateChordNotes(double time, FakeNoteData baseNote,
             IFakeNoteRandom random);
+    }
+
+    /// <summary>Finite deterministic coverage of Elite roles and dynamics; no chart or device input.</summary>
+    public sealed class EliteDrumsFakeNoteGenerator : IFakeNoteGenerator
+    {
+        private int _index;
+        private const int ROLE_COUNT = (int) EliteDrumsColorRole.Wildcard + 1;
+        private const int FLAM_COUNT = 8;
+        public const int NOTE_COUNT = (17 * 3 + FLAM_COUNT) * 2;
+        public bool HasNext => true;
+
+        public static ElitePreviewDescriptor Describe(EliteDrumsColorRole role,
+            ThemeNoteType dynamics = ThemeNoteType.Normal)
+        {
+            int fret = role switch
+            {
+                EliteDrumsColorRole.Snare or EliteDrumsColorRole.HandFlam => 1,
+                EliteDrumsColorRole.HatIndifferent or EliteDrumsColorRole.HatOpen
+                    or EliteDrumsColorRole.HatClosed => 2,
+                EliteDrumsColorRole.LeftCrash or EliteDrumsColorRole.Tom1 => 3,
+                EliteDrumsColorRole.Ride or EliteDrumsColorRole.Tom2 => 4,
+                EliteDrumsColorRole.RightCrash or EliteDrumsColorRole.Tom3 => 5,
+                _ => 0
+            };
+            bool bar = fret == 0;
+            bool cymbal = role is EliteDrumsColorRole.HatIndifferent or EliteDrumsColorRole.HatOpen
+                or EliteDrumsColorRole.HatClosed or EliteDrumsColorRole.LeftCrash
+                or EliteDrumsColorRole.Ride or EliteDrumsColorRole.RightCrash;
+            var type = bar ? ThemeNoteType.Kick : cymbal ? dynamics switch
+            {
+                ThemeNoteType.Accent => ThemeNoteType.CymbalAccent,
+                ThemeNoteType.Ghost => ThemeNoteType.CymbalGhost,
+                _ => ThemeNoteType.Cymbal
+            } : dynamics;
+            if (role == EliteDrumsColorRole.Wildcard) type = ThemeNoteType.Wildcard;
+            float width = role is EliteDrumsColorRole.DoubleKick or EliteDrumsColorRole.KickFlam
+                or EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash ? 0.5f : 1f;
+            float offset = role == EliteDrumsColorRole.DoubleKick ? 0.5f
+                : role is EliteDrumsColorRole.KickFlam or EliteDrumsColorRole.Stomp
+                    or EliteDrumsColorRole.Splash ? -0.5f : 0f;
+            return new ElitePreviewDescriptor(role, fret, type, bar, width, offset);
+        }
+
+        public static FakeNoteData CreateRoleNote(double time, ElitePreviewDescriptor descriptor) => new()
+        {
+            Time = time, Fret = descriptor.Fret, CenterNote = descriptor.IsBar,
+            NoteType = descriptor.ModelType, EliteDescriptor = descriptor
+        };
+
+        public FakeNoteData CreateNote(double time, IFakeNoteRandom random)
+        {
+            int index = _index++ % (ROLE_COUNT * 3 + FLAM_COUNT);
+            if (index >= ROLE_COUNT * 3)
+            {
+                var flamRole = (index - ROLE_COUNT * 3) switch
+                {
+                    0 => EliteDrumsColorRole.Snare,
+                    1 => EliteDrumsColorRole.HatIndifferent,
+                    2 => EliteDrumsColorRole.LeftCrash,
+                    3 => EliteDrumsColorRole.Ride,
+                    4 => EliteDrumsColorRole.RightCrash,
+                    5 => EliteDrumsColorRole.Tom1,
+                    6 => EliteDrumsColorRole.Tom2,
+                    _ => EliteDrumsColorRole.Tom3
+                };
+                var appearance = Describe(flamRole);
+                return CreateRoleNote(time, new ElitePreviewDescriptor(flamRole, appearance.Fret,
+                    appearance.ModelType, false, 2f / 3f, -0.1333333f));
+            }
+            var dynamics = (index / ROLE_COUNT) switch
+            {
+                1 => ThemeNoteType.Accent, 2 => ThemeNoteType.Ghost, _ => ThemeNoteType.Normal
+            };
+            return CreateRoleNote(time, Describe((EliteDrumsColorRole)(index % ROLE_COUNT), dynamics));
+        }
+
+        public FakeNoteData CreateSpotlightNote(double time, FakeNoteSpotlight spotlight,
+            IFakeNoteRandom random) => CreateRoleNote(time, Describe(spotlight.CenterNote
+                ? EliteDrumsColorRole.Kick : (EliteDrumsColorRole)Math.Max(0, spotlight.Fret - 1)));
+
+        public FakeNoteData CreateTypeSpotlightNote(double time, ThemeNoteType noteType,
+            IFakeNoteRandom random) => CreateRoleNote(time, Describe(EliteDrumsColorRole.Snare, noteType));
+
+        public IEnumerable<FakeNoteData> CreateChordNotes(double time, FakeNoteData baseNote,
+            IFakeNoteRandom random)
+        {
+            if (baseNote.EliteDescriptor is not { } descriptor) yield break;
+            if (!descriptor.IsBar && descriptor.Width == 2f / 3f)
+            {
+                yield return CreateRoleNote(time + 0.025d, new ElitePreviewDescriptor(descriptor.Role,
+                    descriptor.Fret, descriptor.ModelType, false, 2f / 3f, 0.1333333f));
+            }
+            else if (descriptor.Role == EliteDrumsColorRole.KickFlam)
+            {
+                yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 0,
+                    descriptor.ModelType, true, 0.5f, 0.5f));
+            }
+            else if (descriptor.Role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash)
+            {
+                yield return CreateRoleNote(time, new ElitePreviewDescriptor(EliteDrumsColorRole.Kick,
+                    0, ThemeNoteType.Kick, true, 0.5f, 0.5f));
+            }
+            else if (descriptor.Role == EliteDrumsColorRole.DoubleKick)
+            {
+                yield return CreateRoleNote(time, new ElitePreviewDescriptor(EliteDrumsColorRole.Kick, 0,
+                    ThemeNoteType.Kick, true, 0.5f, -0.5f));
+            }
+        }
     }
 
     public sealed class FiveFretGuitarFakeNoteGenerator : IFakeNoteGenerator

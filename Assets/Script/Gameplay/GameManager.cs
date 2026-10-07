@@ -82,7 +82,7 @@ namespace YARG.Gameplay
 
         private List<BasePlayer> _players;
 
-        public int TotalPlayers => _players.Count;
+        public int TotalPlayers => _players?.Count ?? YargPlayers?.Count ?? 0;
 
         public bool IsSongStarted { get; private set; } = false;
 
@@ -108,25 +108,25 @@ namespace YARG.Gameplay
         // For clarity, try to avoid using these properties inside GameManager itself
         // These are just to expose properties from the song runner to the outside
         /// <inheritdoc cref="SongRunner.SongTime"/>
-        public double SongTime => _songRunner.SongTime;
+        public double SongTime => _songRunner?.SongTime ?? 0d;
 
         /// <inheritdoc cref="SongRunner.VisualTime"/>
-        public double VisualTime => _songRunner.VisualTime;
+        public double VisualTime => _songRunner?.VisualTime ?? 0d;
 
         /// <inheritdoc cref="SongRunner.InputTime"/>
-        public double InputTime => _songRunner.InputTime;
+        public double InputTime => _songRunner?.InputTime ?? 0d;
 
         /// <inheritdoc cref="SongRunner.SongSpeed"/>
-        public float SongSpeed => _songRunner.SongSpeed;
+        public float SongSpeed => _songRunner?.SongSpeed ?? 1f;
 
         /// <inheritdoc cref="SongRunner.IsAudioSyncCorrectionActive"/>
         public bool IsAudioSyncCorrectionActive => _songRunner.IsAudioSyncCorrectionActive;
 
         /// <inheritdoc cref="SongRunner.Started"/>
-        public bool Started => _songRunner?.Started ?? false;
+        public bool Started => _isExternallyInitialized ? IsSongStarted : _songRunner?.Started ?? false;
 
         /// <inheritdoc cref="SongRunner.Paused"/>
-        public bool Paused => _songRunner?.Paused ?? true;
+        public bool Paused => _isExternallyInitialized ? !IsSongStarted : _songRunner?.Paused ?? true;
 
         /// <summary>
         /// The current song's specific offset (in milliseconds), editable from the pause menu
@@ -194,26 +194,94 @@ namespace YARG.Gameplay
         public int  ShowIndex = 0;
 
         private BandComboType _bandComboType;
+        private bool _runtimeInitialized;
+        private bool _isExternallyInitialized;
 
         private        bool HasBots            => _players.Any(p => !p.Player.SittingOut && p.Player.Profile.IsBot);
         private static bool SaveScoresWithBots => SettingsManager.Settings.SaveScoresWithBots.Value;
 
-        private void Awake()
+        /// <summary>
+        /// Initializes gameplay runtime state from explicit dependencies. This is the same state
+        /// boundary used by the normal scene startup, without requiring menu, device, or audio
+        /// bootstrap when a caller already has a prepared chart and players.
+        /// </summary>
+        public void InitializeRuntime(SongEntry song, ReplayInfo replayInfo, SongChart chart,
+            IReadOnlyList<YargPlayer> players, EngineManager engineManager, BeatEventHandler beatEventHandler,
+            StemMixer mixer, bool isPractice, bool isSongStarted)
         {
-            // Set references
+            if (_runtimeInitialized)
+            {
+                throw new InvalidOperationException("Gameplay runtime has already been initialized.");
+            }
+
+            if (players == null)
+            {
+                throw new ArgumentNullException(nameof(players));
+            }
+
+            if (engineManager == null)
+            {
+                throw new ArgumentNullException(nameof(engineManager));
+            }
+
+            InitializeRuntimeState(song, replayInfo, chart, players, engineManager, beatEventHandler,
+                mixer, isPractice, isSongStarted, true);
+        }
+
+        private void InitializeRuntimeState(SongEntry song, ReplayInfo replayInfo, SongChart chart,
+            IReadOnlyList<YargPlayer> players, EngineManager engineManager, BeatEventHandler beatEventHandler,
+            StemMixer mixer, bool isPractice, bool isSongStarted, bool externallyInitialized)
+        {
+            _runtimeInitialized = true;
+            _isExternallyInitialized = externallyInitialized;
             PracticeManager = GetComponent<PracticeManager>();
             BackgroundManager = GetComponent<BackgroundManager>();
-            EngineManager = new EngineManager();
+            Song = song;
+            ReplayInfo = replayInfo;
+            Chart = chart;
+            YargPlayers = players;
+            EngineManager = engineManager;
+            BeatEventHandler = beatEventHandler;
+            _mixer = mixer;
+            IsPractice = isPractice;
+            IsSongStarted = isSongStarted;
+            _frameTimes = new List<double>();
+            // External runtime initialization skips CreatePlayers; keep the shared
+            // player list valid so static accessors (e.g. GameManager.Players) are safe.
+            _players ??= new List<BasePlayer>();
+        }
 
-            YargPlayers = PlayerContainer.Players;
+        private void InitializeRuntimeFromSingletons()
+        {
+            var replayInfo = GlobalVariables.State.CurrentReplay;
+            InitializeRuntimeFromScene(GlobalVariables.State.CurrentSong, replayInfo, PlayerContainer.Players,
+                new EngineManager(), GlobalVariables.State.IsPractice && replayInfo == null);
+        }
 
-            Song = GlobalVariables.State.CurrentSong;
-            ReplayInfo = GlobalVariables.State.CurrentReplay;
-            IsPractice = GlobalVariables.State.IsPractice && ReplayInfo == null;
+        private void InitializeRuntimeFromScene(SongEntry song, ReplayInfo replayInfo,
+            IReadOnlyList<YargPlayer> players, EngineManager engineManager, bool isPractice)
+        {
+            InitializeRuntime(song, replayInfo, null, players, engineManager, null, null, isPractice, false);
+            _isExternallyInitialized = false;
+
             _bandComboType = SettingsManager.Settings.BandComboTypeSetting.Value;
-
+            _originalSleepTimeout = Screen.sleepTimeout;
+            Screen.sleepTimeout = SleepTimeout.NeverSleep;
+            CountdownDisplay.DisplayStyle = SettingsManager.Settings.CountdownDisplay.Value;
+            SettingsManager.Settings.RawMidiLogging.OnChange += OnRawMidiLoggingChanged;
             Navigator.Instance.PopAllSchemes();
             GameStateFetcher.SetSongEntry(Song);
+            VocalTrack.gameObject.SetActive(false);
+        }
+
+        private void Awake()
+        {
+            if (_runtimeInitialized)
+            {
+                return;
+            }
+
+            InitializeRuntimeFromSingletons();
 
             if (Song is null)
             {
@@ -222,23 +290,15 @@ namespace YARG.Gameplay
                 GlobalVariables.Instance.LoadScene(SceneIndex.Menu);
                 return;
             }
-
-            // Hide vocals track (will be shown when players are initialized)
-            VocalTrack.gameObject.SetActive(false);
-
-            // Prevent screen from sleeping
-            _originalSleepTimeout = Screen.sleepTimeout;
-            Screen.sleepTimeout = SleepTimeout.NeverSleep;
-
-            // Update countdown display style from global settings
-            CountdownDisplay.DisplayStyle = SettingsManager.Settings.CountdownDisplay.Value;
-
-            _frameTimes = new List<double>();
-            SettingsManager.Settings.RawMidiLogging.OnChange += OnRawMidiLoggingChanged;
         }
 
         private void OnDestroy()
         {
+            if (_isExternallyInitialized)
+            {
+                return;
+            }
+
             if (YargPlayers?.Any(player => player.Profile.GameMode == GameMode.PartyVocals) == true)
             {
                 YargLogger.LogInfo($"[PartyVocalsDiag] GameManager.OnDestroy song={Song?.Name} started={IsSongStarted} " +
@@ -297,7 +357,10 @@ namespace YARG.Gameplay
 
         private void Update()
         {
-
+            if (_isExternallyInitialized)
+            {
+                return;
+            }
 
             // Pause/unpause
             if (Keyboard.current.escapeKey.wasPressedThisFrame)
@@ -687,7 +750,7 @@ namespace YARG.Gameplay
         }
 
         public double GetInputTime(double inputSystemTime)
-            => _songRunner.GetInputTime(inputSystemTime);
+            => _isExternallyInitialized ? inputSystemTime : _songRunner.GetInputTime(inputSystemTime);
 
         /// <inheritdoc cref="SongRunner.GetAudioPlaybackTime"/>
         public double GetAudioPlaybackTime(double songTime)
@@ -818,6 +881,9 @@ namespace YARG.Gameplay
 
                     Instrument = profile.CurrentInstrument,
                     Difficulty = profile.CurrentDifficulty,
+                    DrumScoreCategory = player.Player.ResolvedDrumPlayback?.ScoreCategory ??
+                        (profile.CurrentInstrument == Instrument.EliteDrums
+                            ? DrumScoreCategory.LegacyUnknownElite : DrumScoreCategory.Classic),
 
                     EnginePresetId = profile.EnginePreset,
 

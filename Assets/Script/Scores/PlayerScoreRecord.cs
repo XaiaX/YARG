@@ -24,6 +24,11 @@ namespace YARG.Scores
         public Instrument Instrument { get; set; }
         public Difficulty Difficulty { get; set; }
 
+        /// <summary>
+        /// The chart source used for this score. Older Elite scores have unknown provenance.
+        /// </summary>
+        public DrumScoreCategory DrumScoreCategory { get; set; }
+
         public Guid EnginePresetId { get; set; }
 
         public int        Score { get; set; }

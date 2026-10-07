@@ -128,6 +128,8 @@ namespace YARG.Song
         private static HighScoreHistoryMode _starsCacheHighScoreHistoryMode;
         private static bool _starsCacheUsesBandScores;
         private static bool _starsCacheValid;
+        private static Modifier _starsCacheSourcePreferences;
+        private static int _starsCacheLibraryRevision;
 
         public static IReadOnlyDictionary<string, List<SongEntry>> Titles => _sortedSongs.Titles;
         public static IReadOnlyDictionary<string, List<SongEntry>> Years => _sortedSongs.Years;
@@ -582,15 +584,18 @@ namespace YARG.Song
 
             var profile = player.Profile;
             bool useBandScores = ScoreContainer.UseBandHighScoresForCurrentPlayers;
-            var cacheInstrument = profile.GameMode == GameMode.EliteDrums
-                ? Instrument.EliteDrums
-                : profile.CurrentInstrument;
+            var cacheInstrument = profile.CurrentInstrument;
+            var sourcePreferences = profile.GameMode == GameMode.EliteDrums
+                ? profile.CurrentModifiers & (Modifier.EnableEliteUpconversion | Modifier.PreferEliteDowncharts)
+                : Modifier.None;
             if (_starsCacheValid &&
                 _starsCacheProfileId == profile.Id &&
                 _starsCacheInstrument == cacheInstrument &&
                 _starsCacheDifficulty == profile.CurrentDifficulty &&
                 _starsCacheHighScoreHistoryMode == SettingsManager.Settings.HighScoreHistory.Value &&
-                _starsCacheUsesBandScores == useBandScores)
+                _starsCacheUsesBandScores == useBandScores &&
+                _starsCacheSourcePreferences == sourcePreferences &&
+                _starsCacheLibraryRevision == LibraryRevision)
             {
                 return _sortStars;
             }
@@ -663,6 +668,8 @@ namespace YARG.Song
             _starsCacheDifficulty = profile.CurrentDifficulty;
             _starsCacheHighScoreHistoryMode = SettingsManager.Settings.HighScoreHistory.Value;
             _starsCacheUsesBandScores = useBandScores;
+            _starsCacheSourcePreferences = sourcePreferences;
+            _starsCacheLibraryRevision = LibraryRevision;
             _starsCacheValid = true;
             return _sortStars;
         }
@@ -711,7 +718,7 @@ namespace YARG.Song
 
             // Prime the cache once. Its validity criteria include the profile,
             // instrument, difficulty, and High Score History mode.
-            if (_songs.Length > 0)
+            if (_songs.Length > 0 && profile.GameMode != GameMode.EliteDrums)
             {
                 ScoreContainer.GetBestPercentageScore(
                     _songs[0].Hash, profile.Id, instrument, allowCacheUpdate: true);
@@ -719,14 +726,23 @@ namespace YARG.Song
 
             foreach (SongEntry song in _songs)
             {
-                if (!song[instrument].IsActive())
+                if (profile.GameMode == GameMode.EliteDrums
+                    ? ScoreContainer.PredictMidiDrumPlayback(song, profile) == null
+                    : !song[instrument].IsActive())
                 {
                     InsertSorted(buckets[^1], song, comparer);
                     continue;
                 }
 
-                PlayerScoreRecord record = ScoreContainer.GetBestPercentageScore(
-                    song.Hash, profile.Id, instrument, allowCacheUpdate: false);
+                PlayerScoreRecord record = profile.GameMode == GameMode.EliteDrums
+                    ? ScoreContainer.GetPredictedMidiDrumHighScore(song, profile,
+                        SettingsManager.Settings.HighScoreHistory.Value switch
+                        {
+                            HighScoreHistoryMode.HighestPercentageDifficulty or HighScoreHistoryMode.HighestScoreDifficulty => HighScoreHistoryMode.HighestPercentageDifficulty,
+                            HighScoreHistoryMode.HighestPercentageCurrentDifficulty or HighScoreHistoryMode.HighestScoreCurrentDifficulty => HighScoreHistoryMode.HighestPercentageCurrentDifficulty,
+                            _ => HighScoreHistoryMode.HighestPercentageOverall,
+                        })
+                    : ScoreContainer.GetBestPercentageScore(song.Hash, profile.Id, instrument, allowCacheUpdate: false);
                 if (record == null || record.GetPercent() <= 0f)
                 {
                     InsertSorted(buckets[^2], song, comparer);
@@ -797,7 +813,7 @@ namespace YARG.Song
             var noPart = new List<SongEntry>();
             var scoreRecords = new Dictionary<SongEntry, PlayerScoreRecord>();
 
-            if (_songs.Length > 0)
+            if (_songs.Length > 0 && profile.GameMode != GameMode.EliteDrums)
             {
                 ScoreContainer.GetHighScore(
                     _songs[0].Hash, profile.Id, instrument, allowCacheUpdate: true);
@@ -805,14 +821,23 @@ namespace YARG.Song
 
             foreach (SongEntry song in _songs)
             {
-                if (!song[instrument].IsActive())
+                if (profile.GameMode == GameMode.EliteDrums
+                    ? ScoreContainer.PredictMidiDrumPlayback(song, profile) == null
+                    : !song[instrument].IsActive())
                 {
                     InsertSorted(noPart, song, comparer);
                     continue;
                 }
 
-                PlayerScoreRecord record = ScoreContainer.GetHighScore(
-                    song.Hash, profile.Id, instrument, allowCacheUpdate: false);
+                PlayerScoreRecord record = profile.GameMode == GameMode.EliteDrums
+                    ? ScoreContainer.GetPredictedMidiDrumHighScore(song, profile,
+                        SettingsManager.Settings.HighScoreHistory.Value switch
+                        {
+                            HighScoreHistoryMode.HighestPercentageDifficulty or HighScoreHistoryMode.HighestScoreDifficulty => HighScoreHistoryMode.HighestScoreDifficulty,
+                            HighScoreHistoryMode.HighestPercentageCurrentDifficulty or HighScoreHistoryMode.HighestScoreCurrentDifficulty => HighScoreHistoryMode.HighestScoreCurrentDifficulty,
+                            _ => HighScoreHistoryMode.HighestScoreOverall,
+                        })
+                    : ScoreContainer.GetHighScore(song.Hash, profile.Id, instrument, allowCacheUpdate: false);
                 if (record == null || record.Score <= 0)
                 {
                     InsertSorted(unplayed, song, comparer);

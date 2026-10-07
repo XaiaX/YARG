@@ -89,60 +89,40 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void GemColorsUseRequestedProfileSlots()
+        public void GemColorsUseDedicatedEliteRoles()
         {
-            var element = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
-            Assert.That(element, Is.Not.Null);
-            var select = element.GetMethod("GetGemColorSlot",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
-                null, new[] { typeof(YARG.Core.Chart.EliteDrumNote) }, null);
-            Assert.That(select, Is.Not.Null);
             var cases = new[]
             {
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, false,
-                    (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.Kick),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Kick),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick, true, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, false,
-                    (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.DoubleKick),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.DoubleKick),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Snare, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, false,
-                    (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.Red),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Snare),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.LeftCrash, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, false,
-                    (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.Blue),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.LeftCrash),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Ride, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, false,
-                    (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.Orange),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Ride),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.RightCrash, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, false,
-                    (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.Green),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.RightCrash),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom1, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.YellowDrum),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Tom1),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom2, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.BlueDrum),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Tom2),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom3, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.GreenDrum),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Tom3),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HiHat, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.YellowCymbal),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.HatIndifferent),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HiHat, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Open, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.BlueCymbal),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Open, YARG.Core.Game.EliteDrumsColorRole.HatOpen),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HiHat, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Closed, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.GreenCymbal),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Closed, YARG.Core.Game.EliteDrumsColorRole.HatClosed),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal, false, false,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.Kick),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Stomp),
                 (YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal, false, true,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, true,
-                    (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.DoubleKick),
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.Splash),
             };
-            foreach (var (pad, doubleKick, splash, hatState, fourLane, index) in cases)
+            foreach (var (pad, doubleKick, splash, hatState, expectedRole) in cases)
             {
                 var note = new YARG.Core.Chart.EliteDrumNote(pad,
                     YARG.Core.Chart.DrumNoteType.Neutral, hatState,
@@ -150,8 +130,8 @@ namespace YARG.Tests.EditMode
                         YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp,
                     false, YARG.Core.Chart.DrumNoteFlags.None, YARG.Core.Chart.NoteFlags.None,
                     YARG.Core.Chart.EliteDrumNote.EliteDrumsChannelFlag.None, 1d, 480, doubleKick);
-                var actual = ((bool FourLane, int Index)) select.Invoke(null, new object[] { note });
-                Assert.That(actual, Is.EqualTo((fourLane, index)), $"Color slot for {pad}/{hatState}/{splash}/{doubleKick}");
+                Assert.That(YARG.Core.Game.EliteDrumsColorRoles.GetRole(note), Is.EqualTo(expectedRole),
+                    $"Color role for {pad}/{hatState}/{splash}/{doubleKick}");
             }
         }
 
@@ -159,9 +139,6 @@ namespace YARG.Tests.EditMode
         public void FlamsUseProSnareColorAndAccentGemWithoutMovingLanes()
         {
             var element = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
-            var color = element.GetMethod("GetGemColorSlot",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
-                null, new[] { typeof(YARG.Core.Chart.EliteDrumNote) }, null);
             var group = element.GetMethod("GetGemGroup",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
             var lane = Type.GetType("YARG.Gameplay.Player.EliteDrumsPlayer, Assembly-CSharp")
@@ -184,14 +161,18 @@ namespace YARG.Tests.EditMode
                 Assert.That((int) lane.Invoke(null, new object[] { note.Pad }),
                     Is.EqualTo((int) lane.Invoke(null, new object[] { normalNote.Pad })));
                 bool isKick = pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick;
-                bool isPedal = pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal;
-                var expectedColor = isKick ?
-                    (false, (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.DoubleKick) :
-                    (true, isPedal ? (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.Kick :
-                        (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.RedDrum);
-                Assert.That(((bool FourLane, int Index)) color.Invoke(null, new object[] { note }),
-                    Is.EqualTo(expectedColor), $"Flam color for {pad}");
-                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(isKick ? 2 : 3),
+                // Wildcard deliberately renders as the centered highway-wide bar (like
+                // kick) regardless of any flam flags: it has no single hand identity.
+                bool usesBarModel = isKick || pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Wildcard;
+                var expectedRole = pad switch
+                {
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick => YARG.Core.Game.EliteDrumsColorRole.KickFlam,
+                    YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal => YARG.Core.Game.EliteDrumsColorRole.Stomp,
+                    _ => YARG.Core.Game.EliteDrumsColorRole.HandFlam,
+                };
+                Assert.That(YARG.Core.Game.EliteDrumsColorRoles.GetRole(note), Is.EqualTo(expectedRole),
+                    $"Flam color role for {pad}");
+                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(usesBarModel ? 2 : 3),
                     $"Flam model for {pad}");
             }
         }
@@ -218,14 +199,10 @@ namespace YARG.Tests.EditMode
             var splitGroup = element.GetMethod("GetSplitGroup",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
                 null, new[] { typeof(YARG.Core.Chart.EliteDrumNote), typeof(bool) }, null);
-            var color = element.GetMethod("GetGemColorSlot",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
-                null, new[] { typeof(YARG.Core.Chart.EliteDrumNote), typeof(bool) }, null);
             var isSplit = element.GetMethod("IsSplitFlam", System.Reflection.BindingFlags.Static |
                 System.Reflection.BindingFlags.NonPublic);
             Assert.That(group, Is.Not.Null);
             Assert.That(splitGroup, Is.Not.Null);
-            Assert.That(color, Is.Not.Null);
             Assert.That(isSplit, Is.Not.Null);
 
             var neutral = MakeFlam(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Snare,
@@ -246,11 +223,9 @@ namespace YARG.Tests.EditMode
                     "Kick flams use the highway-wide KICK model with split flams disabled.");
                 Assert.That((int) group.Invoke(null, new object[] { kick, false, true }), Is.EqualTo(2),
                     "Kick flams use the highway-wide KICK model with split flams enabled.");
-                var expectedKickColor = (false, (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.DoubleKick);
-                Assert.That(((bool FourLane, int Index)) color.Invoke(null, new object[] { kick, false }),
-                    Is.EqualTo(expectedKickColor), "Kick flam uses the FiveLane DoubleKick color when splitting is disabled.");
-                Assert.That(((bool FourLane, int Index)) color.Invoke(null, new object[] { kick, true }),
-                    Is.EqualTo(expectedKickColor), "Kick flam uses the FiveLane DoubleKick color when splitting is enabled.");
+                Assert.That(YARG.Core.Game.EliteDrumsColorRoles.GetRole(kick),
+                    Is.EqualTo(YARG.Core.Game.EliteDrumsColorRole.KickFlam),
+                    "Kick flam keeps its dedicated role regardless of splitting.");
             }
             Assert.That((int) group.Invoke(null, new object[] { neutral, false, true }), Is.EqualTo(0));
             Assert.That((int) group.Invoke(null, new object[] { neutral, false, false }), Is.EqualTo(3));
@@ -267,21 +242,18 @@ namespace YARG.Tests.EditMode
             Assert.That((int) group.Invoke(null, new object[] { accent, false, true }), Is.EqualTo(3));
             Assert.That((int) group.Invoke(null, new object[] { ghost, false, true }), Is.EqualTo(4));
 
-            var hiHatColors = new[]
+            var hiHatRoles = new[]
             {
-                (YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Open,
-                    (true, (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.BlueCymbal)),
-                (YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Closed,
-                    (true, (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.GreenCymbal)),
-                (YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent,
-                    (true, (int) YARG.Core.Game.ColorProfile.FourLaneDrumsFret.YellowCymbal)),
+                (YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Open, YARG.Core.Game.EliteDrumsColorRole.HatOpen),
+                (YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Closed, YARG.Core.Game.EliteDrumsColorRole.HatClosed),
+                (YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, YARG.Core.Game.EliteDrumsColorRole.HatIndifferent),
             };
-            foreach (var (state, expected) in hiHatColors)
+            foreach (var (state, expectedRole) in hiHatRoles)
             {
                 var hiHat = MakeFlam(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HiHat,
                     YARG.Core.Chart.DrumNoteType.Ghost, state);
-                Assert.That(((bool FourLane, int Index)) color.Invoke(null, new object[] { hiHat, true }),
-                    Is.EqualTo(expected), $"Split flam color for hi-hat state {state}");
+                Assert.That(YARG.Core.Game.EliteDrumsColorRoles.GetRole(hiHat, splitHandFlam: true),
+                    Is.EqualTo(expectedRole), $"Split flam color role for hi-hat state {state}");
                 Assert.That((bool) isSplit.Invoke(null, new object[] { hiHat, true }), Is.True);
             }
         }

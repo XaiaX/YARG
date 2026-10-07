@@ -131,6 +131,7 @@ Material:
     - _DstBlend: 0
     - _EnvironmentReflections: 1
     - _Fade_Offset: -0.5
+    - _Fail_State: 0
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0

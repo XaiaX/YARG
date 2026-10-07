@@ -70,6 +70,20 @@ namespace YARG.Settings.Preview
         private static readonly Dictionary<GameMode, Info> _gameModeInfos = new()
         {
             {
+                GameMode.EliteDrums,
+                new Info
+                {
+                    HighwayOrdering = new Dictionary<int, int> { {1, 0}, {2, 1}, {3, 2}, {4, 3}, {5, 4} },
+                    LaneCount = 5,
+                    NoteVisualStyle = VisualStyle.FiveLaneDrums,
+                    FretColorProvider = c => c.EliteDrums,
+                    NoteColorProvider = (c, note) => c.EliteDrums.GetNoteColor(note.EliteDescriptor.Value.Role).ToUnityColor(),
+                    NoteStarPowerColorProvider = (c, note) => c.EliteDrums.GetNoteStarPowerColor(note.EliteDescriptor.Value.Role).ToUnityColor(),
+                    HitWindowProvider = e => e.Drums.HitWindow,
+                    Generator = null
+                }
+            },
+            {
                 GameMode.FiveFretGuitar,
                 new Info
                 {
@@ -299,9 +313,50 @@ namespace YARG.Settings.Preview
 
         private readonly IFakeNoteRandom _random = new UnityFakeNoteRandom();
 
+        public CameraPreset CameraPreset { get; private set; }
+        public ColorProfile ColorProfile { get; private set; }
+        public HighwayPreset HighwayPreset { get; private set; }
+        private bool _initialized;
+        private SettingsMenu _settingsMenu;
+        private GameObject _notePrefab;
+
         private void Start()
         {
+            if (_initialized) return;
+            Initialize(ThemePreset.Default, _notePool,
+                (theme, style) => FakeNote.CreateFakeNoteFromTheme(theme, style),
+                PresetsTab.GetLastSelectedPreset(CustomContentManager.CameraSettings),
+                PresetsTab.GetLastSelectedPreset(CustomContentManager.ColorProfiles),
+                PresetsTab.GetLastSelectedPreset(CustomContentManager.EnginePresets),
+                PresetsTab.GetLastSelectedPreset(CustomContentManager.HighwayPresets),
+                SettingsManager.Settings.ShowHitWindow.Value);
+            _settingsMenu = SettingsMenu.Instance;
+            _settingsMenu.SettingChanged += OnSettingChanged;
+        }
+
+        /// <summary>
+        /// Initializes the preview using explicit content and settings dependencies.
+        /// The optional fret initializer allows content loaders to supply their own fret models.
+        /// </summary>
+        public void Initialize(ThemePreset theme, KeyedPool notePool,
+            Func<ThemePreset, VisualStyle, GameObject> createNotePrefab,
+            CameraPreset cameraPreset, ColorProfile colorProfile, EnginePreset enginePreset,
+            HighwayPreset highwayPreset, bool showHitWindow,
+            Action<Info, ThemePreset, VisualStyle> initializeFrets = null)
+        {
+            if (_initialized) throw new InvalidOperationException("Preview is already initialized.");
+            if (notePool == null) throw new ArgumentNullException(nameof(notePool));
+            _notePool = notePool;
+            CameraPreset = cameraPreset;
+            ColorProfile = colorProfile;
+            HighwayPreset = highwayPreset;
             CurrentGameModeInfo = _gameModeInfos[SelectedGameMode];
+            if (SelectedGameMode == GameMode.EliteDrums)
+            {
+                var elite = CurrentGameModeInfo;
+                elite.Generator = new EliteDrumsFakeNoteGenerator();
+                CurrentGameModeInfo = elite;
+            }
 
             // 5-lane keys shares the guitar color section and lane models in-game
             // (FiveLaneKeysPlayer / FiveLaneKeysNoteElement read ColorProfile.FiveFretGuitar),
@@ -349,13 +404,16 @@ namespace YARG.Settings.Preview
 
                 CurrentGameModeInfo = info;
             }
-            var theme = ThemePreset.Default;
-
             // If we aren't using Pro Keys, then the passed instrument doesn't really matter; arbitrarily pass Five-Fret Guitar
-            var style = VisualStyleHelpers.GetVisualStyle(SelectedGameMode, CurrentGameModeInfo.UseProKeys ? Instrument.ProKeys : Instrument.FiveFretGuitar);
+            var style = SelectedGameMode == GameMode.EliteDrums ? VisualStyle.FiveLaneDrums
+                : VisualStyleHelpers.GetVisualStyle(SelectedGameMode, CurrentGameModeInfo.UseProKeys ? Instrument.ProKeys : Instrument.FiveFretGuitar);
 
             // Create frets and put them on the right layer
-            if (!CurrentGameModeInfo.UseProKeys)
+            if (initializeFrets != null)
+            {
+                initializeFrets(CurrentGameModeInfo, theme, style);
+            }
+            else if (!CurrentGameModeInfo.UseProKeys)
             {
                 if (CurrentGameModeInfo.UseHighwayOverlay)
                 {
@@ -366,7 +424,7 @@ namespace YARG.Settings.Preview
                         new Dictionary<int, int>(),
                         1, null, null,
                         theme, style);
-                    CreateProKeysOverlay(ColorProfile.Default.ProKeys);
+                    CreateProKeysOverlay(colorProfile.ProKeys);
                 }
                 else
                 {
@@ -375,9 +433,10 @@ namespace YARG.Settings.Preview
                         CurrentGameModeInfo.HighwayOrdering,
                         CurrentGameModeInfo.LaneCount,
                         CurrentGameModeInfo.KickFretPrefab,
-                        CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
+                        CurrentGameModeInfo.FretColorProvider(colorProfile),
                         theme,
-                        style
+                        style,
+                        SelectedGameMode == GameMode.SixFretGuitar
                     );
                 }
                 _fretArray.transform.SetLayerRecursive(LayerMask.NameToLayer("Settings Preview"));
@@ -385,26 +444,32 @@ namespace YARG.Settings.Preview
 
             // Create the note prefab (this has to be specially done, because
             // TrackElements need references to the GameManager)
-            var prefab = FakeNote.CreateFakeNoteFromTheme(theme,
-                CurrentGameModeInfo.NoteVisualStyle ?? style);
+            var prefab = createNotePrefab(theme, CurrentGameModeInfo.NoteVisualStyle ?? style);
+            _notePrefab = prefab;
             prefab.transform.parent = transform;
             prefab.SetActive(false);
             _notePool.SetPrefabAndReset(prefab);
 
             // Show hit window if enabled
-            _hitWindow.gameObject.SetActive(SettingsManager.Settings.ShowHitWindow.Value || ForceShowHitWindow);
-            _hitWindow.NoteSpeed = NOTE_SPEED;
-            _trackMaterial.StarpowerMode = ForceStarPower;
-            _trackMaterial.GrooveMode = ForceGroove;
+            if (_hitWindow != null)
+            {
+                _hitWindow.gameObject.SetActive(showHitWindow || ForceShowHitWindow);
+                _hitWindow.NoteSpeed = NOTE_SPEED;
+            }
+            if (_trackMaterial != null)
+            {
+                _trackMaterial.StarpowerMode = ForceStarPower;
+                _trackMaterial.GrooveMode = ForceGroove;
+            }
+            if (_cameraPositioner != null)
+            {
+                var highwayRenderer = _cameraPositioner.GetComponent<HighwayCameraRendering>();
+                var camera = _cameraPositioner.GetComponent<Camera>();
+                highwayRenderer.AddPlayerParams(transform.position, camera, 0, 0, 0, 0, false);
+            }
 
-            SettingsMenu.Instance.SettingChanged += OnSettingChanged;
-
-            var highwayRenderer = _cameraPositioner.GetComponent<HighwayCameraRendering>();
-            var camera = _cameraPositioner.GetComponent<Camera>();
-            highwayRenderer.AddPlayerParams(transform.position, camera, 0, 0, 0, 0, false);
-
-            // Force update it as well to make sure it's right before any settings are changed
-            OnSettingChanged();
+            _initialized = true;
+            ApplySettings(cameraPreset, colorProfile, enginePreset, highwayPreset);
         }
 
         private void OnSettingChanged()
@@ -414,18 +479,31 @@ namespace YARG.Settings.Preview
             var enginePreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.EnginePresets);
             var highwayPreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.HighwayPresets);
 
-            // Update camera presets
-            _trackMaterial.Initialize(highwayPreset);
-            _cameraPositioner.Initialize(cameraPreset);
+            ApplySettings(cameraPreset, colorProfile, enginePreset, highwayPreset);
+        }
 
-            var camera = _cameraPositioner.GetComponent<Camera>();
-            var highwayRenderer = camera.GetComponent<HighwayCameraRendering>();
-            highwayRenderer.UpdateCurveFactor(cameraPreset.CurveFactor, 0);
-            highwayRenderer.UpdateFadeParams(0, 3f, cameraPreset.FadeLength);
-            highwayRenderer.UpdateCameraProjectionMatrices();
+        public void ApplySettings(CameraPreset cameraPreset, ColorProfile colorProfile,
+            EnginePreset enginePreset, HighwayPreset highwayPreset)
+        {
+            CameraPreset = cameraPreset;
+            ColorProfile = colorProfile;
+            HighwayPreset = highwayPreset;
+
+            // Update camera presets
+            if (_trackMaterial != null) _trackMaterial.Initialize(highwayPreset);
+            if (_cameraPositioner != null)
+            {
+                _cameraPositioner.Initialize(cameraPreset);
+                var camera = _cameraPositioner.GetComponent<Camera>();
+                var highwayRenderer = camera.GetComponent<HighwayCameraRendering>();
+                highwayRenderer.UpdateCurveFactor(cameraPreset.CurveFactor, 0);
+                highwayRenderer.UpdateFadeParams(0, 3f, cameraPreset.FadeLength);
+                highwayRenderer.UpdateCameraProjectionMatrices();
+            }
 
             // Update hit window
-            _hitWindow.HitWindow = CurrentGameModeInfo.HitWindowProvider(enginePreset).Create();
+            if (_hitWindow != null)
+                _hitWindow.HitWindow = CurrentGameModeInfo.HitWindowProvider(enginePreset).Create();
 
             // Update all of the notes
             foreach (var note in _notePool.AllSpawned)
@@ -433,20 +511,23 @@ namespace YARG.Settings.Preview
                 ((FakeNote)note).OnSettingChanged();
             }
 
-            // Reverse the fret color order for guitar lefty flip. Frets use the default
-            // color profile; reversing their assignment mirrors the layout in place
-            // without moving frets or touching asymmetric theme graphics.
-            if (SelectedGameMode == GameMode.FiveFretGuitar)
+            if (_fretArray != null && CurrentGameModeInfo.FretColorProvider != null
+                && !(SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys))
             {
-                _fretArray.RecolorFrets(
-                    CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
-                    FretColorIndexForLefty);
+                // Compressed Pro Keys resolves to Five-Fret Guitar's fret provider;
+                // use the resolved configuration rather than the selected enum alone.
+                var fretColors = CurrentGameModeInfo.FretColorProvider(colorProfile);
+                var usesFiveFretColors = SelectedGameMode == GameMode.FiveFretGuitar
+                    || (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys);
+                var colorIndexRemap = usesFiveFretColors
+                    ? FretColorIndexForLefty
+                    : (Func<int, int>)(index => index);
+                _fretArray.RecolorFrets(fretColors, colorIndexRemap);
             }
-            else if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
+
+            if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
             {
-                // Pro-keys: live-recolor the highway overlay sections with the
-                // PRESET's overlay colors (not ColorProfile.Default), so editing
-                // an overlay color live-updates without a rebuild.
+                // Piano-style Pro Keys has editable overlay colors, not physical fret bars.
                 RecolorProKeysOverlay(colorProfile.ProKeys);
             }
         }
@@ -454,8 +535,24 @@ namespace YARG.Settings.Preview
         /// <summary>
         /// Clears all active spotlight modes so a new one starts fresh.
         /// </summary>
+        private ElitePreviewDescriptor? _eliteSpotlight;
+        private bool _eliteSpotlightStarPower;
+
+        /// <summary>Shows a specific Elite color role with independently selectable model geometry.</summary>
+        public void SpotlightEliteRole(EliteDrumsColorRole role, bool starPower,
+            ElitePreviewDescriptor? descriptor = null)
+        {
+            ClearSpotlights();
+            var appearance = descriptor ?? EliteDrumsFakeNoteGenerator.Describe(role);
+            _eliteSpotlight = new ElitePreviewDescriptor(role, appearance.Fret, appearance.ModelType,
+                appearance.IsBar, appearance.Width, appearance.Offset);
+            _eliteSpotlightStarPower = starPower;
+            _spotlightRemaining = SPOTLIGHT_NOTE_COUNT;
+        }
+
         private void ClearSpotlights()
         {
+            _eliteSpotlight = null;
             _spotlightRemaining = 0;
             _spotlightTypeRemaining = 0;
             _spotlightMissRemaining = 0;
@@ -535,6 +632,12 @@ namespace YARG.Settings.Preview
 
         private FakeNoteData CreateSpotlightNote(double time)
         {
+            if (_eliteSpotlight.HasValue)
+            {
+                var eliteNote = EliteDrumsFakeNoteGenerator.CreateRoleNote(time, _eliteSpotlight.Value);
+                eliteNote.ForceStarPower = _eliteSpotlightStarPower;
+                return eliteNote;
+            }
             var note = CurrentGameModeInfo.Generator.CreateSpotlightNote(time,
                 new FakeNoteSpotlight(_spotlightFret, _spotlightCenterNote, _spotlightCymbal,
                     LeftyFlip), _random);
@@ -545,6 +648,7 @@ namespace YARG.Settings.Preview
         private void SpawnNote(FakeNoteData note)
         {
             var noteObj = (FakeNote)_notePool.KeyedTakeWithoutEnabling(note);
+            if (noteObj == null) return;
             noteObj.NoteRef = note;
             noteObj.FakeTrackPlayer = this;
             noteObj.EnableFromPool();
@@ -575,11 +679,21 @@ namespace YARG.Settings.Preview
 
         private void Update()
         {
+            Advance(Time.deltaTime);
+        }
+
+        public void Advance(double deltaTime)
+        {
+            if (!_initialized) return;
+            if (deltaTime < 0 || double.IsNaN(deltaTime) || double.IsInfinity(deltaTime))
+                throw new ArgumentOutOfRangeException(nameof(deltaTime));
             // Update the preview notes
-            PreviewTime += Time.deltaTime;
+            PreviewTime += deltaTime;
 
             // Queue the notes
-            if (_nextSpawnTime <= PreviewTime)
+            if (_nextSpawnTime <= PreviewTime &&
+                (CurrentGameModeInfo.Generator is not EliteDrumsFakeNoteGenerator eliteGenerator
+                    || eliteGenerator.HasNext || _spotlightRemaining > 0 || _spotlightTypeRemaining > 0))
             {
                 double spawnTime = PreviewTime + SpawnTimeOffset;
                 _nextSpawnTime = PreviewTime + SPAWN_FREQ;
@@ -636,12 +750,19 @@ namespace YARG.Settings.Preview
                 SpawnNote(note);
             }
 
-            _trackMaterial.SetTrackScroll(PreviewTime, NOTE_SPEED);
+            var spawned = new List<IPoolable>(_notePool.AllSpawned);
+            foreach (var pooled in spawned)
+            {
+                ((FakeNote)pooled).RefreshPosition();
+            }
+            if (_trackMaterial != null) _trackMaterial.SetTrackScroll(PreviewTime, NOTE_SPEED);
         }
 
         private void OnDestroy()
         {
-            SettingsMenu.Instance.SettingChanged -= OnSettingChanged;
+            if (_settingsMenu != null) _settingsMenu.SettingChanged -= OnSettingChanged;
+            if (_notePool != null) _notePool.ReturnAllObjects();
+            if (_notePrefab != null) Destroy(_notePrefab);
         }
 
         // --- Pro-keys highway overlay ---

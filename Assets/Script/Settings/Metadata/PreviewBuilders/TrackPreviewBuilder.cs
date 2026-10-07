@@ -1,5 +1,7 @@
-﻿using Cysharp.Threading.Tasks;
+﻿using System;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
+using Object = UnityEngine.Object;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 using YARG.Core;
@@ -16,8 +18,9 @@ namespace YARG.Settings.Metadata
     public class TrackPreviewBuilder : IPreviewBuilder
     {
         // Prefabs needed for this tab type
-        private static GameObject _trackPreview;
-        private static GameObject _trackPreviewUI;
+        private GameObject _trackPreview;
+        private GameObject _trackPreviewUI;
+        private readonly Func<string, GameObject> _loadAsset;
 
         public GameMode? StartingGameMode { get; set; }
 
@@ -126,6 +129,13 @@ namespace YARG.Settings.Metadata
         /// <summary>
         /// Forwards to <see cref="FakeTrackPlayer.SpotlightMiss"/>.
         /// </summary>
+        public void SpotlightEliteRole(YARG.Core.Game.EliteDrumsColorRole role, bool starPower,
+            ElitePreviewDescriptor? descriptor = null)
+        {
+            if (_currentTrackPreview != null)
+                _currentTrackPreview.SpotlightEliteRole(role, starPower, descriptor);
+        }
+
         public void SpotlightMiss()
         {
             if (_currentTrackPreview != null)
@@ -145,8 +155,10 @@ namespace YARG.Settings.Metadata
             }
         }
 
-        public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false, bool forceStarPower = false)
+        public TrackPreviewBuilder(bool forceShowHitWindow = false, bool forceGroove = false,
+            bool forceStarPower = false, Func<string, GameObject> loadAsset = null)
         {
+            _loadAsset = loadAsset ?? (address => Addressables.LoadAssetAsync<GameObject>(address).WaitForCompletion());
             _forceShowHitWindow = forceShowHitWindow;
             _forceGroove = forceGroove;
             ForceStarPower = forceStarPower;
@@ -156,9 +168,7 @@ namespace YARG.Settings.Metadata
         {
             if (_trackPreview == null)
             {
-                 _trackPreview = Addressables
-                    .LoadAssetAsync<GameObject>("SettingPreviews/TrackPreview")
-                    .WaitForCompletion();
+                _trackPreview = _loadAsset("SettingPreviews/TrackPreview");
             }
             var trackObj = Object.Instantiate(_trackPreview, worldContainer);
             var trackPreview = trackObj.GetComponentInChildren<FakeTrackPlayer>();
@@ -183,9 +193,7 @@ namespace YARG.Settings.Metadata
         {
             if (_trackPreviewUI == null)
             {
-                _trackPreviewUI = Addressables
-                    .LoadAssetAsync<GameObject>("SettingPreviews/TrackPreviewUI")
-                    .WaitForCompletion();
+                _trackPreviewUI = _loadAsset("SettingPreviews/TrackPreviewUI");
             }
             var go = Object.Instantiate(_trackPreviewUI, uiContainer);
 

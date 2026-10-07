@@ -1358,7 +1358,7 @@ namespace YARG.Menu.Maestro
 
         private IReadOnlyList<Modifier> GetModifierOptions(MaestroStagedPlayer player)
         {
-            var available = Session.GetAvailableModifiers(_selectedProfileId, true);
+            var available = Session.GetAvailableModifiers(player.ProfileId, true);
             if (player.GameMode is not GameMode.Vocals and not GameMode.PartyVocals)
                 return available.Where(modifier =>
                     !MaestroSelectionRules.IsAccessibilityModifier(modifier)).ToArray();

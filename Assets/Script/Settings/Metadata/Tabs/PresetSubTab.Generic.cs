@@ -136,12 +136,15 @@ namespace YARG.Settings.Metadata
             public readonly string Name;
             public readonly bool CollapsedByDefault;
             public readonly FieldSubGroup[] SubGroups;
+            public readonly EliteDrumsColorRole? CopyRole;
 
-            public FieldGroup(string name, bool collapsedByDefault, FieldSubGroup[] subGroups)
+            public FieldGroup(string name, bool collapsedByDefault, FieldSubGroup[] subGroups,
+                EliteDrumsColorRole? copyRole = null)
             {
                 Name = name;
                 CollapsedByDefault = collapsedByDefault;
                 SubGroups = subGroups;
+                CopyRole = copyRole;
             }
         }
 
@@ -163,12 +166,80 @@ namespace YARG.Settings.Metadata
         private const string NotesSub = "Notes";
         private const string FretSub = "Fret";
 
+        private static bool ShouldShowCopyFromNote(string subSection, FieldGroup group, FieldSubGroup subGroup) =>
+            subSection == nameof(ColorProfile.EliteDrums)
+                ? group.CopyRole.HasValue && subGroup.Name == NotesSub
+                : subGroup.Name == FretSub;
+
         private static readonly Dictionary<string, FieldGroup[]> ColorFieldGroups = new()
         {
             [nameof(ColorProfile.FiveFretGuitar)] = BuildGuitarGroups(),
             [nameof(ColorProfile.FourLaneDrums)] = BuildDrumsGroups(cymbal: true),
             [nameof(ColorProfile.FiveLaneDrums)] = BuildDrumsGroups(cymbal: false),
+            [nameof(ColorProfile.EliteDrums)] = BuildEliteDrumsGroups(),
         };
+
+        private static FieldGroup[] BuildEliteDrumsGroups()
+        {
+            var groups = new List<FieldGroup>();
+            foreach (EliteDrumsColorRole role in Enum.GetValues(typeof(EliteDrumsColorRole)))
+            {
+                if (role == EliteDrumsColorRole.Wildcard) continue;
+                groups.Add(new FieldGroup(role.ToString(), true, new[]
+                {
+                    new FieldSubGroup(NotesSub, true, $"{role}Note", $"{role}Starpower"),
+                    new FieldSubGroup("Input", false, $"{role}InputFret", $"{role}InputEffect"),
+                }, role));
+            }
+            foreach (ColorProfile.EliteDrumsFret position in Enum.GetValues(typeof(ColorProfile.EliteDrumsFret)))
+            {
+                groups.Add(new FieldGroup($"MergedLane{(int) position}", true, new[]
+                {
+                    new FieldSubGroup(FretSub, false,
+                        $"{position}Fret", $"{position}FretInner", $"{position}Particles"),
+                }));
+            }
+            groups.Add(new FieldGroup("General", true, new[]
+            {
+                new FieldSubGroup(null, true, "Metal", "MetalStarPower", "Miss"),
+            }));
+            return groups.ToArray();
+        }
+
+        private static string GetEliteCopyTarget(EliteDrumsColorRole role) => role switch
+        {
+            EliteDrumsColorRole.Snare => "Snare",
+            EliteDrumsColorRole.HatIndifferent or EliteDrumsColorRole.HatOpen
+                or EliteDrumsColorRole.HatClosed or EliteDrumsColorRole.Stomp
+                or EliteDrumsColorRole.Splash => "Hat",
+            EliteDrumsColorRole.LeftCrash or EliteDrumsColorRole.Tom1 => "LeftCrashTom1",
+            EliteDrumsColorRole.Ride or EliteDrumsColorRole.Tom2 => "RideTom2",
+            EliteDrumsColorRole.RightCrash or EliteDrumsColorRole.Tom3 => "RightCrashTom3",
+            EliteDrumsColorRole.Kick or EliteDrumsColorRole.KickFlam => "Kick",
+            EliteDrumsColorRole.DoubleKick => "DoubleKick",
+            _ => null,
+        };
+
+        private static bool CopyEliteNoteToFret(ColorProfile preset, EliteDrumsColorRole role)
+        {
+            string target = GetEliteCopyTarget(role);
+            if (target is null) return false;
+            var color = preset.EliteDrums.GetNoteColor(role);
+            foreach (var suffix in new[] { "Fret", "FretInner", "Particles" })
+                typeof(ColorProfile.EliteDrumsColors).GetField(target + suffix).SetValue(preset.EliteDrums, color);
+            return true;
+        }
+
+        private static bool TryGetEliteNoteRole(string fieldName, out EliteDrumsColorRole role,
+            out bool starPower)
+        {
+            starPower = fieldName.EndsWith("Starpower", StringComparison.Ordinal);
+            string suffix = starPower ? "Starpower" : "Note";
+            role = default;
+            return fieldName.EndsWith(suffix, StringComparison.Ordinal)
+                && Enum.TryParse(fieldName[..^suffix.Length], out role)
+                && Enum.IsDefined(typeof(EliteDrumsColorRole), role);
+        }
 
         private static FieldGroup[] BuildGuitarGroups()
         {
@@ -281,6 +352,7 @@ namespace YARG.Settings.Metadata
             (nameof(ColorProfile.FourLaneDrums),  "Four Lane Drums",  GameMode.FourLaneDrums),
             (nameof(ColorProfile.FiveLaneDrums),  "Five Lane Drums",  GameMode.FiveLaneDrums),
             (nameof(ColorProfile.ProKeys),        "Pro Keys",         GameMode.ProKeys),
+            (nameof(ColorProfile.EliteDrums),      "Elite Drums",      GameMode.EliteDrums),
         };
 
         // Engine presets have a vocals section, but ColorProfile does not. Keep
@@ -369,6 +441,12 @@ namespace YARG.Settings.Metadata
                 {
                     foreach (var subField in field.FieldType.GetFields())
                     {
+                        // Keep legacy wildcard colors in saved profiles, but never expose them
+                        // as editable settings: playable wildcard colors are fixed by the provider.
+                        if (typeof(T) == typeof(ColorProfile) && field.Name == nameof(ColorProfile.EliteDrums)
+                            && (subField.Name is nameof(ColorProfile.EliteDrumsColors.WildcardNote)
+                                or nameof(ColorProfile.EliteDrumsColors.WildcardStarpower)))
+                            continue;
                         ScanAndAddField(subField, field, _fields);
                     }
 
@@ -1125,7 +1203,7 @@ namespace YARG.Settings.Metadata
                         SpawnSubHeader(container, $"  {LocalizeGroupName(subGroup.Name)}");
                         _fieldIndex++;
 
-                        if (subGroup.Name == FretSub)
+                        if (ShouldShowCopyFromNote(_subSection, group, subGroup))
                         {
                             var subHeaderGo = container.GetChild(container.childCount - 1).gameObject;
                             AddCopyFromNoteButton(subHeaderGo, group, subGroup, fieldLookup, preset, navGroup);
@@ -1329,12 +1407,16 @@ namespace YARG.Settings.Metadata
             {
                 return;
             }
-            // The base note is the first color field of the Notes sub-group.
+            bool elite = _subSection == nameof(ColorProfile.EliteDrums);
+            if (elite && (!group.CopyRole.HasValue || GetEliteCopyTarget(group.CopyRole.Value) is null))
+                return;
+
+            // Legacy lane groups use their base note; Elite groups name the chosen role explicitly.
             if (group.SubGroups.Length == 0 || group.SubGroups[0].FieldNames.Length == 0)
             {
                 return;
             }
-            string baseFieldName = group.SubGroups[0].FieldNames[0];
+            string baseFieldName = elite ? $"{group.CopyRole.Value}Note" : group.SubGroups[0].FieldNames[0];
             if (!fieldLookup.TryGetValue(baseFieldName, out var baseField)
                 || baseField.Field.FieldType != typeof(SystemColor))
             {
@@ -1366,17 +1448,25 @@ namespace YARG.Settings.Metadata
             {
                 void Apply()
                 {
-                    ApplyBaseNoteColorToFretFields(baseField, fretSub, fieldLookup, preset);
+                    if (elite)
+                        CopyEliteNoteToFret((ColorProfile) (object) preset, group.CopyRole.Value);
+                    else
+                        ApplyBaseNoteColorToFretFields(baseField, fretSub, fieldLookup, preset);
                     DialogManager.Instance.ClearDialog();
 
                     // Rebuild so the visible color rows re-read the preset values
                     // (the shared ColorSetting cache is cleared on rebuild).
                     SettingsMenu.Instance.RefreshSettingsKeepPosition();
+                    SettingsMenu.Instance.OnSettingChanged();
                 }
 
                 ShowCompactConfirmation(
                     Localize.Key("Settings.PresetSetting.Dialog.CopyFromNote.Title"),
-                    Localize.Key("Settings.PresetSetting.Dialog.CopyFromNote.Message"),
+                    elite
+                        ? Localize.KeyFormat("Settings.PresetSetting.Dialog.CopyFromEliteNote.Message",
+                            LocalizeGroupName(group.CopyRole.Value.ToString()),
+                            LocalizeGroupName("MergedLane" + (int) Enum.Parse<ColorProfile.EliteDrumsFret>(GetEliteCopyTarget(group.CopyRole.Value))))
+                        : Localize.Key("Settings.PresetSetting.Dialog.CopyFromNote.Message"),
                     "Menu.Common.Apply", MenuData.Colors.ConfirmButton, Apply);
             }
 
@@ -1659,6 +1749,14 @@ namespace YARG.Settings.Metadata
             if (_presetRef is not ColorProfile || _subSection is null) return;
             if (PreviewBuilder is not TrackPreviewBuilder tpb) return;
 
+            if (_subSection == nameof(ColorProfile.EliteDrums)
+                && TryGetEliteNoteRole(fieldName, out var eliteRole, out var eliteStarPower))
+            {
+                tpb.SpotlightEliteRole(eliteRole, eliteStarPower,
+                    YARG.Settings.Preview.EliteDrumsFakeNoteGenerator.Describe(eliteRole));
+                return;
+            }
+
             if (fieldName.StartsWith("DoubleKick")) return;
 
             // Note-type spotlights for strip emission settings — show all taps
@@ -1776,7 +1874,11 @@ namespace YARG.Settings.Metadata
             int dot = unlocalizedName.IndexOf('.');
             if (dot < 0 || unlocalizedName[..dot] != typeof(T).Name) return;
 
-            SpotlightFieldLane(unlocalizedName[(dot + 1)..]);
+            string fieldName = unlocalizedName[(dot + 1)..];
+            const string ELITE_PREFIX = "EliteDrums.";
+            if (fieldName.StartsWith(ELITE_PREFIX, StringComparison.Ordinal))
+                fieldName = fieldName[ELITE_PREFIX.Length..];
+            SpotlightFieldLane(fieldName);
         }
 
         /// <summary>
@@ -1825,7 +1927,9 @@ namespace YARG.Settings.Metadata
             {
                 var setting = GetOrCreateColorSetting(field, preset);
 
-                var visual = CreateField(container, navGroup, typeof(T).Name, field.Field.Name,
+                string labelName = _subSection == nameof(ColorProfile.EliteDrums)
+                    ? $"EliteDrums.{field.Field.Name}" : field.Field.Name;
+                var visual = CreateField(container, navGroup, typeof(T).Name, labelName,
                     setting, _hasDescriptions);
 
                 // Confirm on a color row opens the color picker (the standard

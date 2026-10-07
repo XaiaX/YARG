@@ -400,7 +400,8 @@ namespace YARG.Gameplay.Visuals
             base.InitializeElement();
             ResetGemGroups();
             ResetStompGroups();
-            bool foot = EliteDrumsPlayer.IsFootPad(NoteRef.Pad);
+            bool wildcard = NoteRef.Pad == (int) EliteDrumNote.EliteDrumPad.Wildcard;
+            bool foot = EliteDrumsPlayer.IsFootPad(NoteRef.Pad) || wildcard;
             int lane = Player.GetVisualPosition(NoteRef.Pad);
             transform.localPosition = foot ? Vector3.zero :
                 new Vector3(GetElementX(lane, Player.LaneCount), 0, 0);
@@ -426,7 +427,9 @@ namespace YARG.Gameplay.Visuals
             NoteGroup = groups[group];
             if (splitFlam)
                 InitializeSplitFlam(group, GetElementX(EliteDrumsPlayer.GetLane(NoteRef.Pad), Player.LaneCount));
-            if (paired)
+            if (wildcard)
+                FitGemWidth(group, TrackPlayer.TRACK_WIDTH, 0f);
+            else if (paired)
                 FitBarWidth(targetWidth, pairedX);
             else if (pairedTomCymbal)
             {
@@ -477,10 +480,11 @@ namespace YARG.Gameplay.Visuals
         {
             if (IsSplitFlam(note, splitEliteFlamGems))
                 return GetSplitGroup(note, useCymbalModels);
-            if (EliteDrumsPlayer.IsFootPad(note.Pad)) return KICK;
+            if (EliteDrumsPlayer.IsFootPad(note.Pad) ||
+                note.Pad == (int) EliteDrumNote.EliteDrumPad.Wildcard) return KICK;
             // The authored flam flag is a visual cue in native V1, not a second scored hit.
             if (note.IsFlam || note.IsFlatFlam) return ACCENT;
-            // Both playable pedal events use the bar; their 1x/2x colors distinguish stomp and splash.
+            // Both playable pedal events use the bar; dedicated roles distinguish stomp and splash.
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
                 return STOMP;
             bool cymbal = EliteDrumsPlayer.IsCymbal(note.Pad);
@@ -489,56 +493,26 @@ namespace YARG.Gameplay.Visuals
             return cymbal && useCymbalModels ? CYMBAL : NORMAL;
         }
 
-        internal static (bool FourLane, int Index) GetGemColorSlot(EliteDrumNote note) =>
-            GetGemColorSlot(note, false);
-
-        internal static (bool FourLane, int Index) GetGemColorSlot(EliteDrumNote note, bool splitEliteFlamGems)
+        internal static (System.Drawing.Color Body, System.Drawing.Color Emission, System.Drawing.Color Metal)
+            GetGemColors(ColorProfile.EliteDrumsColors colors, EliteDrumNote note, bool splitEliteFlamGems,
+                bool starPower, bool missed)
         {
-            if ((note.IsFlam || note.IsFlatFlam) && !IsSplitFlam(note, splitEliteFlamGems) &&
-                note.Pad != (int) EliteDrumNote.EliteDrumPad.Kick &&
-                note.Pad != (int) EliteDrumNote.EliteDrumPad.HatPedal)
-                return (true, (int) ColorProfile.FourLaneDrumsFret.RedDrum);
-
-            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.Kick)
-                return (false, note.IsDoubleKick || note.IsFlam || note.IsFlatFlam ?
-                    (int) ColorProfile.FiveLaneDrumsFret.DoubleKick :
-                    (int) ColorProfile.FiveLaneDrumsFret.Kick);
-
-            // Pedal bars stay on the hi-hat lane; splash uses the 2x kick color, stomp the 1x.
-            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
-                return (true, note.IsSplash ? (int) ColorProfile.FourLaneDrumsFret.DoubleKick :
-                    (int) ColorProfile.FourLaneDrumsFret.Kick);
-
-            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HiHat)
-                return (true, note.HatState switch
-                {
-                    EliteDrumNote.EliteDrumsHatState.Open => (int) ColorProfile.FourLaneDrumsFret.BlueCymbal,
-                    EliteDrumNote.EliteDrumsHatState.Closed => (int) ColorProfile.FourLaneDrumsFret.GreenCymbal,
-                    _ => (int) ColorProfile.FourLaneDrumsFret.YellowCymbal,
-                });
-
-            return (EliteDrumNote.EliteDrumPad) note.Pad switch
-            {
-                EliteDrumNote.EliteDrumPad.Tom1 => (true, (int) ColorProfile.FourLaneDrumsFret.YellowDrum),
-                EliteDrumNote.EliteDrumPad.Tom2 => (true, (int) ColorProfile.FourLaneDrumsFret.BlueDrum),
-                EliteDrumNote.EliteDrumPad.Tom3 => (true, (int) ColorProfile.FourLaneDrumsFret.GreenDrum),
-                _ => (false, EliteDrumsPlayer.GetColorIndex(note.Pad)),
-            };
+            // Core owns note identity, including future playable roles such as wildcard.
+            // Mirrored placement and shared tom/cymbal positions never select colors.
+            var role = EliteDrumsColorRoles.GetRole(note, IsSplitFlam(note, splitEliteFlamGems));
+            var original = colors.GetNoteColor(role);
+            var body = missed ? colors.Miss : starPower ? colors.GetNoteStarPowerColor(role) : original;
+            return (body, original, colors.GetMetalColor(starPower));
         }
 
         private void UpdateColor()
         {
             if (NoteGroup == null || NoteRef.WasHit) return;
-            var fiveLane = Player.Player.ColorProfile.FiveLaneDrums;
-            var fourLane = Player.Player.ColorProfile.FourLaneDrums;
             bool splitFlam = IsSplitFlam(NoteRef, SettingsManager.Settings.SplitEliteFlamGems.Value);
-            var (useFourLane, index) = GetGemColorSlot(NoteRef, splitFlam);
-            var original = useFourLane ? fourLane.GetNoteColor(index) : fiveLane.GetNoteColor(index);
-            var starPowerColor = useFourLane ? fourLane.GetNoteStarPowerColor(index) :
-                fiveLane.GetNoteStarPowerColor(index);
-            var color = NoteRef.WasMissed ? fiveLane.Miss : IsStarPowerVisible ? starPowerColor : original;
+            var (color, original, metal) = GetGemColors(Player.Player.ColorProfile.EliteDrums,
+                NoteRef, splitFlam, IsStarPowerVisible, NoteRef.WasMissed);
             NoteGroup.SetColorWithEmission(color.ToUnityColor(), original.ToUnityColor());
-            NoteGroup.SetMetalColor(fiveLane.GetMetalColor(IsStarPowerVisible).ToUnityColor());
+            NoteGroup.SetMetalColor(metal.ToUnityColor());
             if (IsSplitFlam(NoteRef, SettingsManager.Settings.SplitEliteFlamGems.Value))
             {
                 int baseIndex = GetSplitGroup() * 2;
@@ -546,7 +520,7 @@ namespace YARG.Gameplay.Visuals
                 for (int side = SPLIT_LEFT; side <= SPLIT_RIGHT; side++)
                 {
                     groups[baseIndex + side].SetColorWithEmission(color.ToUnityColor(), original.ToUnityColor());
-                    groups[baseIndex + side].SetMetalColor(fiveLane.GetMetalColor(IsStarPowerVisible).ToUnityColor());
+                    groups[baseIndex + side].SetMetalColor(metal.ToUnityColor());
                 }
             }
         }

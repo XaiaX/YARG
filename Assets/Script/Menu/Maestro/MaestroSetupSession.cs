@@ -44,6 +44,7 @@ namespace YARG.Menu.Maestro
         public Instrument PreferredInstrument { get; internal set; }
         public Difficulty Difficulty { get; internal set; }
         public Modifier Modifiers { get; internal set; }
+        internal YargProfile ModifierState { get; } = new();
         public bool LeftyFlip { get; internal set; }
         public bool AutoHiHatPedal { get; internal set; }
         public bool NoHiHatPedal { get; internal set; }
@@ -99,7 +100,10 @@ namespace YARG.Menu.Maestro
                     ? Instrument.Harmony
                     : Instrument.Vocals;
             Difficulty = player.Profile.CurrentDifficulty;
-            Modifiers = player.Profile.CurrentModifiers;
+            ModifierState.CopyModifierState(player.Profile);
+            ModifierState.GameMode = GameMode;
+            ModifierState.InitializeLiveMidiDrumModifiers();
+            Modifiers = ModifierState.CurrentModifiers;
             LeftyFlip = player.Profile.LeftyFlip;
             AutoHiHatPedal = player.Profile.AutoHiHatPedal;
             NoHiHatPedal = player.Profile.NoHiHatPedal;
@@ -114,7 +118,8 @@ namespace YARG.Menu.Maestro
             // equals it; capture the target itself so staging, commit, and
             // rollback can reason about the explicit choice without touching
             // the live profile.
-            EliteDrumsDownchartTarget = player.Profile.EliteDrumsDownchartTarget;
+            EliteDrumsDownchartTarget = GameMode == GameMode.EliteDrums
+                ? null : player.Profile.EliteDrumsDownchartTarget;
         }
     }
 
@@ -165,6 +170,13 @@ namespace YARG.Menu.Maestro
             CompletedPlayerBoundary = completedPlayerBoundary;
             VocalPrimaryProfileId = vocalPrimaryProfileId;
         }
+
+        /// <summary>Creates an independent setup from an explicit roster and song list,
+        /// without reading remote drafts or replacing the active menu session.</summary>
+        public static MaestroSetupSession Create(IEnumerable<YargPlayer> players,
+            IEnumerable<SongEntry> songs, int completedPlayerBoundary = 0,
+            Guid vocalPrimaryProfileId = default) =>
+            new(players, songs, completedPlayerBoundary, vocalPrimaryProfileId);
 
         public static MaestroSetupSession Begin(IEnumerable<YargPlayer> players,
             IEnumerable<SongEntry> songs, int completedPlayerBoundary = 0,
@@ -338,6 +350,8 @@ namespace YARG.Menu.Maestro
 
         private List<Instrument> GetNativeAvailableInstruments(MaestroStagedPlayer player)
         {
+            if (player.GameMode == GameMode.EliteDrums)
+                return MaestroSelectionRules.GetMidiDrumOutputs(_songs, player.Modifiers).ToList();
             try
             {
                 return GetPossibleInstruments(player.GameMode)
@@ -377,7 +391,7 @@ namespace YARG.Menu.Maestro
         public IReadOnlyList<Instrument> GetAvailableEliteDrumsDownchartTargets(Guid profileId)
         {
             if (!_players.TryGetValue(profileId, out var player) || _songs.Count == 0 ||
-                !EliteDrumsDownchartsEnabled)
+                player.GameMode == GameMode.EliteDrums || !EliteDrumsDownchartsEnabled)
             {
                 return Array.Empty<Instrument>();
             }
@@ -463,8 +477,9 @@ namespace YARG.Menu.Maestro
             // only follows an explicit native selection when the prior preference
             // was itself an available native option, so a player who was forced
             // onto a fallback never has their real preference overwritten.
-            if (instrument != priorPreferred &&
-                GetNativeAvailableInstruments(player).Contains(priorPreferred))
+            if (player.GameMode == GameMode.EliteDrums ||
+                (instrument != priorPreferred &&
+                 GetNativeAvailableInstruments(player).Contains(priorPreferred)))
             {
                 player.PreferredInstrument = instrument;
             }
@@ -533,6 +548,14 @@ namespace YARG.Menu.Maestro
             if (_players.TryGetValue(profileId, out var player))
             {
                 player.Modifiers = modifiers;
+                if (player.GameMode == GameMode.EliteDrums)
+                {
+                    foreach (var modifier in GetAvailableModifiers(profileId, true))
+                    {
+                        if ((modifier & YargProfile.MIDI_DRUM_PREFERENCES) != 0)
+                            StageModifier(profileId, modifier, (modifiers & modifier) != 0);
+                    }
+                }
                 NormalizeModifiers(player);
             }
         }
@@ -545,7 +568,16 @@ namespace YARG.Menu.Maestro
 
             player.Modifiers = MaestroSelectionRules.ToggleModifier(
                 player.Modifiers, modifier, enabled);
+            if ((modifier & YargProfile.MIDI_DRUM_PREFERENCES) != 0)
+            {
+                if (enabled)
+                    player.ModifierState.AddSingleModifier(modifier);
+                else
+                    player.ModifierState.RemoveModifiers(modifier);
+            }
             NormalizeModifiers(player);
+            if (player.GameMode == GameMode.EliteDrums && _songs.Count > 0)
+                NormalizeDependentSelections(player);
         }
 
         public void StageLeftyFlip(Guid profileId, bool enabled)
@@ -619,7 +651,7 @@ namespace YARG.Menu.Maestro
             public readonly long InputCalibrationMilliseconds;
             public readonly byte EffectiveHarmonyIndex;
             public readonly byte HarmonyIndexFallback;
-            public readonly Modifier CurrentModifiers;
+            public readonly YargProfile ModifierState = new();
             public readonly bool LeftyFlip;
             public readonly bool AutoHiHatPedal;
             public readonly bool NoHiHatPedal;
@@ -643,7 +675,7 @@ namespace YARG.Menu.Maestro
                 InputCalibrationMilliseconds = profile.InputCalibrationMilliseconds;
                 EffectiveHarmonyIndex = profile.EffectiveHarmonyIndex;
                 HarmonyIndexFallback = profile.HarmonyIndexFallback;
-                CurrentModifiers = profile.CurrentModifiers;
+                ModifierState.CopyModifierState(profile);
                 LeftyFlip = profile.LeftyFlip;
                 AutoHiHatPedal = profile.AutoHiHatPedal;
                 NoHiHatPedal = profile.NoHiHatPedal;
@@ -664,7 +696,7 @@ namespace YARG.Menu.Maestro
                 Profile.HighwayLength = HighwayLength;
                 Profile.InputCalibrationMilliseconds = InputCalibrationMilliseconds;
                 Profile.RestoreHarmonyIndexState(EffectiveHarmonyIndex, HarmonyIndexFallback);
-                Profile.RestoreSessionModifiers(CurrentModifiers);
+                Profile.CopyModifierState(ModifierState);
                 Profile.LeftyFlip = LeftyFlip;
                 Profile.AutoHiHatPedal = AutoHiHatPedal;
                 Profile.NoHiHatPedal = NoHiHatPedal;
@@ -765,6 +797,7 @@ namespace YARG.Menu.Maestro
                         if (modifier != Modifier.None && (staged.Modifiers & modifier) != 0)
                             modifierProfile.AddSingleModifier(modifier);
                     }
+                    profile.CopyLiveMidiDrumPreferences(staged.ModifierState);
                     profile.ApplySessionModifiers(modifierProfile);
                 }
 
@@ -931,7 +964,7 @@ namespace YARG.Menu.Maestro
                     if (draft.PendingDifficulty.HasValue)
                         staged.Difficulty = draft.PendingDifficulty.Value;
                     if (draft.PendingModifiers.HasValue)
-                        staged.Modifiers = draft.PendingModifiers.Value;
+                        StageModifiers(staged.ProfileId, draft.PendingModifiers.Value);
                     if (draft.PendingNoteSpeed.HasValue)
                         staged.NoteSpeed = draft.PendingNoteSpeed.Value;
                     if (draft.PendingHighwayLength.HasValue)
@@ -1061,6 +1094,12 @@ namespace YARG.Menu.Maestro
 
         private static void NormalizeModifiers(MaestroStagedPlayer player)
         {
+            player.ModifierState.GameMode = player.GameMode;
+            player.ModifierState.InitializeLiveMidiDrumModifiers();
+            player.Modifiers = (player.Modifiers & ~YargProfile.MIDI_DRUM_PREFERENCES) |
+                (player.GameMode == GameMode.EliteDrums
+                    ? player.ModifierState.CurrentModifiers & YargProfile.MIDI_DRUM_PREFERENCES
+                    : Modifier.None);
             try
             {
                 var (possible, excusable) = player.GameMode.PossibleModifiers(player.Instrument);
@@ -1119,6 +1158,8 @@ namespace YARG.Menu.Maestro
 
         private bool IsModeAvailableForPlayer(MaestroStagedPlayer player)
         {
+            if (player.GameMode == GameMode.EliteDrums)
+                return MaestroSelectionRules.GetMidiDrumOutputs(_songs, player.Modifiers).Count > 0;
             if (IsVocal(player.GameMode))
                 return GetPossibleInstruments(player.GameMode)
                     .Any(instrument => IsNativeInstrumentAvailable(player, player.GameMode, instrument));
@@ -1139,9 +1180,11 @@ namespace YARG.Menu.Maestro
             if (HasActiveDownchartTarget(player, out var target))
                 return _songs.All(song => HasPlayableDownchartDifficulty(song, target, difficulty));
 
-            if (player.GameMode == GameMode.EliteDrums &&
-                player.PreferredInstrument == Instrument.EliteDrums)
-                return _songs.All(song => DrumDifficultySelector.HasNativeEliteCandidate(song, difficulty));
+            if (player.GameMode == GameMode.EliteDrums)
+                // MIDI separates extra kicks from the base tier, so ExpertPlus is
+                // never an offered tier; refuse it before the resolver rejects it.
+                return difficulty != Difficulty.ExpertPlus && MaestroSelectionRules.IsMidiDrumTierPlayable(
+                    _songs, player.Instrument, difficulty, player.Modifiers);
 
             return _songs.All(song => HasPlayableDifficulty(song, player.Instrument, difficulty));
         }
@@ -1168,6 +1211,8 @@ namespace YARG.Menu.Maestro
         private bool IsNativeInstrumentAvailable(MaestroStagedPlayer target, GameMode mode,
             Instrument instrument)
         {
+            if (mode == GameMode.EliteDrums)
+                return MaestroSelectionRules.GetMidiDrumOutputs(_songs, target.Modifiers).Contains(instrument);
             try
             {
                 if (!GetPossibleInstruments(mode).Contains(instrument) ||

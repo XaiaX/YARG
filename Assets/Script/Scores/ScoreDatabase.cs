@@ -66,17 +66,60 @@ namespace YARG.Scores
     /// </remarks>
     public class ScoreDatabase : IDisposable
     {
+        public const int CURRENT_SCHEMA_VERSION = 1;
+
         public SQLiteConnection _db;
         private int _currentLibraryHashRevision = -1;
 
         public ScoreDatabase(string path)
         {
             _db = new SQLiteConnection(path);
+            try
+            {
+                InitializeDatabase();
+            }
+            catch
+            {
+                // A failed upgrade must not leave a native connection holding the file open.
+                _db.Dispose();
+                throw;
+            }
+        }
 
-            // Initialize tables
-            _db.CreateTable<GameRecord>();
-            _db.CreateTable<PlayerScoreRecord>();
-            _db.CreateTable<PlayerInfoRecord>();
+        private void InitializeDatabase()
+        {
+            _db.RunInTransaction(() =>
+            {
+                int version = _db.ExecuteScalar<int>("PRAGMA user_version");
+                if (version > CURRENT_SCHEMA_VERSION)
+                {
+                    throw new InvalidOperationException($"Score database schema {version} is newer than supported schema {CURRENT_SCHEMA_VERSION}.");
+                }
+
+                // Inspect before sqlite-net automatically adds mapped columns. Otherwise old Elite
+                // records would acquire the Classic default and lose their unknown provenance.
+                bool hasScores = _db.ExecuteScalar<int>(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'PlayerScores'") != 0;
+                if (version < 1 && hasScores &&
+                    !_db.GetTableInfo("PlayerScores").Any(column => column.Name == "DrumScoreCategory"))
+                {
+                    _db.Execute("ALTER TABLE PlayerScores ADD COLUMN DrumScoreCategory INTEGER NOT NULL DEFAULT 0");
+                    _db.Execute(
+                        "UPDATE PlayerScores SET DrumScoreCategory = ? WHERE Instrument = ?",
+                        (int) DrumScoreCategory.LegacyUnknownElite, (int) Instrument.EliteDrums);
+                }
+
+                _db.CreateTable<GameRecord>();
+                _db.CreateTable<PlayerScoreRecord>();
+                _db.CreateTable<PlayerInfoRecord>();
+                _db.Execute(
+                    @"CREATE INDEX IF NOT EXISTS IX_PlayerScores_PlayerInstrumentCategoryReplayGameRecord
+                    ON PlayerScores(PlayerId, Instrument, DrumScoreCategory, IsReplay, GameRecordId, Difficulty)");
+                if (version < CURRENT_SCHEMA_VERSION)
+                {
+                    _db.Execute($"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}");
+                }
+            });
 
             // These queries filter player scores by player/instrument/replay status and then join through
             // GameRecordId. The individual column indexes created by sqlite-net cannot cover that access pattern.
@@ -765,6 +808,38 @@ namespace YARG.Scores
             parameters.AddRange(BuildInstrumentParams(instruments));
 
             return FindWithQuery<PlayerScoreRecord>(query, parameters.ToArray());
+        }
+
+        /// <summary>
+        /// Queries one resolved MIDI drum score context. Kick policy is deliberately not a score key.
+        /// Difficulty normalization is a query projection only; returned historical records are unchanged.
+        /// </summary>
+        public PlayerScoreRecord QueryPlayerMidiDrumScore(HashWrapper songChecksum, Guid playerId,
+            Instrument output, Difficulty baseDifficulty, DrumScoreCategory category, HighScoreHistoryMode mode)
+        {
+            if (!ResolvedDrumPlayback.IsOutput(output)) throw new ArgumentOutOfRangeException(nameof(output));
+            if (baseDifficulty == Difficulty.ExpertPlus) baseDifficulty = Difficulty.Expert;
+            string tier = $"CASE WHEN ps.Difficulty = {(int) Difficulty.ExpertPlus} THEN {(int) Difficulty.Expert} ELSE ps.Difficulty END";
+            bool currentOnly = mode is HighScoreHistoryMode.HighestScoreCurrentDifficulty or
+                HighScoreHistoryMode.HighestPercentageCurrentDifficulty;
+            string order = mode switch
+            {
+                HighScoreHistoryMode.HighestScoreOverall or HighScoreHistoryMode.HighestScoreCurrentDifficulty => "ps.Score DESC",
+                HighScoreHistoryMode.HighestScoreDifficulty => $"{tier} DESC, ps.Score DESC",
+                HighScoreHistoryMode.HighestPercentageOverall or HighScoreHistoryMode.HighestPercentageCurrentDifficulty =>
+                    "ps.Percent DESC, ps.Score DESC, ps.IsFc DESC",
+                HighScoreHistoryMode.HighestPercentageDifficulty => $"{tier} DESC, ps.Percent DESC, ps.Score DESC, ps.IsFc DESC",
+                _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+            };
+            string query = $@"SELECT ps.* FROM PlayerScores ps
+                INNER JOIN GameRecords gr ON ps.GameRecordId = gr.Id
+                WHERE gr.SongChecksum = ? AND ps.PlayerId = ? AND ps.Instrument = ?
+                    AND ps.DrumScoreCategory = ? AND ps.IsReplay = 0
+                    {(currentOnly ? $"AND ({tier}) = ?" : "")}
+                ORDER BY {order}, ps.Id DESC LIMIT 1";
+            var args = new List<object> { songChecksum.HashBytes, playerId, (int) output, (int) category };
+            if (currentOnly) args.Add((int) baseDifficulty);
+            return FindWithQuery<PlayerScoreRecord>(query, args.ToArray());
         }
 
         #endregion

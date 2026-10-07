@@ -21,8 +21,16 @@ namespace YARG.Helpers.Authoring
             EffectLights = GetComponentsInChildren<EffectLight>().ToList();
         }
 
+        private void EnsureInitialized()
+        {
+            // Prefabs held inactive (e.g. settings preview sources) never ran Awake.
+            EffectParticles ??= GetComponentsInChildren<EffectParticle>(true).ToList();
+            EffectLights ??= GetComponentsInChildren<EffectLight>(true).ToList();
+        }
+
         public void SetColor(Color c)
         {
+            EnsureInitialized();
             foreach (var particles in EffectParticles)
                 particles.InitializeColor(c);
             foreach (var lights in EffectLights)

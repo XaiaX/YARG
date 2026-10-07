@@ -119,6 +119,8 @@ namespace YARG.Gameplay.Visuals
             Initialize(top, inner, particles, openParticles);
 
             // Secondary half
+            _secondaryTopMaterials.Clear();
+            _secondaryInnerMaterials.Clear();
             _secondaryOriginalUnityTopColor = secondaryTop.ToUnityColor();
             _secondaryOriginalUnityInnerColor = secondaryInner.ToUnityColor();
             _secondaryOriginalEmissionColor = secondaryTop.ToUnityColor() * 11.5f;
@@ -304,6 +306,12 @@ namespace YARG.Gameplay.Visuals
             ThemeBind.HitEffect.Play();
         }
 
+        public void PlayHitParticles(System.Drawing.Color color)
+        {
+            ThemeBind.HitEffect.SetColor(color.ToUnityColor());
+            ThemeBind.HitEffect.Play();
+        }
+
         public void PlayFullWidthHitParticles()
         {
             ThemeBind.OpenHitEffect.Play();
@@ -316,6 +324,12 @@ namespace YARG.Gameplay.Visuals
 
         public void PlayMissParticles()
         {
+            ThemeBind.MissEffect.Play();
+        }
+
+        public void PlayMissParticles(System.Drawing.Color color)
+        {
+            ThemeBind.MissEffect.SetColor(color.ToUnityColor());
             ThemeBind.MissEffect.Play();
         }
 

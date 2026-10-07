@@ -387,6 +387,7 @@ namespace YARG.Menu.ProfileList
         internal static void ApplyGameModeSelection(YargProfile profile, GameMode gameMode)
         {
             profile.GameMode = gameMode;
+            profile.InitializeLiveMidiDrumModifiers();
 
             // Native Elite is the initial preference; a playable fallback is resolved per song.
             // Other modes retain their existing first-instrument default.

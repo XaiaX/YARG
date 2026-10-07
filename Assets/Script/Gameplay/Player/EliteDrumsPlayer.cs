@@ -27,6 +27,7 @@ namespace YARG.Gameplay.Player
         private const int FIXED_LANE_COUNT = 5;
         private readonly Dictionary<int, HighwayOrderingInfo> _ordering = new();
         private EliteDrumsAction? _pendingOverhitAction;
+        private bool _pendingWildcardHit;
 
         [SerializeField] private FretArray _fretArray;
         [SerializeField] private KickFretFlash _kickFretFlash;
@@ -79,9 +80,19 @@ namespace YARG.Gameplay.Player
             _ => 2
         };
 
-        public static int GetColorIndex(int pad) => IsFootPad(pad)
-            ? (int) YARG.Core.Game.ColorProfile.FiveLaneDrumsFret.DoubleKick
-            : GetLane(pad) + 1;
+        public static int GetColorIndex(int pad) => (int) ((EliteDrumPad) pad switch
+        {
+            EliteDrumPad.Kick => ColorProfile.EliteDrumsFret.Kick,
+            EliteDrumPad.Snare => ColorProfile.EliteDrumsFret.Snare,
+            EliteDrumPad.HiHat or EliteDrumPad.HatPedal => ColorProfile.EliteDrumsFret.Hat,
+            EliteDrumPad.LeftCrash or EliteDrumPad.Tom1 => ColorProfile.EliteDrumsFret.LeftCrashTom1,
+            EliteDrumPad.Ride or EliteDrumPad.Tom2 => ColorProfile.EliteDrumsFret.RideTom2,
+            EliteDrumPad.RightCrash or EliteDrumPad.Tom3 => ColorProfile.EliteDrumsFret.RightCrashTom3,
+            _ => throw new ArgumentOutOfRangeException(nameof(pad), pad, "Unknown Elite fret pad.")
+        });
+
+        internal static System.Drawing.Color GetLaneColor(ColorProfile.EliteDrumsColors colors,
+            EliteDrumNote note) => colors.GetNoteColor(EliteDrumsColorRoles.GetRole(note));
 
         protected override void SetupTheme()
         {
@@ -99,8 +110,9 @@ namespace YARG.Gameplay.Player
         }
 
         protected override InstrumentDifficulty<EliteDrumNote> GetNotes(SongChart chart) =>
-            DrumDifficultySelector.SelectNativeEliteTrack(chart, Player.Profile).Clone()
-                .GetDifficulty(Player.Profile.CurrentDifficulty);
+            Player.ResolvedDrumPlayback != null ? Player.PlayableEliteDrumDifficulty :
+                DrumDifficultySelector.SelectNativeEliteTrack(chart, Player.Profile).Clone()
+                    .GetDifficulty(Player.Profile.CurrentDifficulty);
 
         protected override EliteDrumsEngine CreateEngine()
         {
@@ -145,12 +157,12 @@ namespace YARG.Gameplay.Player
                 if (!IsFootPad(pad))
                     _ordering.Add(pad, new HighwayOrderingInfo(ApplyLefty(GetLane(pad)), GetColorIndex(pad)));
             }
-            var colors = Player.ColorProfile.FiveLaneDrums;
+            var colors = Player.ColorProfile.EliteDrums;
             var kickPrefab = ThemeManager.Instance.CreateKickFretPrefabFromTheme(Player.ThemePreset,
                 VisualStyle.FiveLaneDrums);
             _fretArray.Initialize(_ordering, LaneCount, kickPrefab, colors, Player.ThemePreset,
                 VisualStyle.FiveLaneDrums);
-            _kickFretFlash.Initialize(colors.GetParticleColor(0).ToUnityColor());
+            _kickFretFlash.Initialize(colors.GetParticleColor((int) ColorProfile.EliteDrumsFret.Kick).ToUnityColor());
             NoteTrack.SetDrumActivationFlags(Player.Profile.StarPowerActivationType);
             Notes = NoteTrack.Notes;
             BRELanes = new LaneElement[LaneCount];
@@ -279,7 +291,7 @@ namespace YARG.Gameplay.Player
                 lane.SetTimeRange(timeRange.Start, timeRange.End);
                 lane.SetIndexRange(info.Position, info.Position);
                 lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, info.Position, LaneCount,
-                    Player.ColorProfile.FiveLaneDrums.GetNoteColor(info.ColorIndex).ToUnityColor());
+                    GetLaneColor(Player.ColorProfile.EliteDrums, surviving[record.MemberSources[0]]).ToUnityColor());
                 lane.EnableFromPool();
             }
         }
@@ -297,13 +309,13 @@ namespace YARG.Gameplay.Player
             var info = _ordering.TryGetValue(note.Pad, out var ordering) ? ordering :
                 new HighwayOrderingInfo(2, 0);
             lane.SetAppearance(Instrument.FiveLaneDrums, note.LaneNote, info.Position, LaneCount,
-                Player.ColorProfile.FiveLaneDrums.GetNoteColor(info.ColorIndex).ToUnityColor());
+                GetLaneColor(Player.ColorProfile.EliteDrums, note).ToUnityColor());
         }
 
         protected override void InitializeBRELane(LaneElement lane, int laneIndex)
         {
             lane.SetAppearance(Instrument.FiveLaneDrums, laneIndex + 2, laneIndex, LaneCount,
-                Player.ColorProfile.FiveLaneDrums.GetNoteColor(laneIndex + 1).ToUnityColor());
+                Player.ColorProfile.EliteDrums.GetFretColor(ApplyLefty(laneIndex) + 1).ToUnityColor());
         }
 
         protected override void RescaleLanesForBRE() =>
@@ -318,19 +330,26 @@ namespace YARG.Gameplay.Player
         {
             base.OnNoteHit(index, note);
             (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.HitNote();
+            if (note.Pad == (int) EliteDrumPad.Wildcard)
+            {
+                // The following pad callback supplies the physical strike, not the wildcard identity.
+                _pendingWildcardHit = true;
+                return;
+            }
+            var colors = Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors();
+            var effect = colors.GetInputEffectColor(EliteDrumsColorRoles.GetRole(note,
+                YARG.Settings.SettingsManager.Settings?.SplitEliteFlamGems?.Value ?? false));
             if (IsFootPad(note.Pad))
             {
+                _kickFretFlash.Initialize(effect.ToUnityColor());
                 _kickFretFlash.PlayHitAnimation();
                 _fretArray.PlayKickFretAnimation();
                 CameraPositioner.Bounce();
             }
-            else if (IsCymbal(note.Pad) && Player.Profile.UseCymbalModels)
-            {
-                _fretArray.PlayCymbalHitAnimation(note.Pad);
-            }
             else
             {
-                _fretArray.PlayHitAnimation(note.Pad);
+                _fretArray.PlayHitAnimation(note.Pad, effect,
+                    IsCymbal(note.Pad) && Player.Profile.UseCymbalModels);
             }
         }
 
@@ -345,24 +364,16 @@ namespace YARG.Gameplay.Player
             base.OnOverhit();
             if (_pendingOverhitAction is not { } action) return;
 
-            int pad = action switch
-            {
-                EliteDrumsAction.Kick => (int) EliteDrumPad.Kick,
-                EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash => (int) EliteDrumPad.HatPedal,
-                EliteDrumsAction.EliteSnare => (int) EliteDrumPad.Snare,
-                EliteDrumsAction.EliteClosedHiHat or EliteDrumsAction.EliteOpenHiHat or
-                    EliteDrumsAction.EliteSizzleHiHat => (int) EliteDrumPad.HiHat,
-                EliteDrumsAction.EliteLeftCrash => (int) EliteDrumPad.LeftCrash,
-                EliteDrumsAction.EliteTom1 => (int) EliteDrumPad.Tom1,
-                EliteDrumsAction.EliteTom2 => (int) EliteDrumPad.Tom2,
-                EliteDrumsAction.EliteTom3 => (int) EliteDrumPad.Tom3,
-                EliteDrumsAction.EliteRide => (int) EliteDrumPad.Ride,
-                EliteDrumsAction.EliteRightCrash => (int) EliteDrumPad.RightCrash,
-                _ => -1
-            };
             _pendingOverhitAction = null;
-            if (IsFootPad(pad)) _fretArray.PlayKickFretAnimation();
-            else if (_ordering.ContainsKey(pad)) _fretArray.PlayMissAnimation(pad);
+            int pad = GetInputPad(action);
+            var effect = (Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors())
+                .GetInputEffectColor(EliteDrumsColorRoles.GetInputRole(action));
+            if (IsFootPad(pad))
+            {
+                _kickFretFlash.Initialize(effect.ToUnityColor());
+                _fretArray.PlayKickFretAnimation();
+            }
+            else if (_ordering.ContainsKey(pad)) _fretArray.PlayMissAnimation(pad, effect);
         }
 
         private void OnPadHit(EliteDrumsAction action, bool noteWasHit, bool bonus,
@@ -371,6 +382,11 @@ namespace YARG.Gameplay.Player
             if (Engine.IsCodaActive)
                 CurrentCoda.HitLane(Engine.CurrentTime, (int) action);
 
+            if (_pendingWildcardHit)
+            {
+                _pendingWildcardHit = false;
+                AnimateUnmatchedAction(action);
+            }
             _pendingOverhitAction = noteWasHit ? null : action;
             if (noteWasHit || wasOverhitInLane || _pendingOverhitAction is null) return;
 
@@ -388,7 +404,22 @@ namespace YARG.Gameplay.Player
 
         private void AnimateUnmatchedAction(EliteDrumsAction action)
         {
-            int pad = action switch
+            int pad = GetInputPad(action);
+            var role = EliteDrumsColorRoles.GetInputRole(action);
+            var effect = (Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors())
+                .GetInputEffectColor(role);
+            if (IsFootPad(pad))
+            {
+                _kickFretFlash.Initialize(effect.ToUnityColor());
+                _kickFretFlash.PlayHitAnimation();
+                _fretArray.PlayKickFretAnimation();
+                CameraPositioner.Bounce();
+            }
+            else if (_ordering.ContainsKey(pad))
+                _fretArray.PlayHitAnimation(pad, effect, IsCymbal(pad) && Player.Profile.UseCymbalModels);
+        }
+
+        private static int GetInputPad(EliteDrumsAction action) => action switch
             {
                 EliteDrumsAction.Kick => (int) EliteDrumPad.Kick,
                 EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash => (int) EliteDrumPad.HatPedal,
@@ -401,17 +432,17 @@ namespace YARG.Gameplay.Player
                 EliteDrumsAction.EliteTom3 => (int) EliteDrumPad.Tom3,
                 EliteDrumsAction.EliteRide => (int) EliteDrumPad.Ride,
                 EliteDrumsAction.EliteRightCrash => (int) EliteDrumPad.RightCrash,
-                _ => -1
+                EliteDrumsAction.FourLaneRedDrum or EliteDrumsAction.FiveLaneRedDrum => (int) EliteDrumPad.Snare,
+                EliteDrumsAction.FourLaneYellowDrum or EliteDrumsAction.FourLaneYellowCymbal or
+                    EliteDrumsAction.FiveLaneYellowCymbal => (int) EliteDrumPad.HiHat,
+                EliteDrumsAction.FourLaneBlueDrum or EliteDrumsAction.FourLaneBlueCymbal or
+                    EliteDrumsAction.FiveLaneBlueDrum => (int) EliteDrumPad.Ride,
+                EliteDrumsAction.FourLaneGreenDrum or EliteDrumsAction.FourLaneGreenCymbal or
+                    EliteDrumsAction.FiveLaneGreenDrum => (int) EliteDrumPad.RightCrash,
+                EliteDrumsAction.FiveLaneOrangeCymbal => (int) EliteDrumPad.LeftCrash,
+                EliteDrumsAction.WildcardPad => (int) EliteDrumPad.Tom1,
+                _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Unknown Elite input.")
             };
-            if (IsFootPad(pad))
-            {
-                _kickFretFlash.PlayHitAnimation();
-                _fretArray.PlayKickFretAnimation();
-                CameraPositioner.Bounce();
-            }
-            else if (IsCymbal(pad) && Player.Profile.UseCymbalModels) _fretArray.PlayCymbalHitAnimation(pad);
-            else if (_ordering.ContainsKey(pad)) _fretArray.PlayHitAnimation(pad);
-        }
 
         protected override void OnCodaStart(CodaSection coda)
         {
@@ -429,6 +460,7 @@ namespace YARG.Gameplay.Player
         {
             base.ResetVisuals();
             _pendingOverhitAction = null;
+            _pendingWildcardHit = false;
             _fretArray.ResetAll();
         }
 
@@ -444,6 +476,11 @@ namespace YARG.Gameplay.Player
             // selected chart's action family may reach its typed engine or replay recording.
             var action = input.GetAction<EliteDrumsAction>();
             if (Player.Profile.EliteDrumsDownchartTarget is null)
+            {
+                if (Player.Profile.CurrentDifficulty == Difficulty.Beginner &&
+                    (action == EliteDrumsAction.WildcardPad ||
+                     action is >= EliteDrumsAction.FourLaneRedDrum and <= EliteDrumsAction.FiveLaneOrangeCymbal))
+                    return false;
                 return action is not (EliteDrumsAction.Kick or EliteDrumsAction.EliteStomp or
                     EliteDrumsAction.EliteSplash or EliteDrumsAction.EliteSnare or
                     EliteDrumsAction.EliteClosedHiHat or EliteDrumsAction.EliteOpenHiHat or
@@ -451,12 +488,14 @@ namespace YARG.Gameplay.Player
                     EliteDrumsAction.EliteTom1 or EliteDrumsAction.EliteTom2 or
                     EliteDrumsAction.EliteTom3 or EliteDrumsAction.EliteRide or
                     EliteDrumsAction.EliteRightCrash);
+            }
             return false;
         }
 
         public override (ReplayFrame Frame, ReplayStats Stats) ConstructReplayData()
         {
-            var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray());
+            var frame = new ReplayFrame(Player.Profile, EngineParams, Engine.EngineStats, ReplayInputs.ToArray(),
+                Player.ResolvedDrumPlayback);
             return (frame, Engine.EngineStats.ConstructReplayStats(Player.Profile.Name, Player.IsReplay));
         }
     }

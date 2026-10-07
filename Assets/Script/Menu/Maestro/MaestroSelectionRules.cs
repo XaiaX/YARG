@@ -6,6 +6,7 @@ using System.Linq;
 using YARG.Core;
 using YARG.Core.Extensions;
 using YARG.Core.Game;
+using YARG.Core.Song;
 
 namespace YARG.Menu.Maestro
 {
@@ -75,15 +76,30 @@ namespace YARG.Menu.Maestro
             {
                 GameMode.FourLaneDrums => new[] { Instrument.FourLaneDrums, Instrument.ProDrums },
                 GameMode.FiveLaneDrums => new[] { Instrument.FiveLaneDrums },
-                GameMode.EliteDrums => new[]
-                {
-                    Instrument.FourLaneDrums,
-                    Instrument.ProDrums,
-                    Instrument.FiveLaneDrums,
-                },
+                // MIDI Drumkit chooses an output format, not a forced-source row.
+                GameMode.EliteDrums => Array.Empty<Instrument>(),
                 _ => Array.Empty<Instrument>(),
             };
         }
+
+        public static readonly IReadOnlyList<Instrument> MidiDrumOutputs = Array.AsReadOnly(new[]
+        {
+            Instrument.FourLaneDrums, Instrument.ProDrums, Instrument.FiveLaneDrums, Instrument.EliteDrums,
+        });
+
+        public static ResolvedDrumPlayback ResolveMidiDrums(SongEntry song, Instrument output,
+            Difficulty tier, Modifier modifiers) => DrumOutputResolver.Resolve(song.AuthoredDrumSourceFacts,
+                output, tier, (modifiers & Modifier.EnableEliteUpconversion) != 0,
+                (modifiers & Modifier.Enable2xKicks) != 0, (modifiers & Modifier.PreferEliteDowncharts) != 0);
+
+        public static bool IsMidiDrumTierPlayable(IReadOnlyList<SongEntry> songs, Instrument output,
+            Difficulty tier, Modifier modifiers) => songs.Count > 0 && songs.All(song =>
+                ResolveMidiDrums(song, output, tier, modifiers) != null);
+
+        public static IReadOnlyList<Instrument> GetMidiDrumOutputs(IReadOnlyList<SongEntry> songs,
+            Modifier modifiers) => MidiDrumOutputs.Where(output =>
+                EnumExtensions<Difficulty>.Values.Any(tier => tier <= Difficulty.Expert &&
+                    IsMidiDrumTierPlayable(songs, output, tier, modifiers))).ToArray();
 
         public static bool SupportsRangeShifts(GameMode mode) =>
             mode is GameMode.FiveFretGuitar or GameMode.ProKeys;

@@ -1,10 +1,34 @@
-﻿using YARG.Themes;
+﻿using YARG.Core.Game;
+using YARG.Themes;
 
 namespace YARG.Settings.Preview
 {
+    /// <summary>Synthetic preview appearance, independent of chart conversion and color identity.</summary>
+    public readonly struct ElitePreviewDescriptor
+    {
+        public EliteDrumsColorRole Role { get; }
+        public int Fret { get; }
+        public ThemeNoteType ModelType { get; }
+        public bool IsBar { get; }
+        public float Width { get; }
+        public float Offset { get; }
+
+        public ElitePreviewDescriptor(EliteDrumsColorRole role, int fret, ThemeNoteType modelType,
+            bool isBar = false, float width = 1f, float offset = 0f)
+        {
+            Role = role;
+            Fret = fret;
+            ModelType = modelType;
+            IsBar = isBar;
+            Width = width;
+            Offset = offset;
+        }
+    }
+
     public class FakeNoteData
     {
         public double Time;
+        public ElitePreviewDescriptor? EliteDescriptor;
 
         public int Fret;
         public bool CenterNote;

@@ -108,7 +108,7 @@ namespace YARG.Gameplay.Visuals
             // Animate the highway raise
             if (!_gameManager.IsPractice
                 && !GlobalVariables.State.IsReplay
-                && SettingsManager.Settings.EnableHighwayAnimation.Value)
+                && SettingsManager.Settings?.EnableHighwayAnimation.Value == true)
             {
                 if (_highwayRaised)
                 {
@@ -154,7 +154,9 @@ namespace YARG.Gameplay.Visuals
 
         private void InitializeSequences()
         {
-            if (!SettingsManager.Settings.EnableHighwayAnimation.Value)
+            // Settings may be absent in explicitly initialized runtimes (tests/tooling);
+            // absent settings fall back to empty sequences, matching animation-disabled.
+            if (SettingsManager.Settings?.EnableHighwayAnimation.Value != true)
             {
                 // If animations are disabled, just make empty sequences
                 _raise = DOTween.Sequence().SetAutoKill(false).Pause().SetLink(gameObject);

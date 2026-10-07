@@ -32,6 +32,8 @@ namespace YARG.Menu.MusicLibrary
         public readonly Difficulty Difficulty;
         public readonly int HumanPlayerCount;
         public readonly HighScoreHistoryMode HighScoreHistoryMode;
+        private readonly Modifier _sourcePreferences;
+        private readonly int _libraryRevision;
 
         private ScoreContext(
             Guid profileId,
@@ -45,6 +47,11 @@ namespace YARG.Menu.MusicLibrary
             Difficulty = difficulty;
             HumanPlayerCount = humanPlayerCount;
             HighScoreHistoryMode = highScoreHistoryMode;
+            var profile = PlayerContainer.GetProfileById(profileId);
+            _sourcePreferences = profile?.GameMode == GameMode.EliteDrums
+                ? profile.CurrentModifiers & (Modifier.EnableEliteUpconversion | Modifier.PreferEliteDowncharts)
+                : Modifier.None;
+            _libraryRevision = SongContainer.LibraryRevision;
         }
 
         public static ScoreContext Capture()
@@ -67,7 +74,9 @@ namespace YARG.Menu.MusicLibrary
                 Instrument == other.Instrument &&
                 Difficulty == other.Difficulty &&
                 HumanPlayerCount == other.HumanPlayerCount &&
-                HighScoreHistoryMode == other.HighScoreHistoryMode;
+                HighScoreHistoryMode == other.HighScoreHistoryMode &&
+                _sourcePreferences == other._sourcePreferences &&
+                _libraryRevision == other._libraryRevision;
         }
     }
 
