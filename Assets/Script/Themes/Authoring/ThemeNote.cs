@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace YARG.Themes
 {
+    // pattern: Imperative Shell
     // WARNING: Changing this could break themes or venues!
     // WARNING: Changing this will break code!
     //
@@ -45,6 +46,15 @@ namespace YARG.Themes
         SixFretBarre     = 23,
         SixFretBarreTap  = 24,
         SixFretBarreHOPO = 25,
+
+        // Optional native Elite hi-hat models; keep existing serialized values stable.
+        OpenHiHat       = 26,
+        OpenHiHatAccent = 27,
+        OpenHiHatGhost  = 28,
+
+        ClosedHiHat       = 29,
+        ClosedHiHatAccent = 30,
+        ClosedHiHatGhost  = 31,
     }
 
     public class ThemeNote : MonoBehaviour

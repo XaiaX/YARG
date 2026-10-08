@@ -97,14 +97,14 @@ namespace YARG.Gameplay.Player
         protected override void SetupTheme()
         {
             // The stock five-lane visual is typed DrumNote/DrumsPlayer. Assemble the
-            // typed model-free template at runtime and reuse the stock five-lane theme models.
+            // typed model-free template at runtime with independent Elite theme models.
             var modelFreePrefab = new GameObject("Native Elite drum note template");
             modelFreePrefab.SetActive(false);
             // Keep the template outside the active highway; it is only a source for
             // ThemeManager's cloned themed prefab and is destroyed after pool prewarm.
             modelFreePrefab.AddComponent<EliteDrumsNoteElement>();
             var themed = ThemeManager.Instance.CreateNotePrefabFromTheme(Player.ThemePreset,
-                VisualStyle.FiveLaneDrums, modelFreePrefab, "NativeElite");
+                VisualStyle.EliteDrums, modelFreePrefab, "NativeElite");
             NotePool.SetPrefabAndReset(themed);
             Destroy(modelFreePrefab);
         }

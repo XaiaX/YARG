@@ -13,6 +13,7 @@ using YARG.Themes;
 
 namespace YARG.Settings.Preview
 {
+    // pattern: Imperative Shell
     public class FakeNote : MonoBehaviour, IPoolable
     {
         [Serializable]
@@ -113,6 +114,18 @@ namespace YARG.Settings.Preview
             // Try the exact regular type first
             var pair = _noteGroups.Find(i => i.NoteType == type && !i.StarPower);
             if (pair.Group != null) return pair.Group;
+
+            var ordinaryType = type switch
+            {
+                ThemeNoteType.OpenHiHat => ThemeNoteType.Cymbal,
+                ThemeNoteType.OpenHiHatAccent => ThemeNoteType.CymbalAccent,
+                ThemeNoteType.OpenHiHatGhost => ThemeNoteType.CymbalGhost,
+                ThemeNoteType.ClosedHiHat => ThemeNoteType.Cymbal,
+                ThemeNoteType.ClosedHiHatAccent => ThemeNoteType.CymbalAccent,
+                ThemeNoteType.ClosedHiHatGhost => ThemeNoteType.CymbalGhost,
+                _ => type
+            };
+            if (ordinaryType != type) return FindNoteGroup(ordinaryType, starPower);
 
             // Cymbal variants fall back to Cymbal before Normal
             if (type is ThemeNoteType.CymbalAccent or ThemeNoteType.CymbalGhost)
@@ -351,14 +364,40 @@ namespace YARG.Settings.Preview
         {
             var themeContainer = ThemeManager.Instance.GetThemeContainer(themePreset, style);
             var component = themeContainer.GetThemeComponent();
-            return CreateFakeNoteFromModels(component.GetNoteModelsForVisualStyle(style, false),
-                component.GetNoteModelsForVisualStyle(style, true));
+            var regular = component.GetNoteModelsForVisualStyle(style, false);
+            var stars = component.GetNoteModelsForVisualStyle(style, true);
+            if (style == VisualStyle.EliteDrums)
+                (regular, stars) = ThemeNoteModelFallbacks.ResolveEliteModels(regular, stars);
+            var prefab = CreateFakeNoteFromModels(regular, stars);
+            if (style == VisualStyle.EliteDrums)
+                NormalizeElitePreviewBars(prefab.GetComponent<FakeNote>());
+            return prefab;
+        }
+
+        private static void NormalizeElitePreviewBars(FakeNote fake)
+        {
+            // Descriptor widths assume a full-highway baseline. Scale the
+            // wrapper, keeping all author-edited model transforms intact.
+            foreach (var pair in fake._noteGroups)
+            {
+                if (pair.NoteType is not (ThemeNoteType.Kick or ThemeNoteType.DedicatedLaneKick or ThemeNoteType.Wildcard))
+                    continue;
+                var renderers = pair.Group.GetComponentsInChildren<MeshRenderer>(true);
+                if (renderers.Length == 0) continue;
+                var bounds = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+                if (bounds.size.x <= 0.00001f) continue;
+                var scale = pair.Group.transform.localScale;
+                scale.x *= TrackPlayer.TRACK_WIDTH / bounds.size.x;
+                pair.Group.transform.localScale = scale;
+            }
         }
 
         public static GameObject CreateFakeNoteFromModels(
             IReadOnlyDictionary<ThemeNoteType, GameObject> models,
             IReadOnlyDictionary<ThemeNoteType, GameObject> starPowerModels = null)
         {
+            (models, starPowerModels) = ThemeNoteModelFallbacks.ResolveHiHatModels(models, starPowerModels);
             // Create GameObject
             var notePrefab = new GameObject("Note Prefab");
             notePrefab.transform.localPosition = Vector3.zero;

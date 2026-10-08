@@ -6,6 +6,7 @@ using YARG.Themes;
 
 namespace Editor
 {
+    // pattern: Imperative Shell
     [CustomEditor(typeof(ThemeComponent))]
     public class ThemeComponentInspector : UnityEditor.Editor
     {
@@ -13,6 +14,7 @@ namespace Editor
         private SerializedProperty _sixFretNotes;
         private SerializedProperty _fourLaneNotes;
         private SerializedProperty _fiveLaneNotes;
+        private SerializedProperty _eliteLaneNotes;
         private SerializedProperty _proKeysNotes;
         private SerializedProperty _fiveFretFret;
         private SerializedProperty _sixFretFret;
@@ -28,6 +30,7 @@ namespace Editor
             _sixFretNotes = serializedObject.FindProperty("_sixFretNotes");
             _fourLaneNotes = serializedObject.FindProperty("_fourLaneNotes");
             _fiveLaneNotes = serializedObject.FindProperty("_fiveLaneNotes");
+            _eliteLaneNotes = serializedObject.FindProperty("_eliteLaneNotes");
             _proKeysNotes = serializedObject.FindProperty("_proKeysNotes");
             _fiveFretFret = serializedObject.FindProperty("_fiveFretFret");
             _sixFretFret = serializedObject.FindProperty("_sixFretFret");
@@ -51,7 +54,7 @@ namespace Editor
 
             // Validation warnings
             var warnings = new VisualElement();
-            var noteParents = new[] { _fiveFretNotes, _sixFretNotes, _fourLaneNotes, _fiveLaneNotes, _proKeysNotes };
+            var noteParents = new[] { _fiveFretNotes, _sixFretNotes, _fourLaneNotes, _fiveLaneNotes, _eliteLaneNotes, _proKeysNotes };
             if (!noteParents.Any(p => p.objectReferenceValue != null))
             {
                 warnings.Add(new HelpBox("No note parents assigned. Theme will have no note models.", HelpBoxMessageType.Warning));
@@ -69,6 +72,7 @@ namespace Editor
             root.Add(new PropertyField(_sixFretNotes));
             root.Add(new PropertyField(_fourLaneNotes));
             root.Add(new PropertyField(_fiveLaneNotes));
+            root.Add(new PropertyField(_eliteLaneNotes));
             root.Add(new PropertyField(_proKeysNotes));
 
             root.Add(new Label("\n<b><size=1.15em>Frets</size></b>"));

@@ -75,7 +75,7 @@ namespace YARG.Settings.Preview
                 {
                     HighwayOrdering = new Dictionary<int, int> { {1, 0}, {2, 1}, {3, 2}, {4, 3}, {5, 4} },
                     LaneCount = 5,
-                    NoteVisualStyle = VisualStyle.FiveLaneDrums,
+                    NoteVisualStyle = VisualStyle.EliteDrums,
                     FretColorProvider = c => c.EliteDrums,
                     NoteColorProvider = (c, note) => c.EliteDrums.GetNoteColor(note.EliteDescriptor.Value.Role).ToUnityColor(),
                     NoteStarPowerColorProvider = (c, note) => c.EliteDrums.GetNoteStarPowerColor(note.EliteDescriptor.Value.Role).ToUnityColor(),

@@ -76,6 +76,26 @@ namespace YARG.Settings.Preview
                 ThemeNoteType.Ghost => ThemeNoteType.CymbalGhost,
                 _ => ThemeNoteType.Cymbal
             } : dynamics;
+            if (role == EliteDrumsColorRole.HatOpen)
+            {
+                type = dynamics switch
+                {
+                    ThemeNoteType.Accent => ThemeNoteType.OpenHiHatAccent,
+                    ThemeNoteType.Ghost => ThemeNoteType.OpenHiHatGhost,
+                    _ => ThemeNoteType.OpenHiHat
+                };
+            }
+            if (role == EliteDrumsColorRole.HatClosed)
+            {
+                type = dynamics switch
+                {
+                    ThemeNoteType.Accent => ThemeNoteType.ClosedHiHatAccent,
+                    ThemeNoteType.Ghost => ThemeNoteType.ClosedHiHatGhost,
+                    _ => ThemeNoteType.ClosedHiHat
+                };
+            }
+            if (role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash)
+                type = ThemeNoteType.DedicatedLaneKick;
             if (role == EliteDrumsColorRole.Wildcard) type = ThemeNoteType.Wildcard;
             float width = role is EliteDrumsColorRole.DoubleKick or EliteDrumsColorRole.KickFlam
                 or EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash ? 0.5f : 1f;

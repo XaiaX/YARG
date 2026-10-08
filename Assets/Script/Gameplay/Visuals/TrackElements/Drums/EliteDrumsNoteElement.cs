@@ -9,7 +9,8 @@ using YARG.Themes;
 
 namespace YARG.Gameplay.Visuals
 {
-    /// <summary>Typed native Elite notes projected onto the existing five-lane drum models.</summary>
+    // pattern: Mixed (needs refactoring)
+    /// <summary>Typed native Elite notes assembled from the selected theme’s Elite models.</summary>
     public sealed class EliteDrumsNoteElement : NoteElement<EliteDrumNote, EliteDrumsPlayer>
     {
         private const int NORMAL = 0;
@@ -20,7 +21,14 @@ namespace YARG.Gameplay.Visuals
         private const int CYMBAL_ACCENT = 5;
         private const int CYMBAL_GHOST = 6;
         private const int STOMP = 7;
-        private const int COUNT = 8;
+        private const int OPEN_HI_HAT = 8;
+        private const int OPEN_HI_HAT_ACCENT = 9;
+        private const int OPEN_HI_HAT_GHOST = 10;
+        private const int CLOSED_HI_HAT = 11;
+        private const int CLOSED_HI_HAT_ACCENT = 12;
+        private const int CLOSED_HI_HAT_GHOST = 13;
+        private const int WILDCARD = 14;
+        private const int COUNT = 15;
         [SerializeField] private Vector3 _normalStompScale;
         [SerializeField] private Vector3 _starStompScale;
         [SerializeField] private Vector3 _normalStompPosition;
@@ -48,6 +56,7 @@ namespace YARG.Gameplay.Visuals
         public override void SetThemeModels(Dictionary<ThemeNoteType, GameObject> models,
             Dictionary<ThemeNoteType, GameObject> starpowerModels)
         {
+            (models, starpowerModels) = ThemeNoteModelFallbacks.ResolveEliteModels(models, starpowerModels);
             CreateNoteGroupArrays(COUNT);
             AssignNoteGroup(models, starpowerModels, NORMAL, ThemeNoteType.Normal);
             AssignNoteGroup(models, starpowerModels, CYMBAL, ThemeNoteType.Cymbal);
@@ -57,6 +66,14 @@ namespace YARG.Gameplay.Visuals
             AssignNoteGroup(models, starpowerModels, CYMBAL_ACCENT, ThemeNoteType.CymbalAccent);
             AssignNoteGroup(models, starpowerModels, CYMBAL_GHOST, ThemeNoteType.CymbalGhost);
             AssignNoteGroup(models, starpowerModels, STOMP, ThemeNoteType.DedicatedLaneKick);
+            AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT, ThemeNoteType.OpenHiHat);
+            AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT_ACCENT, ThemeNoteType.OpenHiHatAccent);
+            AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT_GHOST, ThemeNoteType.OpenHiHatGhost);
+            AssignNoteGroup(models, starpowerModels, CLOSED_HI_HAT, ThemeNoteType.ClosedHiHat);
+            AssignNoteGroup(models, starpowerModels, CLOSED_HI_HAT_ACCENT, ThemeNoteType.ClosedHiHatAccent);
+            AssignNoteGroup(models, starpowerModels, CLOSED_HI_HAT_GHOST, ThemeNoteType.ClosedHiHatGhost);
+
+            AssignNoteGroup(models, starpowerModels, WILDCARD, ThemeNoteType.Wildcard);
 
             ScaleStompModel(NoteGroups[STOMP]);
             if (StarPowerNoteGroups[STOMP] != NoteGroups[STOMP])
@@ -281,6 +298,12 @@ namespace YARG.Gameplay.Visuals
 
         internal static int GetSplitGroup(EliteDrumNote note, bool useCymbalModels)
         {
+            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HiHat && (note.IsOpen || note.IsClosed))
+            {
+                if (note.IsAccent) return note.IsOpen ? OPEN_HI_HAT_ACCENT : CLOSED_HI_HAT_ACCENT;
+                if (note.IsGhost) return note.IsOpen ? OPEN_HI_HAT_GHOST : CLOSED_HI_HAT_GHOST;
+                if (useCymbalModels) return note.IsOpen ? OPEN_HI_HAT : CLOSED_HI_HAT;
+            }
             bool cymbal = EliteDrumsPlayer.IsCymbal(note.Pad);
             if (note.IsAccent) return cymbal ? CYMBAL_ACCENT : ACCENT;
             if (note.IsGhost) return cymbal ? CYMBAL_GHOST : GHOST;
@@ -480,17 +503,14 @@ namespace YARG.Gameplay.Visuals
         {
             if (IsSplitFlam(note, splitEliteFlamGems))
                 return GetSplitGroup(note, useCymbalModels);
-            if (EliteDrumsPlayer.IsFootPad(note.Pad) ||
-                note.Pad == (int) EliteDrumNote.EliteDrumPad.Wildcard) return KICK;
+            if (note.Pad == (int) EliteDrumNote.EliteDrumPad.Wildcard) return WILDCARD;
+            if (EliteDrumsPlayer.IsFootPad(note.Pad)) return KICK;
             // The authored flam flag is a visual cue in native V1, not a second scored hit.
             if (note.IsFlam || note.IsFlatFlam) return ACCENT;
             // Both playable pedal events use the bar; dedicated roles distinguish stomp and splash.
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
                 return STOMP;
-            bool cymbal = EliteDrumsPlayer.IsCymbal(note.Pad);
-            if (note.IsAccent) return cymbal ? CYMBAL_ACCENT : ACCENT;
-            if (note.IsGhost) return cymbal ? CYMBAL_GHOST : GHOST;
-            return cymbal && useCymbalModels ? CYMBAL : NORMAL;
+            return GetSplitGroup(note, useCymbalModels);
         }
 
         internal static (System.Drawing.Color Body, System.Drawing.Color Emission, System.Drawing.Color Metal)

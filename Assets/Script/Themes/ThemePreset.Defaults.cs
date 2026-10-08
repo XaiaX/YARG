@@ -5,6 +5,7 @@ using static YARG.Themes.ThemeManager;
 
 namespace YARG.Themes
 {
+    // pattern: Functional Core
     public partial class ThemePreset
     {
         public static ThemePreset Default = new("Rectangular", true)
@@ -17,7 +18,8 @@ namespace YARG.Themes
                 VisualStyle.FourLaneDrums,
                 VisualStyle.FiveLaneDrums,
                 VisualStyle.FiveLaneKeys,
-                VisualStyle.ProKeys
+                VisualStyle.ProKeys,
+                VisualStyle.EliteDrums
             },
             PreferredColorProfile = ColorProfile.Default.Id,
             PreferredCameraPreset = CameraPreset.Default.Id

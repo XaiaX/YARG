@@ -6,6 +6,7 @@ using YARG.Settings.Customization;
 
 namespace YARG.Themes
 {
+    // pattern: Imperative Shell
     public class ThemeManager : MonoSingleton<ThemeManager>
     {
         public const string NOTE_PREFAB_NAME = "note";
@@ -75,6 +76,12 @@ namespace YARG.Themes
             var themeComp = container.GetThemeComponent();
             var regular = themeComp.GetNoteModelsForVisualStyle(style, false);
             var starPower = themeComp.GetNoteModelsForVisualStyle(style, true);
+
+            // Resolve optional Elite slots before default models are filled, so
+            // older/custom themes retain their own cymbal appearance.
+            (regular, starPower) = style == VisualStyle.EliteDrums
+                ? ThemeNoteModelFallbacks.ResolveEliteModels(regular, starPower)
+                : ThemeNoteModelFallbacks.ResolveHiHatModels(regular, starPower);
 
             // Fill in defaults for missing models
             var defaultComp = _defaultTheme.GetThemeComponent();
@@ -166,7 +173,8 @@ namespace YARG.Themes
         public ThemeContainer GetThemeContainer(ThemePreset preset, VisualStyle style)
         {
             // Check if the theme supports the game mode
-            if (!preset.SupportedStyles.Contains(style))
+            if (!preset.SupportedStyles.Contains(style) &&
+                !(style == VisualStyle.EliteDrums && preset.SupportedStyles.Contains(VisualStyle.FiveLaneDrums)))
             {
                 YargLogger.LogFormatInfo("Theme `{0}` does not support `{1}`. Falling back to the default theme.",
                     preset.Name, style);
@@ -194,6 +202,9 @@ namespace YARG.Themes
         FiveLaneDrums,
 
         FiveLaneKeys,
-        ProKeys
+        ProKeys,
+
+        // Append new values to preserve serialized theme style IDs.
+        EliteDrums
     }
 }

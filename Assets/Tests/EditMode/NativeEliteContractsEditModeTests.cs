@@ -5,6 +5,8 @@ using UnityEditor;
 using UnityEngine;
 using YARG.Core.Input;
 
+// pattern: Imperative Shell
+
 namespace YARG.Tests.EditMode
 {
     public sealed class NativeEliteContractsEditModeTests
@@ -161,9 +163,8 @@ namespace YARG.Tests.EditMode
                 Assert.That((int) lane.Invoke(null, new object[] { note.Pad }),
                     Is.EqualTo((int) lane.Invoke(null, new object[] { normalNote.Pad })));
                 bool isKick = pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick;
-                // Wildcard deliberately renders as the centered highway-wide bar (like
-                // kick) regardless of any flam flags: it has no single hand identity.
-                bool usesBarModel = isKick || pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Wildcard;
+                // Wildcard has its own centered highway-wide model, independent of kick.
+                bool isWildcard = pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Wildcard;
                 var expectedRole = pad switch
                 {
                     YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick => YARG.Core.Game.EliteDrumsColorRole.KickFlam,
@@ -172,7 +173,7 @@ namespace YARG.Tests.EditMode
                 };
                 Assert.That(YARG.Core.Game.EliteDrumsColorRoles.GetRole(note), Is.EqualTo(expectedRole),
                     $"Flam color role for {pad}");
-                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(usesBarModel ? 2 : 3),
+                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(isWildcard ? 14 : isKick ? 2 : 3),
                     $"Flam model for {pad}");
             }
         }
@@ -630,9 +631,11 @@ namespace YARG.Tests.EditMode
             try
             {
                 var element = template.AddComponent(elementType);
-                var groups = Array.CreateInstance(groupType, 8);
-                var starGroups = Array.CreateInstance(groupType, 8);
-                for (int i = 0; i < 8; i++)
+                int count = (int) elementType.GetField("COUNT", System.Reflection.BindingFlags.Static |
+                    System.Reflection.BindingFlags.NonPublic).GetRawConstantValue();
+                var groups = Array.CreateInstance(groupType, count);
+                var starGroups = Array.CreateInstance(groupType, count);
+                for (int i = 0; i < count; i++)
                 {
                     var groupObject = new GameObject($"Gem {i}");
                     groupObject.transform.SetParent(template.transform, false);
@@ -646,17 +649,17 @@ namespace YARG.Tests.EditMode
                 var starNoteGroups = elementType.BaseType.GetField("StarPowerNoteGroups", flags);
                 noteGroups.SetValue(element, groups);
                 starNoteGroups.SetValue(element, starGroups);
-                var baselines = new Vector3[8];
+                var baselines = new Vector3[count];
                 for (int i = 0; i < baselines.Length; i++) baselines[i] = new Vector3(1f + i, 1f, 1f);
                 elementType.GetField("_normalGemScales", flags).SetValue(element, baselines);
                 elementType.GetField("_starGemScales", flags).SetValue(element, baselines);
-                elementType.GetField("_normalGemPositions", flags).SetValue(element, new Vector3[8]);
-                elementType.GetField("_starGemPositions", flags).SetValue(element, new Vector3[8]);
+                elementType.GetField("_normalGemPositions", flags).SetValue(element, new Vector3[count]);
+                elementType.GetField("_starGemPositions", flags).SetValue(element, new Vector3[count]);
                 clone = UnityEngine.Object.Instantiate(template);
                 var clonedElement = clone.GetComponent(elementType);
                 elementType.GetMethod("ResetGemGroups", flags).Invoke(clonedElement, null);
                 var clonedGroups = (Array) noteGroups.GetValue(clonedElement);
-                for (int i = 0; i < 8; i++)
+                for (int i = 0; i < count; i++)
                     Assert.That(((Component) clonedGroups.GetValue(i)).transform.localScale.x,
                         Is.EqualTo(1f + i), $"Pooled gem group {i} must retain its baseline width.");
             }
@@ -678,9 +681,11 @@ namespace YARG.Tests.EditMode
             {
                 var element = template.AddComponent(elementType);
                 var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-                var groups = Array.CreateInstance(groupType, 16);
-                var starGroups = Array.CreateInstance(groupType, 16);
-                for (int i = 0; i < 16; i++)
+                int count = (int) elementType.GetField("COUNT", System.Reflection.BindingFlags.Static |
+                    System.Reflection.BindingFlags.NonPublic).GetRawConstantValue() * 2;
+                var groups = Array.CreateInstance(groupType, count);
+                var starGroups = Array.CreateInstance(groupType, count);
+                for (int i = 0; i < count; i++)
                 {
                     var normalObject = new GameObject($"Split normal {i}");
                     normalObject.transform.SetParent(template.transform, false);
@@ -693,11 +698,11 @@ namespace YARG.Tests.EditMode
                 }
                 elementType.GetField("_splitGemGroups", flags).SetValue(element, groups);
                 elementType.GetField("_splitStarGemGroups", flags).SetValue(element, starGroups);
-                var scales = new Vector3[16];
-                var starScales = new Vector3[16];
-                var positions = new Vector3[16];
-                var starPositions = new Vector3[16];
-                for (int i = 0; i < 16; i++)
+                var scales = new Vector3[count];
+                var starScales = new Vector3[count];
+                var positions = new Vector3[count];
+                var starPositions = new Vector3[count];
+                for (int i = 0; i < count; i++)
                 {
                     scales[i] = new Vector3(i + 1, 1, 1);
                     starScales[i] = new Vector3(i + 5, 1, 1);
@@ -712,7 +717,7 @@ namespace YARG.Tests.EditMode
                 var reset = elementType.GetMethod("ResetSplitGemGroups", flags);
                 var clonedElement = clone.GetComponent(elementType);
                 var clonedStarGroups = (Array) elementType.GetField("_splitStarGemGroups", flags).GetValue(clonedElement);
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < count; i++)
                 {
                     ((Component) clonedGroups.GetValue(i)).transform.localScale = Vector3.one * 99;
                     ((Component) clonedGroups.GetValue(i)).gameObject.SetActive(true);
@@ -720,7 +725,7 @@ namespace YARG.Tests.EditMode
                     ((Component) clonedStarGroups.GetValue(i)).gameObject.SetActive(true);
                 }
                 reset.Invoke(clonedElement, null);
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < count; i++)
                 {
                     Assert.That(((Component) clonedGroups.GetValue(i)).transform.localScale.x,
                         Is.EqualTo(i + 1), "Each pooled split gem must restore its baseline scale.");

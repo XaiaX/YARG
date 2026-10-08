@@ -17,6 +17,7 @@ namespace YARG.Themes
     // Changing the serialized fields in this file will result in older themes
     // not working properly. Only change if you need to.
 
+    // pattern: Imperative Shell
     public class ThemeComponent : MonoBehaviour
     {
         [SerializeField]
@@ -27,6 +28,8 @@ namespace YARG.Themes
         private GameObject _fourLaneNotes;
         [SerializeField]
         private GameObject _fiveLaneNotes;
+        [SerializeField]
+        private GameObject _eliteLaneNotes;
         [SerializeField]
         private GameObject _proKeysNotes;
 
@@ -61,6 +64,8 @@ namespace YARG.Themes
                 VisualStyle.SixFretGuitar  => _sixFretNotes,
                 VisualStyle.FourLaneDrums  => _fourLaneNotes,
                 VisualStyle.FiveLaneDrums  => _fiveLaneNotes,
+                // Old custom themes retain their own five-lane models.
+                VisualStyle.EliteDrums     => _eliteLaneNotes != null ? _eliteLaneNotes : _fiveLaneNotes,
                 VisualStyle.ProKeys        => _proKeysNotes,
                 _ => null // future VisualStyle values — caller falls back to default
             };
@@ -102,7 +107,8 @@ namespace YARG.Themes
                 VisualStyle.FiveLaneKeys => _fiveFretFret,
                 VisualStyle.SixFretGuitar  => _sixFretFret,
                 VisualStyle.FourLaneDrums  => _fourLaneFret,
-                VisualStyle.FiveLaneDrums  => _fiveLaneFret,
+                VisualStyle.FiveLaneDrums or
+                VisualStyle.EliteDrums     => _fiveLaneFret,
                 _ => null // future VisualStyle values — caller falls back to default
             };
         }
@@ -134,6 +140,7 @@ namespace YARG.Themes
             if (_fourLaneNotes != null) supportedStyles.Add(VisualStyle.FourLaneDrums);
             if (_fiveLaneNotes != null) supportedStyles.Add(VisualStyle.FiveLaneDrums);
             if (_proKeysNotes != null) supportedStyles.Add(VisualStyle.ProKeys);
+            if (_eliteLaneNotes != null) supportedStyles.Add(VisualStyle.EliteDrums);
 
             // 5. Create metadata TextAsset
             var preset = new ThemePreset(fileName, false)
