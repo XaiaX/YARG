@@ -195,9 +195,8 @@ namespace YARG.Tests.EditMode
                 .transform.Find("Cymbal Assembly/Top").GetComponent<MeshFilter>().sharedMesh));
             Assert.That(basePart.transform.localPosition, Is.EqualTo(Vector3.zero));
             Assert.That(topPart.transform.localPosition.x, Is.Zero.Within(0.00001f));
-            Assert.That(topPart.transform.localPosition.z, Is.Zero.Within(0.00001f));
             if (open) Assert.That(topPart.transform.localPosition.y, Is.GreaterThan(0f));
-            else Assert.That(topPart.transform.localPosition.y, Is.Zero.Within(0.00001f));
+            // Closed and indifferent tops retain the artist's recess/depth adjustments.
             foreach (var material in basePart.GetComponent<MeshRenderer>().sharedMaterials)
                 Assert.That(material.name, Is.EqualTo("CymbalMetal"));
             Assert.That(topPart.GetComponent<MeshRenderer>().sharedMaterials.Select(m => m.name).ToArray(),
@@ -288,8 +287,11 @@ namespace YARG.Tests.EditMode
                     ? four[TypeValue(ordinary)] : five[TypeValue(ordinary)]);
                 var original = source.GetComponentInChildren<MeshFilter>();
                 Assert.That(filter.sharedMesh, Is.SameAs(original.sharedMesh));
-                Assert.That(filter.GetComponent<MeshRenderer>().sharedMaterials,
-                    Is.EqualTo(original.GetComponent<MeshRenderer>().sharedMaterials));
+                var expectedMaterials = original.GetComponent<MeshRenderer>().sharedMaterials;
+                // The artist swapped the closed ghost's bright and dark center regions.
+                if (type == "ClosedHiHatGhost")
+                    (expectedMaterials[2], expectedMaterials[3]) = (expectedMaterials[3], expectedMaterials[2]);
+                Assert.That(filter.GetComponent<MeshRenderer>().sharedMaterials, Is.EqualTo(expectedMaterials));
             }
             foreach (string property in new[] { "ColoredMaterials", "ColoredMaterialsNoStarPower",
                 "ColoredMetalMaterials", "ColoredSecondaryMaterials" })

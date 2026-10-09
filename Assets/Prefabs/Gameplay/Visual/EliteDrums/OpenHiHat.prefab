@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 1205492880461296535}
   - component: {fileID: 3759939152302490682}
   - component: {fileID: 2901889663544717074}
+  - component: {fileID: 9049605675648249107}
   m_Layer: 0
   m_Name: Top
   m_TagString: Untagged
@@ -27,7 +28,7 @@ Transform:
   m_GameObject: {fileID: 3439494196581305160}
   serializedVersion: 2
   m_LocalRotation: {x: 0.000000029530986, y: 0.7372774, z: 0.6755902, w: -0.00000003222742}
-  m_LocalPosition: {x: 0, y: 0.002647059, z: 0}
+  m_LocalPosition: {x: 0, y: 0.0022, z: -0.0024}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -92,6 +93,28 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &9049605675648249107
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3439494196581305160}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3d87fbfe4b20e4f139d733b03ced5e16, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::YARG.Gameplay.Visuals.HiHatBeatAnimation
+  _mode: 1
+  _restPosition: {x: 0, y: 0.0022, z: -0.0024}
+  _restRotation: {x: 0.000000029530986, y: 0.7372774, z: 0.6755902, w: -0.00000003222742}
+  _pivotLocal: {x: 0, y: 0, z: 0.0060072606}
+  _swayDegrees: 2
+  _fadeBeats: 2
+  _backPosition: {x: 0, y: 0.0022010675, z: -0.0030010464}
+  _backRotation: {x: 0.000000030364305, y: 0.7193437, z: 0.69465435, w: -0.000000031443516}
+  _forwardPosition: {x: 0, y: 0.00222245, z: -0.0011213543}
+  _forwardRotation: {x: 0.000000027685653, y: 0.773846, z: 0.6333739, w: -0.000000033825884}
 --- !u!1 &5139201882433763619
 GameObject:
   m_ObjectHideFlags: 0
