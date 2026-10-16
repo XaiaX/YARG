@@ -311,7 +311,7 @@ namespace YARG.Menu.Navigation
 
             // TMP instantiates its template as a child named "Dropdown List"
             var list = dropdown.transform.Find("Dropdown List");
-            if (list == null)
+            if (list == null || list.GetComponent<DropdownListCloseWatcher>() != null)
             {
                 return;
             }
@@ -324,6 +324,23 @@ namespace YARG.Menu.Navigation
 
             var scrollRect = list.GetComponent<ScrollRect>();
             int index = Mathf.Clamp(dropdown.value, 0, toggles.Length - 1);
+
+            // TMP pointer hover changes EventSystem selection without changing the value.
+            // Continue from the visible highlight, not a stale keyboard-only cursor.
+            void SyncHighlight()
+            {
+                var eventSystem = EventSystem.current;
+                if (eventSystem == null) return;
+                var selected = eventSystem.currentSelectedGameObject;
+                for (int i = 0; i < toggles.Length; i++)
+                {
+                    if (toggles[i].gameObject == selected)
+                    {
+                        index = i;
+                        break;
+                    }
+                }
+            }
 
             void Highlight()
             {
@@ -364,18 +381,21 @@ namespace YARG.Menu.Navigation
                 new NavigationScheme.Entry(MenuAction.Up, "Menu.Common.Previous", () =>
                 {
                     if (dropdown == null) { PopOnce(); return; }
+                    SyncHighlight();
                     index = (index - 1 + toggles.Length) % toggles.Length;
                     Highlight();
                 }),
                 new NavigationScheme.Entry(MenuAction.Down, "Menu.Common.Next", () =>
                 {
                     if (dropdown == null) { PopOnce(); return; }
+                    SyncHighlight();
                     index = (index + 1) % toggles.Length;
                     Highlight();
                 }),
                 new NavigationScheme.Entry(MenuAction.Green, "Menu.Common.Confirm", () =>
                 {
                     if (dropdown == null) { PopOnce(); return; }
+                    SyncHighlight();
                     if (index == dropdown.value)
                     {
                         // TMP suppresses the change event for the same index, so

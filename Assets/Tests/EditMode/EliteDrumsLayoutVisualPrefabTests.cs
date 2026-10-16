@@ -97,7 +97,7 @@ namespace YARG.Tests.EditMode
             var referenceButton = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Prefabs/Menu/Common/Buttons/RoundButton.prefab");
             var referenceSprite = referenceButton.GetComponentInChildren<Button>(true).image.sprite;
-            foreach (var label in new[] { "Rename", "Copy", "Delete", "Import", "Export" })
+            foreach (var label in new[] { "Save", "Rename", "Copy", "Delete", "Import", "Export" })
             {
                 var wrapper = Rect(_prefab.transform, label);
                 var button = wrapper.GetComponentInChildren<Button>(true);
@@ -107,11 +107,22 @@ namespace YARG.Tests.EditMode
                     label + " uses the RoundButton selection outline");
                 var wrapperSize = WorldSize(wrapper);
                 var buttonSize = WorldSize(buttonRect);
+                float expectedWidth = ((0.056f + 9f * 0.061f) * 1920f - 6f * 10f - 64f) / 6f;
+                Assert.That(wrapper.rect.width, Is.EqualTo(expectedWidth).Within(0.01f),
+                    label + " shares the grid width equally after preset spacing and group spacer");
+                Assert.That(wrapper.rect.height, Is.EqualTo(referenceHeight).Within(0.01f));
+                Assert.That(buttonRect.rect.height, Is.EqualTo(referenceButton.GetComponentInChildren<Button>(true)
+                    .GetComponent<RectTransform>().rect.height).Within(0.01f));
                 Assert.That(buttonSize.y, Is.GreaterThanOrEqualTo(referenceHeight - 10f), label + " actual button height");
                 Assert.That(buttonSize.x, Is.GreaterThan(wrapperSize.x * 0.9f), label + " actual button width");
                 Assert.That(buttonSize.y, Is.GreaterThan(wrapperSize.y * 0.8f), label + " actual button fills wrapper");
                 var text = wrapper.GetComponentInChildren(_tmpTextType, true);
                 Assert.That(text, Is.Not.Null, label + " wrapper contains its label");
+                var referenceText = referenceButton.GetComponentInChildren(_tmpTextType, true);
+                Assert.That(text.GetType().GetProperty("fontSize").GetValue(text),
+                    Is.EqualTo(referenceText.GetType().GetProperty("fontSize").GetValue(referenceText)));
+                Assert.That(text.GetType().GetProperty("font").GetValue(text),
+                    Is.EqualTo(referenceText.GetType().GetProperty("font").GetValue(referenceText)));
                 var textRect = ((Component)text).GetComponent<RectTransform>();
                 Assert.That(WorldSize(textRect).x, Is.LessThan(buttonSize.x), label + " text has inner padding");
             }
@@ -170,6 +181,10 @@ namespace YARG.Tests.EditMode
 
                 var text = inset.GetComponentInChildren(_tmpTextType, true);
                 Assert.That(text, Is.Not.Null);
+                var numberRect = ((Component)text).GetComponent<RectTransform>();
+                Assert.That(numberRect.anchoredPosition, Is.EqualTo(new Vector2(0f, 1f)),
+                    "Only the numeral is raised; its black circle stays centered.");
+                Assert.That(numberRect.sizeDelta, Is.EqualTo(Vector2.zero));
                 Assert.That((string)text.GetType().GetProperty("text").GetValue(text), Is.EqualTo(column.ToString()));
                 Assert.That((Color)text.GetType().GetProperty("color").GetValue(text), Is.EqualTo(Color.white));
                 Assert.That(Convert.ToSingle(text.GetType().GetProperty("fontSize").GetValue(text)), Is.EqualTo(25f));

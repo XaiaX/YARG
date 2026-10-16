@@ -16,7 +16,7 @@ using UnityEditor;
 
 namespace YARG.Tests.PlayMode
 {
-    public sealed class EliteDrumsLayoutMenuPlayModeTests
+    public sealed partial class EliteDrumsLayoutMenuPlayModeTests
     {
         private GameObject _root;
         private GameObject _menuHost;
@@ -387,7 +387,7 @@ namespace YARG.Tests.PlayMode
                         Is.EqualTo(((Button)Field(menu, "_back")).gameObject));
                 var visited = TraverseNavigation(menu);
                 foreach (var name in new[] { "_back", "_layoutDropdown", "_openLayoutFolder", "_previewColor", "_previewOptions",
-                    "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout", "_save" })
+                    "_save", "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout" })
                 {
                     var control = (Selectable)Field(menu, name);
                     bool enabled = control.IsInteractable() && control.gameObject.activeInHierarchy;
@@ -429,6 +429,16 @@ namespace YARG.Tests.PlayMode
                 Assert.That(visited.Any(target => target.gameObject == control.gameObject), Is.False,
                     name + " must be skipped by navigation while disabled.");
             }
+            var rows = ((IEnumerable)menuType.GetMethod("GetNavigationRows",
+                BindingFlags.Instance | BindingFlags.NonPublic).Invoke(menu, null)).Cast<IEnumerable>().ToArray();
+            var managementOrder = rows[2].Cast<Component>().Select(control => control.gameObject).ToArray();
+            Assert.That(managementOrder, Is.EqualTo(new[]
+            {
+                "_save", "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout"
+            }.Select(name => (Selectable)Field(menu, name))
+                .Where(control => control.IsInteractable() && control.gameObject.activeInHierarchy)
+                .Select(control => control.gameObject).ToArray()),
+                "Runtime navigation follows the visible management action order while skipping disabled actions.");
             var save = (Selectable)Field(menu, "_save");
             Assert.That(visited.Any(target => target.gameObject == save.gameObject), Is.True,
                 "Navigation must still reach Save when the row contains disabled actions.");

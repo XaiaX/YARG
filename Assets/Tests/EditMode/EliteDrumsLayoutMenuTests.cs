@@ -326,7 +326,9 @@ namespace YARG.Tests.EditMode
                 AssertRectContained(buttonRect, (RectTransform)_instance.transform, actionName);
                 Assert.That(ViewportBounds(buttonRect).yMax, Is.LessThan(actionBounds.yMin),
                     "Save belongs in the distinct management row below the dropdown toolbar.");
-                Assert.That(buttonRect.anchorMin.y, Is.EqualTo(0.65f).Within(0.0001f));
+                Assert.That(ViewportBounds(buttonRect).center.y,
+                    Is.EqualTo(ViewportBounds((RectTransform)_instance.transform.Find("Management Row")).center.y)
+                        .Within(0.0001f));
             }
             foreach (var labelName in new[] { "Preview Color Profile Label" })
             {
@@ -398,21 +400,24 @@ namespace YARG.Tests.EditMode
             var layout = ViewportBounds(_layoutDropdown.GetComponent<RectTransform>());
             var controls = ViewportBounds((RectTransform)_instance.transform.Find("Toolbar Panel"));
             Assert.That(controls.height * ((RectTransform)_instance.transform).rect.height,
-                Is.EqualTo(125f).Within(1f), "The toolbar is a 125-reference-unit band.");
-            var actionNames = new[] { "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout", "_save" };
+                Is.EqualTo(97.5f).Within(0.1f), "The toolbar and management bands have equal reference heights.");
+            var actionNames = new[] { "_save", "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout" };
             var bounds = actionNames.Select(name => ViewportBounds(
                 (RectTransform)((Button)Field(_menu, name)).transform.parent)).ToArray();
 
             Assert.That(bounds.Select(rect => (rect.xMin + rect.xMax) * 0.5f),
-                Is.Ordered.Ascending, "Management actions must follow Rename, Copy, Delete, Import, Export from left to right.");
+                Is.Ordered.Ascending, "Management actions must follow Save, Rename, Copy, Delete, Import, Export from left to right.");
             float actionTop = bounds.Select(rect => rect.yMax).Min();
             float actionBottom = bounds.Select(rect => rect.yMin).Max();
             Assert.That(actionTop, Is.LessThan(layout.yMin),
                 "The action row must be directly below and not overlap the selected-layout dropdown.");
-            Assert.That(layout.yMin - actionTop, Is.EqualTo(0.07175926f).Within(0.001f),
-                "The 125-unit toolbar and y=.65 management row define this dropdown clearance.");
+            Assert.That((layout.yMin - actionTop) * 1080f, Is.EqualTo(37.5f).Within(0.1f),
+                "The 64-unit dropdown frame and compact management row retain clear padding.");
+            var management = ViewportBounds((RectTransform)_instance.transform.Find("Management Row"));
+            Assert.That(management.yMax, Is.EqualTo(controls.yMin).Within(0.0001f),
+                "The management row starts at the toolbar border without an extra gap.");
             Assert.That(bounds.Select(rect => rect.center.y),
-                Is.All.EqualTo(0.65f).Within(0.001f),
+                Is.All.EqualTo(management.center.y).Within(0.0001f),
                 "Management actions share the dedicated row below the dropdown toolbar.");
             Assert.That(actionTop, Is.LessThan(controls.yMin),
                 "The management row must not overlap the dropdown toolbar.");
@@ -432,11 +437,8 @@ namespace YARG.Tests.EditMode
             {
                 float gap = bounds[i].xMin - bounds[i - 1].xMax;
                 Assert.That(gap, Is.GreaterThan(0f), $"{actionNames[i - 1]} and {actionNames[i]} must not overlap.");
-                // The approved six-action row uses one explicit, consistent gutter between
-                // every pair; the old larger Delete→Import spacing belonged to the removed
-                // five-button arrangement.
-                Assert.That(gap, Is.EqualTo(bounds[1].xMin - bounds[0].xMax).Within(0.002f),
-                    $"{actionNames[i - 1]}/{actionNames[i]} must share the row's consistent gutter.");
+                Assert.That(gap * 1920f, Is.EqualTo(i == 4 ? 84f : 10f).Within(1f),
+                    "Import/Export are separated from the editing actions by a larger gap.");
             }
         }
 
@@ -749,7 +751,14 @@ namespace YARG.Tests.EditMode
             Assert.That(toolbar, Is.Not.Null);
             Assert.That(toolbar.GetComponent<Image>().color,
                 Is.EqualTo(new Color(3f / 255f, 20f / 255f, 33f / 255f, 1f)));
-            Assert.That(toolbar.rect.height, Is.EqualTo(125f).Within(1f));
+            var settings = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Menu/Settings/SettingsMenu.prefab");
+            var settingsHeader = settings.GetComponentsInChildren<Image>(true)
+                .Single(image => image.name == "Header");
+            Assert.That(toolbar.GetComponent<Image>().color, Is.EqualTo(settingsHeader.color));
+            Assert.That(_instance.GetComponent<Image>().color,
+                Is.EqualTo(new Color(5f / 255f, 6f / 255f, 11f / 255f, 1f)),
+                "The entire lower panel matches the uniform MenuBackground1 preset artwork.");
+            Assert.That(toolbar.rect.height, Is.EqualTo(97.5f).Within(0.1f));
             var dropdowns = new[] { _layoutDropdown, (Component)Field(_menu, "_previewColor"),
                 (Component)Field(_menu, "_previewOptions") };
             var reference = AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -757,6 +766,11 @@ namespace YARG.Tests.EditMode
             var referenceImage = reference.GetComponentsInChildren<Selectable>(true)
                 .First(selectable => selectable.GetType().Name.Contains("Dropdown")).targetGraphic as Image;
             Assert.That(referenceImage, Is.Not.Null);
+            var referenceDropdown = reference.GetComponentsInChildren<Selectable>(true)
+                .First(selectable => selectable.GetType().Name.Contains("Dropdown"));
+            var referenceCaption = (Component)referenceDropdown.GetType().GetProperty("captionText").GetValue(referenceDropdown);
+            Assert.That(_instance.GetComponent<Image>().color, Is.Not.EqualTo(toolbar.GetComponent<Image>().color),
+                "The full-width toolbar must remain a distinct background band.");
             foreach (var dropdown in dropdowns)
             {
                 AssertRectContained(dropdown.GetComponent<RectTransform>(), toolbar, dropdown.name);
@@ -764,10 +778,142 @@ namespace YARG.Tests.EditMode
                 Assert.That(image, Is.Not.Null);
                 Assert.That(image.sprite, Is.EqualTo(referenceImage.sprite),
                     "Dropdowns must retain the shared preset control artwork.");
+                Assert.That(image.color, Is.EqualTo(referenceImage.color));
+                Assert.That(dropdown.GetComponent<RectTransform>().rect.height,
+                    Is.EqualTo(referenceDropdown.GetComponent<RectTransform>().rect.height).Within(0.01f),
+                    "Use the authored preset frame height, not the full toolbar row height.");
+                var caption = (Component)dropdown.GetType().GetProperty("captionText").GetValue(dropdown);
+                Assert.That(caption.GetType().GetProperty("fontSize").GetValue(caption),
+                    Is.EqualTo(referenceCaption.GetType().GetProperty("fontSize").GetValue(referenceCaption)));
+                Assert.That(caption.GetType().GetProperty("font").GetValue(caption),
+                    Is.EqualTo(referenceCaption.GetType().GetProperty("font").GetValue(referenceCaption)));
+                for (var ancestor = dropdown.transform.parent; ancestor != toolbar; ancestor = ancestor.parent)
+                {
+                    Assert.That(ancestor.GetComponentsInChildren<Image>(true)
+                        .Where(decoration => !decoration.transform.IsChildOf(dropdown.transform)), Is.Empty,
+                        "Copied settings rows must not retain divider or background graphics.");
+                }
             }
             var bounds = dropdowns.Select(dropdown => ViewportBounds(dropdown.GetComponent<RectTransform>())).ToArray();
             Assert.That(bounds.Max(rect => rect.yMin) - bounds.Min(rect => rect.yMin), Is.LessThan(0.002f));
             Assert.That(bounds.Max(rect => rect.yMax) - bounds.Min(rect => rect.yMax), Is.LessThan(0.002f));
+            Assert.That(bounds.Select(rect => rect.center.y),
+                Is.All.EqualTo(ViewportBounds(toolbar).center.y).Within(0.0001f),
+                "Fixed-size dropdowns stay vertically centered when the toolbar height changes.");
+            var folder = (Button)Field(_menu, "_openLayoutFolder");
+            var folderRect = (RectTransform)folder.transform.parent;
+            Assert.That(folderRect.rect.size, Is.EqualTo(new Vector2(76f, 76f)));
+            Assert.That(ViewportBounds(folderRect).center.y,
+                Is.EqualTo(ViewportBounds(toolbar).center.y).Within(0.0001f));
+        }
+
+        [Test]
+        public void AssignmentAndManagementGroupHasEqualPanelMarginsWithoutChangingGeometry()
+        {
+            Canvas.ForceUpdateCanvases();
+            for (int column = 0; column < 10; column++)
+            {
+                float left = 0.0225f + column * 0.061f;
+                foreach (var row in new[] { "Cymbal", "Drum" })
+                {
+                    var cell = ViewportBounds((RectTransform)_instance.transform.Find($"Column {column + 1} {row}"));
+                    Assert.That(cell.xMin, Is.EqualTo(left).Within(0.00001f));
+                    Assert.That(cell.width, Is.EqualTo(0.056f).Within(0.00001f));
+                    Assert.That(cell.yMin, Is.EqualTo((row == "Cymbal" ? 0.50f : 0.40f) + 72f / 1080f).Within(0.00001f));
+                    Assert.That(cell.height, Is.EqualTo(0.09f).Within(0.00001f));
+                }
+                var fret = (RectTransform)_instance.transform.Find($"Saved Slot Fret {column + 1}");
+                Assert.That(fret.anchorMin.x, Is.EqualTo(left + 0.003f).Within(0.00001f));
+                Assert.That(fret.anchorMax.x, Is.EqualTo(left + 0.053f).Within(0.00001f));
+                Assert.That(fret.anchorMin.y, Is.EqualTo(0.31722223f + 72f / 1080f).Within(0.00001f));
+                Assert.That(fret.anchorMax.y, Is.EqualTo(0.39055556f + 72f / 1080f).Within(0.00001f));
+                Assert.That(fret.sizeDelta, Is.EqualTo(new Vector2(0f, -1.2f)));
+            }
+            var names = new[] { "_save", "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout" };
+            var actions = names.Select(name => ViewportBounds((RectTransform)((Button)Field(_menu, name)).transform.parent)).ToArray();
+            const float WIDTH = (0.605f * 1920f - 6f * 10f - 64f) / 6f;
+            Assert.That(actions[0].xMin, Is.EqualTo(0.0225f).Within(0.00001f));
+            Assert.That(0.65f - actions[5].xMax, Is.EqualTo(actions[0].xMin).Within(0.00001f));
+            for (int i = 0; i < actions.Length; i++)
+            {
+                Assert.That(actions[i].width * 1920f, Is.EqualTo(WIDTH).Within(0.01f));
+                Assert.That(actions[i].height * 1080f, Is.EqualTo(56f).Within(0.01f));
+                if (i > 0)
+                    Assert.That((actions[i].xMin - actions[i - 1].xMax) * 1920f,
+                        Is.EqualTo(i == 4 ? 84f : 10f).Within(0.01f));
+            }
+        }
+
+        [Test]
+        public void ToolbarAndAssignmentBoundariesMeetAtActualPanelEdges()
+        {
+            Canvas.ForceUpdateCanvases();
+            var toolbar = ViewportBounds((RectTransform)_instance.transform.Find("Toolbar Panel"));
+            var management = ViewportBounds((RectTransform)_instance.transform.Find("Management Row"));
+            var dividerRect = (RectTransform)_instance.transform.Find("Assignment Preview Divider");
+            var divider = ViewportBounds(dividerRect);
+            Assert.That(toolbar.xMin, Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(toolbar.xMax, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(management.xMin, Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(management.xMax, Is.EqualTo(0.65f).Within(0.0001f));
+            Assert.That(management.height * 1080f, Is.EqualTo(97.5f).Within(0.1f));
+            Assert.That(toolbar.height, Is.EqualTo(management.height).Within(0.00001f));
+            Assert.That((toolbar.yMax - management.yMin) * 1080f, Is.EqualTo(195f).Within(0.1f));
+            var header = ViewportBounds((RectTransform)_instance.transform.Find("Header"));
+            Assert.That(toolbar.yMax, Is.EqualTo(header.yMin).Within(0.0001f));
+            var cymbal = ViewportBounds((RectTransform)_instance.transform.Find("Column 1 Cymbal"));
+            Assert.That(management.yMin, Is.GreaterThan(cymbal.yMax),
+                "The management bottom border must clear the relocated assignment row.");
+            Assert.That(management.yMax, Is.EqualTo(toolbar.yMin).Within(0.0001f));
+            Assert.That(divider.center.x, Is.EqualTo(management.xMax).Within(0.0001f));
+            Assert.That(divider.width * 1920f, Is.EqualTo(1.5f).Within(0.01f));
+            Assert.That(divider.yMax, Is.EqualTo(toolbar.yMin).Within(0.0001f));
+            Assert.That(divider.yMin, Is.EqualTo(ViewportBounds(_helpBar).yMax).Within(0.0001f),
+                "The static divider ends at the actual production Help Bar, not an estimated footer height.");
+            foreach (var pair in new[]
+                     {
+                         ("Toolbar Panel/Toolbar Bottom Border", toolbar),
+                         ("Management Row/Management Bottom Border", management)
+                     })
+            {
+                var rect = (RectTransform)_instance.transform.Find(pair.Item1);
+                var bounds = ViewportBounds(rect);
+                Assert.That(bounds.xMin, Is.EqualTo(pair.Item2.xMin).Within(0.0001f));
+                Assert.That(bounds.xMax, Is.EqualTo(pair.Item2.xMax).Within(0.0001f));
+                Assert.That(bounds.yMin, Is.EqualTo(pair.Item2.yMin).Within(0.0001f));
+                Assert.That(bounds.height * 1080f, Is.EqualTo(1.5f).Within(0.01f));
+            }
+            var separatorRect = (RectTransform)_instance.transform.Find("Toolbar Panel/Layout Colors Separator");
+            var separator = ViewportBounds(separatorRect);
+            Assert.That(separator.height * 1080f, Is.EqualTo(80f).Within(0.1f));
+            Assert.That(separator.width * 1920f, Is.EqualTo(1.5f).Within(0.01f));
+            Assert.That(separator.center.y, Is.EqualTo(toolbar.center.y).Within(0.0001f));
+            var folder = (Button)Field(_menu, "_openLayoutFolder");
+            var colorLabel = (Component)Field(_menu, "_previewColorLabel");
+            Assert.That(separator.xMin, Is.GreaterThan(ViewportBounds((RectTransform)folder.transform.parent).xMax));
+            Assert.That(separator.xMax, Is.LessThan(ViewportBounds(colorLabel.GetComponent<RectTransform>()).xMin));
+            foreach (var path in new[] { "Toolbar Panel/Toolbar Bottom Border", "Management Row/Management Bottom Border",
+                         "Assignment Preview Divider", "Toolbar Panel/Layout Colors Separator" })
+            {
+                var decoration = _instance.transform.Find(path);
+                var image = decoration.GetComponent<Image>();
+                var presetDivider = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/Prefabs/Menu/Settings/Visuals/BaseSetting.prefab").transform.Find("Divider");
+                Assert.That(image.color, Is.EqualTo(presetDivider.GetComponent<Image>().color), path);
+                Assert.That(image.color, Is.EqualTo(new Color(16f / 255f, 28f / 255f, 43f / 255f, 1f)), path);
+                Assert.That(1.5f, Is.LessThan(presetDivider.GetComponent<RectTransform>().rect.height),
+                    "The finishing dividers are lighter-weight than the authored preset row divider.");
+                Assert.That(image.sprite, Is.Null, path + " must be a sharp solid line");
+                Assert.That(image.raycastTarget, Is.False, path);
+                Assert.That(decoration.GetComponent<Selectable>(), Is.Null, path + " is not a scrollbar or selectable");
+            }
+            var layoutLabel = _instance.transform.Find("Toolbar Panel/Layout Selection").GetComponentsInChildren(TmpTextType, true)
+                .Cast<Component>().Single(text => Text(text) == "LAYOUT");
+            Assert.That(Text(colorLabel), Is.EqualTo(LocalizedKey("Menu.EliteLayout.Colors").ToUpperInvariant()));
+            Assert.That(Text(colorLabel), Is.EqualTo("COLORS"), "Runtime localization must preserve the uppercase caption.");
+            foreach (var property in new[] { "font", "fontSize", "fontStyle", "fontWeight", "enableAutoSizing" })
+                Assert.That(colorLabel.GetType().GetProperty(property).GetValue(colorLabel),
+                    Is.EqualTo(layoutLabel.GetType().GetProperty(property).GetValue(layoutLabel)), property);
         }
 
         [Test]
@@ -802,10 +948,10 @@ namespace YARG.Tests.EditMode
         [Test]
         public void ManagementRowContainsSaveWithoutCancel()
         {
-            var names = new[] { "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout", "_save" };
+            var names = new[] { "_save", "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout" };
             var buttons = names.Select(name => (Button)Field(_menu, name)).ToArray();
             Assert.That(buttons.Select(button => ButtonText(button)),
-                Is.EqualTo(new[] { "Rename", "Copy", "Delete", "Import", "Export", "Save" }));
+                Is.EqualTo(new[] { "Save", "Rename", "Copy", "Delete", "Import", "Export" }));
             Assert.That(_menuType.GetField("_cancel", BindingFlags.Instance | BindingFlags.NonPublic), Is.Null);
             var bounds = buttons.Select(button => ViewportBounds((RectTransform)button.transform.parent)).ToArray();
             Assert.That(bounds.Select(rect => rect.center.x), Is.Ordered.Ascending);
@@ -824,8 +970,33 @@ namespace YARG.Tests.EditMode
             Assert.That(preview.height * 1080f, Is.EqualTo(711f).Within(1f));
             Assert.That(preview.yMax, Is.GreaterThan(upper[0].yMax),
                 "The tall production preview extends above the assignment rows.");
+            Assert.That(preview.xMin, Is.EqualTo(0.66f).Within(0.0001f));
+            Assert.That(preview.xMax, Is.EqualTo(0.99f).Within(0.0001f));
+            var builtIn = ViewportBounds((RectTransform)_instance.transform.Find("Built In Notice"));
+            Assert.That(builtIn.yMin * 1080f, Is.EqualTo(333.6f).Within(0.1f));
+            Assert.That(builtIn.yMax * 1080f, Is.EqualTo(409.2f).Within(0.1f));
+            Assert.That(builtIn.xMin, Is.EqualTo(0.04f).Within(0.0001f));
+            Assert.That(builtIn.xMax, Is.EqualTo(0.63f).Within(0.0001f));
+            var status = ViewportBounds((RectTransform)_instance.transform.Find("Status"));
+            var colorsNotice = ViewportBounds((RectTransform)_instance.transform.Find("Colors Notice"));
+            Assert.That(status.yMin * 1080f, Is.EqualTo(86.4f).Within(0.1f));
+            Assert.That(status.yMax * 1080f, Is.EqualTo(151.2f).Within(0.1f));
+            Assert.That(colorsNotice.yMin * 1080f, Is.EqualTo(16.2f).Within(0.1f));
+            Assert.That(colorsNotice.yMax * 1080f, Is.EqualTo(75.6f).Within(0.1f));
             for (int i = 0; i < 10; i++)
             {
+                Assert.That(upper[i].yMin * 1080f, Is.EqualTo(612f).Within(0.1f));
+                Assert.That(upper[i].yMax * 1080f, Is.EqualTo(709.2f).Within(0.1f));
+                Assert.That(lower[i].yMin * 1080f, Is.EqualTo(504f).Within(0.1f));
+                Assert.That(lower[i].yMax * 1080f, Is.EqualTo(601.2f).Within(0.1f));
+                var fret = ViewportBounds((RectTransform)_instance.transform.Find($"Saved Slot Fret {i + 1}"));
+                Assert.That(fret.yMin * 1080f, Is.EqualTo(415.2f).Within(0.1f));
+                Assert.That(fret.yMax * 1080f, Is.EqualTo(493.2f).Within(0.1f));
+                Assert.That((lower[i].yMin - fret.yMax) * 1080f, Is.EqualTo(10.8f).Within(0.1f));
+                Assert.That(fret.xMin, Is.EqualTo(0.0255f + i * 0.061f).Within(0.0001f));
+                Assert.That(fret.width * 1920f, Is.EqualTo(96f).Within(0.1f));
+                Assert.That(upper[i].xMin, Is.EqualTo(0.0225f + i * 0.061f).Within(0.0001f));
+                Assert.That(upper[i].width * 1920f, Is.EqualTo(107.52f).Within(0.1f));
                 Assert.That(upper[i].xMin, Is.EqualTo(lower[i].xMin).Within(0.0001f));
                 Assert.That(upper[i].width, Is.EqualTo(lower[i].width).Within(0.0001f));
                 Assert.That((upper[i].yMin - lower[i].yMax) * 1080f, Is.EqualTo(10.8f).Within(0.1f));

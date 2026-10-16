@@ -115,7 +115,7 @@ namespace YARG.Menu.HighwayConfiguration
             if (_layoutLabel != null)
                 _layoutLabel.text = Localize.Key("Menu.EliteLayout.Layout");
             if (_previewColorLabel != null)
-                _previewColorLabel.text = Localize.Key("Menu.EliteLayout.Colors");
+                _previewColorLabel.text = Localize.Key("Menu.EliteLayout.Colors").ToUpperInvariant();
             if (_layoutDropdown != null)
             {
                 RefreshManagementList();
@@ -278,7 +278,7 @@ namespace YARG.Menu.HighwayConfiguration
             var rows = new List<List<NavigatableBehaviour>>();
             AddRow(_back);
             AddRow(_layoutDropdown, _openLayoutFolder, _previewColor, _previewOptions);
-            AddRow(_renameLayout, _copyLayout, _deleteLayout, _importLayout, _exportLayout, _save);
+            AddRow(_save, _renameLayout, _copyLayout, _deleteLayout, _importLayout, _exportLayout);
             foreach (bool drum in new[] { false, true })
             {
                 var row = _cells.Where(cell => cell.Drum == drum && IsEnabled(cell))

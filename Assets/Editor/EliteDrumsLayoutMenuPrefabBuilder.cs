@@ -15,14 +15,15 @@ namespace YARG.Editor
     {
         public const string PREFAB_PATH = "Assets/Resources/EliteDrumsLayoutMenu.prefab";
         internal const string PROFILE_CONFIGURE_LABEL_KEY = "Menu.ProfileList.ConfigureEliteDrumsLayout";
-        internal const float UPPER_ROW_BOTTOM = 0.50f;
-        internal const float UPPER_ROW_TOP = 0.59f;
-        internal const float LOWER_ROW_TOP = 0.49f;
-        internal const float LOWER_ROW_BOTTOM = 0.40f;
+        private const float GRID_SHIFT = 72f / 1080f;
+        internal const float UPPER_ROW_BOTTOM = 0.50f + GRID_SHIFT;
+        internal const float UPPER_ROW_TOP = 0.59f + GRID_SHIFT;
+        internal const float LOWER_ROW_TOP = 0.49f + GRID_SHIFT;
+        internal const float LOWER_ROW_BOTTOM = 0.40f + GRID_SHIFT;
         // The swatch sizeDelta removes 0.6 units from each edge; compensate at the top
         // so both visible gaps, rather than just the anchor gaps, are 10.8 units.
-        internal const float FRET_SWATCH_BOTTOM = 0.31722223f;
-        internal const float FRET_SWATCH_TOP = 0.39055556f;
+        internal const float FRET_SWATCH_BOTTOM = 0.31722223f + GRID_SHIFT;
+        internal const float FRET_SWATCH_TOP = 0.39055556f + GRID_SHIFT;
         private const string BUTTON_PATH = "Assets/Prefabs/Menu/Common/Buttons/SmallRoundButton.prefab";
         private const string MANAGEMENT_BUTTON_PATH = "Assets/Prefabs/Menu/Common/Buttons/RoundButton.prefab";
         private const string DIALOG_BACKGROUND_PATH = "Assets/Art/Menu/Common/DialogBackground.png";
@@ -32,6 +33,10 @@ namespace YARG.Editor
         private const string ROUNDED_RECT_PATH = "Assets/Art/Menu/Common/RoundedSquare.png";
         private const string CIRCLE_PATH = "Assets/Art/Menu/Common/Circle.png";
         private const float MANAGEMENT_BUTTON_HEIGHT = 56f;
+        private const float TOOLBAR_ROW_HEIGHT = 97.5f;
+        private const float MANAGEMENT_ROW_HEIGHT = 97.5f;
+        private const float ASSIGNMENT_LEFT = 0.0225f;
+        private const float DIVIDER_THICKNESS = 1.5f;
 
         [MenuItem("YARG/Build Elite Drums Layout Menu")]
         public static void Build()
@@ -41,7 +46,8 @@ namespace YARG.Editor
             root.SetActive(false);
             try
             {
-                root.AddComponent<Image>().color = new Color(0.025f, 0.035f, 0.05f, 1f);
+                // SettingsMenu's MenuBackground1 artwork is uniformly RGB 5/6/11.
+                root.AddComponent<Image>().color = new Color(5f / 255f, 6f / 255f, 11f / 255f, 1f);
                 var menu = root.AddComponent<EliteDrumsLayoutMenu>();
                 var navigation = root.AddComponent<NavigationGroup>();
                 root.AddComponent<YARG.Menu.MenuObject>().Initialize(
@@ -69,11 +75,27 @@ namespace YARG.Editor
                 var previewControls = AnchoredRect("Toolbar Panel", root.transform,
                     new Vector2(0f, 1f), Vector2.one, Vector2.zero, Vector2.zero);
                 var previewControlsRect = previewControls.GetComponent<RectTransform>();
-                previewControlsRect.offsetMin = new Vector2(0f, headerBottom - 1080f - 125f);
+                previewControlsRect.offsetMin = new Vector2(0f, headerBottom - 1080f - TOOLBAR_ROW_HEIGHT);
                 previewControlsRect.offsetMax = new Vector2(0f, headerBottom - 1080f);
                 var toolbarBackground = previewControls.AddComponent<Image>();
+                // Match the SettingsMenu header fill above the near-black preset background.
                 toolbarBackground.color = new Color(3f / 255f, 20f / 255f, 33f / 255f, 1f);
                 toolbarBackground.raycastTarget = false;
+                float toolbarBottom = headerBottom - TOOLBAR_ROW_HEIGHT;
+                var managementRow = AnchoredRect("Management Row", root.transform,
+                    new Vector2(0f, 1f), new Vector2(0.65f, 1f),
+                    new Vector2(0f, toolbarBottom - 1080f - MANAGEMENT_ROW_HEIGHT),
+                    new Vector2(0f, toolbarBottom - 1080f));
+                AddBoundary("Toolbar Bottom Border", previewControls.transform,
+                    Vector2.zero, new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, DIVIDER_THICKNESS));
+                AddBoundary("Management Bottom Border", managementRow.transform,
+                    Vector2.zero, new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, DIVIDER_THICKNESS));
+                AddBoundary("Assignment Preview Divider", root.transform,
+                    new Vector2(0.65f, 0f), new Vector2(0.65f, 0f),
+                    new Vector2(-DIVIDER_THICKNESS / 2f, ReadHelpBarTop()), new Vector2(DIVIDER_THICKNESS / 2f, toolbarBottom));
+                AddBoundary("Layout Colors Separator", previewControls.transform,
+                    new Vector2(0.411f, 0.5f), new Vector2(0.411f, 0.5f),
+                    new Vector2(-DIVIDER_THICKNESS / 2f, -40f), new Vector2(DIVIDER_THICKNESS / 2f, 40f));
                 var dropdownTemplate = AssetDatabase.LoadAssetAtPath<GameObject>(
                     "Assets/Prefabs/Menu/Settings/Presets/PresetDropdown.prefab");
                 var colorObject = (GameObject)PrefabUtility.InstantiatePrefab(dropdownTemplate);
@@ -82,14 +104,12 @@ namespace YARG.Editor
                 ConfigureDropdownRow(colorObject, new Vector2(0.42f, 0.1f), new Vector2(0.73f, 0.9f));
                 Object.DestroyImmediate(colorObject.GetComponent<YARG.Menu.Settings.PresetDropdown>());
                 var previewColor = ConfigureFullRowDropdown(colorObject);
-                previewColor.GetComponent<RectTransform>().anchorMin = new Vector2(0.27f, 0f);
+                previewColor.GetComponent<RectTransform>().anchorMin = new Vector2(0.27f, 0.5f);
                 ConfigureDropdownText(previewColor);
                 var colorLabel = AddSectionLabel(colorObject.transform, "Preview Color Profile Label", "COLORS",
                     Vector2.zero, new Vector2(0.25f, 1f));
                 ConfigureDropdownTextElement(previewColor.captionText);
                 ConfigureSectionLabel(colorLabel);
-                colorLabel.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/Art/Fonts/Barlow/Barlow-Medium.asset");
-                colorLabel.fontStyle = FontStyles.Normal;
                 var optionsObject = (GameObject)PrefabUtility.InstantiatePrefab(dropdownTemplate);
                 optionsObject.name = "Preview Options";
                 optionsObject.transform.SetParent(previewControls.transform, false);
@@ -105,8 +125,13 @@ namespace YARG.Editor
                 ConfigureDropdownRow(layoutObject, new Vector2(0.02f, 0.1f), new Vector2(0.355f, 0.9f));
                 var layoutDropdown = ConfigureFullRowDropdown(layoutObject, true);
                 ConfigureDropdownText(layoutDropdown);
-                layoutDropdown.GetComponent<RectTransform>().anchorMin = new Vector2(0.25f, 0f);
-                ConfigureLayoutLabel(layoutObject);
+                layoutDropdown.GetComponent<RectTransform>().anchorMin = new Vector2(0.25f, 0.5f);
+                var layoutLabel = ConfigureLayoutLabel(layoutObject);
+                colorLabel.font = layoutLabel.font;
+                colorLabel.fontSize = layoutLabel.fontSize;
+                colorLabel.fontStyle = layoutLabel.fontStyle;
+                colorLabel.fontWeight = layoutLabel.fontWeight;
+                colorLabel.enableAutoSizing = false;
                 var folderObject = InstantiateIconButton(previewControls.transform, "Open Layout Folder",
                     "Assets/Art/Menu/Common/Icons/AssortedIcons.png", "UIIcons_4");
                 var folderButton = folderObject.GetComponentInChildren<Button>(true);
@@ -122,7 +147,7 @@ namespace YARG.Editor
                 {
                     for (int column = 0; column < 10; column++)
                     {
-                        float xMin = 0.025f + column * 0.061f;
+                        float xMin = ASSIGNMENT_LEFT + column * 0.061f;
                         var cellObject = AnchoredRect($"Column {column + 1} {(row == 0 ? "Cymbal" : "Drum")}",
                             root.transform, new Vector2(xMin, row == 0 ? UPPER_ROW_BOTTOM : LOWER_ROW_BOTTOM),
                             new Vector2(xMin + 0.056f, row == 0 ? UPPER_ROW_TOP : LOWER_ROW_TOP), Vector2.zero, Vector2.zero);
@@ -181,6 +206,7 @@ namespace YARG.Editor
                             var fretNumber = Text("Fret Number", inset.transform, FretNumberLabel(column),
                                 Vector2.zero, Vector2.zero, 25, true);
                             Stretch(fretNumber.rectTransform, 0);
+                            fretNumber.rectTransform.anchoredPosition += new Vector2(0f, 1f);
                             fretNumber.color = Color.white;
                             var numberOutline = fretNumber.gameObject.AddComponent<Outline>();
                             numberOutline.effectColor = new Color(0.015f, 0.02f, 0.03f, 1f);
@@ -228,25 +254,34 @@ namespace YARG.Editor
                 var delete = Button("Delete", root.transform, Vector2.zero, out _, MANAGEMENT_BUTTON_PATH);
                 var import = Button("Import", root.transform, Vector2.zero, out _, MANAGEMENT_BUTTON_PATH);
                 var export = Button("Export", root.transform, Vector2.zero, out _, MANAGEMENT_BUTTON_PATH);
-                var actionButtons = new[] { rename, copy, delete, import, export, save };
+                var actionButtons = new[] { save, rename, copy, delete, import, export };
+                // PresetActions uses equal flexible widths, spacing 10, and a 64-unit spacer.
+                // Fit the same arrangement (with Save added) within the assignment grid's edges.
+                const float ACTION_LEFT = ASSIGNMENT_LEFT * 1920f;
+                const float ACTION_RIGHT = (ASSIGNMENT_LEFT + 9f * 0.061f + 0.056f) * 1920f;
+                const float ACTION_SPACING = 10f;
+                const float ACTION_GROUP_SPACE = 64f;
+                float actionWidth = (ACTION_RIGHT - ACTION_LEFT - 6f * ACTION_SPACING - ACTION_GROUP_SPACE) / actionButtons.Length;
                 var actionAnchors = Enumerable.Range(0, actionButtons.Length)
-                    .Select(index => new Vector2((118f + index * 186f) / 1920f, 0.65f)).ToArray();
+                    .Select(index => new Vector2((ACTION_LEFT + actionWidth / 2f + index * (actionWidth + ACTION_SPACING)
+                        + (index >= 4 ? ACTION_GROUP_SPACE + ACTION_SPACING : 0f)) / 1920f,
+                        (toolbarBottom - MANAGEMENT_ROW_HEIGHT / 2f) / 1080f)).ToArray();
                 for (int i = 0; i < actionButtons.Length; i++)
                 {
                     var action = actionButtons[i];
                     var wrapper = ButtonWrapperRect(action);
-                    SetButtonRect(wrapper, actionAnchors[i], new Vector2(140, MANAGEMENT_BUTTON_HEIGHT));
+                    SetButtonRect(wrapper, actionAnchors[i], new Vector2(actionWidth, MANAGEMENT_BUTTON_HEIGHT));
                     var actualButtonRect = action.GetComponent<RectTransform>();
-                    actualButtonRect.anchorMin = Vector2.zero;
-                    actualButtonRect.anchorMax = Vector2.one;
-                    actualButtonRect.offsetMin = new Vector2(5f, 4f);
-                    actualButtonRect.offsetMax = new Vector2(-5f, -4f);
+                    actualButtonRect.anchorMin = new Vector2(0f, 0.5f);
+                    actualButtonRect.anchorMax = new Vector2(1f, 0.5f);
+                    actualButtonRect.anchoredPosition = Vector2.zero;
+                    actualButtonRect.sizeDelta = new Vector2(0f, 50f);
                     var actionText = wrapper.GetComponentInChildren<TMP_Text>(true);
                     if (actionText == null)
                         throw new System.InvalidOperationException($"Management button {action.name} has no TMP label in its wrapper.");
                     actionText.rectTransform.offsetMin = new Vector2(8f, 2f);
                     actionText.rectTransform.offsetMax = new Vector2(-8f, -2f);
-                    actionText.fontSize = 22f;
+                    actionText.fontSize = 24f;
                 }
                 var folderIcon = folderObject.transform.Find("Icon")?.GetComponent<Image>();
                 if (folderIcon != null) folderIcon.rectTransform.sizeDelta = new Vector2(24, 24);
@@ -332,7 +367,7 @@ namespace YARG.Editor
                 builtInNotice.name = "Built In Notice";
                 builtInNotice.transform.SetParent(root.transform, false);
                 var noticeRect = builtInNotice.GetComponent<RectTransform>();
-                SetAnchors(noticeRect, new Vector2(0.04f, 0.15f), new Vector2(0.63f, 0.22f));
+                SetAnchors(noticeRect, new Vector2(0.04f, 0.3088889f), new Vector2(0.63f, 0.3788889f));
                 builtInNotice.SetActive(false);
                 Set(menu, "_builtInNotice", builtInNotice);
                 Set(menu, "_layoutDropdown", layoutDropdown);
@@ -381,6 +416,13 @@ namespace YARG.Editor
                 text.gameObject.SetActive(false);
             }
 
+            // Settings rows bring alternating fills and dividers; these controls share one toolbar.
+            foreach (var decoration in row.GetComponentsInChildren<Image>(true))
+            {
+                if (decoration.transform == dropdown.transform || decoration.transform.IsChildOf(dropdown.transform)) continue;
+                Object.DestroyImmediate(decoration);
+            }
+
             var rowRect = row.GetComponent<RectTransform>();
             rowRect.localScale = Vector3.one;
             rowRect.anchoredPosition = Vector2.zero;
@@ -405,10 +447,9 @@ namespace YARG.Editor
             var rect = dropdown.GetComponent<RectTransform>();
             rect.localScale = Vector3.one;
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchorMin = new Vector2(reserveLabel ? 0.38f : 0f, 0f);
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            rect.anchorMin = new Vector2(reserveLabel ? 0.38f : 0f, 0.5f);
+            rect.anchorMax = new Vector2(1f, 0.5f);
+            rect.sizeDelta = new Vector2(0f, 64f);
             rect.anchoredPosition = Vector2.zero;
             return dropdown;
         }
@@ -448,7 +489,7 @@ namespace YARG.Editor
             var scroll = dropdown.template.GetComponent<ScrollRect>();
             if (scroll != null && scroll.content != null)
                 scroll.content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 64f);
-            dropdown.captionText.fontSize = 24f;
+            dropdown.captionText.fontSize = 28f;
             dropdown.itemText.fontSize = 28f;
             dropdown.itemText.rectTransform.offsetMin = new Vector2(14f, 4f);
             dropdown.itemText.rectTransform.offsetMax = new Vector2(-18f, -4f);
@@ -472,11 +513,11 @@ namespace YARG.Editor
             var rect = text.rectTransform;
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(8f, 2f);
-            rect.offsetMax = new Vector2(-28f, -2f);
+            rect.offsetMin = new Vector2(20f, 7f);
+            rect.offsetMax = new Vector2(-20f, -7f);
         }
 
-        private static void ConfigureLayoutLabel(GameObject row)
+        private static TMP_Text ConfigureLayoutLabel(GameObject row)
         {
             var dropdown = row.GetComponentInChildren<TMP_Dropdown>(true);
             TMP_Text optionLabel = null;
@@ -507,6 +548,17 @@ namespace YARG.Editor
             labelRect.offsetMin = new Vector2(12f, 0f);
             labelRect.offsetMax = Vector2.zero;
             optionLabel.alignment = TextAlignmentOptions.Left;
+            return optionLabel;
+        }
+
+        private static void AddBoundary(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax,
+            Vector2 offsetMin, Vector2 offsetMax)
+        {
+            var boundary = AnchoredRect(name, parent, anchorMin, anchorMax, offsetMin, offsetMax);
+            var image = boundary.AddComponent<Image>();
+            // Use BaseSetting/Divider's muted preset color, with a lighter-weight line.
+            image.color = new Color(16f / 255f, 28f / 255f, 43f / 255f, 1f);
+            image.raycastTarget = false;
         }
 
         private static void MountProfileSelector()
