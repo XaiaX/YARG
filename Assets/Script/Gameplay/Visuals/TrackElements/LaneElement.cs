@@ -92,11 +92,24 @@ namespace YARG.Gameplay.Visuals
             SetAppearance(instrument, index, _xPosition, color);
         }
 
+        public void SetAppearance(Instrument instrument, int index, float lateralPosition, int subdivisions,
+            Color color, float scale)
+        {
+            _xPosition = GetElementX(lateralPosition, subdivisions);
+
+            SetAppearance(instrument, index, _xPosition, color, scale);
+        }
+
         public void SetAppearance(Instrument instrument, int index, float xPosition, Color color)
+        {
+            SetAppearance(instrument, index, xPosition, color, _scaleByInstrument[instrument]);
+        }
+
+        public void SetAppearance(Instrument instrument, int index, float xPosition, Color color, float scale)
         {
             _startIndex = index;
             _xPosition = xPosition;
-            _scale = _scaleByInstrument[instrument];
+            _scale = scale;
             _color = color;
         }
 

@@ -69,6 +69,8 @@ namespace YARG.Helpers.Extensions
                     (ProfileSettingStrings.CONFIGURE_FOUR_LANE_DRUMS_HIGHWAY, null),
                     (ProfileSettingStrings.CONFIGURE_PRO_DRUMS_HIGHWAY, null),
                     (ProfileSettingStrings.CONFIGURE_FIVE_LANE_DRUMS_HIGHWAY, "5-LANE DRUMS HIGHWAY"),
+                    (ProfileSettingStrings.CONFIGURE_ELITE_DRUMS_LAYOUT, null),
+                    (ProfileSettingStrings.ELITE_DRUMS_LAYOUT_SELECT, null),
                     (ProfileSettingStrings.LEFTY_FLIP, null),
                     (ProfileSettingStrings.DRUM_STAR_POWER_ACTIVATION_TYPE, null),
                     (ProfileSettingStrings.USE_CYMBAL_MODELS, "USE CYMBAL MODELS IN 5-LANE"),

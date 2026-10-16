@@ -32,6 +32,7 @@ namespace YARG.Helpers.Authoring
 
         private ParticleSystem _particleSystem;
         private ParticleSystemRenderer _particleSystemRenderer;
+        private Material _coloringMaterial;
 
         private ParticleSettings _normalSettings;
         private ParticleSettings _breSettings = new ParticleSettings
@@ -86,6 +87,13 @@ namespace YARG.Helpers.Authoring
             _breSettings.Rotation = breRotation;
         }
 
+        private void OnDestroy()
+        {
+            if (_coloringMaterial == null) return;
+            if (Application.isPlaying) Destroy(_coloringMaterial);
+            else DestroyImmediate(_coloringMaterial);
+        }
+
         public void InitializeColor(Color color)
         {
             SetColor(color);
@@ -125,7 +133,19 @@ namespace YARG.Helpers.Authoring
             if (!_setEmissionWhenColoring || _particleSystemRenderer == null) return;
 
             // Set the emission color
-            var material = _particleSystemRenderer.material;
+            var material = _coloringMaterial;
+            if (material == null)
+            {
+                var priorMaterial = _particleSystemRenderer.sharedMaterial;
+                material = _particleSystemRenderer.material;
+                // Unity's Renderer.material instantiates the shared slot on first
+                // access; own the copy only when it differs from the prior slot.
+                if (!ReferenceEquals(material, priorMaterial))
+                {
+                    _coloringMaterial = material;
+                }
+            }
+
             material.color = color;
             material.SetColor(_emissionColor, color * _emissionColorMultiplier);
         }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using TMPro;
 using UnityEngine;
@@ -168,7 +169,7 @@ namespace YARG.Settings.Metadata
 
         private static bool ShouldShowCopyFromNote(string subSection, FieldGroup group, FieldSubGroup subGroup) =>
             subSection == nameof(ColorProfile.EliteDrums)
-                ? group.CopyRole.HasValue && subGroup.Name == NotesSub
+                ? group.CopyRole is EliteDrumsColorRole.Kick or EliteDrumsColorRole.KickFlam && subGroup.Name == NotesSub
                 : subGroup.Name == FretSub;
 
         private static readonly Dictionary<string, FieldGroup[]> ColorFieldGroups = new()
@@ -179,6 +180,12 @@ namespace YARG.Settings.Metadata
             [nameof(ColorProfile.EliteDrums)] = BuildEliteDrumsGroups(),
         };
 
+        private static bool IsHiddenEliteColor(string name) =>
+            name is "WildcardNote" or "WildcardStarpower"
+            || Enum.GetNames(typeof(EliteDrumsColorRole)).Any(role => name == role + "InputFret")
+            || new[] { "Snare", "Hat", "LeftCrashTom1", "RideTom2", "RightCrashTom3", "DoubleKick" }
+                .Any(position => name == position + "Fret" || name == position + "FretInner" || name == position + "Particles");
+
         private static FieldGroup[] BuildEliteDrumsGroups()
         {
             var groups = new List<FieldGroup>();
@@ -188,17 +195,20 @@ namespace YARG.Settings.Metadata
                 groups.Add(new FieldGroup(role.ToString(), true, new[]
                 {
                     new FieldSubGroup(NotesSub, true, $"{role}Note", $"{role}Starpower"),
-                    new FieldSubGroup("Input", false, $"{role}InputFret", $"{role}InputEffect"),
+                    new FieldSubGroup("InputEffects", false, $"{role}InputEffect"),
                 }, role));
             }
-            foreach (ColorProfile.EliteDrumsFret position in Enum.GetValues(typeof(ColorProfile.EliteDrumsFret)))
+            for (int slot = 1; slot <= 10; slot++)
             {
-                groups.Add(new FieldGroup($"MergedLane{(int) position}", true, new[]
+                groups.Add(new FieldGroup($"Fret {slot}", true, new[]
                 {
-                    new FieldSubGroup(FretSub, false,
-                        $"{position}Fret", $"{position}FretInner", $"{position}Particles"),
+                    new FieldSubGroup(FretSub, false, $"Fret{slot}", $"Fret{slot}Inner"),
                 }));
             }
+            groups.Add(new FieldGroup("Kick Bar", true, new[]
+            {
+                new FieldSubGroup(FretSub, false, "KickFret", "KickFretInner", "KickParticles"),
+            }));
             groups.Add(new FieldGroup("General", true, new[]
             {
                 new FieldSubGroup(null, true, "Metal", "MetalStarPower", "Miss"),
@@ -444,8 +454,7 @@ namespace YARG.Settings.Metadata
                         // Keep legacy wildcard colors in saved profiles, but never expose them
                         // as editable settings: playable wildcard colors are fixed by the provider.
                         if (typeof(T) == typeof(ColorProfile) && field.Name == nameof(ColorProfile.EliteDrums)
-                            && (subField.Name is nameof(ColorProfile.EliteDrumsColors.WildcardNote)
-                                or nameof(ColorProfile.EliteDrumsColors.WildcardStarpower)))
+                            && IsHiddenEliteColor(subField.Name))
                             continue;
                         ScanAndAddField(subField, field, _fields);
                     }
@@ -635,18 +644,6 @@ namespace YARG.Settings.Metadata
         private const string PV_STAR_POWER_ACTIVE = "Star Power Active";
         private const string PV_GROOVE = "Groove";
         private const string PV_LEFTY_FLIP = "Lefty Flip";
-        private const string PV_GLYPH_ON = "\u25C9 ";  // ◉ fisheye
-        private const string PV_GLYPH_OFF = "\u25CB "; // ○ circle
-
-        // Localization keys for the preview-toggle labels and caption. The PV_*
-        // values above are the dropdown's internal option values (stable
-        // sentinels for the OnChange switch); these keys map them to localized
-        // display text via ValueToString.
-        private const string PV_KEY_VISUALS = "Settings.PresetSetting.PreviewVisuals.Visuals.Name";
-        private const string PV_KEY_STAR_POWER_NOTES = "Settings.PresetSetting.PreviewVisuals.StarPowerNotes.Name";
-        private const string PV_KEY_STAR_POWER_ACTIVE = "Settings.PresetSetting.PreviewVisuals.StarPowerActive.Name";
-        private const string PV_KEY_GROOVE = "Settings.PresetSetting.PreviewVisuals.Groove.Name";
-        private const string PV_KEY_LEFTY_FLIP = "Settings.PresetSetting.PreviewVisuals.LeftyFlip.Name";
 
         /// <summary>
         /// Maps a color-group/sub-group name to its localized display string. The
@@ -656,6 +653,7 @@ namespace YARG.Settings.Metadata
         /// </summary>
         private static string LocalizeGroupName(string name)
         {
+            if (name.StartsWith("Fret ", StringComparison.Ordinal) || name == "Kick Bar") return name;
             const string PREFIX = "Settings.PresetSetting.ColorGroups.";
 
             // Drum lanes are composite ("Red Lane"); format the suffix around the
@@ -667,54 +665,10 @@ namespace YARG.Settings.Metadata
                 return Localize.KeyFormat(PREFIX + "Lane", Localize.Key(PREFIX + color));
             }
 
+            if (name == "InputEffects")
+                return Localize.Key(PREFIX + "InputEffects");
+
             return Localize.Key(PREFIX + name);
-        }
-
-        /// <summary>
-        /// Dropdown that acts as a menu of independent on/off toggles. Each item
-        /// carries a state glyph regenerated by <see cref="ValueToString"/> on
-        /// every visual refresh. The setting's value is the sentinel
-        /// <see cref="PV_HEADER"/>, which is not in the option list — so the
-        /// TMP_Dropdown sits at index -1 showing its placeholder as a fixed
-        /// caption, and picking any item always changes the index (TMP suppresses
-        /// onValueChanged when the index doesn't change). The OnChange handler in
-        /// BuildPreviewControls snaps the value back to the sentinel after each
-        /// pick.
-        /// </summary>
-        private class PreviewVisualsDropdownSetting : DropdownSetting<string>
-        {
-            public PreviewVisualsDropdownSetting() : base(PV_HEADER, null, localizable: false)
-            {
-            }
-
-            public override string ValueToString(string value)
-            {
-                bool on;
-                string key;
-                switch (value)
-                {
-                    case PV_STAR_POWER_NOTES:
-                        on = PreviewOptions.ForceStarPowerNotes;
-                        key = PV_KEY_STAR_POWER_NOTES;
-                        break;
-                    case PV_STAR_POWER_ACTIVE:
-                        on = PreviewOptions.ForceStarPower;
-                        key = PV_KEY_STAR_POWER_ACTIVE;
-                        break;
-                    case PV_GROOVE:
-                        on = PreviewOptions.ForceGroove;
-                        key = PV_KEY_GROOVE;
-                        break;
-                    case PV_LEFTY_FLIP:
-                        on = PreviewOptions.LeftyFlip;
-                        key = PV_KEY_LEFTY_FLIP;
-                        break;
-                    default:
-                        return value;
-                }
-
-                return (on ? PV_GLYPH_ON : PV_GLYPH_OFF) + Localize.Key(key);
-            }
         }
 
         /// <summary>
@@ -871,15 +825,9 @@ namespace YARG.Settings.Metadata
             // --- Preview visuals toggle dropdown ---
             // Each item is an independent on/off toggle for the shared preview
             // state; the glyph in the label shows the current state.
-            var visualsDropdown = new PreviewVisualsDropdownSetting
-            {
-                PV_STAR_POWER_NOTES,
-                PV_STAR_POWER_ACTIVE,
-                PV_GROOVE,
-                PV_LEFTY_FLIP,
-            };
-
-            visualsDropdown.OnChange = selected =>
+            var visualsDropdown = PreviewOptionsDropdown.Create(() => new PreviewOptionsDropdown.State(
+                PreviewOptions.ForceStarPowerNotes, PreviewOptions.ForceStarPower,
+                PreviewOptions.ForceGroove, PreviewOptions.LeftyFlip), selected =>
             {
                 switch (selected)
                 {
@@ -900,11 +848,7 @@ namespace YARG.Settings.Metadata
                         tpb.LeftyFlip = PreviewOptions.LeftyFlip;
                         break;
                 }
-
-                // Snap back to the sentinel (index -1) so the placeholder caption
-                // shows and re-picking the same item still fires onValueChanged.
-                visualsDropdown.SetValueWithoutNotify(PV_HEADER);
-            };
+            });
 
             var visualsVisual = CreateField(PreviewControlsContainer, navGroup, "PreviewVisuals", "Visuals",
                 visualsDropdown, false);
@@ -921,7 +865,7 @@ namespace YARG.Settings.Metadata
                     var placeholder = UnityEngine.Object.Instantiate(
                         tmpDropdown.captionText, tmpDropdown.captionText.transform.parent);
                     placeholder.name = "Placeholder";
-                    placeholder.text = Localize.Key(PV_KEY_VISUALS);
+                    placeholder.text = PreviewOptionsDropdown.Caption;
                     tmpDropdown.placeholder = placeholder;
                     tmpDropdown.SetValueWithoutNotify(-1);
                     tmpDropdown.RefreshShownValue();

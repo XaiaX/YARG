@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Reflection;
+using System.Linq;
 using NUnit.Framework;
 using YARG.Core.Chart;
 using YARG.Core.Game;
@@ -13,6 +14,9 @@ namespace YARG.Tests.EditMode
         private static Type Element => Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp", true);
         private static Type Player => Type.GetType("YARG.Gameplay.Player.EliteDrumsPlayer, Assembly-CSharp", true);
         private const BindingFlags INTERNAL_STATIC = BindingFlags.NonPublic | BindingFlags.Static;
+
+        private static Type Production(string name) => AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType(name)).First(type => type != null);
 
         private static EliteDrumNote Note(EliteDrumPad pad, bool flam = false,
             bool doubleKick = false, EliteDrumsHatState hat = EliteDrumsHatState.Indifferent,
@@ -56,6 +60,42 @@ namespace YARG.Tests.EditMode
             Assert.That(Colors(colors, Note(EliteDrumPad.Kick)).Body, Is.EqualTo(Color.Coral));
             Assert.That(Colors(colors, Note(EliteDrumPad.Kick, doubleKick: true)).Body, Is.EqualTo(Color.Gold));
             Assert.That(Colors(colors, Note(EliteDrumPad.Kick, flam: true), split: true).Body, Is.EqualTo(Color.Indigo));
+        }
+
+        [Test]
+        public void KickFlamUsesItsOwnPaletteAcrossKickFretAndCombinedAccentModels()
+        {
+            var colors = new ColorProfile.EliteDrumsColors
+            {
+                KickNote = Color.Coral, KickFlamNote = Color.Indigo,
+                KickFlamStarpower = Color.Aqua, Metal = Color.Silver, MetalStarPower = Color.Brown
+            };
+            var kickFlam = Note(EliteDrumPad.Kick, flam: true);
+            Assert.That(Colors(colors, kickFlam).Body, Is.EqualTo(Color.Indigo));
+            Assert.That(Colors(colors, kickFlam).Emission, Is.EqualTo(Color.Indigo));
+            Assert.That(Colors(colors, kickFlam, split: true).Body, Is.EqualTo(Color.Indigo));
+            Assert.That(Colors(colors, kickFlam, split: true, star: true).Body, Is.EqualTo(Color.Aqua));
+            Assert.That(Colors(colors, kickFlam, split: true, star: true).Emission, Is.EqualTo(Color.Indigo));
+
+            var descriptorType = Production("YARG.Settings.Preview.ElitePreviewDescriptor");
+            var generatorType = Production("YARG.Settings.Preview.EliteDrumsFakeNoteGenerator");
+            var describe = generatorType.GetMethod("DescribeForKickLayout", INTERNAL_STATIC | BindingFlags.Public);
+            object Describe(EliteDrumsLayoutKickMode mode) => describe.Invoke(null,
+                new object[] { EliteDrumsColorRole.KickFlam, Production("YARG.Themes.ThemeNoteType")
+                    .GetField("Normal", BindingFlags.Public | BindingFlags.Static).GetValue(null), mode });
+            object Value(object descriptor, string property) => descriptorType.GetProperty(property).GetValue(descriptor);
+            var split = Describe(EliteDrumsLayoutKickMode.Split);
+            var combined = Describe(EliteDrumsLayoutKickMode.Combined);
+            var bars = Describe(EliteDrumsLayoutKickMode.Bars);
+            Assert.That(Value(split, "ModelType").ToString(), Is.EqualTo("DedicatedLaneKick"));
+            Assert.That(Value(split, "DedicatedLaneSource"), Is.EqualTo("kick1"));
+            Assert.That(Value(split, "IsBar"), Is.False);
+            Assert.That(Value(combined, "ModelType").ToString(), Is.EqualTo("Accent"));
+            Assert.That(Value(combined, "DedicatedLaneSource"), Is.EqualTo("kick"));
+            Assert.That(Value(combined, "IsBar"), Is.False);
+            Assert.That(Value(bars, "ModelType").ToString(), Is.EqualTo("Kick"));
+            Assert.That(Value(bars, "IsBar"), Is.True);
+            Assert.That(descriptorType.GetProperty("Width").GetValue(split), Is.EqualTo(1f));
         }
 
         [Test]

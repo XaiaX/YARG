@@ -26,6 +26,8 @@ namespace YARG.Assets.Script.Helpers
         public const string CONFIGURE_FOUR_LANE_DRUMS_HIGHWAY       = "Configure 4-Lane Drums Highway";
         public const string CONFIGURE_PRO_DRUMS_HIGHWAY             = "Configure Pro Drums Highway";
         public const string CONFIGURE_FIVE_LANE_DRUMS_HIGHWAY       = "Configure 5-Lane Drums Highway";
+        public const string CONFIGURE_ELITE_DRUMS_LAYOUT             = "Configure Elite Drums Layout";
+        public const string ELITE_DRUMS_LAYOUT_SELECT                = "Elite Drums Layout";
         public const string USE_CYMBAL_MODELS                       = "Use Cymbal Models";
         public const string DRUM_STAR_POWER_ACTIVATION_TYPE         = "Star Power Activation Type";
     }

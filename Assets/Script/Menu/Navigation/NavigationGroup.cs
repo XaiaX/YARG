@@ -112,18 +112,46 @@ namespace YARG.Menu.Navigation
 
         public void RemoveNavigatable(NavigatableBehaviour navigatable)
         {
-            if (SelectedBehaviour == navigatable && SelectedBehaviour != null)
-                SelectedBehaviour.SetSelected(false, SelectionOrigin.Programmatically);
+            int index = _navigatables.IndexOf(navigatable);
+            if (index < 0)
+            {
+                navigatable.SelectionStateChanged -= OnSelectionStateChanged;
+                if (navigatable.NavigationGroup == this)
+                    navigatable.NavigationGroup = null;
+                return;
+            }
 
-            _navigatables.Remove(navigatable);
-            navigatable.NavigationGroup = null;
+            bool wasSelected = SelectedBehaviour == navigatable;
+            int? previousSelectedIndex = SelectedIndex;
+            if (wasSelected)
+                navigatable.SetSelected(false, SelectionOrigin.Programmatically);
+
+            navigatable.SelectionStateChanged -= OnSelectionStateChanged;
+            _navigatables.RemoveAt(index);
+            if (navigatable.NavigationGroup == this)
+                navigatable.NavigationGroup = null;
+
+            if (!wasSelected && previousSelectedIndex is { } selectedIndex && index < selectedIndex)
+                SelectedIndex = selectedIndex - 1;
+            else if (wasSelected)
+                SelectedIndex = null;
         }
 
         public void ClearNavigatables()
         {
-            ClearSelection();
-            SelectedIndex = null;
+            foreach (var navigatable in _navigatables.ToArray())
+            {
+                if (navigatable == null)
+                    continue;
+
+                navigatable.SetSelected(false, SelectionOrigin.Programmatically);
+                navigatable.SelectionStateChanged -= OnSelectionStateChanged;
+                if (navigatable.NavigationGroup == this)
+                    navigatable.NavigationGroup = null;
+            }
+
             _navigatables.Clear();
+            SelectedIndex = null;
         }
 
         public void SelectFirst(SelectionOrigin selectionOrigin = SelectionOrigin.Programmatically)

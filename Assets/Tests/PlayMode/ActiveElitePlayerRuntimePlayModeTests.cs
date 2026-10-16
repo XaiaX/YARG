@@ -67,7 +67,20 @@ namespace YARG.Tests.PlayMode
             {
                 var chart = CreateChart();
                 var nativeProfile = NewProfile(Instrument.EliteDrums, Difficulty.Hard, Modifier.Enable2xKicks);
+                nativeProfile.LeftyFlip = run == 1;
                 var nativeSession = CreatePreparedSession(nativeProfile, chart, Instrument.EliteDrums);
+                if (run == 1)
+                {
+                    var layout = new EliteDrumsLayoutPreset("Sparse arbitrary pairs");
+                    layout.Slots[0] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
+                    layout.Slots[2] = EliteDrumsLayoutSlot.Ordinary("tom3", "left-crash");
+                    layout.Slots[4] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.HiHat);
+                    layout.Slots[5] = EliteDrumsLayoutSlot.Ordinary("snare", "ride");
+                    layout.Slots[7] = EliteDrumsLayoutSlot.Ordinary("tom1", "right-crash");
+                    layout.Slots[8] = EliteDrumsLayoutSlot.Ordinary("tom2", null);
+                    layout.Slots[9] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
+                    nativeSession.GetType().GetProperty("EliteDrumsLayout").SetValue(nativeSession, layout);
+                }
                 var kickOnProfile = NewProfile(Instrument.FiveLaneDrums, Difficulty.Hard, Modifier.Enable2xKicks);
                 var kickOnSession = CreatePreparedSession(kickOnProfile, chart, Instrument.FiveLaneDrums);
                 var kickOffProfile = NewProfile(Instrument.FiveLaneDrums, Difficulty.Hard, Modifier.None);
@@ -192,7 +205,26 @@ namespace YARG.Tests.PlayMode
                     "Wildcard feedback must follow the real accepted-action -> scoring -> pad-hit callback path.");
                 Assert.That(engine.EngineStats.NotesHit, Is.EqualTo(2));
                 Assert.That(GetFretArray(nativeObject).GetComponentsInChildren(
-                    ProductionType("YARG.Gameplay.Visuals.Fret"), true).Length, Is.EqualTo(5));
+                    ProductionType("YARG.Gameplay.Visuals.Fret"), true).Length, Is.EqualTo(run == 0 ? 5 : 7));
+                if (run == 1)
+                {
+                    Assert.That(GetLaneCount(nativePlayer), Is.EqualTo(7));
+                    var receptorMap = (IDictionary) GetFretArray(nativeObject).GetType()
+                        .GetField("_frets", INSTANCE).GetValue(GetFretArray(nativeObject));
+                    Assert.That(receptorMap[(int) EliteDrumPad.Snare], Is.SameAs(receptorMap[(int) EliteDrumPad.Ride]));
+                    Assert.That(receptorMap[(int) EliteDrumPad.Tom3], Is.SameAs(receptorMap[(int) EliteDrumPad.LeftCrash]));
+                    Assert.That(receptorMap[(int) EliteDrumPad.Kick], Is.Not.SameAs(receptorMap[100]));
+                    var firstKick = (Component) receptorMap[(int) EliteDrumPad.Kick];
+                    var secondKick = (Component) receptorMap[100];
+                    Assert.That(firstKick.transform.localPosition.x, Is.GreaterThan(secondKick.transform.localPosition.x),
+                        "Lefty mirrors placement without swapping kick identities.");
+                    Assert.That(GetFretArray(nativeObject).GetComponentsInChildren(
+                        ProductionType("YARG.Gameplay.Visuals.KickFret"), true), Is.Empty,
+                        "Dedicated kicks must not create the historical kick bars.");
+                    int hitsBeforeFeedback = engine.EngineStats.NotesHit;
+                    Assert.DoesNotThrow(() => route.Invoke(nativePlayer, new object[] { EliteDrumsAction.Kick }));
+                    Assert.That(engine.EngineStats.NotesHit, Is.EqualTo(hitsBeforeFeedback));
+                }
                 var colors = new ColorProfile("Overhit effects");
                 colors.EliteDrums.LeftCrashInputEffect = System.Drawing.Color.Red;
                 colors.EliteDrums.Tom1InputEffect = System.Drawing.Color.Blue;
@@ -232,6 +264,19 @@ namespace YARG.Tests.PlayMode
                 Assert.That(GetLaneCount(kickOnPlayer), Is.EqualTo(7));
                 Assert.That(GetLaneCount(kickOffPlayer), Is.EqualTo(6));
                 Assert.That(GetLaneCount(noExtraPlayer), Is.EqualTo(6));
+                foreach (var classicPlayer in new[] { kickOnPlayer, kickOffPlayer, noExtraPlayer })
+                {
+                    int classicLanes = GetLaneCount(classicPlayer);
+                    var classicFrets = GetFretArray(classicPlayer).GetComponentsInChildren(
+                        ProductionType("YARG.Gameplay.Visuals.Fret"), true);
+                    foreach (var fret in classicFrets)
+                    {
+                        float x = fret.transform.localPosition.x;
+                        float fractionalLane = (x + 1f) * classicLanes / 2f - 0.5f;
+                        Assert.That(fractionalLane, Is.EqualTo(Mathf.Round(fractionalLane)).Within(0.0001f),
+                            "Classic initialized receptors retain their original two-unit highway centers.");
+                    }
+                }
 
                 UnregisterPlayerEngine(nativePlayer);
                 _engineManager.Reset();
@@ -350,20 +395,7 @@ namespace YARG.Tests.PlayMode
 
         private object CreatePreparedSession(YargProfile profile, SongChart chart, Instrument output)
         {
-            var bindings = Activator.CreateInstance(ProductionType("YARG.Input.ProfileBindings"), profile);
-            var session = Activator.CreateInstance(ProductionType("YARG.Player.YargPlayer"), profile, bindings);
-            session.GetType().GetMethod("RefreshPresets").Invoke(session, null);
-            var facts = chart.AuthoredDrumSources.Tiers.Values.Select(source => source.Facts).ToArray();
-            var resolved = DrumOutputResolver.Resolve(facts, output, profile.CurrentDifficulty,
-                profile.IsModifierActive(Modifier.EnableEliteUpconversion),
-                profile.IsModifierActive(Modifier.Enable2xKicks),
-                profile.IsModifierActive(Modifier.PreferEliteDowncharts));
-            Assert.That(resolved, Is.Not.Null, $"Expected resolved {output} playback at {profile.CurrentDifficulty}.");
-            var prepared = DrumPlaybackPreparer.Prepare(chart, resolved,
-                notes => profile.ApplyModifiers(notes, chart.SyncTrack),
-                notes => profile.ApplyModifiers(notes, chart.SyncTrack));
-            session.GetType().GetMethod("SetDrumPlayback").Invoke(session,
-                new object[] { resolved, prepared.Classic, prepared.Elite });
+            var session = PreparedElitePlayerFixture.PrepareSession(profile, chart, output);
             _chartsBySession.Add(session, chart);
             _sessions.Add(session);
             return session;
@@ -371,39 +403,8 @@ namespace YARG.Tests.PlayMode
 
         private GameObject ClonePlayerPrefab(string name, out Component player)
         {
-            var clone = CloneDrumsPrefab(name, out var stockPlayer);
-            var nativeType = ProductionType("YARG.Gameplay.Player.EliteDrumsPlayer");
-            var trackPlayerType = ProductionType("YARG.Gameplay.Player.TrackPlayer");
-            player = clone.AddComponent(nativeType);
-            // Copy serialized references from the shared base hierarchy only
-            // (TrackPlayer<TEngine,TNote> and below): DrumsPlayer-declared fields do
-            // not exist on EliteDrumsPlayer, but the generic base declares pools/HUD
-            // references the non-generic base does not, and the real Initialize path
-            // dereferences them.
-            var copied = new HashSet<string>();
-            for (var level = stockPlayer.GetType().BaseType; level != null && level != typeof(MonoBehaviour);
-                level = level.BaseType)
-            {
-                foreach (var field in level.GetFields(INSTANCE))
-                {
-                    if (!field.IsDefined(typeof(SerializeField), true) || !copied.Add(field.Name))
-                    {
-                        continue;
-                    }
-
-                    field.SetValue(player, field.GetValue(stockPlayer));
-                }
-            }
-
-            nativeType.GetMethod("SetTrackCameraForNativeElite").Invoke(player,
-                new[] { trackPlayerType.GetProperty("TrackCamera").GetValue(stockPlayer) });
-            nativeType.GetMethod("SetDrumComponentsForNativeElite").Invoke(player, new[]
-            {
-                clone.GetComponentInChildren(ProductionType("YARG.Gameplay.Visuals.FretArray"), true),
-                clone.GetComponentInChildren(ProductionType("YARG.Gameplay.Visuals.KickFretFlash"), true)
-            });
-            Object.DestroyImmediate(stockPlayer);
-            DisableUnneededPrefabBehaviours(clone, player);
+            var clone = PreparedElitePlayerFixture.ClonePlayer(Own, out player);
+            clone.name = name;
             return clone;
         }
 

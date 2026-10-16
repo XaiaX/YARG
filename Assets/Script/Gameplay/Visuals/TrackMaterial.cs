@@ -145,7 +145,7 @@ namespace YARG.Gameplay.Visuals
         private MeshRenderer[] _trackTrims;
 
         private Material _material;
-        private readonly List<Material> _trimMaterials = new();
+        private readonly HashSet<Material> _ownedMaterials = new();
 
         private Texture2D _baseTexture;
         private Texture2D _sidePattern;
@@ -156,10 +156,10 @@ namespace YARG.Gameplay.Visuals
         private void Awake()
         {
             // Get materials
-            _material = _trackMesh.material;
+            _material = AcquireOwnedMaterial(_trackMesh);
             foreach (var trim in _trackTrims)
             {
-                _trimMaterials.Add(trim.material);
+                AcquireOwnedMaterial(trim);
             }
 
             _normalPreset = new()
@@ -188,6 +188,32 @@ namespace YARG.Gameplay.Visuals
                 _originalSideParallax = _material.GetFloat(_sideParallaxProperty);
                 _originalSideWaviness = _material.GetFloat(_sideWavinessProperty);
             }
+        }
+
+        private void OnDestroy()
+        {
+            foreach (var material in _ownedMaterials)
+            {
+                if (material == null) continue;
+                if (Application.isPlaying) Destroy(material);
+                else DestroyImmediate(material);
+            }
+
+            _ownedMaterials.Clear();
+        }
+
+        private Material AcquireOwnedMaterial(Renderer renderer)
+        {
+            var priorMaterial = renderer.sharedMaterial;
+            var material = renderer.material;
+            // Unity's Renderer.material instantiates the shared slot on first
+            // access; own the copy only when it differs from the prior slot.
+            if (!ReferenceEquals(material, priorMaterial))
+            {
+                _ownedMaterials.Add(material);
+            }
+
+            return material;
         }
 
         public void Initialize(HighwayPreset highwayPreset)

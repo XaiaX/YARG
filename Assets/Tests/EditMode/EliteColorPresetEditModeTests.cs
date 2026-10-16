@@ -35,7 +35,7 @@ namespace YARG.Tests.EditMode
                 .SelectMany(sub => (string[]) Field(sub, "FieldNames")).ToArray();
             var actual = typeof(ColorProfile.EliteDrumsColors).GetFields()
                 .Where(field => field.FieldType == typeof(System.Drawing.Color)).Select(field => field.Name).ToArray();
-            Assert.That(names, Is.EquivalentTo(actual.Except(new[] { "WildcardNote", "WildcardStarpower" })));
+            Assert.That(names, Is.EquivalentTo(actual.Where(name => !(bool) Invoke("IsHiddenEliteColor", name))));
             Assert.That(names.Distinct().Count(), Is.EqualTo(names.Length));
             foreach (EliteDrumsColorRole role in Enum.GetValues(typeof(EliteDrumsColorRole)))
             {
@@ -48,7 +48,8 @@ namespace YARG.Tests.EditMode
                 Assert.That(Field(group, "CopyRole"), Is.EqualTo(role));
                 var sub = ((IEnumerable) Field(group, "SubGroups")).Cast<object>().ToArray();
                 Assert.That(Field(sub[0], "FieldNames"), Is.EqualTo(new[] { role + "Note", role + "Starpower" }));
-                Assert.That(Field(sub[1], "FieldNames"), Is.EqualTo(new[] { role + "InputFret", role + "InputEffect" }));
+                Assert.That(Field(sub[1], "Name"), Is.EqualTo("InputEffects"));
+                Assert.That(Field(sub[1], "FieldNames"), Is.EqualTo(new[] { role + "InputEffect" }));
             }
         }
 
@@ -62,10 +63,22 @@ namespace YARG.Tests.EditMode
                 .Select(info => ((FieldInfo) Field(info, "Field")).Name).ToArray();
             var expected = typeof(ColorProfile.EliteDrumsColors).GetFields()
                 .Where(field => field.FieldType == typeof(System.Drawing.Color))
-                .Select(field => field.Name).Except(new[] { "WildcardNote", "WildcardStarpower" });
+                .Select(field => field.Name).Where(name => !(bool) Invoke("IsHiddenEliteColor", name));
             Assert.That(elite, Is.EquivalentTo(expected));
             Assert.That(elite, Does.Contain("Tom1InputEffect"));
-            Assert.That(elite, Does.Contain("LeftCrashTom1Particles"));
+            Assert.That(elite, Does.Not.Contain("SnareInputFret"));
+            foreach (EliteDrumsColorRole role in Enum.GetValues(typeof(EliteDrumsColorRole)))
+            {
+                if (role == EliteDrumsColorRole.Wildcard)
+                    continue;
+                Assert.That(elite, Does.Not.Contain(role + "InputFret"),
+                    $"The obsolete {role} Input Fret color must remain hidden from the editor.");
+                Assert.That(elite, Does.Contain(role + "InputEffect"),
+                    $"The {role} Input Effect color must remain editable.");
+            }
+            Assert.That(elite, Does.Not.Contain("LeftCrashTom1Particles"));
+            Assert.That(elite, Does.Contain("Fret10Inner"));
+            Assert.That(elite, Does.Contain("KickFret"));
             Assert.That(typeof(ColorProfile.EliteDrumsColors).GetField("WildcardNote"), Is.Not.Null);
             Assert.That(typeof(ColorProfile.EliteDrumsColors).GetField("WildcardStarpower"), Is.Not.Null);
         }
@@ -76,11 +89,53 @@ namespace YARG.Tests.EditMode
             var groups = ((IEnumerable) Invoke("BuildEliteDrumsGroups")).Cast<object>().ToArray();
             var snare = groups.Single(group => (string) Field(group, "Name") == "Snare");
             var sections = ((IEnumerable) Field(snare, "SubGroups")).Cast<object>().ToArray();
-            Assert.That(Invoke("ShouldShowCopyFromNote", nameof(ColorProfile.EliteDrums), snare, sections[0]), Is.True);
+            Assert.That(Invoke("ShouldShowCopyFromNote", nameof(ColorProfile.EliteDrums), snare, sections[0]), Is.False);
             Assert.That(Invoke("ShouldShowCopyFromNote", nameof(ColorProfile.EliteDrums), snare, sections[1]), Is.False);
-            var merged = groups.Single(group => (string) Field(group, "Name") == "MergedLane1");
+            var merged = groups.Single(group => (string) Field(group, "Name") == "Fret 1");
             var fret = ((IEnumerable) Field(merged, "SubGroups")).Cast<object>().Single();
             Assert.That(Invoke("ShouldShowCopyFromNote", nameof(ColorProfile.EliteDrums), merged, fret), Is.False);
+        }
+
+        [Test]
+        public void TenSavedSlotsAndKickAreSeparateMetadataGroups()
+        {
+            var groups = ((IEnumerable) Invoke("BuildEliteDrumsGroups")).Cast<object>().ToArray();
+            for (int slot = 1; slot <= 10; slot++)
+            {
+                var group = groups.Single(value => (string) Field(value, "Name") == $"Fret {slot}");
+                var sub = ((IEnumerable) Field(group, "SubGroups")).Cast<object>().Single();
+                Assert.That(Field(sub, "FieldNames"), Is.EqualTo(new[] { $"Fret{slot}", $"Fret{slot}Inner" }));
+            }
+            Assert.That(groups.Count(value => (string) Field(value, "Name") == "Kick Bar"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void LegacyJsonMigratesOnlyAbsentSlotAndIdentityColors()
+        {
+            // Use the production Newtonsoft deserializer reflectively. The JSON package
+            // owns the field converter; reflection keeps it out of this test asmdef's refs
+            // without adding a test-only API to the production Core assembly.
+            var jsonConvert = Type.GetType("Newtonsoft.Json.JsonConvert, Newtonsoft.Json", true);
+            var deserialize = jsonConvert.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Single(method => method.Name == "DeserializeObject" && method.IsGenericMethodDefinition
+                    && method.GetParameters().Length == 1
+                    && method.GetParameters()[0].ParameterType == typeof(string))
+                .MakeGenericMethod(typeof(ColorProfile.EliteDrumsColors));
+            var colors = (ColorProfile.EliteDrumsColors) deserialize.Invoke(null, new object[]
+            {
+                "{\"SnareFret\":\"Aqua\",\"SnareParticles\":\"Lime\",\"Fret1\":\"Red\",\"DoubleKickFret\":\"Silver\",\"DoubleKickFretInner\":\"Silver\"}"
+            })!;
+            Assert.That(colors.Fret1.ToArgb(), Is.EqualTo(System.Drawing.Color.Red.ToArgb()));
+            Assert.That(colors.SnareInputFret.ToArgb(), Is.EqualTo(System.Drawing.Color.Aqua.ToArgb()),
+                "Legacy Input Fret data must still deserialize even though the editor no longer exposes it.");
+            Assert.That(colors.SnareInputEffect.ToArgb(), Is.EqualTo(System.Drawing.Color.Lime.ToArgb()));
+            // Saved slots are ZERO-based; DoubleKick styling stays identity-only and
+            // never fills saved slot 5 (Fret6).
+            Assert.That(colors.GetSlotFretColor(5), Is.EqualTo(colors.Fret6));
+            Assert.That(colors.Fret6.ToArgb(), Is.EqualTo(ColorProfile.DefaultRed.ToArgb()));
+            Assert.That(colors.Fret6Inner.ToArgb(), Is.EqualTo(ColorProfile.DefaultRed.ToArgb()));
+            Assert.That(colors.DoubleKickFret.ToArgb(), Is.EqualTo(System.Drawing.Color.Silver.ToArgb()));
+            Assert.That(colors.GetFretColor(0), Is.EqualTo(colors.KickFret));
         }
 
         [Test]

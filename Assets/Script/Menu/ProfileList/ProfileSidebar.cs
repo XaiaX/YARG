@@ -90,6 +90,10 @@ namespace YARG.Menu.ProfileList
         [SerializeField]
         private TMP_Dropdown _colorProfileDropdown;
         [SerializeField]
+        private TMP_Dropdown _eliteLayoutDropdown;
+        [SerializeField]
+        private Button _eliteLayoutConfigureButton;
+        [SerializeField]
         private TMP_Dropdown _cameraPresetDropdown;
         [SerializeField]
         private TMP_Dropdown _highwayPresetDropdown;
@@ -128,6 +132,8 @@ namespace YARG.Menu.ProfileList
 
         private void Awake()
         {
+            _eliteLayoutConfigureButton?.onClick.AddListener(OpenEliteDrumsLayoutConfigurationMenu);
+
             // Setup dropdown items
             _gameModeDropdown.options.Clear();
             foreach (var gameMode in _gameModes)
@@ -226,6 +232,13 @@ namespace YARG.Menu.ProfileList
         public void UpdateSidebar(YargProfile profile, ProfileView profileView)
         {
             _profile = profile;
+            if (_eliteLayoutDropdown != null)
+            {
+                var profileListMenu = _profileListMenu != null
+                    ? _profileListMenu
+                    : GetComponentInParent<ProfileListMenu>(true);
+                profileListMenu?.RefreshEliteLayoutDropdown(_eliteLayoutDropdown, profile);
+            }
             _profileView = profileView;
 
             if (!PlayerContainer.IsProfileTaken(_profile))
@@ -358,6 +371,44 @@ namespace YARG.Menu.ProfileList
                 _profileName.text = _profile.Name;
                 _profileView.UpdateDisplay(_profile);
             }
+        }
+
+        public void OpenEliteDrumsLayoutConfigurationMenu()
+        {
+            if (_profile == null || _profile.GameMode != GameMode.EliteDrums)
+                return;
+
+            var profile = _profile;
+            var layout = CustomContentManager.EliteDrumsLayouts.GetUsablePresetById(profile.EliteDrumsLayout)
+                ?? EliteDrumsLayoutPreset.Compact;
+            // The sidebar always lives under a Canvas in the running game. When a host
+            // has none (isolated editor fixtures), fall back to the manager's own
+            // canvas resolution instead of failing.
+            var profileCanvas = GetComponentInParent<Canvas>();
+            var menu = profileCanvas != null
+                ? MenuManager.Instance.ShowMenu(MenuManager.Menu.EliteDrumsLayout,
+                    profileCanvas.rootCanvas.transform)
+                : MenuManager.Instance.ShowMenu(MenuManager.Menu.EliteDrumsLayout);
+            var editor = menu.GetComponent<YARG.Menu.HighwayConfiguration.EliteDrumsLayoutMenu>();
+            editor.Initialize(layout, draft =>
+            {
+                if (!PlayerContainer.Profiles.Contains(profile))
+                    return;
+
+                var saved = CustomContentManager.EliteDrumsLayouts.CommitPreset(draft);
+                profile.EliteDrumsLayout = saved.Id;
+                if (ReferenceEquals(_profile, profile))
+                    RefreshEliteLayoutDropdown();
+            }, () => MenuManager.Instance.PopMenu(),
+                CustomContentManager.ColorProfiles.GetPresetById(profile.ColorProfile));
+        }
+
+        private void RefreshEliteLayoutDropdown()
+        {
+            if (_eliteLayoutDropdown == null || _profileListMenu == null || _profile == null)
+                return;
+
+            _profileListMenu.RefreshEliteLayoutDropdown(_eliteLayoutDropdown, _profile);
         }
 
         public void EditProfile()
@@ -517,13 +568,18 @@ namespace YARG.Menu.ProfileList
 
             dialog.AddDialogButton("Menu.Common.Apply", MenuData.Colors.ConfirmButton, () =>
             {
-                _profile.CameraPreset = cameraPreset?.Id ?? CameraPreset.Default.Id;
-                _profile.ColorProfile = colorProfile?.Id ?? ColorProfile.Default.Id;
-
+                ApplyRecommendedPresets(cameraPreset?.Id, colorProfile?.Id);
                 UpdateSidebar(_profile, _profileView);
-
                 DialogManager.Instance.SubmitAndClearDialog();
             });
+        }
+
+        private void ApplyRecommendedPresets(Guid? cameraPresetId, Guid? colorProfileId)
+        {
+            _profile.CameraPreset = cameraPresetId ?? CameraPreset.Default.Id;
+            _profile.ColorProfile = colorProfileId ?? ColorProfile.Default.Id;
+            _cameraPresetDropdown.SetValueWithoutNotify(_cameraPresetsByIndex.IndexOf(_profile.CameraPreset));
+            _colorProfileDropdown.SetValueWithoutNotify(_colorProfilesByIndex.IndexOf(_profile.ColorProfile));
         }
 
         public void ChangeColorProfile()

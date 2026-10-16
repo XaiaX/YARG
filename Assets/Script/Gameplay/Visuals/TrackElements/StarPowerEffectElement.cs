@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace YARG.Gameplay.Visuals
@@ -13,6 +14,7 @@ namespace YARG.Gameplay.Visuals
 
         // Don't immediately play the effect at the start if animations are disabled
         private float _animTimestamp = float.NegativeInfinity;
+        private readonly HashSet<Material> _ownedMaterials = new();
 
         public void Initialize()
         {
@@ -24,6 +26,16 @@ namespace YARG.Gameplay.Visuals
             // Assuming that the effect is spawned at the origin, move the effect
             float zOffset = totalSpan / 2 - START_POSITION;
             transform.localScale = transform.localScale.AddZ(zOffset);
+        }
+
+        private void OnDestroy()
+        {
+            foreach (var material in _ownedMaterials)
+            {
+                if (material == null) continue;
+                if (Application.isPlaying) Destroy(material);
+                else DestroyImmediate(material);
+            }
         }
 
         public void PlayAnimation()
@@ -43,8 +55,16 @@ namespace YARG.Gameplay.Visuals
 
             foreach (var meshRenderer in GetComponentsInChildren<MeshRenderer>())
             {
-                foreach (var material in meshRenderer.materials)
+                var priorMaterials = meshRenderer.sharedMaterials;
+                var materials = meshRenderer.materials;
+                for (int i = 0; i < materials.Length; i++)
                 {
+                    var material = materials[i];
+                    if (i >= priorMaterials.Length || !ReferenceEquals(material, priorMaterials[i]))
+                    {
+                        _ownedMaterials.Add(material);
+                    }
+
                     material.SetFloat(_animTimestampId, _animTimestamp);
                 }
             }

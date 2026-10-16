@@ -149,6 +149,20 @@ namespace YARG.Menu.Navigation
             }
         }
 
+        internal void RemoveOwnedDropdownClickForwarders()
+        {
+            foreach (var dropdown in GetComponentsInChildren<TMP_Dropdown>(true))
+            {
+                foreach (var forwarder in dropdown.GetComponents<DropdownClickForwarder>())
+                {
+                    if (forwarder.Target == this)
+                    {
+                        forwarder.StopForwarding();
+                    }
+                }
+            }
+        }
+
         protected override void OnSelectionChanged(bool selected)
         {
             SelectionVisual?.Invoke(selected);
@@ -409,9 +423,19 @@ namespace YARG.Menu.Navigation
     {
         public NavigatableBehaviour Target;
 
+        private bool _forwardingEnabled = true;
+
+        internal void StopForwarding()
+        {
+            enabled = false;
+            _forwardingEnabled = false;
+            Target = null;
+            Destroy(this);
+        }
+
         public void OnPointerDown(PointerEventData eventData)
         {
-            if (Target != null)
+            if (_forwardingEnabled && Target != null)
             {
                 Target.SetSelected(true, SelectionOrigin.Mouse);
             }
@@ -419,6 +443,8 @@ namespace YARG.Menu.Navigation
 
         public void OnPointerClick(PointerEventData eventData)
         {
+            if (!_forwardingEnabled) return;
+
             // TMP's OnPointerClick (also on this GameObject) already called
             // Show() and opened the native list. Defer to next frame so we
             // can detect the open list and attach keyboard navigation to it
@@ -428,7 +454,7 @@ namespace YARG.Menu.Navigation
 
             UniTask.NextFrame().ContinueWith(() =>
             {
-                if (dropdown != null && dropdown.transform.Find("Dropdown List") != null)
+                if (_forwardingEnabled && dropdown != null && dropdown.transform.Find("Dropdown List") != null)
                 {
                     RuntimeNavigatable.OpenDropdownList(dropdown);
                 }

@@ -88,6 +88,24 @@ namespace YARG.Gameplay.Visuals
             GameObject? kickFretPrefab, IFretColorProvider fretColorProvider, GameObject fretPrefab,
             bool dualHalfFrets = false)
         {
+            // A player may be initialized again after a practice/session reset.
+            // Shared pad identities reference the same receptor; destroy it only once.
+            foreach (var binding in _fretColorBindings)
+            {
+                if (binding.Fret != null)
+                {
+                    binding.Fret.gameObject.SetActive(false);
+                    Destroy(binding.Fret.gameObject);
+                }
+            }
+            foreach (var kick in _kickFrets)
+            {
+                if (kick != null)
+                {
+                    kick.gameObject.SetActive(false);
+                    Destroy(kick.gameObject);
+                }
+            }
             _frets.Clear();
             _fretColorBindings.Clear();
             _usedFretIndexes.Clear();
@@ -107,7 +125,7 @@ namespace YARG.Gameplay.Visuals
                 fret.SetActive(true);
 
                 // Position
-                float x = _trackWidth / laneCount * highwayOrderingInfo.Position - _trackWidth / 2f + 1f / laneCount;
+                float x = _trackWidth / laneCount * (highwayOrderingInfo.Position + 0.5f) - _trackWidth / 2f;
                 fret.transform.localPosition = new Vector3(x, 0f, 0f);
 
                 // Scale

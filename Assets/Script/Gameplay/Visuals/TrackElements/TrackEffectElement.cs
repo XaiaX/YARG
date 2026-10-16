@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -103,6 +104,7 @@ namespace YARG.Gameplay.Visuals
         public bool Active { get; private set; }
 
         private CancellationTokenSource _visibilityToken;
+        private readonly HashSet<Material> _ownedMaterials = new();
 
         public void Reinitialize()
         {
@@ -111,6 +113,7 @@ namespace YARG.Gameplay.Visuals
 
         protected override void InitializeElement()
         {
+            ReleaseOwnedMaterials();
             EnableStartTransition = EffectRef.StartTransitionEnable;
             EnableEndTransition = EffectRef.EndTransitionEnable;
             _previousStartTransitionEnable = EffectRef.StartTransitionEnable;
@@ -134,8 +137,16 @@ namespace YARG.Gameplay.Visuals
             var meshRenderers = GetComponentsInChildren<MeshRenderer>(true);
             foreach (var meshRenderer in meshRenderers)
             {
-                foreach (var material in meshRenderer.materials)
+                var priorMaterials = meshRenderer.sharedMaterials;
+                var materials = meshRenderer.materials;
+                for (int i = 0; i < materials.Length; i++)
                 {
+                    var material = materials[i];
+                    if (i >= priorMaterials.Length || !ReferenceEquals(material, priorMaterials[i]))
+                    {
+                        _ownedMaterials.Add(material);
+                    }
+
                     material.SetFloat(_visibility, Visibility);
                 }
 
@@ -605,6 +616,26 @@ namespace YARG.Gameplay.Visuals
             // in the editor, so we don't check for that here
 
             return material;
+        }
+
+        protected override void GameplayDestroy()
+        {
+            base.GameplayDestroy();
+            _visibilityToken?.Cancel();
+            _visibilityToken?.Dispose();
+            ReleaseOwnedMaterials();
+        }
+
+        private void ReleaseOwnedMaterials()
+        {
+            foreach (var material in _ownedMaterials)
+            {
+                if (material == null) continue;
+                if (Application.isPlaying) Destroy(material);
+                else DestroyImmediate(material);
+            }
+
+            _ownedMaterials.Clear();
         }
 
         protected override void HideElement()

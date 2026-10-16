@@ -52,15 +52,23 @@ namespace YARG.Helpers.Extensions
         /// <returns>
         /// A <see cref="Rect"/> representing the viewport space of the specified <see cref="RectTransform"/>.
         /// </returns>
-        public static Rect ToViewportSpace(this RectTransform transform)
+        public static Rect ToViewportSpace(this RectTransform transform, Camera camera = null)
         {
-            var rect = ToScreenSpace(transform);
-            rect.width /= Screen.width;
-            rect.height /= Screen.height;
-            rect.x /= Screen.width;
-            rect.y /= Screen.height;
+            if (camera == null)
+            {
+                var screenRect = ToScreenSpace(transform);
+                screenRect.width /= Screen.width;
+                screenRect.height /= Screen.height;
+                screenRect.x /= Screen.width;
+                screenRect.y /= Screen.height;
+                return screenRect;
+            }
 
-            return rect;
+            var corners = new Vector3[4];
+            transform.GetWorldCorners(corners);
+            Vector2 bottomLeft = camera.WorldToViewportPoint(corners[0]);
+            Vector2 topRight = camera.WorldToViewportPoint(corners[2]);
+            return Rect.MinMaxRect(bottomLeft.x, bottomLeft.y, topRight.x, topRight.y);
         }
 
         /// <param name="transform">The <see cref="RectTransform"/> to convert to viewport space.</param>
@@ -70,9 +78,10 @@ namespace YARG.Helpers.Extensions
         /// <returns>
         /// A <see cref="Rect"/> representing the viewport space of the specified <see cref="RectTransform"/>, centered on it.
         /// </returns>
-        public static Rect ToViewportSpaceCentered(this RectTransform transform, bool h = true, bool v = true, float scale = 1f)
+        public static Rect ToViewportSpaceCentered(this RectTransform transform, bool h = true, bool v = true, float scale = 1f,
+            Camera camera = null)
         {
-            var rect = transform.ToViewportSpace();
+            var rect = transform.ToViewportSpace(camera);
             rect.width /= scale;
             rect.height /= scale;
 

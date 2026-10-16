@@ -52,6 +52,7 @@ namespace YARG.Settings.Metadata
                 new TrackPreviewBuilder(),
                 true),
 
+
         };
 
         private static readonly Dictionary<Type, BasePreset> _lastSelectedPresetOfType = new();

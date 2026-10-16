@@ -7,7 +7,6 @@ using UnityEngine.UI;
 using YARG.Core;
 using YARG.Helpers;
 using YARG.Helpers.Extensions;
-using YARG.Menu.Settings;
 using YARG.Settings.Preview;
 using YARG.Themes;
 
@@ -23,6 +22,9 @@ namespace YARG.Settings.Metadata
         private readonly Func<string, GameObject> _loadAsset;
 
         public GameMode? StartingGameMode { get; set; }
+        public YARG.Core.Game.EliteDrumsLayoutPreset EliteLayoutOverride { get; set; }
+        public bool AllowIncompleteEliteLayoutPreview { get; set; }
+        public YARG.Core.Game.ColorProfile ColorProfileOverride { get; set; }
 
         private readonly bool _forceShowHitWindow;
 
@@ -70,6 +72,7 @@ namespace YARG.Settings.Metadata
                 if (_currentTrackPreview != null)
                 {
                     _currentTrackPreview.ForceStarPowerNotes = value;
+                    _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
                 }
             }
         }
@@ -86,6 +89,7 @@ namespace YARG.Settings.Metadata
                 if (_currentTrackPreview != null)
                 {
                     _currentTrackPreview.LeftyFlip = value;
+                    _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
                 }
             }
         }
@@ -95,6 +99,12 @@ namespace YARG.Settings.Metadata
         /// <see cref="Preview.FakeTrackPlayer.SpotlightLane"/>). No-op when no
         /// preview is currently alive.
         /// </summary>
+        public void RefreshColors(YARG.Core.Game.ColorProfile colorProfile)
+        {
+            ColorProfileOverride = colorProfile;
+            _currentTrackPreview?.RefreshColors(colorProfile);
+        }
+
         public void SpotlightLane(int fret, bool centerNote, bool cymbal, bool starPower)
         {
             if (_currentTrackPreview != null)
@@ -173,6 +183,9 @@ namespace YARG.Settings.Metadata
             var trackObj = Object.Instantiate(_trackPreview, worldContainer);
             var trackPreview = trackObj.GetComponentInChildren<FakeTrackPlayer>();
             _currentTrackPreview = trackPreview;
+            trackPreview.EliteLayoutOverride = EliteLayoutOverride?.Copy();
+            trackPreview.AllowIncompleteEliteLayoutPreview = AllowIncompleteEliteLayoutPreview;
+            trackPreview.ColorProfileOverride = ColorProfileOverride;
 
             trackPreview.ForceShowHitWindow = _forceShowHitWindow;
             trackPreview.ForceGroove = _forceGroove;
@@ -197,21 +210,34 @@ namespace YARG.Settings.Metadata
             }
             var go = Object.Instantiate(_trackPreviewUI, uiContainer);
 
-            // Enable and wait for layouts to rebuild
-            await UniTask.WaitForEndOfFrame(SettingsMenu.Instance);
+            // Let newly enabled layout components initialize without requiring a rendered
+            // end-of-frame coroutine or a SettingsMenu coroutine host.
+            await UniTask.NextFrame(PlayerLoopTiming.Update);
 
             // Skip the game object was somehow destroyed
             if (go == null) return;
+            Canvas.ForceUpdateCanvases();
 
-            // Show the raw image
-            var previewTexture = go.GetComponentInChildren<RawImage>();
-            previewTexture.texture = CameraPreviewTexture.PreviewTexture;
-            previewTexture.color = Color.white;
+            // Show and frame the raw image using the same path used by other track previews.
+            ConfigurePreviewImage(go.GetComponentInChildren<RawImage>(), CameraPreviewTexture.PreviewTexture);
+        }
 
-            // Size raw image
-            var rect = previewTexture.rectTransform.ToViewportSpaceCentered(v: false, scale: 0.9f);
+        /// <summary>
+        /// Assigns and frames a track preview image using the canonical settings-preview
+        /// viewport. Callers may provide an independently owned render target.
+        /// </summary>
+        internal static void ConfigurePreviewImage(RawImage previewImage, RenderTexture texture)
+        {
+            previewImage.texture = texture;
+            previewImage.color = Color.white;
+
+            var canvas = previewImage.canvas;
+            var camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? canvas.worldCamera
+                : null;
+            var rect = previewImage.rectTransform.ToViewportSpaceCentered(v: false, scale: 0.9f, camera: camera);
             rect.y = 0f;
-            previewTexture.uvRect = rect;
+            previewImage.uvRect = rect;
         }
     }
 }

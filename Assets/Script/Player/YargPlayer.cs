@@ -56,6 +56,7 @@ namespace YARG.Player
         public CameraPreset    CameraPreset    { get; private set; }
         public HighwayPreset   HighwayPreset   { get; private set; }
         public RockMeterPreset RockMeterPreset { get; private set; }
+        public EliteDrumsLayoutPreset EliteDrumsLayout { get; private set; } = EliteDrumsLayoutPreset.Compact;
 
         /// <summary>
         /// Whether or not the score is valid.
@@ -115,6 +116,12 @@ namespace YARG.Player
             RockMeterPreset = replay.GetRockMeterPreset(Profile.RockMeterPreset)
                 ?? CustomContentManager.RockMeterPresets.GetPresetById(Profile.RockMeterPreset)
                 ?? RockMeterPreset.Normal;
+
+            // Replay presentation is recorded content, never a mutable external preset reference.
+            var recordedLayout = Profile.ReplayEliteDrumsLayout;
+            EliteDrumsLayout = recordedLayout != null &&
+                EliteDrumsLayoutValidator.Validate(recordedLayout).IsRuntimeSupported
+                ? recordedLayout.Copy() : EliteDrumsLayoutPreset.Compact;
         }
 
         public void SwapToProfile(YargProfile profile, ProfileBindings bindings, bool resolveDevices)
@@ -163,6 +170,16 @@ namespace YARG.Player
                 RockMeterPreset.Normal;
             Profile.RockMeterPreset = RockMeterPreset.Id;
 
+            var selectedLayout = CustomContentManager.EliteDrumsLayouts.GetUsablePresetById(Profile.EliteDrumsLayout);
+            EliteDrumsLayout = selectedLayout?.Copy() ?? EliteDrumsLayoutPreset.Compact;
+            // Preserve the reference for recovery, while recording the actual presentation used.
+            Profile.ReplayEliteDrumsLayout = EliteDrumsLayout.Copy();
+            if (selectedLayout == null && Profile.EliteDrumsLayout != EliteDrumsLayoutPreset.CompactId &&
+                Profile.GameMode == GameMode.EliteDrums)
+            {
+                YARG.Menu.Persistent.ToastManager.ToastInformation(
+                    YARG.Localization.Localize.Key("Menu.EliteLayout.Fallback"));
+            }
         }
 
         public void EnableInputs()

@@ -8,6 +8,11 @@ namespace YARG.Menu
         [field: SerializeField]
         public MenuManager.Menu Menu { get; private set; }
 
+        public void Initialize(MenuManager.Menu menu)
+        {
+            Menu = menu;
+        }
+
         [field: SerializeField]
         public bool HideBelow { get; private set; } = true;
 

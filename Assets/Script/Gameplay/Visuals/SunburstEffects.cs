@@ -34,6 +34,7 @@ namespace YARG.Gameplay.Visuals
         private int      _previousMultiplier;
 
         private Material _sunburstMaterial;
+        private bool _ownsSunburstMaterial;
         private Color    _grooveSunburstMaterialColor;
         private Color    _grooveSunburstLightColor;
         private Light    _light;
@@ -44,10 +45,29 @@ namespace YARG.Gameplay.Visuals
 
         private const float TRANSITION_DURATION = 0.433f;
 
+        private void OnDestroy()
+        {
+            _sunburstPulseTween?.Kill();
+            _multiplierIncreaseSequence?.Kill();
+            _multiplierDecreaseSequence?.Kill();
+            _grooveStartSequence?.Kill();
+            _starpowerStartSequence?.Kill();
+            _sunburstDisableSequence?.Kill();
+
+            if (!_ownsSunburstMaterial || _sunburstMaterial == null) return;
+            if (Application.isPlaying) Destroy(_sunburstMaterial);
+            else DestroyImmediate(_sunburstMaterial);
+        }
+
         private void Awake()
         {
             // Get the components we'll need to manipulate later
-            _sunburstMaterial = _sunburstEffect.GetComponent<SpriteRenderer>().material;
+            var sunburstRenderer = _sunburstEffect.GetComponent<SpriteRenderer>();
+            var priorSunburstMaterial = sunburstRenderer.sharedMaterial;
+            _sunburstMaterial = sunburstRenderer.material;
+            // Unity's Renderer.material instantiates the shared slot on first
+            // access; own the copy only when it differs from the prior slot.
+            _ownsSunburstMaterial = !ReferenceEquals(_sunburstMaterial, priorSunburstMaterial);
             _light = _lightEffect.GetComponent<Light>();
 
             // Save original state so we can return to it later if necessary

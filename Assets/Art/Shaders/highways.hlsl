@@ -6,6 +6,7 @@ uniform float4x4 _YargCamViewMatrices[MAX_MATRICES];
 uniform float4x4 _YargCamInvViewMatrices[MAX_MATRICES];
 uniform float4x4 _YargCamProjMatrices[MAX_MATRICES];
 uniform float _YargCurveFactors[MAX_MATRICES];
+uniform float _YargHighwayOrigins[MAX_MATRICES];
 uniform float _YargFadeParams[MAX_MATRICES * 2];
 
 // World position to highway index
@@ -95,7 +96,7 @@ inline float4 YargTransformWorldToHClip(float3 positionWS)
 
     // We're not doing the sphere so from the above formula removing z components
     // TOP of the circle
-    float t_x = index * 100;
+    float t_x = _YargHighwayOrigins[index];
     float t_y = 100;
 
     float R = _YargCurveFactors[index];
@@ -125,7 +126,7 @@ inline float4 YargTransformWorldToHClip(float3 positionWS)
     }
 #else
     // Old basic y-only parabolic shift
-    float delta_x = abs(index * 100 - positionWS.x);
+    float delta_x = abs(_YargHighwayOrigins[index] - positionWS.x);
     positionWS.y += pow(delta_x, 2) * -_YargCurveFactors[index] * 0.05;
 #endif
 

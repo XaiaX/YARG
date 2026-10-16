@@ -151,13 +151,17 @@ namespace YARG.Settings.Metadata
         /// </param>
         public static ColoredButton ShowCompactConfirmation(string title, string message,
             string confirmKey, Color confirmColor, Action onConfirm, Color? cancelColor = null,
-            float armDelaySeconds = 0f)
+            float armDelaySeconds = 0f, string cancelKey = "Menu.Common.Cancel", Action onCancel = null)
         {
-            void Cancel() => DialogManager.Instance.ClearDialog();
+            void Cancel()
+            {
+                DialogManager.Instance.ClearDialog();
+                onCancel?.Invoke();
+            }
 
             var dialog = DialogManager.Instance.ShowMessage(title, message);
             dialog.ClearButtons();
-            dialog.AddDialogButton("Menu.Common.Cancel",
+            dialog.AddDialogButton(cancelKey,
                 cancelColor ?? MenuData.Colors.CancelButton, Cancel);
             // AddDialogButton wants a UnityAction; wrap the System.Action so the
             // same delegate can also feed the NavigationScheme.Entry (Action) below.

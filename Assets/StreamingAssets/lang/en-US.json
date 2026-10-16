@@ -592,7 +592,8 @@
 			"UnloadedEntry": "{0} <alpha=#66>— could not be loaded by this version of YARG",
 			"UnloadedDeleteTitle": "Delete Profile?",
 			"UnloadedDelete": "Deleting it is permanent.",
-			"BotDelete": "Deleting this bot is permanent."
+			"BotDelete": "Deleting this bot is permanent.",
+			"ConfigureEliteDrumsLayout": "ELITE DRUMS HIGHWAY"
 		},
 		"ScoreScreen": {
 			"BandScoreNotSaved": "Score not saved",
@@ -681,6 +682,66 @@
 				"Epic": "Epic (Over 7 Min)"
 			},
 			"Playlists": "Playlists"
+		},
+		"EliteLayout": {
+			"Name": "Elite Drums Layout",
+			"Title": "Elite Drums Highway",
+			"Layout": "Layout",
+			"Rename": "Rename",
+			"Copy": "Copy",
+			"Import": "Import",
+			"Export": "Export",
+			"RenameTitle": "Rename Your Layout",
+			"IncompleteManagement": "This layout is incomplete. Copy it to complete its assignments before saving.",
+			"EmptyPreview": "Assign a kit piece to preview this layout.",
+			"Cymbals": "Cymbals",
+			"Drums": "Drums",
+			"Fallback": "The selected Elite drums layout is missing or unsupported. Using Compact; your saved selection has been retained.",
+			"ColorsSeparate": "Layout changes positioning only. Note and fret colors are configured separately in Color Profiles.",
+			"CopyToEdit": "Built-in layouts are read-only. Press Copy to create an editable layout.",
+			"CopyName": "Name Your Layout",
+			"Discard": "Discard",
+			"KeepEditing": "Keep Editing",
+			"KickBehavior": "Kick behavior:",
+			"Kick": {
+				"Default": "Default",
+				"Dedicated": "Dedicated",
+				"Separate": "Separate"
+			},
+			"Ready": "All sources assigned. Ready to save.",
+			"Unassigned": "Save disabled — unassigned sources:",
+			"DiscardTitle": "Discard layout changes?",
+			"DiscardMessage": "Your unsaved layout changes will be lost.",
+			"Unsupported": "This imported layout contains merged sources unsupported by the current runtime. Export or delete it from preset management.",
+			"Colors": "Colors",
+			"Cell": {
+				"left-crash": "Left\nCrash",
+				"right-crash": "Right\nCrash",
+				"tom1": "High\nTom",
+				"tom2": "Mid\nTom",
+				"tom3": "Floor\nTom",
+				"kick": "All\nKicks",
+				"kick1": "Kick\n1",
+				"kick2": "Kick\n2"
+			},
+			"Item": {
+				"snare": "Snare",
+				"tom1": "High Tom",
+				"tom2": "Mid Tom",
+				"tom3": "Floor Tom",
+				"left-crash": "Left Crash",
+				"ride": "Ride\nCymbal",
+				"right-crash": "Right Crash",
+				"hi-hat": "Hi-Hat\nCymbal",
+				"hi-hat-pedal": "Hi-Hat\nPedal",
+				"kick": "All Kicks",
+				"kick1": "Kick 1",
+				"kick2": "Kick 2",
+				"not-applicable": "N/A",
+				"empty": "Empty",
+				"clear": "Clear",
+				"cancel": "Cancel"
+			}
 		},
 		"HighwayOrdering": {
 			"Red": "Red",
@@ -2144,7 +2205,7 @@
 				"RideTom2Position": "Ride / Tom 2 Position Effects",
 				"RightCrashTom3Position": "Right Crash / Tom 3 Position Effects",
 				"DoubleKickPosition": "Double Kick Position Effects",
-				"Input": "Individual Input (Future Layouts)",
+				"InputEffects": "Input Hit Effects",
 				"MergedLane0": "Merged Kick",
 				"MergedLane1": "Merged Lane 1 (Snare)",
 				"MergedLane2": "Merged Lane 2 (Hi-Hat)",
@@ -2165,6 +2226,16 @@
 				"DeletePreset": {
 					"Title": "Delete Preset",
 					"Message": "Delete preset \"{0}\"?"
+				},
+				"ImportLayout": {
+					"Failed": {
+						"Title": "Cannot Import Layout",
+						"Message": "The layout file could not be imported:\n{0}"
+					},
+					"Duplicate": {
+						"Title": "Layout Already Exists",
+						"Message": "\"{0}\" is already in your layouts. Import a copy alongside it?"
+					}
 				}
 			},
 			"CameraPreset": {
@@ -2234,6 +2305,26 @@
 					"WildcardNote": { "Name": "Wildcard Note" },
 					"WildcardStarpower": { "Name": "Wildcard Star Power" },
 					"SnareInputFret": { "Name": "Snare Input Fret" },
+					"Fret1": { "Name": "Fret 1" },
+					"Fret1Inner": { "Name": "Fret 1 Inner" },
+					"Fret2": { "Name": "Fret 2" },
+					"Fret2Inner": { "Name": "Fret 2 Inner" },
+					"Fret3": { "Name": "Fret 3" },
+					"Fret3Inner": { "Name": "Fret 3 Inner" },
+					"Fret4": { "Name": "Fret 4" },
+					"Fret4Inner": { "Name": "Fret 4 Inner" },
+					"Fret5": { "Name": "Fret 5" },
+					"Fret5Inner": { "Name": "Fret 5 Inner" },
+					"Fret6": { "Name": "Fret 6" },
+					"Fret6Inner": { "Name": "Fret 6 Inner" },
+					"Fret7": { "Name": "Fret 7" },
+					"Fret7Inner": { "Name": "Fret 7 Inner" },
+					"Fret8": { "Name": "Fret 8" },
+					"Fret8Inner": { "Name": "Fret 8 Inner" },
+					"Fret9": { "Name": "Fret 9" },
+					"Fret9Inner": { "Name": "Fret 9 Inner" },
+					"Fret10": { "Name": "Fret 10" },
+					"Fret10Inner": { "Name": "Fret 10 Inner" },
 					"HatIndifferentInputFret": { "Name": "Any Hi-Hat Input Fret" },
 					"HatOpenInputFret": { "Name": "Open Hi-Hat Input Fret" },
 					"HatClosedInputFret": { "Name": "Closed Hi-Hat Input Fret" },

@@ -73,6 +73,26 @@ namespace YARG.Gameplay.Visuals
             TooSoft,
         }
 
+        private void OnDestroy()
+        {
+            var released = new HashSet<Material>();
+            Release(_topMaterials);
+            Release(_innerMaterials);
+            Release(_secondaryTopMaterials);
+            Release(_secondaryInnerMaterials);
+            return;
+
+            void Release(IEnumerable<Material> materials)
+            {
+                foreach (var material in materials)
+                {
+                    if (material == null || !released.Add(material)) continue;
+                    if (Application.isPlaying) Destroy(material);
+                    else DestroyImmediate(material);
+                }
+            }
+        }
+
         public void Initialize(Color top, Color inner, Color particles, Color openParticles)
         {
             // Clear so Initialize is safe to re-call for live fret recoloring (e.g. the
@@ -98,6 +118,12 @@ namespace YARG.Gameplay.Visuals
                 material.color = _originalUnityInnerColor;
                 _innerMaterials.Add(material);
             }
+
+            // Stop any in-progress color fade/pulse so an immediate recolor
+            // (e.g. a preview color profile switch) is not animating from the
+            // old color afterwards.
+            _colorChangeEnabled = false;
+            _fadeAmount = 0f;
 
             // Set the particle colors
             ThemeBind.HitEffect.SetColor(particles.ToUnityColor());

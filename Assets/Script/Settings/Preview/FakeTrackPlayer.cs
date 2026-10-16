@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using YARG.Assets.Script.Helpers;
 using YARG.Core;
@@ -35,6 +36,7 @@ namespace YARG.Settings.Preview
 
             public Dictionary<int, int> HighwayOrdering;
             public int LaneCount;
+            public EliteDrumsResolvedLayout EliteLayout;
             // When set, notes are positioned at these X coordinates by fret index
             // instead of the uniform lane formula. Used for piano-key spacing.
             public float[] NoteXPositions;
@@ -275,6 +277,7 @@ namespace YARG.Settings.Preview
 
         public bool ForceStarPowerNotes { get; set; }
         public bool LeftyFlip { get; set; }
+        internal bool OffsetEliteTomCymbalGems { get; private set; }
 
         // Deferred until five-lane keys has a dedicated color-profile subsection.
         public bool UseFiveLaneKeys { get; set; }
@@ -315,6 +318,10 @@ namespace YARG.Settings.Preview
 
         public CameraPreset CameraPreset { get; private set; }
         public ColorProfile ColorProfile { get; private set; }
+        public EliteDrumsLayoutPreset EliteLayoutOverride { get; set; }
+        /// <summary>Allows structurally valid, merge-free incomplete layouts for editor previews only.</summary>
+        public bool AllowIncompleteEliteLayoutPreview { get; set; }
+        public ColorProfile ColorProfileOverride { get; set; }
         public HighwayPreset HighwayPreset { get; private set; }
         private bool _initialized;
         private SettingsMenu _settingsMenu;
@@ -326,12 +333,15 @@ namespace YARG.Settings.Preview
             Initialize(ThemePreset.Default, _notePool,
                 (theme, style) => FakeNote.CreateFakeNoteFromTheme(theme, style),
                 PresetsTab.GetLastSelectedPreset(CustomContentManager.CameraSettings),
-                PresetsTab.GetLastSelectedPreset(CustomContentManager.ColorProfiles),
+                ColorProfileOverride ?? PresetsTab.GetLastSelectedPreset(CustomContentManager.ColorProfiles),
                 PresetsTab.GetLastSelectedPreset(CustomContentManager.EnginePresets),
                 PresetsTab.GetLastSelectedPreset(CustomContentManager.HighwayPresets),
-                SettingsManager.Settings.ShowHitWindow.Value);
-            _settingsMenu = SettingsMenu.Instance;
-            _settingsMenu.SettingChanged += OnSettingChanged;
+                SettingsManager.Settings?.ShowHitWindow.Value ?? false);
+            if (ColorProfileOverride == null)
+            {
+                _settingsMenu = SettingsMenu.Instance;
+                if (_settingsMenu != null) _settingsMenu.SettingChanged += OnSettingChanged;
+            }
         }
 
         /// <summary>
@@ -354,7 +364,22 @@ namespace YARG.Settings.Preview
             if (SelectedGameMode == GameMode.EliteDrums)
             {
                 var elite = CurrentGameModeInfo;
-                elite.Generator = new EliteDrumsFakeNoteGenerator();
+                var layoutPreset = EliteLayoutOverride ?? EliteDrumsLayoutPreset.Compact;
+                if (AllowIncompleteEliteLayoutPreview)
+                {
+                    elite.EliteLayout = EliteDrumsLayoutResolver.TryPreviewResolve(layoutPreset, out var previewLayout)
+                        ? previewLayout
+                        : null;
+                }
+                else
+                {
+                    elite.EliteLayout = EliteDrumsLayoutResolver.Resolve(layoutPreset);
+                }
+                elite.Generator = new EliteDrumsFakeNoteGenerator(
+                    elite.EliteLayout?.KickMode ?? EliteDrumsLayoutKickMode.Bars);
+                elite.LaneCount = elite.EliteLayout?.Lanes.Count ?? 0;
+                elite.HighwayOrdering = elite.EliteLayout?.Lanes.ToDictionary(lane => lane.Index + 1, lane => lane.Index)
+                    ?? new Dictionary<int, int>();
                 CurrentGameModeInfo = elite;
             }
 
@@ -426,6 +451,21 @@ namespace YARG.Settings.Preview
                         theme, style);
                     CreateProKeysOverlay(colorProfile.ProKeys);
                 }
+                else if (CurrentGameModeInfo.EliteLayout != null && CurrentGameModeInfo.LaneCount > 0)
+                {
+                    var resolved = CurrentGameModeInfo.EliteLayout;
+                    var ordering = new Dictionary<int, HighwayOrderingInfo>();
+                    int key = 0;
+                    foreach (var source in resolved.SourceToLane)
+                    {
+                        int savedColumn = resolved.Lanes[source.Value].SavedColumn;
+                        int encoded = ColorProfile.EliteDrumsFretColorAdapter.EncodeSlot(savedColumn);
+                        ordering.Add(key++, new HighwayOrderingInfo(source.Value, encoded));
+                    }
+                    _fretArray.UseKickFrets = resolved.KickMode == EliteDrumsLayoutKickMode.Bars;
+                    _fretArray.Initialize(ordering, resolved.Lanes.Count, CurrentGameModeInfo.KickFretPrefab,
+                        CreateEliteDrumsFretColorProvider(resolved, colorProfile.EliteDrums), theme, style);
+                }
                 else
                 {
                     _fretArray.UseKickFrets = CurrentGameModeInfo.UseKickFrets;
@@ -472,6 +512,37 @@ namespace YARG.Settings.Preview
             ApplySettings(cameraPreset, colorProfile, enginePreset, highwayPreset);
         }
 
+        public void RefreshColors(ColorProfile colorProfile)
+        {
+            if (colorProfile == null) throw new ArgumentNullException(nameof(colorProfile));
+            ColorProfileOverride = colorProfile;
+            ColorProfile = colorProfile;
+            if (!_initialized) return;
+
+            foreach (var pooled in _notePool.AllSpawned)
+                ((FakeNote)pooled).OnSettingChanged();
+
+            if (_fretArray != null && CurrentGameModeInfo.EliteLayout != null
+                && SelectedGameMode == GameMode.EliteDrums)
+            {
+                _fretArray.RecolorFrets(
+                    CreateEliteDrumsFretColorProvider(CurrentGameModeInfo.EliteLayout, colorProfile.EliteDrums),
+                    index => index);
+            }
+            else if (_fretArray != null && CurrentGameModeInfo.FretColorProvider != null
+                && !(SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys))
+            {
+                var fretColors = CurrentGameModeInfo.FretColorProvider(colorProfile);
+                Func<int, int> remap = SelectedGameMode == GameMode.FiveFretGuitar
+                    || (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys)
+                    ? FretColorIndexForLefty : index => index;
+                _fretArray.RecolorFrets(fretColors, remap);
+            }
+
+            if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
+                RecolorProKeysOverlay(colorProfile.ProKeys);
+        }
+
         private void OnSettingChanged()
         {
             var cameraPreset = PresetsTab.GetLastSelectedPreset(CustomContentManager.CameraSettings);
@@ -482,12 +553,47 @@ namespace YARG.Settings.Preview
             ApplySettings(cameraPreset, colorProfile, enginePreset, highwayPreset);
         }
 
+        private static ColorProfile.IFretColorProvider CreateEliteDrumsFretColorProvider(
+            EliteDrumsResolvedLayout layout, ColorProfile.EliteDrumsColors colors)
+        {
+            var slotRoles = new Dictionary<int, EliteDrumsColorRole>();
+            foreach (var source in layout.SourceToLane)
+            {
+                int encodedSlot = ColorProfile.EliteDrumsFretColorAdapter.EncodeSlot(
+                    layout.Lanes[source.Value].SavedColumn);
+                if (!slotRoles.ContainsKey(encodedSlot))
+                {
+                    slotRoles.Add(encodedSlot, source.Key switch
+                    {
+                        "snare" => EliteDrumsColorRole.Snare,
+                        "hi-hat" => EliteDrumsColorRole.HatIndifferent,
+                        "tom1" => EliteDrumsColorRole.Tom1,
+                        "tom2" => EliteDrumsColorRole.Tom2,
+                        "tom3" => EliteDrumsColorRole.Tom3,
+                        "left-crash" => EliteDrumsColorRole.LeftCrash,
+                        "ride" => EliteDrumsColorRole.Ride,
+                        "right-crash" => EliteDrumsColorRole.RightCrash,
+                        "kick1" => EliteDrumsColorRole.Kick,
+                        "kick2" => EliteDrumsColorRole.DoubleKick,
+                        "kick" => EliteDrumsColorRole.Kick,
+                        _ => EliteDrumsColorRole.Kick
+                    });
+                }
+            }
+
+            return new ColorProfile.EliteDrumsFretColorAdapter(colors, slotRoles);
+        }
+
         public void ApplySettings(CameraPreset cameraPreset, ColorProfile colorProfile,
             EnginePreset enginePreset, HighwayPreset highwayPreset)
         {
             CameraPreset = cameraPreset;
             ColorProfile = colorProfile;
             HighwayPreset = highwayPreset;
+            // Settings previews also run in isolated UI/test contexts before settings load.
+            // The geometry option is opt-in, so use its disabled value until settings exist.
+            OffsetEliteTomCymbalGems = SettingsManager.Settings?.OffsetEliteTomCymbalGems.Value ?? false;
+            RefreshEliteOffsetPairs();
 
             // Update camera presets
             if (_trackMaterial != null) _trackMaterial.Initialize(highwayPreset);
@@ -511,17 +617,31 @@ namespace YARG.Settings.Preview
                 ((FakeNote)note).OnSettingChanged();
             }
 
-            if (_fretArray != null && CurrentGameModeInfo.FretColorProvider != null
+            if (_fretArray != null && (CurrentGameModeInfo.FretColorProvider != null
+                    || (SelectedGameMode == GameMode.EliteDrums && CurrentGameModeInfo.EliteLayout != null))
                 && !(SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys))
             {
-                // Compressed Pro Keys resolves to Five-Fret Guitar's fret provider;
-                // use the resolved configuration rather than the selected enum alone.
-                var fretColors = CurrentGameModeInfo.FretColorProvider(colorProfile);
-                var usesFiveFretColors = SelectedGameMode == GameMode.FiveFretGuitar
-                    || (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys);
-                var colorIndexRemap = usesFiveFretColors
-                    ? FretColorIndexForLefty
-                    : (Func<int, int>)(index => index);
+                ColorProfile.IFretColorProvider fretColors;
+                Func<int, int> colorIndexRemap;
+                if (SelectedGameMode == GameMode.EliteDrums && CurrentGameModeInfo.EliteLayout != null)
+                {
+                    // Elite receptor indices encode zero-based saved slots; do not recolor
+                    // through the legacy role/index provider after initial construction.
+                    fretColors = CreateEliteDrumsFretColorProvider(CurrentGameModeInfo.EliteLayout,
+                        colorProfile.EliteDrums);
+                    colorIndexRemap = index => index;
+                }
+                else
+                {
+                    // Compressed Pro Keys resolves to Five-Fret Guitar's fret provider;
+                    // use the resolved configuration rather than the selected enum alone.
+                    fretColors = CurrentGameModeInfo.FretColorProvider(colorProfile);
+                    var usesFiveFretColors = SelectedGameMode == GameMode.FiveFretGuitar
+                        || (SelectedGameMode == GameMode.ProKeys && UseFiveLaneKeys);
+                    colorIndexRemap = usesFiveFretColors
+                        ? FretColorIndexForLefty
+                        : (Func<int, int>)(index => index);
+                }
                 _fretArray.RecolorFrets(fretColors, colorIndexRemap);
             }
 
@@ -542,10 +662,17 @@ namespace YARG.Settings.Preview
         public void SpotlightEliteRole(EliteDrumsColorRole role, bool starPower,
             ElitePreviewDescriptor? descriptor = null)
         {
+            var appearance = role == EliteDrumsColorRole.KickFlam
+                ? EliteDrumsFakeNoteGenerator.DescribeForKickLayout(role, ThemeNoteType.Normal,
+                    (CurrentGameModeInfo.EliteLayout?.KickMode ?? EliteDrumsLayoutKickMode.Bars))
+                : descriptor ?? EliteDrumsFakeNoteGenerator.Describe(role);
+            if (AllowIncompleteEliteLayoutPreview
+                && !IsEliteNoteRepresented(EliteDrumsFakeNoteGenerator.CreateRoleNote(0d, appearance),
+                    CurrentGameModeInfo.EliteLayout))
+                return;
             ClearSpotlights();
-            var appearance = descriptor ?? EliteDrumsFakeNoteGenerator.Describe(role);
             _eliteSpotlight = new ElitePreviewDescriptor(role, appearance.Fret, appearance.ModelType,
-                appearance.IsBar, appearance.Width, appearance.Offset);
+                appearance.IsBar, appearance.Width, appearance.Offset, appearance.DedicatedLaneSource);
             _eliteSpotlightStarPower = starPower;
             _spotlightRemaining = SPOTLIGHT_NOTE_COUNT;
         }
@@ -654,6 +781,83 @@ namespace YARG.Settings.Preview
             noteObj.EnableFromPool();
         }
 
+        private static string EliteSource(EliteDrumsColorRole role) => role switch
+        {
+            EliteDrumsColorRole.Snare or EliteDrumsColorRole.HandFlam => "snare",
+            // Kick bars have no dedicated lane; dedicated kick descriptors carry their own source.
+            EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick or EliteDrumsColorRole.KickFlam => null,
+            EliteDrumsColorRole.HatIndifferent or EliteDrumsColorRole.HatOpen or EliteDrumsColorRole.HatClosed
+                or EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash => "hi-hat",
+            EliteDrumsColorRole.Tom1 => "tom1",
+            EliteDrumsColorRole.Tom2 => "tom2",
+            EliteDrumsColorRole.Tom3 => "tom3",
+            EliteDrumsColorRole.LeftCrash => "left-crash",
+            EliteDrumsColorRole.Ride => "ride",
+            EliteDrumsColorRole.RightCrash => "right-crash",
+            _ => null
+        };
+
+        private static bool IsCymbalModel(ThemeNoteType type) => type is ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent
+            or ThemeNoteType.CymbalGhost or ThemeNoteType.OpenHiHat or ThemeNoteType.OpenHiHatAccent
+            or ThemeNoteType.OpenHiHatGhost or ThemeNoteType.ClosedHiHat or ThemeNoteType.ClosedHiHatAccent
+            or ThemeNoteType.ClosedHiHatGhost;
+
+        private static bool IsEliteNoteRepresented(FakeNoteData note, EliteDrumsResolvedLayout layout)
+        {
+            if (note?.EliteDescriptor is not { } descriptor || layout == null)
+                return false;
+            string source = descriptor.DedicatedLaneSource ?? EliteSource(descriptor.Role);
+            return source == null || layout.SourceToLane.ContainsKey(source);
+        }
+
+        private static void RefreshEliteOffsetPairFlags(IReadOnlyList<FakeNoteData> notes, bool enabled,
+            EliteDrumsResolvedLayout layout)
+        {
+            foreach (var note in notes) note.OffsetElitePair = false;
+            if (enabled && layout != null)
+            {
+                MarkEliteOffsetPairs(notes, layout);
+            }
+        }
+
+        private static void MarkEliteOffsetPairs(IReadOnlyList<FakeNoteData> notes,
+            EliteDrumsResolvedLayout layout)
+        {
+            if (layout == null) return;
+            for (int i = 0; i < notes.Count; i++)
+            {
+                var first = notes[i];
+                if (first.EliteDescriptor is not { IsBar: false } firstDescriptor) continue;
+                string firstSource = EliteSource(firstDescriptor.Role);
+                if (firstSource == null || !layout.SourceToLane.TryGetValue(firstSource, out int lane))
+                    continue;
+
+                for (int j = i + 1; j < notes.Count; j++)
+                {
+                    var second = notes[j];
+                    if (second.Time != first.Time || second.EliteDescriptor is not { IsBar: false } secondDescriptor)
+                        continue;
+                    bool firstCymbal = IsCymbalModel(firstDescriptor.ModelType);
+                    bool secondCymbal = IsCymbalModel(secondDescriptor.ModelType);
+                    if (firstCymbal == secondCymbal) continue;
+                    string secondSource = EliteSource(secondDescriptor.Role);
+                    if (secondSource == null || !layout.SourceToLane.TryGetValue(secondSource, out int secondLane)
+                        || lane != secondLane) continue;
+                    first.OffsetElitePair = true;
+                    second.OffsetElitePair = true;
+                }
+            }
+        }
+
+        private void RefreshEliteOffsetPairs()
+        {
+            if (_notePool == null) return;
+            var notes = _notePool.AllSpawned.Cast<FakeNote>().Where(note => note.NoteRef != null).ToArray();
+            var data = notes.Select(note => note.NoteRef).ToArray();
+            RefreshEliteOffsetPairFlags(data, OffsetEliteTomCymbalGems, CurrentGameModeInfo.EliteLayout);
+            foreach (var note in notes) note.OnSettingChanged();
+        }
+
         private void ApplyLeftyToFret(FakeNoteData note)
         {
             // 4-lane drums: lefty flip relocates the snare from red to green. The
@@ -690,6 +894,13 @@ namespace YARG.Settings.Preview
             // Update the preview notes
             PreviewTime += deltaTime;
 
+            // A structurally valid empty draft is an intentional blank preview.
+            if (SelectedGameMode == GameMode.EliteDrums && CurrentGameModeInfo.LaneCount == 0)
+            {
+                if (_trackMaterial != null) _trackMaterial.SetTrackScroll(PreviewTime, NOTE_SPEED);
+                return;
+            }
+
             // Queue the notes
             if (_nextSpawnTime <= PreviewTime &&
                 (CurrentGameModeInfo.Generator is not EliteDrumsFakeNoteGenerator eliteGenerator
@@ -722,6 +933,13 @@ namespace YARG.Settings.Preview
                     note = CurrentGameModeInfo.Generator.CreateNote(spawnTime, _random);
                 }
 
+                if (SelectedGameMode == GameMode.EliteDrums
+                    && !IsEliteNoteRepresented(note, CurrentGameModeInfo.EliteLayout))
+                {
+                    _nextSpawnTime = PreviewTime;
+                    return;
+                }
+
                 if (spotlightMiss)
                 {
                     _spotlightMissRemaining--;
@@ -736,18 +954,24 @@ namespace YARG.Settings.Preview
 
                 // Generate chord extras before lefty so fret comparisons
                 // are in the same (non-transformed) space.
+                var notesToSpawn = new List<FakeNoteData>();
                 if (!spotlight && !spotlightType)
                 {
                     foreach (var chordNote in CurrentGameModeInfo.Generator.CreateChordNotes(
                         spawnTime, note, _random))
                     {
+                        if (SelectedGameMode == GameMode.EliteDrums
+                            && !IsEliteNoteRepresented(chordNote, CurrentGameModeInfo.EliteLayout))
+                            continue;
                         ApplyLeftyToFret(chordNote);
-                        SpawnNote(chordNote);
+                        notesToSpawn.Add(chordNote);
                     }
                 }
 
                 ApplyLeftyToFret(note);
-                SpawnNote(note);
+                notesToSpawn.Add(note);
+                MarkEliteOffsetPairs(notesToSpawn, CurrentGameModeInfo.EliteLayout);
+                foreach (var noteToSpawn in notesToSpawn) SpawnNote(noteToSpawn);
             }
 
             var spawned = new List<IPoolable>(_notePool.AllSpawned);

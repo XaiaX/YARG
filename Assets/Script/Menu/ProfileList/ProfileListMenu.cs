@@ -40,12 +40,13 @@ namespace YARG.Menu.ProfileList
         private GameObject _profileListHeaderPrefab;
 
         private readonly int _maxConnected = HighwayCameraRendering.MAX_MATRICES;
+        private YargProfile _profileToRestore;
 
         public bool CanConnectProfile => PlayerContainer.Players.Count < _maxConnected;
 
         private void OnEnable()
         {
-            RefreshList();
+            RefreshListAfterReactivation();
 
             _ = Navigator.Instance.PushScheme(new NavigationScheme(new()
             {
@@ -57,6 +58,8 @@ namespace YARG.Menu.ProfileList
 
         private void OnDisable()
         {
+            CaptureSelectedProfile();
+
             PlayerContainer.EnsureValidInstruments();
             PlayerContainer.SaveProfiles();
 
@@ -67,6 +70,18 @@ namespace YARG.Menu.ProfileList
             Navigator.Instance?.PopScheme();
 
             PlayerContainer.PlayerAdded -= OnPlayerAdded;
+        }
+
+        private void CaptureSelectedProfile()
+        {
+            _profileToRestore = GetSelectedProfile(includeInactive: true);
+        }
+
+        private void RefreshListAfterReactivation()
+        {
+            var profile = PlayerContainer.Profiles.Contains(_profileToRestore) ? _profileToRestore : null;
+            _profileToRestore = null;
+            RefreshList(profile);
         }
 
         public void RefreshList(YargProfile selectedProfile = null)
@@ -194,10 +209,10 @@ namespace YARG.Menu.ProfileList
         }
 
         #nullable enable
-        private YargProfile? GetSelectedProfile()
+        private YargProfile? GetSelectedProfile(bool includeInactive = false)
         #nullable disable
         {
-            var profileView = _profileList.GetComponentsInChildren<ProfileView>()
+            var profileView = _profileList.GetComponentsInChildren<ProfileView>(includeInactive)
                 .FirstOrDefault(e => e.Selected);
             if (profileView != null)
             {
@@ -216,6 +231,33 @@ namespace YARG.Menu.ProfileList
             {
                 profileView.SetSelected(true, SelectionOrigin.Programmatically);
             }
+        }
+
+        public void RefreshEliteLayoutDropdown(TMP_Dropdown dropdown, YargProfile profile)
+        {
+            var layouts = CustomContentManager.EliteDrumsLayouts.UsablePresets.ToArray();
+            // The profile row remains the selected item while the profile's settings are edited.
+            // This dropdown is intentionally not attached to a RuntimeNavigatable, which would
+            // transfer selection away from the row and add a persistent selected outline.
+            var navigatable = dropdown.GetComponent<RuntimeNavigatable>();
+            if (navigatable != null)
+            {
+                navigatable.RemoveOwnedDropdownClickForwarders();
+                navigatable.SetSelected(false, SelectionOrigin.Programmatically);
+                var outline = dropdown.transform.Find("SelectedOutline");
+                if (outline != null)
+                {
+                    Destroy(outline.gameObject);
+                }
+                Destroy(navigatable);
+            }
+
+            dropdown.onValueChanged.RemoveAllListeners();
+            dropdown.ClearOptions();
+            dropdown.AddOptions(layouts.Select(layout => layout.Name).ToList());
+            int selected = System.Array.FindIndex(layouts, layout => layout.Id == profile.EliteDrumsLayout);
+            dropdown.SetValueWithoutNotify(selected >= 0 ? selected : 0);
+            dropdown.onValueChanged.AddListener(index => profile.EliteDrumsLayout = layouts[index].Id);
         }
 
         public void OnPlayerAdded(YargPlayer player)

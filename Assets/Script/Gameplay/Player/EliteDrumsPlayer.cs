@@ -25,6 +25,27 @@ namespace YARG.Gameplay.Player
     public sealed class EliteDrumsPlayer : TrackPlayer<EliteDrumsEngine, EliteDrumNote>
     {
         private const int FIXED_LANE_COUNT = 5;
+        public const int SECOND_KICK_RECEPTOR = 100;
+        public EliteDrumsResolvedLayout Layout { get; private set; }
+
+        public int GetReceptorKey(EliteDrumNote note) =>
+            IsFootPad(note.Pad) && note.IsDoubleKick && Layout.KickMode == EliteDrumsLayoutKickMode.Split
+                ? SECOND_KICK_RECEPTOR : note.Pad;
+
+        public bool UsesKickBars => Layout.KickMode == EliteDrumsLayoutKickMode.Bars;
+        public bool UsesHistoricalPedalBars { get; private set; }
+
+        internal static string GetLayoutSource(int pad) => (EliteDrumPad) pad switch
+        {
+            EliteDrumPad.Snare => "snare", EliteDrumPad.HiHat or EliteDrumPad.HatPedal => "hi-hat",
+            EliteDrumPad.LeftCrash => "left-crash", EliteDrumPad.Tom1 => "tom1",
+            EliteDrumPad.Tom2 => "tom2", EliteDrumPad.Ride => "ride",
+            EliteDrumPad.Tom3 => "tom3", EliteDrumPad.RightCrash => "right-crash",
+            _ => "kick"
+        };
+
+        public int GetVisualPosition(EliteDrumNote note) =>
+            _ordering.TryGetValue(GetReceptorKey(note), out var info) ? info.Position : 0;
         private readonly Dictionary<int, HighwayOrderingInfo> _ordering = new();
         private EliteDrumsAction? _pendingOverhitAction;
         private bool _pendingWildcardHit;
@@ -150,29 +171,54 @@ namespace YARG.Gameplay.Player
 
         protected override void FinishInitialization()
         {
-            LaneCount = FIXED_LANE_COUNT;
+            Layout = EliteDrumsLayoutResolver.TryResolve(Player.EliteDrumsLayout, out var selectedLayout)
+                ? selectedLayout : EliteDrumsLayoutResolver.Resolve(EliteDrumsLayoutPreset.Compact);
+            var compact = EliteDrumsLayoutResolver.Resolve(EliteDrumsLayoutPreset.Compact);
+            UsesHistoricalPedalBars = Layout.Lanes.Count == compact.Lanes.Count &&
+                Layout.Lanes.Select(lane => string.Join(",", lane.EffectiveIds))
+                    .SequenceEqual(compact.Lanes.Select(lane => string.Join(",", lane.EffectiveIds)));
+            LaneCount = Layout.Lanes.Count;
             _ordering.Clear();
             for (int pad = 0; pad <= (int) EliteDrumPad.RightCrash; pad++)
             {
-                if (!IsFootPad(pad))
-                    _ordering.Add(pad, new HighwayOrderingInfo(ApplyLefty(GetLane(pad)), GetColorIndex(pad)));
+                string source = IsFootPad(pad) && Layout.KickMode == EliteDrumsLayoutKickMode.Split
+                    ? "kick1" : GetLayoutSource(pad);
+                if (Layout.SourceToLane.TryGetValue(source, out int lane))
+                    _ordering.Add(pad, new HighwayOrderingInfo(ApplyLefty(lane),
+                        ColorProfile.EliteDrumsFretColorAdapter.EncodeSlot(Layout.Lanes[lane].SavedColumn)));
             }
+            if (Layout.KickMode == EliteDrumsLayoutKickMode.Split)
+                _ordering.Add(SECOND_KICK_RECEPTOR, new HighwayOrderingInfo(
+                    ApplyLefty(Layout.SourceToLane["kick2"]), ColorProfile.EliteDrumsFretColorAdapter.EncodeSlot(
+                        Layout.Lanes[Layout.SourceToLane["kick2"]].SavedColumn)));
+            _fretArray.UseKickFrets = UsesKickBars;
             var colors = Player.ColorProfile.EliteDrums;
             var kickPrefab = ThemeManager.Instance.CreateKickFretPrefabFromTheme(Player.ThemePreset,
                 VisualStyle.FiveLaneDrums);
-            _fretArray.Initialize(_ordering, LaneCount, kickPrefab, colors, Player.ThemePreset,
+            var slotEffects = new Dictionary<int, EliteDrumsColorRole>();
+            foreach (var pair in _ordering)
+            {
+                if (slotEffects.ContainsKey(pair.Value.ColorIndex)) continue;
+                int pad = pair.Key == SECOND_KICK_RECEPTOR ? (int) EliteDrumPad.Kick : pair.Key;
+                var note = new EliteDrumNote(pad, DrumNoteType.Neutral, EliteDrumsHatState.Indifferent,
+                    EliteDrumsHatPedalType.Stomp, false, DrumNoteFlags.None, NoteFlags.None,
+                    EliteDrumsChannelFlag.None, 0, 0, pair.Key == SECOND_KICK_RECEPTOR);
+                slotEffects.Add(pair.Value.ColorIndex, EliteDrumsColorRoles.GetRole(note));
+            }
+            _fretArray.Initialize(_ordering, LaneCount, kickPrefab,
+                new ColorProfile.EliteDrumsFretColorAdapter(colors, slotEffects), Player.ThemePreset,
                 VisualStyle.FiveLaneDrums);
             _kickFretFlash.Initialize(colors.GetParticleColor((int) ColorProfile.EliteDrumsFret.Kick).ToUnityColor());
             NoteTrack.SetDrumActivationFlags(Player.Profile.StarPowerActivationType);
             Notes = NoteTrack.Notes;
             BRELanes = new LaneElement[LaneCount];
             base.FinishInitialization();
-            LaneElement.DefineLaneScale(Instrument.FiveLaneDrums, LaneCount);
         }
 
-        private int ApplyLefty(int lane) => Player.Profile.LeftyFlip ? FIXED_LANE_COUNT - 1 - lane : lane;
+        private int ApplyLefty(int lane) => Player.Profile.LeftyFlip ? LaneCount - 1 - lane : lane;
 
-        public int GetVisualPosition(int pad) => ApplyLefty(GetLane(pad));
+        public int GetVisualPosition(int pad) =>
+            _ordering.TryGetValue(pad, out var info) ? info.Position : LaneCount / 2;
 
         protected override void ResetNoteCounters()
         {
@@ -242,6 +288,21 @@ namespace YARG.Gameplay.Player
         protected override void OnNoteSpawned(EliteDrumNote parentNote)
         {
             base.OnNoteSpawned(parentNote);
+            foreach (var member in parentNote.AllNotes)
+            {
+                if (UsesHistoricalPedalBars || member.Pad != (int) EliteDrumPad.HatPedal || member.IsInvisibleTerminator ||
+                    member.SourceDefinition == null || member.SourceDefinition.EndTime <= member.SourceDefinition.StartTime) continue;
+                if (!LanePool.CanSpawnAmount(1)) BeforeNativeLaneAllocation(1);
+                var pedalLane = TakeNativeLane();
+                if (pedalLane == null) continue;
+                int position = GetVisualPosition(member);
+                pedalLane.SetTimeRange(member.Time, member.Time +
+                    member.SourceDefinition.EndTime - member.SourceDefinition.StartTime);
+                pedalLane.SetIndexRange(position, position);
+                pedalLane.SetAppearance(Instrument.FiveLaneDrums, position, position, LaneCount,
+                    GetLaneColor(Player.ColorProfile.EliteDrums, member).ToUnityColor(), GetLaneScale());
+                pedalLane.EnableFromPool();
+            }
             if (!Engine.BaseParameters.EnableLanes)
             {
                 return;
@@ -291,7 +352,8 @@ namespace YARG.Gameplay.Player
                 lane.SetTimeRange(timeRange.Start, timeRange.End);
                 lane.SetIndexRange(info.Position, info.Position);
                 lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, info.Position, LaneCount,
-                    GetLaneColor(Player.ColorProfile.EliteDrums, surviving[record.MemberSources[0]]).ToUnityColor());
+                    GetLaneColor(Player.ColorProfile.EliteDrums, surviving[record.MemberSources[0]]).ToUnityColor(),
+                    GetLaneScale());
                 lane.EnableFromPool();
             }
         }
@@ -306,24 +368,32 @@ namespace YARG.Gameplay.Player
 
         protected override void InitializeSpawnedLane(LaneElement lane, EliteDrumNote note)
         {
-            var info = _ordering.TryGetValue(note.Pad, out var ordering) ? ordering :
-                new HighwayOrderingInfo(2, 0);
-            lane.SetAppearance(Instrument.FiveLaneDrums, note.LaneNote, info.Position, LaneCount,
-                GetLaneColor(Player.ColorProfile.EliteDrums, note).ToUnityColor());
+            var info = _ordering.TryGetValue(GetReceptorKey(note), out var ordering) ? ordering :
+                new HighwayOrderingInfo(LaneCount / 2, 0);
+            lane.SetIndexRange(info.Position, info.Position);
+            lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, info.Position, LaneCount,
+                GetLaneColor(Player.ColorProfile.EliteDrums, note).ToUnityColor(), GetLaneScale());
         }
 
         protected override void InitializeBRELane(LaneElement lane, int laneIndex)
         {
-            lane.SetAppearance(Instrument.FiveLaneDrums, laneIndex + 2, laneIndex, LaneCount,
-                Player.ColorProfile.EliteDrums.GetFretColor(ApplyLefty(laneIndex) + 1).ToUnityColor());
+            lane.SetIndexRange(laneIndex, laneIndex);
+            lane.SetAppearance(Instrument.FiveLaneDrums, laneIndex, laneIndex, LaneCount,
+                Player.ColorProfile.EliteDrums.GetSlotFretColor(
+                    Layout.Lanes[ApplyLefty(laneIndex)].SavedColumn).ToUnityColor(), GetLaneScale());
         }
 
-        protected override void RescaleLanesForBRE() =>
-            LaneElement.DefineLaneScale(Instrument.FiveLaneDrums, LaneCount, true);
+        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / LaneCount;
+
+        protected override void RescaleLanesForBRE()
+        {
+        }
 
         private void OnPedalAssisted(EliteDrumNote note)
         {
             (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.HitNote();
+            var effect = Player.ColorProfile.EliteDrums.GetInputEffectColor(EliteDrumsColorRoles.GetRole(note));
+            _fretArray.PlayHitAnimation(note.Pad, effect, false);
         }
 
         protected override void OnNoteHit(int index, EliteDrumNote note)
@@ -337,9 +407,19 @@ namespace YARG.Gameplay.Player
                 return;
             }
             var colors = Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors();
-            var effect = colors.GetInputEffectColor(EliteDrumsColorRoles.GetRole(note,
-                YARG.Settings.SettingsManager.Settings?.SplitEliteFlamGems?.Value ?? false));
-            if (IsFootPad(note.Pad))
+            var effectRole = IsFootPad(note.Pad) && (note.IsFlam || note.IsFlatFlam)
+                ? EliteDrumsColorRole.KickFlam
+                : EliteDrumsColorRoles.GetRole(note,
+                    YARG.Settings.SettingsManager.Settings?.SplitEliteFlamGems?.Value ?? false);
+            var effect = colors.GetInputEffectColor(effectRole);
+            if (IsFootPad(note.Pad) && !UsesKickBars)
+            {
+                _fretArray.PlayHitAnimation(note.Pad, effect, false);
+                if (Layout.KickMode == EliteDrumsLayoutKickMode.Split)
+                    _fretArray.PlayHitAnimation(SECOND_KICK_RECEPTOR, effect, false);
+                CameraPositioner.Bounce();
+            }
+            else if (IsFootPad(note.Pad))
             {
                 _kickFretFlash.Initialize(effect.ToUnityColor());
                 _kickFretFlash.PlayHitAnimation();
@@ -368,7 +448,13 @@ namespace YARG.Gameplay.Player
             int pad = GetInputPad(action);
             var effect = (Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors())
                 .GetInputEffectColor(EliteDrumsColorRoles.GetInputRole(action));
-            if (IsFootPad(pad))
+            if (IsFootPad(pad) && !UsesKickBars)
+            {
+                _fretArray.PlayMissAnimation(pad, effect);
+                if (Layout.KickMode == EliteDrumsLayoutKickMode.Split)
+                    _fretArray.PlayMissAnimation(SECOND_KICK_RECEPTOR, effect);
+            }
+            else if (IsFootPad(pad))
             {
                 _kickFretFlash.Initialize(effect.ToUnityColor());
                 _fretArray.PlayKickFretAnimation();
@@ -408,7 +494,14 @@ namespace YARG.Gameplay.Player
             var role = EliteDrumsColorRoles.GetInputRole(action);
             var effect = (Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors())
                 .GetInputEffectColor(role);
-            if (IsFootPad(pad))
+            if (IsFootPad(pad) && !UsesKickBars)
+            {
+                _fretArray.PlayHitAnimation(pad, effect, false);
+                if (Layout.KickMode == EliteDrumsLayoutKickMode.Split)
+                    _fretArray.PlayHitAnimation(SECOND_KICK_RECEPTOR, effect, false);
+                CameraPositioner.Bounce();
+            }
+            else if (IsFootPad(pad))
             {
                 _kickFretFlash.Initialize(effect.ToUnityColor());
                 _kickFretFlash.PlayHitAnimation();

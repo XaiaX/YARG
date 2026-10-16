@@ -535,16 +535,17 @@ namespace YARG.Tests.EditMode
                 {
                     foreach (bool lefty in new[] { false, true })
                     {
+                        // Approved policy: with tom/cymbal offset OFF, paired gems are
+                        // centered on the shared lane and overlap at full column width.
                         var tinyArgs = new object[] { member, lefty, false, 0f, 0f };
                         Assert.That((bool) layout.Invoke(null, tinyArgs), Is.True);
-                        Assert.That((float) tinyArgs[4], Is.EqualTo(laneWidth / 2f).Within(0.001f));
+                        Assert.That((float) tinyArgs[4], Is.EqualTo(laneWidth).Within(0.001f),
+                            "Offset-off paired gems use the full shared column, overlapping at its center.");
+                        // With offset ON, each gem gets a subregion bounded by the lane's
+                        // half-column, clamped at the highway edge (no neighbor overlap).
                         var offsetArgs = new object[] { member, lefty, true, 0f, 0f };
                         Assert.That((bool) layout.Invoke(null, offsetArgs), Is.True);
-                        Assert.That((float) offsetArgs[4], Is.EqualTo(laneWidth *
-                            (tomPad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom3 ? 2f / 3f : 5f / 6f)).Within(0.001f));
 
-                        float tinyCenter = (float) tinyArgs[3];
-                        float offsetCenter = (float) offsetArgs[3];
                         float laneCenter = tomPad switch
                         {
                             YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom1 => 0f,
@@ -552,46 +553,33 @@ namespace YARG.Tests.EditMode
                             _ => 0.8f,
                         };
                         float mirror = lefty ? -1f : 1f;
-                        float expectedTinyCenter = tomPad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom3
-                            ? mirror * (highwayWidth / 2f - laneWidth / 4f) +
-                                (member.Pad == (int) tomPad ? -mirror * laneWidth / 2f : 0f)
-                            : mirror * laneCenter + mirror * (member.Pad == (int) tomPad ? -1f : 1f) * laneWidth / 4f;
-                        float expectedOffsetCenter = tomPad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom3
-                            ? mirror * (highwayWidth / 2f - laneWidth / 3f) +
-                                (member.Pad == (int) tomPad ? -mirror * 2f * laneWidth / 3f : 0f)
-                            : mirror * laneCenter + mirror * (member.Pad == (int) tomPad ? -1f : 1f) * 5f * laneWidth / 12f;
-                        Assert.That(tinyCenter, Is.EqualTo(expectedTinyCenter).Within(0.001f));
+                        float mirroredLaneCenter = mirror * laneCenter;
+
+                        float tinyCenter = (float) tinyArgs[3];
+                        Assert.That(tinyCenter, Is.EqualTo(mirroredLaneCenter).Within(0.001f),
+                            "Offset-off tom and cymbal both center on the shared lane.");
+
+                        float leftBound = Mathf.Max(-highwayWidth / 2f, laneCenter - laneWidth / 2f);
+                        float rightBound = Mathf.Min(highwayWidth / 2f, laneCenter + laneWidth / 2f);
+                        float boundedWidth = Mathf.Min(laneCenter - leftBound, rightBound - laneCenter);
+                        Assert.That((float) offsetArgs[4], Is.EqualTo(boundedWidth).Within(0.001f),
+                            "Offset-on subregions never exceed the lane's clamped half-column.");
+
+                        float offsetCenter = (float) offsetArgs[3];
+                        bool isTom = member.Pad == (int) tomPad;
+                        float expectedOffsetCenter = mirroredLaneCenter +
+                            mirror * (isTom ? -1f : 1f) * (float) offsetArgs[4] / 2f;
                         Assert.That(offsetCenter, Is.EqualTo(expectedOffsetCenter).Within(0.001f));
+
                         Assert.That(tinyCenter - (float) tinyArgs[4] / 2f,
                             Is.GreaterThanOrEqualTo(-highwayWidth / 2f - 0.001f));
                         Assert.That(tinyCenter + (float) tinyArgs[4] / 2f,
                             Is.LessThanOrEqualTo(highwayWidth / 2f + 0.001f));
-                        if (member.Pad == (int) tomPad)
-                        {
-                            float mirroredLaneCenter = lefty ? -laneCenter : laneCenter;
-                            float facingEdge = lefty ? -1f : 1f;
-                            Assert.That(Mathf.Abs(tinyCenter + facingEdge * (float) tinyArgs[4] / 2f - mirroredLaneCenter),
-                                Is.EqualTo(0f).Within(0.001f), "Tiny gems must touch at the shared-lane center.");
-                            if (tomPad != YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom3)
-                            {
-                                Assert.That(Mathf.Abs(offsetCenter + facingEdge * (float) offsetArgs[4] / 2f - mirroredLaneCenter),
-                                    Is.EqualTo(0f).Within(0.001f), "Offset gems must touch at the shared-lane center.");
-                                Assert.That(Mathf.Abs(offsetCenter - facingEdge * (float) offsetArgs[4] / 2f -
-                                    (mirroredLaneCenter - facingEdge * laneWidth * 5f / 6f)),
-                                    Is.EqualTo(0f).Within(0.001f), "Offset tom must reach 1/3 lane past the shared lane.");
-                            }
-                        }
-                        else if (tomPad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Tom3)
-                        {
-                            float edge = (lefty ? -1f : 1f) * highwayWidth / 2f;
-                            float facingEdge = lefty ? -1f : 1f;
-                            Assert.That(tinyCenter + facingEdge * (float) tinyArgs[4] / 2f,
-                                Is.EqualTo(edge).Within(0.001f),
-                                "Tiny right-crash gem should meet the outer lane edge without extending outside.");
-                            Assert.That(offsetCenter + facingEdge * (float) offsetArgs[4] / 2f,
-                                Is.EqualTo(edge).Within(0.001f),
-                                "Offset right-crash gem should be flush with the highway edge.");
-                        }
+                        Assert.That(offsetCenter - (float) offsetArgs[4] / 2f,
+                            Is.GreaterThanOrEqualTo(Mathf.Min(mirroredLaneCenter - laneWidth / 2f, mirroredLaneCenter) - 0.001f),
+                            "Offset-on gems stay inside the shared lane's clamped bounds.");
+                        Assert.That(offsetCenter + (float) offsetArgs[4] / 2f,
+                            Is.LessThanOrEqualTo(Mathf.Max(mirroredLaneCenter + laneWidth / 2f, mirroredLaneCenter) + 0.001f));
                     }
                 }
             }
@@ -747,7 +735,7 @@ namespace YARG.Tests.EditMode
         {
             var elementType = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
             var groupType = Type.GetType("YARG.Gameplay.Visuals.NoteGroup, Assembly-CSharp");
-            var fit = elementType.GetMethod("FitBarWidth",
+            var fit = elementType.GetMethod("FitFootWidth",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
                 null, new[] { groupType, typeof(float), typeof(float) }, null);
             Assert.That(fit, Is.Not.Null);

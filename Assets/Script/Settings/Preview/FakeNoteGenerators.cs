@@ -48,13 +48,30 @@ namespace YARG.Settings.Preview
     public sealed class EliteDrumsFakeNoteGenerator : IFakeNoteGenerator
     {
         private int _index;
+        private EliteDrumsColorRole? _lastPedalCompanion;
         private const int ROLE_COUNT = (int) EliteDrumsColorRole.Wildcard + 1;
         private const int FLAM_COUNT = 8;
-        public const int NOTE_COUNT = (17 * 3 + FLAM_COUNT) * 2;
+        private const int PEDAL_COMBINATION_COUNT = 4;
+        private const int CYCLE_LENGTH = ROLE_COUNT * 3 + FLAM_COUNT + PEDAL_COMBINATION_COUNT;
+        private readonly EliteDrumsLayoutKickMode _kickMode;
+        public const int NOTE_COUNT = CYCLE_LENGTH * 2;
         public bool HasNext => true;
 
+        public EliteDrumsFakeNoteGenerator() : this(EliteDrumsLayoutKickMode.Bars)
+        {
+        }
+
+        public EliteDrumsFakeNoteGenerator(EliteDrumsLayoutKickMode kickMode = EliteDrumsLayoutKickMode.Bars)
+        {
+            _kickMode = kickMode;
+        }
+
         public static ElitePreviewDescriptor Describe(EliteDrumsColorRole role,
-            ThemeNoteType dynamics = ThemeNoteType.Normal)
+            ThemeNoteType dynamics = ThemeNoteType.Normal) =>
+            DescribeForKickLayout(role, dynamics, EliteDrumsLayoutKickMode.Bars);
+
+        public static ElitePreviewDescriptor DescribeForKickLayout(EliteDrumsColorRole role,
+            ThemeNoteType dynamics, EliteDrumsLayoutKickMode kickMode)
         {
             int fret = role switch
             {
@@ -76,6 +93,14 @@ namespace YARG.Settings.Preview
                 ThemeNoteType.Ghost => ThemeNoteType.CymbalGhost,
                 _ => ThemeNoteType.Cymbal
             } : dynamics;
+            string dedicatedLaneSource = null;
+            if (role == EliteDrumsColorRole.KickFlam && kickMode != EliteDrumsLayoutKickMode.Bars)
+            {
+                bar = false;
+                dedicatedLaneSource = kickMode == EliteDrumsLayoutKickMode.Combined ? "kick" : "kick1";
+                fret = kickMode == EliteDrumsLayoutKickMode.Combined ? 9 : 8;
+                type = kickMode == EliteDrumsLayoutKickMode.Combined ? ThemeNoteType.Accent : ThemeNoteType.DedicatedLaneKick;
+            }
             if (role == EliteDrumsColorRole.HatOpen)
             {
                 type = dynamics switch
@@ -102,7 +127,12 @@ namespace YARG.Settings.Preview
             float offset = role == EliteDrumsColorRole.DoubleKick ? 0.5f
                 : role is EliteDrumsColorRole.KickFlam or EliteDrumsColorRole.Stomp
                     or EliteDrumsColorRole.Splash ? -0.5f : 0f;
-            return new ElitePreviewDescriptor(role, fret, type, bar, width, offset);
+            if (dedicatedLaneSource != null)
+            {
+                width = 1f;
+                offset = 0f;
+            }
+            return new ElitePreviewDescriptor(role, fret, type, bar, width, offset, dedicatedLaneSource);
         }
 
         public static FakeNoteData CreateRoleNote(double time, ElitePreviewDescriptor descriptor) => new()
@@ -113,7 +143,18 @@ namespace YARG.Settings.Preview
 
         public FakeNoteData CreateNote(double time, IFakeNoteRandom random)
         {
-            int index = _index++ % (ROLE_COUNT * 3 + FLAM_COUNT);
+            int index = _index++ % CYCLE_LENGTH;
+            _lastPedalCompanion = null;
+            if (index >= ROLE_COUNT * 3 + FLAM_COUNT)
+            {
+                int pedalCombination = index - ROLE_COUNT * 3 - FLAM_COUNT;
+                EliteDrumsColorRole kickRole = pedalCombination < 2
+                    ? EliteDrumsColorRole.Kick : EliteDrumsColorRole.DoubleKick;
+                _lastPedalCompanion = pedalCombination % 2 == 0
+                    ? EliteDrumsColorRole.Stomp : EliteDrumsColorRole.Splash;
+                return CreateRoleNote(time, DescribeForKickLayout(kickRole,
+                    ThemeNoteType.Normal, _kickMode));
+            }
             if (index >= ROLE_COUNT * 3)
             {
                 var flamRole = (index - ROLE_COUNT * 3) switch
@@ -135,15 +176,23 @@ namespace YARG.Settings.Preview
             {
                 1 => ThemeNoteType.Accent, 2 => ThemeNoteType.Ghost, _ => ThemeNoteType.Normal
             };
-            return CreateRoleNote(time, Describe((EliteDrumsColorRole)(index % ROLE_COUNT), dynamics));
+            return CreateRoleNote(time, DescribeForKickLayout((EliteDrumsColorRole)(index % ROLE_COUNT), dynamics, _kickMode));
         }
 
         public FakeNoteData CreateSpotlightNote(double time, FakeNoteSpotlight spotlight,
-            IFakeNoteRandom random) => CreateRoleNote(time, Describe(spotlight.CenterNote
+            IFakeNoteRandom random)
+        {
+            _lastPedalCompanion = null;
+            return CreateRoleNote(time, Describe(spotlight.CenterNote
                 ? EliteDrumsColorRole.Kick : (EliteDrumsColorRole)Math.Max(0, spotlight.Fret - 1)));
+        }
 
         public FakeNoteData CreateTypeSpotlightNote(double time, ThemeNoteType noteType,
-            IFakeNoteRandom random) => CreateRoleNote(time, Describe(EliteDrumsColorRole.Snare, noteType));
+            IFakeNoteRandom random)
+        {
+            _lastPedalCompanion = null;
+            return CreateRoleNote(time, Describe(EliteDrumsColorRole.Snare, noteType));
+        }
 
         public IEnumerable<FakeNoteData> CreateChordNotes(double time, FakeNoteData baseNote,
             IFakeNoteRandom random)
@@ -156,18 +205,18 @@ namespace YARG.Settings.Preview
             }
             else if (descriptor.Role == EliteDrumsColorRole.KickFlam)
             {
-                yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 0,
-                    descriptor.ModelType, true, 0.5f, 0.5f));
+                if (_kickMode == EliteDrumsLayoutKickMode.Split)
+                    yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 9,
+                        ThemeNoteType.DedicatedLaneKick, false, 1f, 0f, "kick2"));
+                else if (_kickMode == EliteDrumsLayoutKickMode.Bars)
+                    yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 0,
+                        descriptor.ModelType, true, 0.5f, 0.5f));
             }
-            else if (descriptor.Role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash)
+            else if (_lastPedalCompanion is { } pedalRole
+                && descriptor.Role is EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick)
             {
-                yield return CreateRoleNote(time, new ElitePreviewDescriptor(EliteDrumsColorRole.Kick,
-                    0, ThemeNoteType.Kick, true, 0.5f, 0.5f));
-            }
-            else if (descriptor.Role == EliteDrumsColorRole.DoubleKick)
-            {
-                yield return CreateRoleNote(time, new ElitePreviewDescriptor(EliteDrumsColorRole.Kick, 0,
-                    ThemeNoteType.Kick, true, 0.5f, -0.5f));
+                yield return CreateRoleNote(time, DescribeForKickLayout(pedalRole,
+                    ThemeNoteType.Normal, _kickMode));
             }
         }
     }
