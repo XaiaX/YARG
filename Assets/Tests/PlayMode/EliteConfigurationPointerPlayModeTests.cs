@@ -31,6 +31,9 @@ namespace YARG.Tests.PlayMode
         private System.Collections.Generic.IDictionary<string, string> _localizationMap;
         private System.Collections.Generic.KeyValuePair<string, string>[] _previousLocalizations;
         private string _previousCulture;
+        private GameObject _menuDataObject;
+        private Component _menuData;
+        private object _previousMenuColors;
 
         [UnitySetUp]
         public IEnumerator SetUpRealTheme()
@@ -87,6 +90,25 @@ namespace YARG.Tests.PlayMode
             Assert.That(_localizationMap.TryGetValue("Settings.PresetSetting.PreviewVisuals.Visuals.Name", out var caption), Is.True,
                 "The production English dictionary must contain the preview-options caption key.");
             Assert.That(caption, Is.EqualTo("Preview Options"));
+#if UNITY_EDITOR
+            var menuDataType = Production("YARG.Menu.Data.MenuData");
+            _menuData = (Component)menuDataType.GetProperty("Instance", STATIC).GetValue(null);
+            if (_menuData == null)
+            {
+                _menuDataObject = new GameObject("Pointer capture production MenuData");
+                _menuDataObject.SetActive(false);
+                _menuData = _menuDataObject.AddComponent(menuDataType);
+                menuDataType.GetField("_navigationIcons", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(_menuData, UnityEditor.AssetDatabase.LoadAssetAtPath<ScriptableObject>(
+                        "Assets/Art/Menu/Data/NavigationIcons.asset"));
+            }
+            var colorsField = menuDataType.GetField("_colors", BindingFlags.Instance | BindingFlags.NonPublic);
+            _previousMenuColors = colorsField.GetValue(_menuData);
+            var colors = UnityEditor.AssetDatabase.LoadAssetAtPath<ScriptableObject>("Assets/Art/Menu/Data/MenuColors.asset");
+            Assert.That(colors, Is.Not.Null, "Capture the production blue action palette, not prefab fallback green.");
+            colorsField.SetValue(_menuData, colors);
+            if (_menuDataObject != null) _menuDataObject.SetActive(true);
+#endif
         }
 
         [UnityTest]
@@ -326,6 +348,26 @@ namespace YARG.Tests.PlayMode
                 Assert.That(reachable.Any(target => target.gameObject == control.gameObject), Is.EqualTo(enabled),
                     name + " must be in the initialized navigation rows exactly when enabled.");
             }
+            foreach (var field in new[] { "_shiftLeft", "_shiftRight", "_reverseLayout" })
+            {
+                var action = (Button)menuType.GetField(field, FIELDS).GetValue(menu);
+                Assert.That(action.gameObject.activeInHierarchy, Is.True, "Editable layouts expose " + field);
+                // Compact has an assigned first column and an empty last column.
+                // Shifting left must not discard that assignment; right/reverse are safe.
+                bool expectedEnabled = field != "_shiftLeft";
+                var palette = _menuData.GetType().GetField("_colors", FIELDS).GetValue(_menuData);
+                var blue = (Color)palette.GetType().GetField("BrightButton").GetValue(palette);
+                var colored = action.GetComponentInParent(Production("YARG.Menu.ColoredButton"));
+                Assert.That((Color)colored.GetType().GetProperty("BackgroundColor").GetValue(colored),
+                    Is.EqualTo(expectedEnabled ? blue : Color.gray), "Capture runtime-applied action palette: " + field);
+                Assert.That(action.IsInteractable(), Is.EqualTo(expectedEnabled),
+                    "Compact must disable destructive left shift and enable safe transformations: " + field);
+                Assert.That(reachable.Any(target => target.gameObject == action.gameObject), Is.EqualTo(expectedEnabled),
+                    "Only enabled transform actions belong to keyboard/controller navigation: " + field);
+            }
+            var builtInNotice = (GameObject)menuType.GetField("_builtInNotice", FIELDS).GetValue(menu);
+            Assert.That(builtInNotice.activeInHierarchy, Is.False, "Actions and the built-in notice are mutually exclusive.");
+            CaptureDropdownState("editable-actions");
             CaptureDropdownState("initial");
             foreach (string field in new[] { "_layoutDropdown", "_previewColor", "_previewOptions" })
             {
@@ -340,6 +382,13 @@ namespace YARG.Tests.PlayMode
                 Canvas.ForceUpdateCanvases();
                 var list = dropdown.transform.Find("Dropdown List");
                 Assert.That(list, Is.Not.Null, field + " must instantiate the production dropdown list.");
+                if (field == "_layoutDropdown")
+                {
+                    var closed = ScreenBounds((RectTransform)dropdown.transform);
+                    var opened = ScreenBounds((RectTransform)list);
+                    Assert.That(opened.xMin, Is.EqualTo(closed.xMin).Within(1f), "Layout list left edge follows closed control.");
+                    Assert.That(opened.xMax, Is.EqualTo(closed.xMax).Within(1f), "Layout list right edge follows closed control.");
+                }
                 var toggles = list.GetComponentsInChildren<Toggle>().Where(toggle => toggle.gameObject.activeInHierarchy).ToArray();
                 Assert.That(toggles, Is.Not.Empty);
                 if (field == "_previewOptions")
@@ -360,6 +409,13 @@ namespace YARG.Tests.PlayMode
                     visible++;
                     var text = toggle.GetComponentsInChildren(Production("TMPro.TMP_Text")).Cast<Component>().Single();
                     AssertReadableText(text);
+                    if (field != "_previewOptions")
+                    {
+                        var labelBounds = ScreenBounds((RectTransform)text.transform);
+                        var dotBounds = ScreenBounds(toggle.graphic.rectTransform);
+                        Assert.That(labelBounds.xMin, Is.GreaterThan(dotBounds.xMax + 4f * _canvasObject.GetComponent<Canvas>().scaleFactor),
+                            "Every item reserves a separate dot gutter, even when its dot is hidden.");
+                    }
                     var bounds = ScreenBounds(rect);
                     Assert.That(bounds.height, Is.GreaterThanOrEqualTo(20f), "Visible production item must have a usable transformed hit height.");
                     Assert.That(bounds.width, Is.GreaterThanOrEqualTo(80f));
@@ -495,6 +551,15 @@ namespace YARG.Tests.PlayMode
             if (_parentMenuObject != null) UnityEngine.Object.Destroy(_parentMenuObject);
             if (_canvasObject != null) UnityEngine.Object.Destroy(_canvasObject);
             yield return null;
+            if (_menuDataObject != null)
+            {
+                UnityEngine.Object.Destroy(_menuDataObject);
+                yield return null;
+            }
+            else if (_menuData != null)
+                _menuData.GetType().GetField("_colors", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(_menuData, _previousMenuColors);
+            _menuData = null;
 
             if (_capturedSettings)
             {

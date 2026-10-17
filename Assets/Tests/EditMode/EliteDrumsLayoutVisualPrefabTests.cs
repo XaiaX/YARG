@@ -129,6 +129,36 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void LayoutTransformActionsUseImportStyleWithinUnchangedNoticeBand()
+        {
+            var notice = Rect(_prefab.transform, "Built In Notice");
+            Assert.That(notice.anchorMin, Is.EqualTo(new Vector2(0.04f, 0.3088889f)));
+            Assert.That(notice.anchorMax, Is.EqualTo(new Vector2(0.63f, 0.3788889f)));
+            var import = Rect(_prefab.transform, "Import");
+            var importButton = import.GetComponentInChildren<Button>(true);
+            var importText = import.GetComponentInChildren(_tmpTextType, true);
+            foreach (var label in new[] { "Shift Left", "Shift Right", "Reverse" })
+            {
+                var wrapper = Rect(_prefab.transform, label);
+                Assert.That(wrapper, Is.Not.Null);
+                Assert.That(wrapper.gameObject.activeSelf, Is.False, "Runtime chooses actions or built-in notice.");
+                var button = wrapper.GetComponentInChildren<Button>(true);
+                Assert.That(button.image.sprite, Is.EqualTo(importButton.image.sprite));
+                Assert.That(button.image.color, Is.EqualTo(importButton.image.color));
+                Assert.That(wrapper.rect.height, Is.EqualTo(import.rect.height));
+                var text = wrapper.GetComponentInChildren(_tmpTextType, true);
+                foreach (var property in new[] { "font", "fontSize", "fontStyle" })
+                    Assert.That(text.GetType().GetProperty(property).GetValue(text),
+                        Is.EqualTo(importText.GetType().GetProperty(property).GetValue(importText)), label + " " + property);
+                var corners = new Vector3[4];
+                wrapper.GetWorldCorners(corners);
+                foreach (var corner in corners)
+                    Assert.That(notice.rect.Contains(notice.InverseTransformPoint(corner)), Is.True,
+                        label + " must occupy only the built-in notice region.");
+            }
+        }
+
+        [Test]
         public void FretMarkersUseSmallerBlackNumberInsets()
         {
             var cellType = AppDomain.CurrentDomain.GetAssemblies()

@@ -36,6 +36,9 @@ namespace YARG.Menu.HighwayConfiguration
         [SerializeField] private TMP_Text _status;
         [SerializeField] private TMP_Text _colorsNotice;
         [SerializeField] private GameObject _builtInNotice;
+        [SerializeField] private Button _shiftLeft;
+        [SerializeField] private Button _shiftRight;
+        [SerializeField] private Button _reverseLayout;
         private bool _discardConfirmationShowing;
         [SerializeField] private TMP_Dropdown _layoutDropdown;
         private EliteDrumsLayoutPreset[] _layouts;
@@ -178,6 +181,9 @@ namespace YARG.Menu.HighwayConfiguration
             SetButtonLabel(_deleteLayout, Localize.Key("Menu.Common.Delete"));
             SetButtonLabel(_importLayout, Localize.Key("Menu.EliteLayout.Import"));
             SetButtonLabel(_exportLayout, Localize.Key("Menu.EliteLayout.Export"));
+            SetButtonLabel(_shiftLeft, Localize.Key("Menu.EliteLayout.ShiftLeft"));
+            SetButtonLabel(_shiftRight, Localize.Key("Menu.EliteLayout.ShiftRight"));
+            SetButtonLabel(_reverseLayout, Localize.Key("Menu.EliteLayout.Reverse"));
             SetButtonLabel(_save, Localize.Key("Menu.Common.Save"));
         }
 
@@ -191,6 +197,9 @@ namespace YARG.Menu.HighwayConfiguration
             Register(_navigation, _deleteLayout, DeleteSelectedLayout);
             Register(_navigation, _importLayout, ImportLayout);
             Register(_navigation, _exportLayout, ExportSelectedLayout);
+            if (_shiftLeft != null) Register(_navigation, _shiftLeft, ShiftLeft);
+            if (_shiftRight != null) Register(_navigation, _shiftRight, ShiftRight);
+            if (_reverseLayout != null) Register(_navigation, _reverseLayout, ReverseLayout);
             Register(_navigation, _save, Save);
         }
 
@@ -285,6 +294,7 @@ namespace YARG.Menu.HighwayConfiguration
                     .OrderBy(cell => cell.Column).Cast<NavigatableBehaviour>().ToList();
                 if (row.Count > 0) rows.Add(row);
             }
+            AddRow(_shiftLeft, _shiftRight, _reverseLayout);
             return rows;
 
             void AddRow(params Selectable[] controls)
@@ -319,6 +329,7 @@ namespace YARG.Menu.HighwayConfiguration
                 {
                     _original = preset.Copy();
                     _draft = null;
+                    UpdateTransformActions();
                     IsDirty = false;
                     RenderManagementStatus(preset);
                     UpdateManagementActions();
@@ -638,6 +649,66 @@ namespace YARG.Menu.HighwayConfiguration
             Render();
         }
 
+        private bool CanTransformLayout => _draft != null && _original != null && !_original.DefaultPreset &&
+            _draft.Merges.Length == 0 && EliteDrumsLayoutValidator.Validate(_draft).IsStructurallyValid;
+
+        private bool HasAssignedColumns => _draft.Slots.Any(slot => slot.Kind != EliteDrumsLayoutSlotKind.Empty);
+        public bool CanShiftLeft => CanTransformLayout && HasAssignedColumns &&
+            _draft.Slots[0].Kind == EliteDrumsLayoutSlotKind.Empty;
+        public bool CanShiftRight => CanTransformLayout && HasAssignedColumns &&
+            _draft.Slots[EliteDrumsLayoutPreset.SLOT_COUNT - 1].Kind == EliteDrumsLayoutSlotKind.Empty;
+        public bool CanReverseLayout => CanTransformLayout && HasAssignedColumns;
+
+        public void ShiftLeft() => TransformLayout(-1, false);
+        public void ShiftRight() => TransformLayout(1, false);
+        public void ReverseLayout() => TransformLayout(0, true);
+
+        private void TransformLayout(int direction, bool reverse)
+        {
+            if ((reverse ? !CanReverseLayout : direction < 0 ? !CanShiftLeft : !CanShiftRight) ||
+                _popup != null && _popup.activeSelf || _discardConfirmationShowing) return;
+
+            // Permute complete saved columns, not individual sources: rows, gaps and split kicks stay intact.
+            var changed = _draft.Copy();
+            changed.Slots = EliteDrumsLayoutPreset.CreateEmptySlots();
+            for (int column = 0; column < EliteDrumsLayoutPreset.SLOT_COUNT; column++)
+            {
+                int destination = reverse ? EliteDrumsLayoutPreset.SLOT_COUNT - 1 - column : column + direction;
+                if (destination >= 0 && destination < EliteDrumsLayoutPreset.SLOT_COUNT)
+                    changed.Slots[destination] = _draft.Slots[column].Copy();
+            }
+            if (Equivalent(_draft, changed)) return;
+            _draft = changed;
+            IsDirty = _newCopy || !Equivalent(_original, _draft);
+            Render();
+            // A shift can disable the button that invoked it at the boundary. Keep controller focus usable.
+            if (_navigation != null)
+            {
+                var rows = GetNavigationRows();
+                var selected = _navigation.SelectedBehaviour;
+                var actions = new[] { _shiftLeft, _shiftRight, _reverseLayout };
+                if (actions.Any(button => button != null && !button.interactable &&
+                    button.GetComponent<RuntimeNavigatable>() == selected))
+                    rows.SelectMany(row => row).FirstOrDefault()?.SetSelected(true, SelectionOrigin.Programmatically);
+            }
+        }
+
+        private void UpdateTransformActions()
+        {
+            SetState(_shiftLeft, CanShiftLeft);
+            SetState(_shiftRight, CanShiftRight);
+            SetState(_reverseLayout, CanReverseLayout);
+
+            void SetState(Button button, bool enabled)
+            {
+                if (button == null) return;
+                var wrapper = button.GetComponentInParent<YARG.Menu.ColoredButton>(true);
+                (wrapper != null ? wrapper.gameObject : button.gameObject).SetActive(CanTransformLayout);
+                button.interactable = enabled;
+                if (MenuData.Instance != null) StyleManagementButton(button, MenuData.Colors.BrightButton);
+            }
+        }
+
         private static bool Equivalent(EliteDrumsLayoutPreset a, EliteDrumsLayoutPreset b) =>
             a.Slots.Zip(b.Slots, (left, right) => left.Kind == right.Kind &&
                 left.Drum == right.Drum && left.Cymbal == right.Cymbal).All(equal => equal);
@@ -802,6 +873,7 @@ namespace YARG.Menu.HighwayConfiguration
         {
             if (_draft == null) return;
             if (_builtInNotice != null) _builtInNotice.SetActive(_original.DefaultPreset);
+            UpdateTransformActions();
             RefreshCellIndicators();
             _save.interactable = CanSave;
             var missing = EliteDrumsLayoutEditor.GetUnassigned(_draft).Select(Label);

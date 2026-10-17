@@ -16,6 +16,44 @@ namespace YARG.Menu.HighwayConfiguration
         [SerializeField] private GameObject _focusVisual;
         private EliteDrumsLayoutMenu _menu;
         private bool _selected;
+        private Vector2 _authoredOffsetMin;
+        private Vector2 _authoredOffsetMax;
+
+        protected override void Awake()
+        {
+            base.Awake();
+            var rect = (RectTransform)transform;
+            _authoredOffsetMin = rect.offsetMin;
+            _authoredOffsetMax = rect.offsetMax;
+        }
+
+        private void LateUpdate()
+        {
+            var rect = (RectTransform)transform;
+            if (rect.parent is not RectTransform parent) return;
+            var canvas = GetComponentInParent<Canvas>();
+            if (canvas == null || canvas.renderMode == RenderMode.WorldSpace) return;
+            var camera = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+            // Fractional grid anchors and a 2-unit Outline otherwise produce different
+            // raster coverage on opposite edges, especially at the 720p Canvas scale.
+            rect.offsetMin = SnapOffset(parent, rect.anchorMin, _authoredOffsetMin, camera);
+            rect.offsetMax = SnapOffset(parent, rect.anchorMax, _authoredOffsetMax, camera);
+            float scale = canvas.rootCanvas.scaleFactor;
+            if (_outline != null && scale > 0f)
+            {
+                float stroke = Mathf.Max(1f, Mathf.Round(2f * scale)) / scale;
+                _outline.effectDistance = new Vector2(stroke, -stroke);
+            }
+        }
+
+        private static Vector2 SnapOffset(RectTransform parent, Vector2 anchor, Vector2 offset, Camera camera)
+        {
+            var local = parent.rect.min + Vector2.Scale(parent.rect.size, anchor) + offset;
+            var screen = RectTransformUtility.WorldToScreenPoint(camera, parent.TransformPoint(local));
+            screen = new Vector2(Mathf.Round(screen.x), Mathf.Round(screen.y));
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, screen, camera, out var snapped)
+                ? offset + snapped - local : offset;
+        }
 
         protected override void OnSelectionChanged(bool selected)
         {

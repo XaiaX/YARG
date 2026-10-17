@@ -106,6 +106,7 @@ namespace YARG.Editor
                 var previewColor = ConfigureFullRowDropdown(colorObject);
                 previewColor.GetComponent<RectTransform>().anchorMin = new Vector2(0.27f, 0.5f);
                 ConfigureDropdownText(previewColor);
+                ConfigureSelectedItemGutter(previewColor);
                 var colorLabel = AddSectionLabel(colorObject.transform, "Preview Color Profile Label", "COLORS",
                     Vector2.zero, new Vector2(0.25f, 1f));
                 ConfigureDropdownTextElement(previewColor.captionText);
@@ -125,6 +126,11 @@ namespace YARG.Editor
                 ConfigureDropdownRow(layoutObject, new Vector2(0.02f, 0.1f), new Vector2(0.355f, 0.9f));
                 var layoutDropdown = ConfigureFullRowDropdown(layoutObject, true);
                 ConfigureDropdownText(layoutDropdown);
+                ConfigureSelectedItemGutter(layoutDropdown);
+                // Unlike the wider color/options lists, Layout follows its closed control exactly.
+                layoutDropdown.template.anchorMin = Vector2.zero;
+                layoutDropdown.template.anchorMax = new Vector2(1f, 0f);
+                layoutDropdown.template.sizeDelta = new Vector2(0f, 300f);
                 layoutDropdown.GetComponent<RectTransform>().anchorMin = new Vector2(0.25f, 0.5f);
                 var layoutLabel = ConfigureLayoutLabel(layoutObject);
                 colorLabel.font = layoutLabel.font;
@@ -370,6 +376,26 @@ namespace YARG.Editor
                 SetAnchors(noticeRect, new Vector2(0.04f, 0.3088889f), new Vector2(0.63f, 0.3788889f));
                 builtInNotice.SetActive(false);
                 Set(menu, "_builtInNotice", builtInNotice);
+                var transformLabels = new[] { "Shift Left", "Shift Right", "Reverse" };
+                var transformFields = new[] { "_shiftLeft", "_shiftRight", "_reverseLayout" };
+                for (int i = 0; i < transformLabels.Length; i++)
+                {
+                    var action = Button(transformLabels[i], root.transform, Vector2.zero, out var text,
+                        MANAGEMENT_BUTTON_PATH);
+                    var wrapper = ButtonWrapperRect(action);
+                    SetButtonRect(wrapper, new Vector2(0.14f + i * 0.195f, 0.3438889f),
+                        new Vector2(210f, MANAGEMENT_BUTTON_HEIGHT));
+                    var buttonRect = action.GetComponent<RectTransform>();
+                    buttonRect.anchorMin = new Vector2(0f, 0.5f);
+                    buttonRect.anchorMax = new Vector2(1f, 0.5f);
+                    buttonRect.anchoredPosition = Vector2.zero;
+                    buttonRect.sizeDelta = new Vector2(0f, 50f);
+                    text.rectTransform.offsetMin = new Vector2(8f, 2f);
+                    text.rectTransform.offsetMax = new Vector2(-8f, -2f);
+                    text.fontSize = 24f;
+                    wrapper.gameObject.SetActive(false);
+                    Set(menu, transformFields[i], action);
+                }
                 Set(menu, "_layoutDropdown", layoutDropdown);
                 Set(menu, "_previewColor", previewColor);
                 Set(menu, "_previewOptions", previewOptions);
@@ -501,6 +527,19 @@ namespace YARG.Editor
             template.pivot = new Vector2(1f, 1f);
             template.anchoredPosition = Vector2.zero;
             template.sizeDelta = new Vector2(440f, 300f);
+        }
+
+        private static void ConfigureSelectedItemGutter(TMP_Dropdown dropdown)
+        {
+            // Preserve a dedicated column for the preset dropdown's selected white dot.
+            // Every row uses this inset, including rows whose checkmark is hidden.
+            var toggle = dropdown.itemText.GetComponentInParent<Toggle>(true);
+            var marker = toggle.graphic.rectTransform;
+            marker.anchorMin = marker.anchorMax = new Vector2(0f, 0.5f);
+            marker.pivot = new Vector2(0.5f, 0.5f);
+            marker.anchoredPosition = new Vector2(22f, 0f);
+            marker.sizeDelta = new Vector2(12f, 12f);
+            dropdown.itemText.rectTransform.offsetMin = new Vector2(42f, 4f);
         }
 
         private static void ConfigureDropdownTextElement(TMP_Text text)

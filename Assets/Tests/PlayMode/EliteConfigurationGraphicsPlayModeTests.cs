@@ -699,7 +699,20 @@ yield return WaitForRenderedFrame(120, camerasToObserve);
                     yield return null;
                     var unselected = ForceRead(target, captureCamera);
                     WriteCanvasScreenshot(target, $"/tmp/yarg-cell-unselected-{target.width}x{target.height}.png");
-                    AssertCellEdges(unselected, target.width, target.height, primary, captureCamera, dark);
+                    foreach (var cell in cells.Cast<Component>())
+                    {
+                        AssertCellEdges(unselected, target.width, target.height, cell, captureCamera, dark);
+                        var corners = new Vector3[4];
+                        ((RectTransform)cell.transform).GetWorldCorners(corners);
+                        foreach (var corner in corners)
+                        {
+                            var point = RectTransformUtility.WorldToScreenPoint(captureCamera, corner);
+                            Assert.That(point.x, Is.EqualTo(Mathf.Round(point.x)).Within(0.05f), cell.name + " aligned X edge");
+                            Assert.That(point.y, Is.EqualTo(Mathf.Round(point.y)).Within(0.05f), cell.name + " aligned Y edge");
+                        }
+                        var stroke = ((Outline)Field(cell, "_outline")).effectDistance.x * canvas.rootCanvas.scaleFactor;
+                        Assert.That(stroke, Is.EqualTo(Mathf.Round(stroke)).Within(0.01f), cell.name + " whole-pixel stroke");
+                    }
                     AssertSerializedFillExact(primary, note, dark);
                     AssertSerializedFillExact(secondary, secondaryNote, dark);
 
@@ -870,6 +883,18 @@ yield return WaitForRenderedFrame(120, new[] { captureCamera });
             return max - min;
         }
 
+        private static bool HasEqualStrokeThickness(int[] thicknesses) =>
+            thicknesses.Length == 4 && thicknesses[0] > 0 && thicknesses.All(value => value == thicknesses[0]);
+
+        [Test]
+        public void StrokeThicknessOracleRejectsAlternatingOneAndTwoPixelSides()
+        {
+            Assert.That(HasEqualStrokeThickness(new[] { 1, 2, 1, 2 }), Is.False);
+            Assert.That(HasEqualStrokeThickness(new[] { 1, 1, 1, 1 }), Is.True);
+            Assert.That(HasEqualStrokeThickness(new[] { 2, 2, 2, 2 }), Is.True);
+            Assert.That(HasEqualStrokeThickness(new[] { 0, 0, 0, 0 }), Is.False);
+        }
+
         private static void AssertCellEdges(Color32[] pixels, int width, int height, Component cell, Camera camera,
             Color rectangularFill)
         {
@@ -877,27 +902,29 @@ yield return WaitForRenderedFrame(120, new[] { captureCamera });
             Vector2 size = CellSize(cell, camera);
             float halfWidth = size.x / 2f, halfHeight = size.y / 2f;
             var outline = ((Outline)Field(cell, "_outline")).effectColor;
-            // The root Outline draws its ring just outside the rounded rect; sample that band at
-            // each edge midpoint, scanning along the edge.
+            // Screen coordinates identify pixel boundaries, not pixel indices. The sliced
+            // sprite's transparent padding can place the visible ring just inside the rect.
+            Color32 PixelAt(Vector2 point) => pixels[Mathf.Clamp(Mathf.FloorToInt(point.y), 0, height - 1) * width
+                + Mathf.Clamp(Mathf.FloorToInt(point.x), 0, width - 1)];
             Vector2[] edges = {
                 new(0f, -1f), new(0f, 1f), new(-1f, 0f), new(1f, 0f)
             };
             Vector2 EdgePoint(Vector2 direction, float distance) =>
                 center + new Vector2(direction.x * (halfWidth + distance), direction.y * (halfHeight + distance));
-            // The Outline ring sits roughly one scaled effectDistance (2 reference units) outside
-            // the rect; anti-aliasing and canvas scale shift the visible band, so locate the band
-            // radially first, then measure the drawn run along the edge at that distance.
+            // Locate the ring within a bounded band straddling the authored edge. Do not
+            // require it outside the rect: RoundedSquare includes transparent edge padding.
+            // Interior fills are palette-darkened, so they cannot satisfy the outline-color run.
             int Longest(Vector2 direction)
             {
                 int best = 0;
-                for (float distance = 0.5f; distance <= 4f; distance += 0.5f)
+                for (float distance = -4f; distance <= 4f; distance += 0.5f)
                 {
                     Vector2 origin = EdgePoint(direction, distance);
                     int run = 0, current = 0;
                     for (int step = -12; step <= 12; step++)
                     {
                         Vector2 sample = origin + (direction.x == 0 ? new Vector2(step, 0f) : new Vector2(0f, step));
-                        if (ColorClose(ReadPixel(pixels, width, height, sample.x, sample.y), outline, 0.11f)) current++;
+                        if (ColorClose(PixelAt(sample), outline, 0.11f)) current++;
                         else current = 0;
                         run = Math.Max(run, current);
                     }
@@ -909,8 +936,20 @@ yield return WaitForRenderedFrame(120, new[] { captureCamera });
             {
                 int run = Longest(edge);
                 Assert.That(run, Is.GreaterThanOrEqualTo(8), $"The outline border must stay drawn and unclipped " +
-                    $"outside {edge} (run {run} of 25 samples around {center}).");
+                    $"near {cell.name} edge {edge} (run {run} of 25 samples around {center}).");
             }
+            var thicknesses = edges.Select(direction =>
+            {
+                int count = 0;
+                for (float distance = -4f; distance <= 4f; distance += 1f)
+                {
+                    var point = EdgePoint(direction, distance);
+                    if (ColorClose(PixelAt(point), outline, 0.11f)) count++;
+                }
+                return count;
+            }).ToArray();
+            Assert.That(HasEqualStrokeThickness(thicknesses), Is.True,
+                $"{cell.name} must have equal four-sided whole-pixel stroke coverage: {string.Join(",", thicknesses)}");
             foreach (var pair in new[] { (edges[0], edges[1]), (edges[2], edges[3]) })
             {
                 int first = Longest(pair.Item1), second = Longest(pair.Item2);
