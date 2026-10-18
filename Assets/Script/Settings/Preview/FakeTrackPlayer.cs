@@ -277,7 +277,8 @@ namespace YARG.Settings.Preview
 
         public bool ForceStarPowerNotes { get; set; }
         public bool LeftyFlip { get; set; }
-        internal bool OffsetEliteTomCymbalGems { get; private set; }
+        public bool UseCymbalModels { get; set; } = true;
+        // Simultaneous resolved drum/cymbal collision pairs are always separated.
 
         // Deferred until five-lane keys has a dedicated color-profile subsection.
         public bool UseFiveLaneKeys { get; set; }
@@ -591,8 +592,6 @@ namespace YARG.Settings.Preview
             ColorProfile = colorProfile;
             HighwayPreset = highwayPreset;
             // Settings previews also run in isolated UI/test contexts before settings load.
-            // The geometry option is opt-in, so use its disabled value until settings exist.
-            OffsetEliteTomCymbalGems = SettingsManager.Settings?.OffsetEliteTomCymbalGems.Value ?? false;
             RefreshEliteOffsetPairs();
 
             // Update camera presets
@@ -813,8 +812,12 @@ namespace YARG.Settings.Preview
         private static void RefreshEliteOffsetPairFlags(IReadOnlyList<FakeNoteData> notes, bool enabled,
             EliteDrumsResolvedLayout layout)
         {
-            foreach (var note in notes) note.OffsetElitePair = false;
-            if (enabled && layout != null)
+            foreach (var note in notes)
+            {
+                note.OffsetElitePair = false;
+                note.ElitePairPartner = null;
+            }
+            if (layout != null)
             {
                 MarkEliteOffsetPairs(notes, layout);
             }
@@ -845,6 +848,8 @@ namespace YARG.Settings.Preview
                         || lane != secondLane) continue;
                     first.OffsetElitePair = true;
                     second.OffsetElitePair = true;
+                    first.ElitePairPartner = second;
+                    second.ElitePairPartner = first;
                 }
             }
         }
@@ -854,7 +859,7 @@ namespace YARG.Settings.Preview
             if (_notePool == null) return;
             var notes = _notePool.AllSpawned.Cast<FakeNote>().Where(note => note.NoteRef != null).ToArray();
             var data = notes.Select(note => note.NoteRef).ToArray();
-            RefreshEliteOffsetPairFlags(data, OffsetEliteTomCymbalGems, CurrentGameModeInfo.EliteLayout);
+            RefreshEliteOffsetPairFlags(data, true, CurrentGameModeInfo.EliteLayout);
             foreach (var note in notes) note.OnSettingChanged();
         }
 

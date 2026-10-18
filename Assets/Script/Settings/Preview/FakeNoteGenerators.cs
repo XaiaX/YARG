@@ -169,22 +169,29 @@ namespace YARG.Settings.Preview
                     _ => EliteDrumsColorRole.Tom3
                 };
                 var appearance = Describe(flamRole);
-                return CreateRoleNote(time, new ElitePreviewDescriptor(flamRole, appearance.Fret,
-                    appearance.ModelType, false, 2f / 3f, -0.1333333f));
+                var flam = CreateRoleNote(time, appearance);
+                flam.EliteHandFlam = true;
+                flam.EliteFlatFlam = (index - ROLE_COUNT * 3) % 2 == 0;
+                return flam;
             }
             var dynamics = (index / ROLE_COUNT) switch
             {
                 1 => ThemeNoteType.Accent, 2 => ThemeNoteType.Ghost, _ => ThemeNoteType.Normal
             };
-            return CreateRoleNote(time, DescribeForKickLayout((EliteDrumsColorRole)(index % ROLE_COUNT), dynamics, _kickMode));
+            var role = (EliteDrumsColorRole) (index % ROLE_COUNT);
+            // Historical serialized role remains supported, but is not a selectable single gem.
+            if (role == EliteDrumsColorRole.HandFlam) role = EliteDrumsColorRole.Snare;
+            return CreateRoleNote(time, DescribeForKickLayout(role, dynamics, _kickMode));
         }
 
         public FakeNoteData CreateSpotlightNote(double time, FakeNoteSpotlight spotlight,
             IFakeNoteRandom random)
         {
             _lastPedalCompanion = null;
-            return CreateRoleNote(time, Describe(spotlight.CenterNote
-                ? EliteDrumsColorRole.Kick : (EliteDrumsColorRole)Math.Max(0, spotlight.Fret - 1)));
+            var role = spotlight.CenterNote ? EliteDrumsColorRole.Kick :
+                (EliteDrumsColorRole)Math.Clamp(spotlight.Fret - 1, 0, (int)EliteDrumsColorRole.Wildcard);
+            if (role == EliteDrumsColorRole.HandFlam) role = EliteDrumsColorRole.Snare;
+            return CreateRoleNote(time, Describe(role));
         }
 
         public FakeNoteData CreateTypeSpotlightNote(double time, ThemeNoteType noteType,
@@ -198,12 +205,8 @@ namespace YARG.Settings.Preview
             IFakeNoteRandom random)
         {
             if (baseNote.EliteDescriptor is not { } descriptor) yield break;
-            if (!descriptor.IsBar && descriptor.Width == 2f / 3f)
-            {
-                yield return CreateRoleNote(time + 0.025d, new ElitePreviewDescriptor(descriptor.Role,
-                    descriptor.Fret, descriptor.ModelType, false, 2f / 3f, 0.1333333f));
-            }
-            else if (descriptor.Role == EliteDrumsColorRole.KickFlam)
+            if (baseNote.EliteHandFlam) yield break;
+            if (descriptor.Role == EliteDrumsColorRole.KickFlam)
             {
                 if (_kickMode == EliteDrumsLayoutKickMode.Split)
                     yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 9,
@@ -211,6 +214,18 @@ namespace YARG.Settings.Preview
                 else if (_kickMode == EliteDrumsLayoutKickMode.Bars)
                     yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 0,
                         descriptor.ModelType, true, 0.5f, 0.5f));
+            }
+            else if (descriptor.Role is EliteDrumsColorRole.Tom1 or EliteDrumsColorRole.Tom2 or EliteDrumsColorRole.Tom3)
+            {
+                var role = descriptor.Role switch
+                {
+                    EliteDrumsColorRole.Tom1 => EliteDrumsColorRole.LeftCrash,
+                    EliteDrumsColorRole.Tom2 => EliteDrumsColorRole.Ride,
+                    _ => EliteDrumsColorRole.RightCrash
+                };
+                var dynamics = descriptor.ModelType is ThemeNoteType.Accent ? ThemeNoteType.Accent :
+                    descriptor.ModelType is ThemeNoteType.Ghost ? ThemeNoteType.Ghost : ThemeNoteType.Normal;
+                yield return CreateRoleNote(time, Describe(role, dynamics));
             }
             else if (_lastPedalCompanion is { } pedalRole
                 && descriptor.Role is EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick)

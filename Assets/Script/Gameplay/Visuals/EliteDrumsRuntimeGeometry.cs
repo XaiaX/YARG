@@ -8,6 +8,127 @@ namespace YARG.Gameplay.Visuals
     /// <summary>Bounds for a native Elite gem within its resolved highway column.</summary>
     internal static class EliteDrumsRuntimeGeometry
     {
+        internal const float FLAM_ANGLE = 25f;
+
+        internal static float GetPairWidthFactor(int columns) => columns > 1 ? (columns - 1f) / columns : 0.5f;
+
+        internal static void GetPairPlacement(float leftMin, float leftMax, float rightMin, float rightMax,
+            float laneCenter, float laneWidth, float highwayWidth, int columns,
+            out float leftOrigin, out float rightOrigin)
+        {
+            leftOrigin = rightOrigin = 0f;
+            if (!float.IsFinite(leftMin) || !float.IsFinite(leftMax) || !float.IsFinite(rightMin) ||
+                !float.IsFinite(rightMax) || !float.IsFinite(laneCenter) || !float.IsFinite(laneWidth) ||
+                !float.IsFinite(highwayWidth) || laneWidth <= 0f || highwayWidth <= 0f) return;
+            float halfPair = (leftMax - leftMin + rightMax - rightMin) * 0.5f;
+            float halfHighway = highwayWidth * 0.5f;
+            float outerCenter = halfHighway - laneWidth * 0.5f;
+            float midpoint = columns > 1 && outerCenter > 0f
+                ? laneCenter / outerCenter * (halfHighway - halfPair) : 0f;
+            if (!float.IsFinite(midpoint) || !float.IsFinite(halfPair) ||
+                leftMax < leftMin || rightMax < rightMin) return;
+            float seam = midpoint - halfPair + leftMax - leftMin;
+            leftOrigin = seam - leftMax;
+            rightOrigin = seam - rightMin;
+        }
+
+        // Captured once per assembled model (including normal/SP variants). Mesh
+        // corners are in the group's parent space, so authored pivots/rotations,
+        // child highlights and caps are preserved without world AABB projection.
+        internal sealed class ModelGeometry
+        {
+            internal readonly Vector3 Scale;
+            internal readonly Vector3 Position;
+            internal readonly Quaternion Rotation;
+            private readonly Vector3[] _corners;
+
+            internal ModelGeometry(Transform model)
+            {
+                Scale = model.localScale;
+                Position = model.localPosition;
+                Rotation = model.localRotation;
+                var filters = model.GetComponentsInChildren<MeshFilter>(true);
+                var corners = new System.Collections.Generic.List<Vector3>(filters.Length * 8);
+                foreach (var filter in filters)
+                {
+                    if (filter.sharedMesh == null) continue;
+                    var bounds = filter.sharedMesh.bounds;
+                    var matrix = model.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        var p = bounds.center + Vector3.Scale(bounds.extents, new Vector3(
+                            (i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f,
+                            (i & 4) == 0 ? -1f : 1f));
+                        corners.Add(matrix.MultiplyPoint3x4(p));
+                    }
+                }
+                _corners = corners.ToArray();
+            }
+
+            internal void Reset(Transform model)
+            {
+                model.localPosition = Position;
+                model.localScale = Scale;
+                model.localRotation = Rotation;
+            }
+
+            internal void Extents(float factor, float angle, out float min, out float max)
+            {
+                min = float.PositiveInfinity;
+                max = float.NegativeInfinity;
+                var matrix = Matrix4x4.Rotate(Quaternion.AngleAxis(angle, Vector3.up)) *
+                    Matrix4x4.TRS(Position, Rotation, new Vector3(Scale.x * factor, Scale.y, Scale.z));
+                foreach (var corner in _corners)
+                {
+                    float x = matrix.MultiplyPoint3x4(corner).x;
+                    min = Mathf.Min(min, x);
+                    max = Mathf.Max(max, x);
+                }
+                if (_corners.Length == 0) min = max = 0f;
+            }
+
+            internal void Apply(Transform model, float factor, float angle, float origin)
+            {
+                var rotation = Quaternion.AngleAxis(angle, Vector3.up);
+                model.localScale = new Vector3(Scale.x * factor, Scale.y, Scale.z);
+                model.localRotation = rotation * Rotation;
+                model.localPosition = rotation * Position + new Vector3(origin, 0f, 0f);
+            }
+        }
+
+        internal static void FitPair(ModelGeometry left, Transform leftModel, ModelGeometry right,
+            Transform rightModel, int columns, float laneCenter, float laneWidth, float elementCenter,
+            bool regularFlam)
+        {
+            float factor = GetAuthoredLaneScale(laneWidth, TrackPlayer.TRACK_WIDTH / 5f) * GetPairWidthFactor(columns);
+            // Positive left / negative right puts the seam toward the receptor
+            // (-Z), a V rather than a roof when +Z points up the highway.
+            float angle = regularFlam ? -FLAM_ANGLE : 0f;
+            left.Extents(factor, -angle, out float leftMin, out float leftMax);
+            right.Extents(factor, angle, out float rightMin, out float rightMax);
+            GetPairPlacement(leftMin, leftMax, rightMin, rightMax, laneCenter, laneWidth,
+                TrackPlayer.TRACK_WIDTH, columns, out float leftX, out float rightX);
+            if (leftModel != null) left.Apply(leftModel, factor, -angle, leftX - elementCenter);
+            if (rightModel != null) right.Apply(rightModel, factor, angle, rightX - elementCenter);
+        }
+
+        internal static EliteDrumNote GetCollisionPartner(EliteDrumsPlayer player, EliteDrumNote note)
+        {
+            if (!EliteDrumsNoteElement.IsHandFlamPad(note.Pad)) return null;
+            var layout = player.Layout;
+            if (!layout.SourceToLane.TryGetValue(EliteDrumsPlayer.GetLayoutSource(note.Pad), out int lane)) return null;
+            if (layout.Lanes[lane].Kind != EliteDrumsLayoutSlotKind.Ordinary ||
+                layout.Lanes[lane].EffectiveIds.Count != 2) return null;
+            foreach (var member in note.ParentOrSelf.AllNotes)
+            {
+                if (member.Pad == note.Pad || member.IsInvisibleTerminator ||
+                    EliteDrumsPlayer.IsCymbal(member.Pad) == EliteDrumsPlayer.IsCymbal(note.Pad)) continue;
+                if (layout.SourceToLane.TryGetValue(EliteDrumsPlayer.GetLayoutSource(member.Pad), out int other) && lane == other)
+                    return member;
+            }
+            return null;
+        }
+
         // Authored Elite note models are sized for the five-column highway. Apply
         // one proportional scale to preserve their theme-authored relative sizes.
         internal static float GetAuthoredLaneScale(float renderedWidth, float fiveLaneWidth) =>

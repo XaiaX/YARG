@@ -182,6 +182,7 @@ namespace YARG.Settings.Metadata
 
         private static bool IsHiddenEliteColor(string name) =>
             name is "WildcardNote" or "WildcardStarpower"
+                or "HandFlamNote" or "HandFlamStarpower" or "HandFlamInputEffect"
             || Enum.GetNames(typeof(EliteDrumsColorRole)).Any(role => name == role + "InputFret")
             || new[] { "Snare", "Hat", "LeftCrashTom1", "RideTom2", "RightCrashTom3", "DoubleKick" }
                 .Any(position => name == position + "Fret" || name == position + "FretInner" || name == position + "Particles");
@@ -191,7 +192,7 @@ namespace YARG.Settings.Metadata
             var groups = new List<FieldGroup>();
             foreach (EliteDrumsColorRole role in Enum.GetValues(typeof(EliteDrumsColorRole)))
             {
-                if (role == EliteDrumsColorRole.Wildcard) continue;
+                if (role is EliteDrumsColorRole.Wildcard or EliteDrumsColorRole.HandFlam) continue;
                 groups.Add(new FieldGroup(role.ToString(), true, new[]
                 {
                     new FieldSubGroup(NotesSub, true, $"{role}Note", $"{role}Starpower"),
@@ -451,8 +452,7 @@ namespace YARG.Settings.Metadata
                 {
                     foreach (var subField in field.FieldType.GetFields())
                     {
-                        // Keep legacy wildcard colors in saved profiles, but never expose them
-                        // as editable settings: playable wildcard colors are fixed by the provider.
+                        // Keep legacy colors in saved profiles without exposing obsolete controls.
                         if (typeof(T) == typeof(ColorProfile) && field.Name == nameof(ColorProfile.EliteDrums)
                             && IsHiddenEliteColor(subField.Name))
                             continue;

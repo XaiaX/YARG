@@ -83,8 +83,8 @@ namespace YARG.Tests.EditMode
 
             refresh.Invoke(null, new object[] { tomAndCymbal, false, layout });
 
-            Assert.That(tomAndCymbal.Cast<object>().Select(IsPair), Is.All.False,
-                "Turning off paired gem offsets must clear stale flags on every existing note.");
+            Assert.That(tomAndCymbal.Cast<object>().Select(IsPair), Is.EqualTo(new[] { true, true, false }),
+                "The retired enable flag cannot disable actual simultaneous collision pairs.");
 
             foreach (var note in tomAndCymbal) SetPair(note, true);
             refresh.Invoke(null, new object[] { tomAndCymbal, true, null });
@@ -143,7 +143,7 @@ namespace YARG.Tests.EditMode
                 var role = (EliteDrumsColorRole)descriptor.GetType().GetProperty("Role").GetValue(descriptor);
                 roles.Add(role);
                 models.Add(note.GetType().GetField("NoteType").GetValue(note).ToString());
-                if ((float) descriptor.GetType().GetProperty("Width").GetValue(descriptor) == 2f / 3f)
+                if ((bool) note.GetType().GetField("EliteHandFlam").GetValue(note))
                     flamRoles.Add(role);
                 if (i < 63) firstCycle.Add(role);
                 else Assert.That(role, Is.EqualTo(firstCycle[i - 63]), $"Repeated sample {i}");
@@ -155,10 +155,10 @@ namespace YARG.Tests.EditMode
             for (int i = 0; i <= 57; i++) tomFlam = create.Invoke(tomGenerator, new object[] { 5d, null });
             var extras = ((System.Collections.IEnumerable)type.GetMethod("CreateChordNotes").Invoke(
                 tomGenerator, new[] { (object)5d, tomFlam, null })).Cast<object>().ToArray();
-            Assert.That(extras.Length, Is.EqualTo(1));
-            var extraDescriptor = extras[0].GetType().GetField("EliteDescriptor").GetValue(extras[0]);
-            Assert.That(extraDescriptor.GetType().GetProperty("Role").GetValue(extraDescriptor), Is.EqualTo(EliteDrumsColorRole.Tom2));
-            Assert.That(roles.Count, Is.EqualTo(Enum.GetValues(typeof(EliteDrumsColorRole)).Length));
+            Assert.That(extras, Is.Empty, "Hand flam descriptors render two physical gems without another source note.");
+            Assert.That((bool)tomFlam.GetType().GetField("EliteHandFlam").GetValue(tomFlam), Is.True);
+            Assert.That(roles.Count, Is.EqualTo(Enum.GetValues(typeof(EliteDrumsColorRole)).Length - 1));
+            Assert.That(roles.Contains(EliteDrumsColorRole.HandFlam), Is.False);
             Assert.That(models, Does.Contain("CymbalAccent"));
             Assert.That(models, Does.Contain("CymbalGhost"));
             Assert.That(models, Does.Contain("Accent"));
@@ -224,7 +224,8 @@ namespace YARG.Tests.EditMode
                 var generatedDescriptor = generated.GetType().GetField("EliteDescriptor").GetValue(generated);
                 var role = (EliteDrumsColorRole)generatedDescriptor.GetType().GetProperty("Role").GetValue(generatedDescriptor);
                 var width = (float)generatedDescriptor.GetType().GetProperty("Width").GetValue(generatedDescriptor);
-                if (role == EliteDrumsColorRole.HatIndifferent && width == 2f / 3f)
+                if (role == EliteDrumsColorRole.HatIndifferent &&
+                    (bool)generated.GetType().GetField("EliteHandFlam").GetValue(generated))
                 {
                     missingHatNote = generated;
                     break;
@@ -238,8 +239,8 @@ namespace YARG.Tests.EditMode
             var chordExtras = ((IEnumerable)createChordNotes.Invoke(generator,
                 new[] { (object)missingHatNote.GetType().GetField("Time").GetValue(missingHatNote), missingHatNote, null }))
                 .Cast<object>().ToArray();
-            Assert.That(chordExtras.Length, Is.GreaterThan(0),
-                "A real hat flam should exercise production chord generation.");
+            Assert.That(chordExtras, Is.Empty,
+                "A hat flam owns two physical gems in one descriptor, so missing-source filtering cannot leak a delayed companion.");
             Assert.That(chordExtras.Any(IsRepresented), Is.False,
                 "The generated hat chord companion must be filtered with its missing source.");
             Assert.That(descriptor, Is.Not.Null);

@@ -301,12 +301,17 @@ namespace YARG.Gameplay.Visuals
             _frets[index].PlayHitParticles();
         }
 
+        // Runtime observers can verify physical-strike feedback without counting
+        // chart-note callbacks (a flam follow-up is not another chart-note hit).
+        internal event Action<int> OnColoredHitAnimation;
+
         public void PlayHitAnimation(int index, System.Drawing.Color effectColor, bool cymbal)
         {
             var fret = _frets[index];
             if (cymbal) fret.PlayCymbalHitAnimation();
             else fret.PlayHitAnimation();
             fret.PlayHitParticles(effectColor);
+            OnColoredHitAnimation?.Invoke(index);
         }
 
         public void PlayCodaHitAnimation(int index)

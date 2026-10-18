@@ -39,7 +39,7 @@ namespace YARG.Tests.EditMode
             Assert.That(names.Distinct().Count(), Is.EqualTo(names.Length));
             foreach (EliteDrumsColorRole role in Enum.GetValues(typeof(EliteDrumsColorRole)))
             {
-                if (role == EliteDrumsColorRole.Wildcard)
+                if (role is EliteDrumsColorRole.Wildcard or EliteDrumsColorRole.HandFlam)
                 {
                     Assert.That(groups.Any(value => (string) Field(value, "Name") == role.ToString()), Is.False);
                     continue;
@@ -69,7 +69,7 @@ namespace YARG.Tests.EditMode
             Assert.That(elite, Does.Not.Contain("SnareInputFret"));
             foreach (EliteDrumsColorRole role in Enum.GetValues(typeof(EliteDrumsColorRole)))
             {
-                if (role == EliteDrumsColorRole.Wildcard)
+                if (role is EliteDrumsColorRole.Wildcard or EliteDrumsColorRole.HandFlam)
                     continue;
                 Assert.That(elite, Does.Not.Contain(role + "InputFret"),
                     $"The obsolete {role} Input Fret color must remain hidden from the editor.");
@@ -81,6 +81,73 @@ namespace YARG.Tests.EditMode
             Assert.That(elite, Does.Contain("KickFret"));
             Assert.That(typeof(ColorProfile.EliteDrumsColors).GetField("WildcardNote"), Is.Not.Null);
             Assert.That(typeof(ColorProfile.EliteDrumsColors).GetField("WildcardStarpower"), Is.Not.Null);
+        }
+
+        [Test]
+        public void EliteColorEditorHandFlamRoles()
+        {
+            var editor = Activator.CreateInstance(EditorType, new object[] { null, null, false });
+            var fields = ((IEnumerable) EditorType.GetField("_fields", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(editor)).Cast<object>()
+                .Where(info => ((FieldInfo) Field(info, "ParentField"))?.Name == nameof(ColorProfile.EliteDrums))
+                .Select(info => ((FieldInfo) Field(info, "Field")).Name).ToArray();
+            var groups = ((IEnumerable) Invoke("BuildEliteDrumsGroups")).Cast<object>().ToArray();
+            foreach (var suffix in new[] { "Note", "Starpower", "InputFret", "InputEffect" })
+            {
+                Assert.That(fields, Does.Not.Contain("HandFlam" + suffix));
+                Assert.That(typeof(ColorProfile.EliteDrumsColors).GetField("HandFlam" + suffix), Is.Not.Null,
+                    "Hidden controls must not delete persisted data.");
+            }
+            Assert.That(groups.Any(group => (string) Field(group, "Name") == "HandFlam"), Is.False);
+            foreach (var role in new[] { EliteDrumsColorRole.Snare, EliteDrumsColorRole.Tom3,
+                EliteDrumsColorRole.Kick, EliteDrumsColorRole.KickFlam, EliteDrumsColorRole.DoubleKick })
+            {
+                // Locate by role identity, never by the index before a hidden role was removed.
+                var group = groups.Single(value => Equals(Field(value, "CopyRole"), role));
+                Assert.That(Field(group, "Name"), Is.EqualTo(role.ToString()));
+                foreach (var suffix in new[] { "Note", "Starpower", "InputEffect" })
+                    Assert.That(fields, Does.Contain(role + suffix));
+            }
+            Assert.That(fields, Does.Contain("KickFret"));
+            Assert.That(fields, Does.Contain("KickFretInner"));
+            Assert.That(fields, Does.Contain("KickParticles"));
+        }
+
+        [Test]
+        public void EliteLegacyColorPresetRoundTrip()
+        {
+            var jsonConvert = Type.GetType("Newtonsoft.Json.JsonConvert, Newtonsoft.Json", true);
+            var deserialize = jsonConvert.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Single(method => method.Name == "DeserializeObject" && method.IsGenericMethodDefinition
+                    && method.GetParameters().Length == 1
+                    && method.GetParameters()[0].ParameterType == typeof(string))
+                .MakeGenericMethod(typeof(ColorProfile));
+            var serialize = jsonConvert.GetMethod("SerializeObject", new[] { typeof(object) });
+            const string historical = "{\"Name\":\"Historical flam colors\",\"EliteDrums\":{"
+                + "\"HandFlamNote\":\"Aqua\",\"HandFlamStarpower\":\"Lime\","
+                + "\"HandFlamInputFret\":\"Orange\",\"HandFlamInputEffect\":\"Purple\","
+                + "\"KickFlamNote\":\"Silver\",\"SnareNote\":\"Red\"}}";
+            var loaded = (ColorProfile) deserialize.Invoke(null, new object[] { historical });
+            string saved = (string) serialize.Invoke(null, new object[] { loaded });
+            var roundTrip = (ColorProfile) deserialize.Invoke(null, new object[] { saved });
+            var expected = new[] { System.Drawing.Color.Aqua, System.Drawing.Color.Lime,
+                System.Drawing.Color.Orange, System.Drawing.Color.Purple };
+            var suffixes = new[] { "Note", "Starpower", "InputFret", "InputEffect" };
+            for (int i = 0; i < suffixes.Length; i++)
+            {
+                string name = "HandFlam" + suffixes[i];
+                Assert.That(saved, Does.Contain("\"" + name + "\""));
+                var field = typeof(ColorProfile.EliteDrumsColors).GetField(name);
+                Assert.That(((System.Drawing.Color) field.GetValue(loaded.EliteDrums)).ToArgb(),
+                    Is.EqualTo(expected[i].ToArgb()));
+                Assert.That(((System.Drawing.Color) field.GetValue(roundTrip.EliteDrums)).ToArgb(),
+                    Is.EqualTo(expected[i].ToArgb()));
+            }
+            Assert.That(roundTrip.EliteDrums.KickFlamNote.ToArgb(), Is.EqualTo(System.Drawing.Color.Silver.ToArgb()));
+            Assert.That(roundTrip.EliteDrums.SnareNote.ToArgb(), Is.EqualTo(System.Drawing.Color.Red.ToArgb()));
+            Assert.That((int) EliteDrumsColorRole.KickFlam, Is.EqualTo(12));
+            Assert.That((int) EliteDrumsColorRole.HandFlam, Is.EqualTo(15));
+            Assert.That((int) EliteDrumsColorRole.Wildcard, Is.EqualTo(16));
         }
 
         [Test]

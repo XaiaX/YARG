@@ -113,7 +113,7 @@ namespace YARG.Gameplay.Player
         });
 
         internal static System.Drawing.Color GetLaneColor(ColorProfile.EliteDrumsColors colors,
-            EliteDrumNote note) => colors.GetNoteColor(EliteDrumsColorRoles.GetRole(note));
+            EliteDrumNote note) => colors.GetNoteColor(EliteDrumsColorRoles.GetHandRole(note));
 
         protected override void SetupTheme()
         {
@@ -130,10 +130,16 @@ namespace YARG.Gameplay.Player
             Destroy(modelFreePrefab);
         }
 
-        protected override InstrumentDifficulty<EliteDrumNote> GetNotes(SongChart chart) =>
-            Player.ResolvedDrumPlayback != null ? Player.PlayableEliteDrumDifficulty :
-                DrumDifficultySelector.SelectNativeEliteTrack(chart, Player.Profile).Clone()
-                    .GetDifficulty(Player.Profile.CurrentDifficulty);
+        protected override InstrumentDifficulty<EliteDrumNote> GetNotes(SongChart chart)
+        {
+            if (Player.ResolvedDrumPlayback != null) return Player.PlayableEliteDrumDifficulty;
+            var difficulty = DrumDifficultySelector.SelectNativeEliteTrack(chart, Player.Profile).Clone()
+                .GetDifficulty(Player.Profile.CurrentDifficulty);
+            // Direct/native sessions also own a clone: normalize before rendering and
+            // engine maxima consume it, without changing the cached authored chart.
+            DrumPlaybackPreparer.NormalizeEliteFlams(difficulty);
+            return difficulty;
+        }
 
         protected override EliteDrumsEngine CreateEngine()
         {
@@ -142,6 +148,7 @@ namespace YARG.Gameplay.Player
                     DrumsEngineParameters.DrumMode.ProFourLane);
             if (EngineContainer != null)
             {
+                if (Engine != null) Engine.OnFlamFollowUp -= OnFlamFollowUp;
                 GameManager.EngineManager.Unregister(EngineContainer);
                 EngineContainer = null;
             }
@@ -155,6 +162,7 @@ namespace YARG.Gameplay.Player
             engine.OnOverhit += OnEliteOverhit;
             engine.OnPadHit += OnPadHit;
             engine.OnPedalAssisted += OnPedalAssisted;
+            engine.OnFlamFollowUp += OnFlamFollowUp;
             engine.OnSoloStart += OnSoloStart;
             engine.OnSoloEnd += OnSoloEnd;
             engine.OnCodaStart += OnCodaStart;
@@ -409,8 +417,7 @@ namespace YARG.Gameplay.Player
             var colors = Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors();
             var effectRole = IsFootPad(note.Pad) && (note.IsFlam || note.IsFlatFlam)
                 ? EliteDrumsColorRole.KickFlam
-                : EliteDrumsColorRoles.GetRole(note,
-                    YARG.Settings.SettingsManager.Settings?.SplitEliteFlamGems?.Value ?? false);
+                : EliteDrumsColorRoles.GetHandRole(note);
             var effect = colors.GetInputEffectColor(effectRole);
             if (IsFootPad(note.Pad) && !UsesKickBars)
             {
@@ -431,6 +438,24 @@ namespace YARG.Gameplay.Player
                 _fretArray.PlayHitAnimation(note.Pad, effect,
                     IsCymbal(note.Pad) && Player.Profile.UseCymbalModels);
             }
+        }
+
+        private void OnFlamFollowUp(EliteDrumNote note, EliteDrumsAction action, float velocity,
+            bool awardedExtraUnit)
+        {
+            // The source note already completed its lifecycle. Only the physical follow-up
+            // gets feedback here; do not hit its pooled gem or repeat SP/solo callbacks.
+            _pendingOverhitAction = null;
+            var colors = Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors();
+            var effect = colors.GetInputEffectColor(EliteDrumsColorRoles.GetHandRole(note));
+            _fretArray.PlayHitAnimation(note.Pad, effect,
+                IsCymbal(note.Pad) && Player.Profile.UseCymbalModels);
+        }
+
+        protected override void GameplayDestroy()
+        {
+            if (Engine != null) Engine.OnFlamFollowUp -= OnFlamFollowUp;
+            base.GameplayDestroy();
         }
 
         protected override void OnNoteMissed(int index, EliteDrumNote note)

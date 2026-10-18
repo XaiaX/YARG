@@ -51,8 +51,8 @@ namespace YARG.Tests.EditMode
             note.IsFlam = true;
             Assert.That(split.Invoke(null, new object[] { note, true }), Is.EqualTo(expected),
                 "Split flams must keep explicit closed-hat geometry on both heads.");
-            Assert.That(select.Invoke(null, new object[] { note, true }), Is.EqualTo(3),
-                "Unsplit flams retain the existing accent model.");
+            Assert.That(select.Invoke(null, new object[] { note, true }), Is.EqualTo(expected),
+                "Closed-hat flams retain their explicit hat model and dynamics.");
         }
 
         [TestCase(DrumNoteType.Neutral, 1)]
@@ -98,7 +98,7 @@ namespace YARG.Tests.EditMode
             Assert.That(Group(Note(EliteDrumPad.HiHat, hat: EliteDrumsHatState.Open), false), Is.EqualTo(0));
             var flam = Note(EliteDrumPad.HiHat, hat: EliteDrumsHatState.Open);
             flam.IsFlam = true;
-            Assert.That(Group(flam), Is.EqualTo(3));
+            Assert.That(Group(flam), Is.EqualTo(8));
         }
 
         [TestCase("Normal", "OpenHiHat")]

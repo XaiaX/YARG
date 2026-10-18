@@ -786,8 +786,6 @@ namespace YARG.Settings
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
-            public ToggleSetting OffsetEliteTomCymbalGems { get; } = new(false);
-            public ToggleSetting SplitEliteFlamGems { get; } = new(false);
             public ToggleSetting RawMidiLogging { get; } = new(false);
             // Fires both on real user changes and once during settings load
             // (ForceInvokeCallback). Only an actual value change should trigger a

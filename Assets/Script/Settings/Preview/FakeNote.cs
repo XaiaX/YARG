@@ -32,6 +32,18 @@ namespace YARG.Settings.Preview
         private NoteGroup _currentNoteGroup;
         private readonly Dictionary<NoteGroup, Vector3> _authoredGroupScales = new();
         private readonly Dictionary<NoteGroup, Vector3> _authoredGroupPositions = new();
+        private readonly Dictionary<NoteGroup, EliteDrumsRuntimeGeometry.ModelGeometry> _geometry = new();
+        private readonly Dictionary<NoteGroup, NoteGroup> _flamCompanions = new();
+
+        private EliteDrumsRuntimeGeometry.ModelGeometry Geometry(NoteGroup group)
+        {
+            if (!_geometry.TryGetValue(group, out var geometry))
+            {
+                geometry = new EliteDrumsRuntimeGeometry.ModelGeometry(group.transform);
+                _geometry.Add(group, geometry);
+            }
+            return geometry;
+        }
 
         // We can't use a dictionary here (Unity L)
         [SerializeField]
@@ -61,6 +73,7 @@ namespace YARG.Settings.Preview
                     _authoredGroupScales.Add(noteGroup.Group, noteGroup.Group.transform.localScale);
                     _authoredGroupPositions.Add(noteGroup.Group, noteGroup.Group.transform.localPosition);
                 }
+                Geometry(noteGroup.Group).Reset(noteGroup.Group.transform);
                 noteGroup.Group.transform.localScale = _authoredGroupScales[noteGroup.Group];
                 noteGroup.Group.transform.localPosition = _authoredGroupPositions[noteGroup.Group];
                 noteGroup.Group.SetActive(false);
@@ -116,6 +129,10 @@ namespace YARG.Settings.Preview
             if (NoteRef != null) gameObject.SetActive(true);
         }
 
+        private ThemeNoteType EliteModelType(ThemeNoteType type) => !FakeTrackPlayer.UseCymbalModels &&
+            type is ThemeNoteType.Cymbal or ThemeNoteType.OpenHiHat or ThemeNoteType.ClosedHiHat
+                ? ThemeNoteType.Normal : type;
+
         private NoteGroup FindNoteGroup(ThemeNoteType type, bool starPower)
         {
             if (starPower)
@@ -169,6 +186,9 @@ namespace YARG.Settings.Preview
 
         public void OnSettingChanged()
         {
+            foreach (var group in _noteGroups) Geometry(group.Group);
+            foreach (var companion in _flamCompanions.Values) companion.SetActive(false);
+            foreach (var pair in _geometry) pair.Value.Reset(pair.Key.transform);
             var colorProfile = FakeTrackPlayer.ColorProfile;
             var highwayPreset = FakeTrackPlayer.HighwayPreset;
 
@@ -180,6 +200,7 @@ namespace YARG.Settings.Preview
             bool kickFlamAccent = NoteRef.EliteDescriptor is { DedicatedLaneSource: not null, ModelType: ThemeNoteType.Accent };
             var selectedType = dedicatedEliteKick ? ThemeNoteType.DedicatedLaneKick
                 : kickFlamAccent ? ThemeNoteType.Accent : NoteRef.NoteType;
+            if (NoteRef.EliteDescriptor != null) selectedType = EliteModelType(selectedType);
             var selectedGroup = FindNoteGroup(selectedType, useStarPower);
             if (selectedGroup != _currentNoteGroup)
             {
@@ -377,13 +398,13 @@ namespace YARG.Settings.Preview
                     if (source != null)
                     {
                         // Mirror the lane first, like the gameplay highway ordering, then
-                        // apply the same optional drum/cymbal split used by live gems.
+                        // Obtain the resolved lane before the measured pair fit below.
                         bool cymbal = elite.ModelType is ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent
                             or ThemeNoteType.CymbalGhost or ThemeNoteType.OpenHiHat or ThemeNoteType.OpenHiHatAccent
                             or ThemeNoteType.OpenHiHatGhost or ThemeNoteType.ClosedHiHat or ThemeNoteType.ClosedHiHatAccent
                             or ThemeNoteType.ClosedHiHatGhost;
                         GetEliteLayoutRegion(info.EliteLayout, source, cymbal, FakeTrackPlayer.LeftyFlip,
-                            FakeTrackPlayer.OffsetEliteTomCymbalGems, NoteRef.OffsetElitePair,
+                            false, false,
                             out x, out float pairWidth);
                         // Match live gems: resize the authored model from its five-lane baseline,
                         // while the wrapper retains only the descriptor's model width.
@@ -428,6 +449,43 @@ namespace YARG.Settings.Preview
                     double tickDuration = 1d / (120d * 480d / 60d);
                     renderedTransform.localPosition = renderedTransform.localPosition.WithZ(
                         EliteDrumsRuntimeGeometry.GetVisualLeadOffset((float) FakeTrackPlayer.NOTE_SPEED, tickDuration));
+                }
+                if (info.EliteLayout != null && (NoteRef.EliteHandFlam || NoteRef.ElitePairPartner != null))
+                {
+                    transform.localScale = transform.localScale.WithX(1f);
+                    float center = transform.localPosition.x;
+                    float laneWidth = info.EliteLayout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
+                    var ownGeometry = Geometry(_currentNoteGroup);
+                    if (NoteRef.EliteHandFlam)
+                    {
+                        if (!_flamCompanions.TryGetValue(_currentNoteGroup, out var companion))
+                        {
+                            ownGeometry.Reset(_currentNoteGroup.transform);
+                            companion = Instantiate(_currentNoteGroup, transform);
+                            _flamCompanions.Add(_currentNoteGroup, companion);
+                            Geometry(companion);
+                        }
+                        EliteDrumsRuntimeGeometry.FitPair(ownGeometry, _currentNoteGroup.transform,
+                            Geometry(companion), companion.transform, info.LaneCount, center, laneWidth,
+                            center, !NoteRef.EliteFlatFlam);
+                        companion.SetActive(true);
+                        companion.Initialize();
+                        companion.SetColorWithEmission(color, color);
+                        companion.SetMetalColor(metalColor);
+                    }
+                    else if (NoteRef.ElitePairPartner.EliteDescriptor is { } partner)
+                    {
+                        bool partnerStar = NoteRef.ElitePairPartner.ForceStarPower ?? FakeTrackPlayer.ForceStarPowerNotes;
+                        var other = FindNoteGroup(EliteModelType(partner.ModelType), partnerStar);
+                        bool cymbal = elite.Role is EliteDrumsColorRole.HatIndifferent or EliteDrumsColorRole.HatOpen
+                            or EliteDrumsColorRole.HatClosed or EliteDrumsColorRole.LeftCrash
+                            or EliteDrumsColorRole.Ride or EliteDrumsColorRole.RightCrash;
+                        bool right = cymbal != FakeTrackPlayer.LeftyFlip;
+                        EliteDrumsRuntimeGeometry.FitPair(Geometry(right ? other : _currentNoteGroup),
+                            right ? null : _currentNoteGroup.transform,
+                            Geometry(right ? _currentNoteGroup : other), right ? _currentNoteGroup.transform : null,
+                            info.LaneCount, center, laneWidth, center, false);
+                    }
                 }
             }
         }
@@ -497,6 +555,8 @@ namespace YARG.Settings.Preview
 
         public void DisableIntoPool()
         {
+            foreach (var companion in _flamCompanions.Values) companion.SetActive(false);
+            foreach (var pair in _geometry) pair.Value.Reset(pair.Key.transform);
             foreach (var pair in _noteGroups)
             {
                 pair.Group.SetActive(false);

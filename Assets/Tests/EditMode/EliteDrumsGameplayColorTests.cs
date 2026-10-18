@@ -55,7 +55,7 @@ namespace YARG.Tests.EditMode
                 Tom2Note = Color.Aqua, HandFlamNote = Color.Brown,
                 KickNote = Color.Coral, DoubleKickNote = Color.Gold, KickFlamNote = Color.Indigo
             };
-            Assert.That(Colors(colors, Note(EliteDrumPad.Tom2, flam: true)).Body, Is.EqualTo(Color.Brown));
+            Assert.That(Colors(colors, Note(EliteDrumPad.Tom2, flam: true)).Body, Is.EqualTo(Color.Aqua));
             Assert.That(Colors(colors, Note(EliteDrumPad.Tom2, flam: true), split: true).Body, Is.EqualTo(Color.Aqua));
             Assert.That(Colors(colors, Note(EliteDrumPad.Kick)).Body, Is.EqualTo(Color.Coral));
             Assert.That(Colors(colors, Note(EliteDrumPad.Kick, doubleKick: true)).Body, Is.EqualTo(Color.Gold));

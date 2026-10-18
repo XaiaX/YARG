@@ -169,11 +169,13 @@ namespace YARG.Tests.EditMode
                 {
                     YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick => YARG.Core.Game.EliteDrumsColorRole.KickFlam,
                     YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal => YARG.Core.Game.EliteDrumsColorRole.Stomp,
-                    _ => YARG.Core.Game.EliteDrumsColorRole.HandFlam,
+                    _ => YARG.Core.Game.EliteDrumsColorRoles.GetRole(normalNote),
                 };
-                Assert.That(YARG.Core.Game.EliteDrumsColorRoles.GetRole(note), Is.EqualTo(expectedRole),
+                Assert.That(YARG.Core.Game.EliteDrumsColorRoles.GetRole(note, true), Is.EqualTo(expectedRole),
                     $"Flam color role for {pad}");
-                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(isWildcard ? 14 : isKick ? 2 : 3),
+                Assert.That((int) group.Invoke(null, new object[] { note, true }), Is.EqualTo(
+                    isWildcard ? 14 : isKick ? 2 : pad == YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal ? 3 :
+                    (int) group.Invoke(null, new object[] { normalNote, true })),
                     $"Flam model for {pad}");
             }
         }
@@ -184,10 +186,87 @@ namespace YARG.Tests.EditMode
             const string path = "Assets/Script/Settings/SettingsManager.Settings.cs";
             var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
             Assert.That(script, Is.Not.Null, $"Could not load {path}.");
-            // Check the declared default without constructing audio-dependent settings.
-            Assert.That(script.text, Does.Match(
-                @"public\s+ToggleSetting\s+SplitEliteFlamGems\s*\{\s*get;\s*\}\s*=\s*new\s*\(\s*false\s*\)\s*;"),
-                "Split-flam presentation must be declared with an off default.");
+            // Preserve this historical test identity while asserting the setting is now retired.
+            Assert.That(script.text, Does.Not.Contain("public ToggleSetting SplitEliteFlamGems"));
+            Assert.That(script.text, Does.Not.Contain("public ToggleSetting OffsetEliteTomCymbalGems"));
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void EliteRetiredDisplaySettingsCompatibility(bool split, bool offset)
+        {
+            using var audio = new SettingsCompatibilityAudioScope();
+            const System.Reflection.BindingFlags staticPrivate =
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+            var manager = Type.GetType("YARG.Settings.SettingsManager, Assembly-CSharp", true);
+            var container = manager.GetNestedType("SettingContainer");
+            var jsonSettings = manager.GetField("JsonSettings", staticPrivate).GetValue(null);
+            var jsonConvert = Type.GetType("Newtonsoft.Json.JsonConvert, Newtonsoft.Json", true);
+            var deserialize = jsonConvert.GetMethod("DeserializeObject",
+                new[] { typeof(string), typeof(Type), jsonSettings.GetType() });
+            var serialize = jsonConvert.GetMethod("SerializeObject", new[] { typeof(object), jsonSettings.GetType() });
+            string stale = "{\"SplitEliteFlamGems\":" + (split ? "true" : "false")
+                + ",\"OffsetEliteTomCymbalGems\":" + (offset ? "true" : "false")
+                + ",\"EnableEliteDrumsDowncharts\":true,\"RawMidiLogging\":false}";
+            // Exercise the same container and serializer settings as LoadSettings/SaveSettings.
+            // Audio is needed by the container constructor, but neither valid neighboring
+            // toggle has callbacks. Do not reload every saved setting: unrelated persisted
+            // audio/UI setters have side effects outside this compatibility contract.
+            var loaded = deserialize.Invoke(null, new object[] { stale, container, jsonSettings });
+            Assert.That(loaded, Is.Not.Null);
+            Assert.That(container.GetProperty("SplitEliteFlamGems"), Is.Null);
+            Assert.That(container.GetProperty("OffsetEliteTomCymbalGems"), Is.Null);
+            object downcharts = container.GetProperty("EnableEliteDrumsDowncharts").GetValue(loaded);
+            Assert.That(downcharts.GetType().GetProperty("Value").GetValue(downcharts), Is.True);
+            string saved = (string) serialize.Invoke(null, new[] { loaded, jsonSettings });
+            Assert.That(saved, Does.Not.Contain("SplitEliteFlamGems"));
+            Assert.That(saved, Does.Not.Contain("OffsetEliteTomCymbalGems"));
+
+            var tabs = (System.Collections.IEnumerable) manager.GetField("DisplayedSettingsTabs").GetValue(null);
+            var names = tabs.Cast<object>()
+                .Where(tab => tab.GetType().GetProperty("Settings") != null)
+                .SelectMany(tab => ((System.Collections.IEnumerable) tab.GetType().GetProperty("Settings")
+                    .GetValue(tab)).Cast<object>())
+                .Select(metadata => metadata.GetType().GetProperty("FieldName")?.GetValue(metadata) as string)
+                .Where(name => name != null).ToArray();
+            Assert.That(names, Does.Contain("EnableTrackEffects"),
+                "Enumerate a real displayed setting so an empty metadata traversal cannot pass.");
+            Assert.That(names, Does.Not.Contain("SplitEliteFlamGems"));
+            Assert.That(names, Does.Not.Contain("OffsetEliteTomCymbalGems"));
+        }
+
+        private sealed class SettingsCompatibilityAudioScope : IDisposable
+        {
+            private readonly Type _audioHandler = typeof(YARG.Core.Audio.GlobalAudioHandler);
+            private readonly bool _ownsAudioManager;
+
+            public SettingsCompatibilityAudioScope()
+            {
+                var instance = _audioHandler.GetField("_instance",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (instance.GetValue(null) != null)
+                {
+                    return;
+                }
+
+                Type.GetType("YARG.Helpers.PathHelper, Assembly-CSharp", true)
+                    .GetMethod("Init").Invoke(null, null);
+                _audioHandler.GetMethod("Initialize")
+                    .MakeGenericMethod(Type.GetType("YARG.Audio.BASS.BassAudioManager, Assembly-CSharp", true))
+                    .Invoke(null, null);
+                _ownsAudioManager = true;
+            }
+
+            public void Dispose()
+            {
+                // Preserve a pre-existing manager; close only the one this test created.
+                if (_ownsAudioManager)
+                {
+                    _audioHandler.GetMethod("Close").Invoke(null, null);
+                }
+            }
         }
 
         [Test]
@@ -229,7 +308,7 @@ namespace YARG.Tests.EditMode
                     "Kick flam keeps its dedicated role regardless of splitting.");
             }
             Assert.That((int) group.Invoke(null, new object[] { neutral, false, true }), Is.EqualTo(0));
-            Assert.That((int) group.Invoke(null, new object[] { neutral, false, false }), Is.EqualTo(3));
+            Assert.That((int) group.Invoke(null, new object[] { neutral, false, false }), Is.EqualTo(0));
             Assert.That((int) element.GetMethod("GetSplitFlamTickOffset",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
                 .Invoke(null, new object[] { 0, neutral.IsFlatFlam, false }), Is.Zero);
@@ -315,13 +394,13 @@ namespace YARG.Tests.EditMode
                 "Flat visual-left gem has no time offset.");
             Assert.That((int) offset.Invoke(null, new object[] { 1, true, true }), Is.Zero,
                 "Both flat gems stay at authored time.");
-            Assert.That((int) offset.Invoke(null, new object[] { 0, false, false }), Is.EqualTo(-7));
+            Assert.That((int) offset.Invoke(null, new object[] { 0, false, false }), Is.Zero);
             Assert.That((int) offset.Invoke(null, new object[] { 1, false, false }), Is.Zero,
                 "The trailing right gem stays on the authored beat.");
             Assert.That((int) offset.Invoke(null, new object[] { 0, false, true }), Is.Zero,
                 "Mirrored lefty visual-left gem stays on beat.");
-            Assert.That((int) offset.Invoke(null, new object[] { 1, false, true }), Is.EqualTo(-7),
-                "Lefty reverses the early gem to visual-right.");
+            Assert.That((int) offset.Invoke(null, new object[] { 1, false, true }), Is.Zero,
+                "Lefty does not add a temporal offset.");
             var sync = new YARG.Core.Chart.SyncTrack(960,
                 new System.Collections.Generic.List<YARG.Core.Chart.TempoChange>
                 {
@@ -338,7 +417,7 @@ namespace YARG.Tests.EditMode
                 YARG.Core.Chart.EliteDrumNote.EliteDrumsChannelFlag.None, 1d, authoredTick, false);
             double authoredTime = note.Time;
             double expectedEarlier = sync.TickToTime(authoredTick - 7) - sync.TickToTime(authoredTick);
-            Assert.That((double) timing.Invoke(null, new object[] { sync, authoredTick, -7 }), Is.EqualTo(expectedEarlier));
+            Assert.That((double) timing.Invoke(null, new object[] { sync, authoredTick, -7 }), Is.Zero);
             Assert.That((double) timing.Invoke(null, new object[] { sync, authoredTick, 0 }), Is.Zero);
             Assert.That(note.Time, Is.EqualTo(authoredTime), "Visual stagger must not change scoring time.");
         }
@@ -561,14 +640,12 @@ namespace YARG.Tests.EditMode
 
                         float leftBound = Mathf.Max(-highwayWidth / 2f, laneCenter - laneWidth / 2f);
                         float rightBound = Mathf.Min(highwayWidth / 2f, laneCenter + laneWidth / 2f);
-                        float boundedWidth = Mathf.Min(laneCenter - leftBound, rightBound - laneCenter);
-                        Assert.That((float) offsetArgs[4], Is.EqualTo(boundedWidth).Within(0.001f),
-                            "Offset-on subregions never exceed the lane's clamped half-column.");
+                        Assert.That((float) offsetArgs[4], Is.EqualTo(laneWidth).Within(0.001f),
+                            "The retired flag cannot alter the resolved lane query; FitPair measures the physical gems.");
 
                         float offsetCenter = (float) offsetArgs[3];
                         bool isTom = member.Pad == (int) tomPad;
-                        float expectedOffsetCenter = mirroredLaneCenter +
-                            mirror * (isTom ? -1f : 1f) * (float) offsetArgs[4] / 2f;
+                        float expectedOffsetCenter = mirroredLaneCenter;
                         Assert.That(offsetCenter, Is.EqualTo(expectedOffsetCenter).Within(0.001f));
 
                         Assert.That(tinyCenter - (float) tinyArgs[4] / 2f,

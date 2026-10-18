@@ -55,5 +55,8 @@ namespace YARG.Settings.Preview
         // Set for simultaneous Elite drum/cymbal notes sharing a saved lane when
         // offset paired-gem presentation is enabled.
         public bool OffsetElitePair;
+        public FakeNoteData ElitePairPartner;
+        public bool EliteHandFlam;
+        public bool EliteFlatFlam;
     }
 }

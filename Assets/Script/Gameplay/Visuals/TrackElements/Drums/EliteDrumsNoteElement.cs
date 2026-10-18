@@ -51,7 +51,18 @@ namespace YARG.Gameplay.Visuals
         private const int SPLIT_RIGHT = 1;
         private const int SPLIT_NORMAL = 0;
         private const int SPLIT_STAR = 1;
-        private const int FLAM_STAGGER_TICKS = 7;
+        private readonly Dictionary<NoteGroup, EliteDrumsRuntimeGeometry.ModelGeometry> _geometry = new();
+        private bool _lastCollisionPartnerStar;
+
+        private EliteDrumsRuntimeGeometry.ModelGeometry Geometry(NoteGroup group)
+        {
+            if (!_geometry.TryGetValue(group, out var geometry))
+            {
+                geometry = new EliteDrumsRuntimeGeometry.ModelGeometry(group.transform);
+                _geometry.Add(group, geometry);
+            }
+            return geometry;
+        }
 
         public override void SetThemeModels(Dictionary<ThemeNoteType, GameObject> models,
             Dictionary<ThemeNoteType, GameObject> starpowerModels)
@@ -132,8 +143,9 @@ namespace YARG.Gameplay.Visuals
             float laneWidth = compact.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
             float sharedLaneCenter = compact.GetLaneX(EliteDrumsPlayer.GetLane((int) tomPad),
                 TrackPlayer.TRACK_WIDTH, lefty);
-            EliteDrumsRuntimeGeometry.GetPairRegion(sharedLaneCenter, laneWidth, isCymbal, lefty, offset,
-                out x, out targetWidth);
+            // Compatibility lane query only; measured pair placement is handled by FitPair.
+            x = sharedLaneCenter;
+            targetWidth = laneWidth;
             return true;
         }
 
@@ -240,31 +252,14 @@ namespace YARG.Gameplay.Visuals
             var source = starPower ? StarPowerNoteGroups[group] : NoteGroups[group];
             source.SetActive(false);
 
-            // Nest both flam gems inside the resolved drum/cymbal subregion.
-            float width = regionWidth / 2f;
-            float leftCenter = laneCenter - width / 2f;
-            float rightCenter = laneCenter + width / 2f;
             for (int variant = 0; variant < 2; variant++)
             {
                 var splitGroups = variant == 0 ? _splitGemGroups : _splitStarGemGroups;
-                var scales = variant == 0 ? _splitGemScales : _splitStarGemScales;
-                ScaleGroupToFiveLaneWidth(splitGroups[baseIndex + SPLIT_LEFT], scales[baseIndex + SPLIT_LEFT],
-                    width, leftCenter);
-                ScaleGroupToFiveLaneWidth(splitGroups[baseIndex + SPLIT_RIGHT], scales[baseIndex + SPLIT_RIGHT],
-                    width, rightCenter);
-            }
-            bool lefty = LeftyFlip;
-            int leftOffset = GetSplitFlamTickOffset(SPLIT_LEFT, NoteRef.IsFlatFlam, lefty);
-            int rightOffset = GetSplitFlamTickOffset(SPLIT_RIGHT, NoteRef.IsFlatFlam, lefty);
-            float leftTime = leftOffset == 0 ? 0f : (float) GetFlamStaggerTime(GameManager.Chart.SyncTrack, NoteRef.Tick, leftOffset);
-            float rightTime = rightOffset == 0 ? 0f : (float) GetFlamStaggerTime(GameManager.Chart.SyncTrack, NoteRef.Tick, rightOffset);
-            for (int variant = 0; variant < 2; variant++)
-            {
-                var splitGroups = variant == 0 ? _splitGemGroups : _splitStarGemGroups;
-                var leftTransform = splitGroups[baseIndex + SPLIT_LEFT].transform;
-                var rightTransform = splitGroups[baseIndex + SPLIT_RIGHT].transform;
-                leftTransform.localPosition = leftTransform.localPosition.WithZ((float) (leftTime * Player.NoteSpeed));
-                rightTransform.localPosition = rightTransform.localPosition.WithZ((float) (rightTime * Player.NoteSpeed));
+                var l = splitGroups[baseIndex + SPLIT_LEFT];
+                var r = splitGroups[baseIndex + SPLIT_RIGHT];
+                EliteDrumsRuntimeGeometry.FitPair(Geometry(l), l.transform, Geometry(r), r.transform,
+                    Player.Layout.Lanes.Count, laneCenter, regionWidth, transform.localPosition.x,
+                    !NoteRef.IsFlatFlam);
             }
             left.SetActive(true);
             right.SetActive(true);
@@ -275,10 +270,7 @@ namespace YARG.Gameplay.Visuals
 
         internal static int GetSplitFlamTickOffset(int side, bool flatFlam, bool lefty)
         {
-            if (flatFlam) return 0;
-            // The leading visual gem is early; the other remains exactly on the authored beat.
-            // Mirroring the layout for lefty reverses which visual side leads.
-            return side == (lefty ? SPLIT_RIGHT : SPLIT_LEFT) ? -FLAM_STAGGER_TICKS : 0;
+            return 0; // Compatibility helper: both physical gems use the source note time.
         }
 
         internal static bool IsHandFlamPad(int pad) => (EliteDrumNote.EliteDrumPad) pad is
@@ -288,7 +280,7 @@ namespace YARG.Gameplay.Visuals
             EliteDrumNote.EliteDrumPad.Tom3 or EliteDrumNote.EliteDrumPad.RightCrash;
 
         internal static bool IsSplitFlam(EliteDrumNote note, bool enabled) =>
-            enabled && (note.IsFlam || note.IsFlatFlam) && IsHandFlamPad(note.Pad);
+            (note.IsFlam || note.IsFlatFlam) && IsHandFlamPad(note.Pad);
 
         private int GetSplitGroup() => GetSplitGroup(NoteRef, Player.Player.Profile.UseCymbalModels);
 
@@ -321,13 +313,18 @@ namespace YARG.Gameplay.Visuals
 
         internal static double GetFlamStaggerTime(YARG.Core.Chart.SyncTrack syncTrack, uint noteTick, int tickOffset)
         {
-            uint staggerTick = tickOffset < 0 ? noteTick - (uint) Mathf.Min((int) noteTick, -tickOffset) :
-                noteTick + (uint) tickOffset;
-            return syncTrack.TickToTime(staggerTick) - syncTrack.TickToTime(noteTick);
+            return 0d; // Retained for historical callers; hand flams have no temporal offset.
         }
 
         private void ResetGemGroups()
         {
+            for (int i = 0; i < COUNT; i++)
+            {
+                Geometry(NoteGroups[i]).Reset(NoteGroups[i].transform);
+                Geometry(StarPowerNoteGroups[i]).Reset(StarPowerNoteGroups[i].transform);
+            }
+            foreach (var group in _splitGemGroups) if (group != null) Geometry(group).Reset(group.transform);
+            foreach (var group in _splitStarGemGroups) if (group != null) Geometry(group).Reset(group.transform);
             ResetSplitGemGroups();
             for (int i = 0; i < COUNT; i++)
             {
@@ -432,8 +429,7 @@ namespace YARG.Gameplay.Visuals
             base.InitializeElement();
             ResetGemGroups();
             ResetStompGroups();
-            EliteDrumsRuntimeGeometry.GetRegion(Player, NoteRef,
-                SettingsManager.Settings.OffsetEliteTomCymbalGems.Value, out float center, out float width);
+            EliteDrumsRuntimeGeometry.GetRegion(Player, NoteRef, false, out float center, out float width);
             transform.localPosition = new Vector3(center, 0, 0);
             bool kick = EliteDrumsPlayer.IsFootPad(NoteRef.Pad);
             bool dedicatedKickFlam = kick && Player.Layout.KickMode != EliteDrumsLayoutKickMode.Bars &&
@@ -443,7 +439,7 @@ namespace YARG.Gameplay.Visuals
             bool pairedBar = Player.UsesHistoricalPedalBars && Player.UsesKickBars &&
                 TryGetPairedPedalKickLayout(NoteRef, Player.Player.Profile.LeftyFlip, out _, out _);
             var groups = IsStarPowerVisible ? StarPowerNoteGroups : NoteGroups;
-            bool splitFlam = IsSplitFlam(NoteRef, SettingsManager.Settings.SplitEliteFlamGems.Value);
+            bool splitFlam = IsSplitFlam(NoteRef, true);
             int group = combinedKickFlam ? ACCENT :
                 pairedBar || kick && !Player.UsesKickBars ? STOMP : splitFlam ? GetSplitGroup() :
                 GetGemGroup(NoteRef, Player.Player.Profile.UseCymbalModels);
@@ -452,6 +448,10 @@ namespace YARG.Gameplay.Visuals
                 InitializeSplitFlam(group, center, width);
             else if (kick || group == STOMP)
                 FitFootWidth(group, width, center);
+            else if (EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
+            {
+                FitCollision(group, partner, center, width);
+            }
             else
                 FitGemWidth(group, width, center);
             if (!splitFlam)
@@ -463,9 +463,41 @@ namespace YARG.Gameplay.Visuals
             UpdateColor();
         }
 
+        private void FitCollision(int group, EliteDrumNote partner, float center, float width)
+        {
+            int otherGroup = GetGemGroup(partner, Player.Player.Profile.UseCymbalModels);
+            bool partnerStar = partner.IsStarPower &&
+                !(((YARG.Core.Engine.Drums.DrumsEngineParameters)Player.BaseParameters).NoStarPowerOverlap &&
+                  Player.BaseStats.IsStarPowerActive);
+            _lastCollisionPartnerStar = partnerStar;
+            var other = (partnerStar ? StarPowerNoteGroups : NoteGroups)[otherGroup];
+            bool right = EliteDrumsPlayer.IsCymbal(NoteRef.Pad) != LeftyFlip;
+            for (int variant = 0; variant < 2; variant++)
+            {
+                var own = (variant == 0 ? NoteGroups : StarPowerNoteGroups)[group];
+                EliteDrumsRuntimeGeometry.FitPair(Geometry(right ? other : own), right ? null : own.transform,
+                    Geometry(right ? own : other), right ? own.transform : null,
+                    Player.Layout.Lanes.Count, center, width, transform.localPosition.x, false);
+            }
+        }
+
         protected override void UpdateElement()
         {
             base.UpdateElement();
+            // The paired note is judged independently and can lose SP without this
+            // note changing. Both envelopes must use the same currently visible models.
+            if (!IsSplitFlam(NoteRef, true) &&
+                EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
+            {
+                bool partnerStar = partner.IsStarPower &&
+                    !(((YARG.Core.Engine.Drums.DrumsEngineParameters)Player.BaseParameters).NoStarPowerOverlap &&
+                      Player.BaseStats.IsStarPowerActive);
+                if (partnerStar != _lastCollisionPartnerStar)
+                {
+                    EliteDrumsRuntimeGeometry.GetRegion(Player, NoteRef, false, out float center, out float width);
+                    FitCollision(GetGemGroup(NoteRef, Player.Player.Profile.UseCymbalModels), partner, center, width);
+                }
+            }
             ApplyPedalVisualLead(NoteGroup);
         }
 
@@ -491,7 +523,7 @@ namespace YARG.Gameplay.Visuals
 
         public override void OnStarPowerUpdated()
         {
-            if (IsSplitFlam(NoteRef, SettingsManager.Settings.SplitEliteFlamGems.Value))
+            if (IsSplitFlam(NoteRef, true))
             {
                 foreach (var group in _splitGemGroups) group.SetActive(false);
                 foreach (var group in _splitStarGemGroups) group.SetActive(false);
@@ -499,11 +531,21 @@ namespace YARG.Gameplay.Visuals
                 var selected = IsStarPowerVisible ? _splitStarGemGroups : _splitGemGroups;
                 selected[baseIndex + SPLIT_LEFT].SetActive(!NoteRef.WasHit);
                 selected[baseIndex + SPLIT_RIGHT].SetActive(!NoteRef.WasHit);
+                if (!NoteRef.WasHit)
+                {
+                    selected[baseIndex + SPLIT_LEFT].Initialize();
+                    selected[baseIndex + SPLIT_RIGHT].Initialize();
+                }
                 NoteGroup = selected[baseIndex + SPLIT_LEFT];
             }
             else
             {
                 base.OnStarPowerUpdated();
+                if (EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
+                {
+                    EliteDrumsRuntimeGeometry.GetRegion(Player, NoteRef, false, out float center, out float width);
+                    FitCollision(GetGemGroup(NoteRef, Player.Player.Profile.UseCymbalModels), partner, center, width);
+                }
             }
             ApplyPedalVisualLead(NoteGroup);
             UpdateColor();
@@ -546,12 +588,12 @@ namespace YARG.Gameplay.Visuals
         private void UpdateColor()
         {
             if (NoteGroup == null || NoteRef.WasHit) return;
-            bool splitFlam = IsSplitFlam(NoteRef, SettingsManager.Settings.SplitEliteFlamGems.Value);
+            bool splitFlam = IsSplitFlam(NoteRef, true);
             var (color, original, metal) = GetGemColors(Player.Player.ColorProfile.EliteDrums,
                 NoteRef, splitFlam, IsStarPowerVisible, NoteRef.WasMissed);
             NoteGroup.SetColorWithEmission(color.ToUnityColor(), original.ToUnityColor());
             NoteGroup.SetMetalColor(metal.ToUnityColor());
-            if (IsSplitFlam(NoteRef, SettingsManager.Settings.SplitEliteFlamGems.Value))
+            if (IsSplitFlam(NoteRef, true))
             {
                 int baseIndex = GetSplitGroup() * 2;
                 var groups = IsStarPowerVisible ? _splitStarGemGroups : _splitGemGroups;

@@ -2083,17 +2083,9 @@
 				"Description": "Adds an \"Elite (Downchart)\" option to instrument selection for drum players. It plays the Elite Drums chart automatically downcharted to the selected drum format, instead of the native chart. Experimental.",
 				"Name": "Enable Access To Elite Drums Downcharts"
 			},
-			"OffsetEliteTomCymbalGems": {
-				"Name": "Offset Elite Tom/Cymbal Gems",
-				"Description": "Experimental: for simultaneous Elite tom and cymbal hits sharing a lane, offset the gems so they touch at the lane center and extend into adjacent lanes. When disabled, show smaller side-by-side gems within the shared lane."
-			},
 			"RawMidiLogging": {
 				"Name": "Log Raw MIDI During Gameplay",
 				"Description": "Records MIDI note-on, note-off, and control-change messages while a song is playing. Saves local CSV files in the midi-logs folder under YARG's data directory; no data is uploaded. Turn off after diagnosing your controller."
-			},
-			"SplitEliteFlamGems": {
-				"Name": "Show Paired Normal Gems for Elite Flams",
-				"Description": "When enabled, optionally shows normal gems alongside Elite flam notes. This is visual-only and does not change gameplay or note detection. Off by default."
 			},
 			"UseCumulativeSongUpdates": {
 				"Description": "Experimental: apply numbered songs_updates folders in order. After changing this setting, re-scan your song library (or restart) for it to take effect.",
@@ -2200,7 +2192,6 @@
 				"KickFlam": "Kick Flam",
 				"Stomp": "Hi-Hat Stomp",
 				"Splash": "Hi-Hat Splash",
-				"HandFlam": "Single Gem Flam",
 				"Wildcard": "Wildcard",
 				"KickPosition": "Kick Position Effects",
 				"SnarePosition": "Snare Position Effects",
@@ -2304,8 +2295,6 @@
 					"StompStarpower": { "Name": "Hi-Hat Stomp Star Power" },
 					"SplashNote": { "Name": "Hi-Hat Splash Note" },
 					"SplashStarpower": { "Name": "Hi-Hat Splash Star Power" },
-					"HandFlamNote": { "Name": "Single Gem Flam Note" },
-					"HandFlamStarpower": { "Name": "Single Gem Flam Star Power" },
 					"WildcardNote": { "Name": "Wildcard Note" },
 					"WildcardStarpower": { "Name": "Wildcard Star Power" },
 					"SnareInputFret": { "Name": "Snare Input Fret" },
@@ -2343,7 +2332,6 @@
 					"KickFlamInputFret": { "Name": "Kick Flam Input Fret" },
 					"StompInputFret": { "Name": "Stomp Input Fret" },
 					"SplashInputFret": { "Name": "Splash Input Fret" },
-					"HandFlamInputFret": { "Name": "Single Gem Flam Input Fret" },
 					"SnareInputEffect": { "Name": "Snare Hit Effect" },
 					"HatIndifferentInputEffect": { "Name": "Any Hi-Hat Hit Effect" },
 					"HatOpenInputEffect": { "Name": "Open Hi-Hat Hit Effect" },
@@ -2359,7 +2347,6 @@
 					"KickFlamInputEffect": { "Name": "Kick Flam Hit Effect" },
 					"StompInputEffect": { "Name": "Stomp Hit Effect" },
 					"SplashInputEffect": { "Name": "Splash Hit Effect" },
-					"HandFlamInputEffect": { "Name": "Single Gem Flam Hit Effect" },
 					"KickFret": { "Name": "Kick Fret" },
 					"KickFretInner": { "Name": "Kick Fret Inner" },
 					"KickParticles": { "Name": "Kick Particles" },

@@ -102,7 +102,7 @@ namespace YARG.Tests.EditMode
             Assert.That(type.GetField("NOTE_COUNT").GetRawConstantValue(), Is.EqualTo(126));
             string[] roles = { "Snare", "HatIndifferent", "HatOpen", "HatClosed", "LeftCrash", "Ride",
                 "RightCrash", "Tom1", "Tom2", "Tom3", "Kick", "DoubleKick", "KickFlam", "Stomp",
-                "Splash", "HandFlam", "Wildcard" };
+                "Splash", "Snare", "Wildcard" };
             string[] flams = { "Snare", "HatIndifferent", "LeftCrash", "Ride", "RightCrash", "Tom1", "Tom2", "Tom3" };
             var signatures = new List<string>();
             string Signature(object note)
@@ -136,9 +136,9 @@ namespace YARG.Tests.EditMode
                 else if (index < 59)
                 {
                     Assert.That(Role(note), Is.EqualTo(flams[index - 51]));
-                    Assert.That(Property(Read(note, "EliteDescriptor"), "Width"), Is.EqualTo(2f / 3f));
-                    Assert.That(companions, Has.Length.EqualTo(1));
-                    Assert.That(Read(companions[0], "Time"), Is.EqualTo(i + 0.025d));
+                    Assert.That(Property(Read(note, "EliteDescriptor"), "Width"), Is.EqualTo(1f));
+                    Assert.That(Read(note, "EliteHandFlam"), Is.True);
+                    Assert.That(companions, Is.Empty, "One source descriptor owns two physical gems without a delayed source.");
                 }
                 string signature = Signature(note) + ":" + string.Join(",", companions.Select(Signature));
                 if (i < 63) signatures.Add(signature);

@@ -78,6 +78,68 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ElitePairPreviewGameplayParity()
+        {
+            var noteType = Production("YARG.Themes.ThemeNoteType");
+            foreach (int lanes in new[] { 5, 7, 10 })
+            {
+                var layout = lanes == 5 ? EliteDrumsLayoutPreset.Compact : TenLaneLayout();
+                if (lanes == 7)
+                {
+                    layout.Slots[2] = EliteDrumsLayoutSlot.Ordinary("tom1", "left-crash");
+                    layout.Slots[3] = EliteDrumsLayoutSlot.Ordinary("tom2", null);
+                    layout.Slots[4] = EliteDrumsLayoutSlot.Ordinary("tom3", null);
+                    layout.Slots[5] = EliteDrumsLayoutSlot.Ordinary(null, "ride");
+                    layout.Slots[6] = EliteDrumsLayoutSlot.Ordinary(null, "right-crash");
+                    layout.Slots[7] = new EliteDrumsLayoutSlot();
+                    layout.Slots[8] = new EliteDrumsLayoutSlot();
+                    layout.Slots[9] = new EliteDrumsLayoutSlot();
+                }
+                var (player, pool) = CreatePreparedPlayer(layout);
+                foreach (bool lefty in new[] { false, true })
+                foreach (bool star in new[] { false, true })
+                foreach (bool flat in new[] { false, true })
+                {
+                    Call(pool, "ReturnAllObjects");
+                    player.GetType().GetProperty("LeftyFlip").SetValue(player, lefty);
+                    Call(player, "SpotlightNoteType", Enum.Parse(noteType, "Normal"), star);
+                    Call(player, "Advance", 0.21d);
+                    var note = (Component)((IList)Get(pool, "AllSpawned"))[0];
+                    var data = Get(note, "NoteRef");
+                    float normalWidth = RenderedWidth(note);
+                    data.GetType().GetField("EliteHandFlam").SetValue(data, true);
+                    data.GetType().GetField("EliteFlatFlam").SetValue(data, flat);
+                    Call(note, "OnSettingChanged");
+                    var groups = note.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                        .Where(g => g.gameObject.activeInHierarchy).ToArray();
+                    Assert.That(groups, Has.Length.EqualTo(2), "One source FakeNote displays exactly two physical gems.");
+                    float width = RenderedWidth(note);
+                    Assert.That(width, Is.GreaterThan(0f));
+                    float firstY = groups[0].transform.localScale.y;
+                    float firstZ = groups[0].transform.localScale.z;
+                    Call(note, "OnSettingChanged");
+                    Assert.That(RenderedWidth(note), Is.EqualTo(width).Within(GEOMETRY_TOLERANCE));
+                    Assert.That(groups[0].transform.localScale.y, Is.EqualTo(firstY));
+                    Assert.That(groups[0].transform.localScale.z, Is.EqualTo(firstZ));
+                    var info = Get(player, "CurrentGameModeInfo");
+                    int resolvedColumns = ((EliteDrumsResolvedLayout)info.GetType().GetField("EliteLayout").GetValue(info)).Lanes.Count;
+                    if (flat) Assert.That(width, Is.EqualTo(normalWidth * 2f * (resolvedColumns - 1f) / resolvedColumns)
+                        .Within(GEOMETRY_TOLERANCE), "Actual flat preview mesh width matches the gameplay pair scaling contract.");
+                    data.GetType().GetField("EliteHandFlam").SetValue(data, false);
+                    Call(note, "OnSettingChanged");
+                    Assert.That(note.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                        .Count(g => g.gameObject.activeInHierarchy), Is.EqualTo(1), "Companion cannot leak into ordinary reuse.");
+                    Call(pool, "ReturnAllObjects");
+                    Call(player, "SpotlightNoteType", Enum.Parse(noteType, "Normal"), star);
+                    Call(player, "Advance", 0.21d);
+                    Assert.That(((IList)Get(pool, "AllSpawned"))[0], Is.SameAs(note));
+                }
+                Object.Destroy(((Component)player).gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator ActualThemeGhostAndNormalModelsKeepAuthoredRatiosAcrossLaneCountsAndPoolReuse()
         {
             var noteType = Production("YARG.Themes.ThemeNoteType");
@@ -197,7 +259,7 @@ namespace YARG.Tests.PlayMode
             return null;
         }
 
-        private (Component player, Component pool) CreatePreparedPlayer(EliteDrumsLayoutPreset layout)
+        internal (Component player, Component pool) CreatePreparedPlayer(EliteDrumsLayoutPreset layout)
         {
             var root = Own(new GameObject("Production fake preview player"));
             root.SetActive(false);
@@ -239,6 +301,13 @@ namespace YARG.Tests.PlayMode
             root.SetActive(true);
             ((Behaviour)player).enabled = false;
             return (player, pool);
+        }
+
+        internal void DisposePreparedPlayers()
+        {
+            for (int i = _owned.Count - 1; i >= 0; i--)
+                if (_owned[i] != null) Object.DestroyImmediate(_owned[i]);
+            _owned.Clear();
         }
 
         private static float RenderedWidth(Component note)
