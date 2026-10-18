@@ -2083,6 +2083,15 @@
 				"Description": "Adds an \"Elite (Downchart)\" option to instrument selection for drum players. It plays the Elite Drums chart automatically downcharted to the selected drum format, instead of the native chart. Experimental.",
 				"Name": "Enable Access To Elite Drums Downcharts"
 			},
+			"EliteFlamLayout": {
+				"Name": "Flam Layout",
+				"Description": "Chooses the arrangement of regular hand flams. Flat flams and shared-lane pairs are unchanged.",
+				"Dropdown": {
+					"V": "V",
+					"Bucket": "Bucket",
+					"Parallel": "Parallel"
+				}
+			},
 			"RawMidiLogging": {
 				"Name": "Log Raw MIDI During Gameplay",
 				"Description": "Records MIDI note-on, note-off, and control-change messages while a song is playing. Saves local CSV files in the midi-logs folder under YARG's data directory; no data is uploaded. Turn off after diagnosing your controller."

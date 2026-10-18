@@ -35,6 +35,13 @@ using Object = UnityEngine.Object;
 
 namespace YARG.Settings
 {
+    public enum EliteFlamLayout
+    {
+        V,
+        Bucket,
+        Parallel
+    }
+
     public enum SongLengthLabelMode
     {
         RangeLabels,
@@ -786,6 +793,12 @@ namespace YARG.Settings
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
+            public DropdownSetting<EliteFlamLayout> EliteFlamLayout { get; } = new(global::YARG.Settings.EliteFlamLayout.V)
+            {
+                global::YARG.Settings.EliteFlamLayout.V,
+                global::YARG.Settings.EliteFlamLayout.Bucket,
+                global::YARG.Settings.EliteFlamLayout.Parallel
+            };
             public ToggleSetting RawMidiLogging { get; } = new(false);
             // Fires both on real user changes and once during settings load
             // (ForceInvokeCallback). Only an actual value change should trigger a

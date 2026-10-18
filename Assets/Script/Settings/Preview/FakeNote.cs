@@ -467,7 +467,12 @@ namespace YARG.Settings.Preview
                         }
                         EliteDrumsRuntimeGeometry.FitPair(ownGeometry, _currentNoteGroup.transform,
                             Geometry(companion), companion.transform, info.LaneCount, center, laneWidth,
-                            center, !NoteRef.EliteFlatFlam);
+                            center, !NoteRef.EliteFlatFlam, SettingsManager.Settings.EliteFlamLayout.Value,
+                            _noteGroups.Exists(pair => pair.Group == _currentNoteGroup && pair.NoteType is
+                                ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent or ThemeNoteType.CymbalGhost
+                                or ThemeNoteType.OpenHiHat or ThemeNoteType.OpenHiHatAccent or ThemeNoteType.OpenHiHatGhost
+                                or ThemeNoteType.ClosedHiHat or ThemeNoteType.ClosedHiHatAccent or ThemeNoteType.ClosedHiHatGhost),
+                            FakeTrackPlayer.LeftyFlip);
                         companion.SetActive(true);
                         companion.Initialize();
                         companion.SetColorWithEmission(color, color);

@@ -19,6 +19,10 @@ namespace YARG.Tests.PlayMode
         private readonly List<Object> _owned = new();
         private Component _themeManager;
         private bool _ownsThemeManager;
+        private object _originalSettings;
+        private bool _originalSettingsInitialized;
+        private bool _capturedSettings;
+        private bool _ownsAudioManager;
 
         private static Type Production(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name)).First(type => type != null);
@@ -39,6 +43,36 @@ namespace YARG.Tests.PlayMode
         [UnitySetUp]
         public IEnumerator SetUpProductionTheme()
         {
+            _capturedSettings = false;
+            _ownsAudioManager = false;
+            var settingsManager = Production("YARG.Settings.SettingsManager");
+            var settingContainer = settingsManager.GetNestedType("SettingContainer", BindingFlags.Public);
+            var initialized = settingContainer.GetField("IsInitialized", BindingFlags.Public | BindingFlags.Static);
+            _originalSettings = settingsManager.GetProperty("Settings").GetValue(null);
+            _originalSettingsInitialized = (bool)initialized.GetValue(null);
+            _capturedSettings = true;
+
+            var audioHandler = Production("YARG.Core.Audio.GlobalAudioHandler");
+            var audioInstance = audioHandler.GetField("_instance",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            if (audioInstance.GetValue(null) == null)
+            {
+                Production("YARG.Helpers.PathHelper").GetMethod("Init", BindingFlags.Public | BindingFlags.Static)
+                    .Invoke(null, null);
+                var bassAudioManager = Production("YARG.Audio.BASS.BassAudioManager");
+                audioHandler.GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static)
+                    .MakeGenericMethod(bassAudioManager).Invoke(null, null);
+                _ownsAudioManager = true;
+            }
+
+            if (_originalSettings == null)
+            {
+                var temporarySettings = Activator.CreateInstance(settingContainer);
+                settingsManager.GetProperty("Settings").GetSetMethod(true).Invoke(null,
+                    new[] { temporarySettings });
+                initialized.SetValue(null, true);
+            }
+
             var managerType = Production("YARG.Themes.ThemeManager");
             var managerProperty = managerType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
             _themeManager = managerProperty.GetValue(null) as Component;
@@ -74,6 +108,22 @@ namespace YARG.Tests.PlayMode
             {
                 _themeManager = null;
                 _ownsThemeManager = false;
+            }
+            if (_capturedSettings)
+            {
+                var settingsManager = Production("YARG.Settings.SettingsManager");
+                var settingContainer = settingsManager.GetNestedType("SettingContainer", BindingFlags.Public);
+                settingsManager.GetProperty("Settings").GetSetMethod(true).Invoke(null,
+                    new[] { _originalSettings });
+                settingContainer.GetField("IsInitialized", BindingFlags.Public | BindingFlags.Static)
+                    .SetValue(null, _originalSettingsInitialized);
+                _capturedSettings = false;
+            }
+            if (_ownsAudioManager)
+            {
+                Production("YARG.Core.Audio.GlobalAudioHandler")
+                    .GetMethod("Close", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+                _ownsAudioManager = false;
             }
         }
 

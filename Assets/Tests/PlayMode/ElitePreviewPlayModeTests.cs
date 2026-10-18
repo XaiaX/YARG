@@ -18,6 +18,10 @@ namespace YARG.Tests.PlayMode
         private const float TEST_GEM_MODEL_WIDTH = 0.35f;
 
         private readonly List<Object> _owned = new();
+        private object _originalSettings;
+        private bool _originalSettingsInitialized;
+        private bool _capturedSettings;
+        private bool _ownsAudioManager;
         private static Type Production(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(a => a.GetType(name)).First(t => t != null);
         private static void Field(object value, string name, object data) => value.GetType()
@@ -28,12 +32,64 @@ namespace YARG.Tests.PlayMode
             .GetMethod(name, BindingFlags.Instance | BindingFlags.Public).Invoke(value, args);
         private T Own<T>(T value) where T : Object { _owned.Add(value); return value; }
 
+        [UnitySetUp]
+        public IEnumerator SetUpSettingsAndAudio()
+        {
+            _capturedSettings = false;
+            _ownsAudioManager = false;
+            var settingsManager = Production("YARG.Settings.SettingsManager");
+            var settingContainer = settingsManager.GetNestedType("SettingContainer", BindingFlags.Public);
+            var initialized = settingContainer.GetField("IsInitialized", BindingFlags.Public | BindingFlags.Static);
+            _originalSettings = settingsManager.GetProperty("Settings").GetValue(null);
+            _originalSettingsInitialized = (bool)initialized.GetValue(null);
+            _capturedSettings = true;
+
+            var audioHandler = Production("YARG.Core.Audio.GlobalAudioHandler");
+            var audioInstance = audioHandler.GetField("_instance",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            if (audioInstance.GetValue(null) == null)
+            {
+                Production("YARG.Helpers.PathHelper").GetMethod("Init", BindingFlags.Public | BindingFlags.Static)
+                    .Invoke(null, null);
+                var bassAudioManager = Production("YARG.Audio.BASS.BassAudioManager");
+                audioHandler.GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static)
+                    .MakeGenericMethod(bassAudioManager).Invoke(null, null);
+                _ownsAudioManager = true;
+            }
+
+            if (_originalSettings == null)
+            {
+                var temporarySettings = Activator.CreateInstance(settingContainer);
+                settingsManager.GetProperty("Settings").GetSetMethod(true).Invoke(null,
+                    new[] { temporarySettings });
+                initialized.SetValue(null, true);
+            }
+
+            yield return null;
+        }
+
         [UnityTearDown]
         public IEnumerator Cleanup()
         {
             foreach (var value in _owned) if (value != null) Object.Destroy(value);
             _owned.Clear();
             yield return null;
+            if (_capturedSettings)
+            {
+                var settingsManager = Production("YARG.Settings.SettingsManager");
+                var settingContainer = settingsManager.GetNestedType("SettingContainer", BindingFlags.Public);
+                settingsManager.GetProperty("Settings").GetSetMethod(true).Invoke(null,
+                    new[] { _originalSettings });
+                settingContainer.GetField("IsInitialized", BindingFlags.Public | BindingFlags.Static)
+                    .SetValue(null, _originalSettingsInitialized);
+                _capturedSettings = false;
+            }
+            if (_ownsAudioManager)
+            {
+                Production("YARG.Core.Audio.GlobalAudioHandler")
+                    .GetMethod("Close", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+                _ownsAudioManager = false;
+            }
         }
 
         [UnityTest]
@@ -112,20 +168,20 @@ namespace YARG.Tests.PlayMode
                 bool dedicatedKick = kickMode is "Split" or "Combined";
                 float resolvedLaneWidth = (float)eliteLayout.GetType().GetMethod("GetLaneWidth")
                     .Invoke(eliteLayout, new object[] { highwayWidth });
-                float expectedDoubleKickWidth = dedicatedKick ? resolvedLaneWidth : highwayWidth / 2f;
+                float expectedDoubleKickWidth = dedicatedKick ? resolvedLaneWidth : highwayWidth;
                 Assert.That(RenderedWidth(note), Is.EqualTo(expectedDoubleKickWidth).Within(0.01f),
-                    "DoubleKick fills one dedicated lane in Split/Combined mode, but remains a half-highway bar in Bars mode.");
+                    "Standalone DoubleKick fills one dedicated lane in Split/Combined mode and the full highway in Bars mode.");
                 string doubleKickSource = kickMode == "Combined" ? "kick" : "kick2";
                 float expectedDoubleKickCenter = dedicatedKick
                     ? (float)eliteLayout.GetType().GetMethod("GetSourceX")
                         .Invoke(eliteLayout, new object[] { doubleKickSource, highwayWidth, false })
-                    : 0.5f;
+                    : 0f;
                 Assert.That(RenderedCenter(note), Is.EqualTo(expectedDoubleKickCenter).Within(0.01f),
-                    "DoubleKick uses its resolved dedicated lane center without a bar offset; Bars retains its authored offset.");
+                    "DoubleKick uses its resolved dedicated lane center; a standalone Bars note is centered.");
                 if (!dedicatedKick)
                 {
-                    Assert.That(RenderedWidth(note), Is.EqualTo(highwayWidth / 2f).Within(0.01f));
-                    Assert.That(RenderedCenter(note), Is.EqualTo(0.5f).Within(0.01f));
+                    Assert.That(RenderedWidth(note), Is.EqualTo(highwayWidth).Within(0.01f));
+                    Assert.That(RenderedCenter(note), Is.EqualTo(0f).Within(0.01f));
                 }
                 Assert.That(ActiveModel(note).name, Does.StartWith("Regular"));
                 colors.EliteDrums.DoubleKickNote = System.Drawing.Color.Magenta;

@@ -973,6 +973,15 @@ namespace YARG.Settings.Preview
                     }
                 }
 
+                // A filtered-out pedal companion must not leave an isolated half bar.
+                if (note.EliteDescriptor is { IsBar: true } kickDescriptor &&
+                    kickDescriptor.Role is EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick &&
+                    !notesToSpawn.Exists(extra => extra.EliteDescriptor is { } descriptor &&
+                        descriptor.Role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash))
+                {
+                    note.EliteDescriptor = new ElitePreviewDescriptor(kickDescriptor.Role, kickDescriptor.Fret,
+                        kickDescriptor.ModelType, true, 1f, 0f, kickDescriptor.DedicatedLaneSource);
+                }
                 ApplyLeftyToFret(note);
                 notesToSpawn.Add(note);
                 MarkEliteOffsetPairs(notesToSpawn, CurrentGameModeInfo.EliteLayout);

@@ -748,13 +748,19 @@ namespace YARG.Tests.PlayMode
         public IEnumerator ElitePairActualPreviewParityVisibilityAndPooling()
         {
             var previewFixture = new ElitePreviewGeometryPlayModeTests();
+            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
+            var layoutSetting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
+            var valueProperty = layoutSetting.GetType().GetProperty("Value");
+            var originalLayout = valueProperty.GetValue(layoutSetting);
             try
             {
+                foreach (string flamLayout in new[] { "V", "Bucket", "Parallel" })
                 foreach (int columns in new[] { 5, 7, 9, 10 })
                 foreach (bool lefty in new[] { false, true })
                 foreach (bool cymbalModels in new[] { false, true })
                 foreach (bool edge in new[] { false, true })
                 {
+                    valueProperty.SetValue(layoutSetting, Enum.Parse(valueProperty.PropertyType, flamLayout));
                     var layout = PairCoverageLayout(columns);
                     if (!edge)
                     {
@@ -783,13 +789,13 @@ namespace YARG.Tests.PlayMode
                         snare.IsFlam = shape == "regular";
                         snare.IsFlatFlam = shape == "flat";
                         // Remove the chord for valid standalone flams, retain its original collision identity separately.
-                        var source = collision ? snare : Note(EliteDrumPad.Snare, false, 10d, 4800);
+                        var source = collision ? snare : Note(cymbalModels ? EliteDrumPad.RightCrash : EliteDrumPad.Snare, false, 10d, 4800);
                         source.IsFlam = shape == "regular";
                         source.IsFlatFlam = shape == "flat";
                         if (collision) { source.IsFlam = false; source.IsFlatFlam = false; }
                         source.ActivateFlag(NoteFlags.StarPower);
                         crash.ClearFlag(NoteFlags.StarPower);
-                        var firstData = PairPreviewData(source, collision ? EliteDrumsColorRole.Snare : EliteDrumsColorRole.Snare);
+                        var firstData = PairPreviewData(source, !collision && cymbalModels ? EliteDrumsColorRole.RightCrash : EliteDrumsColorRole.Snare);
                         var secondData = collision ? PairPreviewData(crash, EliteDrumsColorRole.RightCrash) : null;
                         if (collision)
                         {
@@ -821,8 +827,13 @@ namespace YARG.Tests.PlayMode
                             if (collision) previewSecond.GetType().GetMethod("OnSettingChanged").Invoke(previewSecond, null);
                             if (shape == "regular")
                             {
-                                AssertReceptorFacingV(gameplayFirst, player.transform);
-                                AssertReceptorFacingV(previewFirst, preview.transform);
+                                if (swap == 0 || (flamLayout == "Parallel" && swap == 1))
+                                {
+                                    CapturePairGeometry(gameplayFirst, 720, $"{flamLayout}-N{columns}-lefty{lefty}-cymbals{cymbalModels}-edge{edge}-star{star}");
+                                    CapturePairGeometry(gameplayFirst, 1080, $"{flamLayout}-N{columns}-lefty{lefty}-cymbals{cymbalModels}-edge{edge}-star{star}");
+                                }
+                                AssertFlamLayout(gameplayFirst, player.transform, flamLayout, lefty, cymbalModels, columns);
+                                AssertFlamLayout(previewFirst, preview.transform, flamLayout, lefty, cymbalModels, columns);
                             }
                             var actual = PairMemberBounds(gameplayFirst, gameplaySecond, player.transform);
                             var expected = PairMemberBounds(previewFirst, previewSecond, preview.transform);
@@ -835,12 +846,15 @@ namespace YARG.Tests.PlayMode
                                 Assert.That(actual[member].max, Is.EqualTo(expected[member].max).Within(0.001f));
                             }
                             float laneWidth = resolved.GetLaneWidth(2f);
-                            float center = resolved.GetSourceX("snare", 2f, lefty);
-                            float halfPair = (actual[1].max - actual[0].min) / 2f;
+                            float center = resolved.GetSourceX(!collision && cymbalModels ? "right-crash" : "snare", 2f, lefty);
+                            float min = actual.Min(b => b.min);
+                            float max = actual.Max(b => b.max);
+                            float halfPair = (max - min) / 2f;
                             float midpoint = center / (1f - laneWidth / 2f) * (1f - halfPair);
-                            Assert.That(actual[0].max, Is.EqualTo(actual[1].min).Within(0.001f), "Actual member mesh corners meet at a zero-gap seam.");
-                            Assert.That((actual[0].min + actual[1].max) / 2f, Is.EqualTo(midpoint).Within(0.001f));
-                            if (edge) Assert.That(lefty ? actual[1].max : actual[0].min, Is.EqualTo(lefty ? 1f : -1f).Within(0.001f),
+                            if (shape != "regular" || (!cymbalModels && flamLayout == "V"))
+                                Assert.That(actual[0].max, Is.EqualTo(actual[1].min).Within(0.001f), "Flat/original drum member bounds meet.");
+                            Assert.That((min + max) / 2f, Is.EqualTo(midpoint).Within(0.001f));
+                            if (edge && columns < 10) Assert.That(lefty ? max : min, Is.EqualTo(lefty ? 1f : -1f).Within(0.001f),
                                 "The outside mesh corner of an edge pair is flush with the highway.");
                             var selected = (Array)gameplayFirst.GetType().GetField(collision ?
                                 (star ? "StarPowerNoteGroups" : "NoteGroups") :
@@ -869,7 +883,7 @@ namespace YARG.Tests.PlayMode
                                 }
                             }
                         }
-                        if (!collision) AssertGameplayPairPoolReset(player, gameplayFirst, source);
+                        if (!collision) AssertGameplayPairPoolReset(player, gameplayFirst, source, flamLayout, lefty);
                         ReturnCoverageElement(gameplayFirst);
                         if (collision) ReturnCoverageElement(gameplaySecond);
                         previewPool.GetType().GetMethod("ReturnAllObjects").Invoke(previewPool, null);
@@ -881,6 +895,7 @@ namespace YARG.Tests.PlayMode
             }
             finally
             {
+                valueProperty.SetValue(layoutSetting, originalLayout);
                 previewFixture.DisposePreparedPlayers();
             }
         }
@@ -934,6 +949,235 @@ namespace YARG.Tests.PlayMode
             pool.GetType().GetMethod("Return").Invoke(pool, new object[] { element });
         }
 
+        private static void AssertFlamLayout(Component element, Transform highway, string layout, bool lefty, bool cymbal, int columns)
+        {
+            var active = element.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                .Where(g => g.gameObject.activeInHierarchy).ToArray();
+            Assert.That(active, Has.Length.EqualTo(2));
+            // The split arrays encode member identity. Spatial order is a separate
+            // contract below, never the input used to decide expected rotation.
+            var splitField = element.GetType().GetField("_splitGemGroups", PreparedElitePlayerFixture.INSTANCE);
+            Component[] groups;
+            if (splitField != null)
+            {
+                var regular = ((IEnumerable)splitField.GetValue(element)).Cast<Component>();
+                var stars = ((IEnumerable)element.GetType().GetField("_splitStarGemGroups", PreparedElitePlayerFixture.INSTANCE).GetValue(element)).Cast<Component>();
+                groups = regular.Concat(stars).Where(g => g != null && active.Contains(g)).ToArray();
+            }
+            else groups = active; // Preview creates the companion after the original.
+            Assert.That(groups, Has.Length.EqualTo(2));
+            string context = $"layout={layout}, lefty={lefty}, cymbal={cymbal}, element={element.name}, " +
+                $"left={groups[0].name}@{groups[0].transform.localPosition}, right={groups[1].name}@{groups[1].transform.localPosition}";
+            Debug.Log("Flam geometry: " + context);
+            if (layout != "Parallel")
+                Assert.That((ActiveMeshBounds(groups[0], highway).min + ActiveMeshBounds(groups[0], highway).max) * 0.5f,
+                    Is.LessThan((ActiveMeshBounds(groups[1], highway).min + ActiveMeshBounds(groups[1], highway).max) * 0.5f),
+                    "Stable left member must remain visibly left: " + context);
+            else
+            {
+                Assert.That(groups[0].transform.localPosition.z, Is.EqualTo(groups[1].transform.localPosition.z).Within(0.00001f),
+                    "Parallel members must have no relative depth: " + context);
+                Assert.That(groups[0].transform.localPosition.y, Is.EqualTo(groups[1].transform.localPosition.y).Within(0.00001f));
+            }
+            var cache = (IDictionary)element.GetType().GetField("_geometry", PreparedElitePlayerFixture.INSTANCE).GetValue(element);
+            for (int i = 0; i < groups.Length; i++)
+            {
+                var geometry = cache[groups[i]];
+                var authored = (Quaternion)geometry.GetType().GetField("Rotation", PreparedElitePlayerFixture.INSTANCE).GetValue(geometry);
+                float angle = layout == "Parallel" ? (lefty ? -25f : 25f) : (i == 0 ? 25f : -25f);
+                var expected = Quaternion.AngleAxis(layout == "Bucket" ? -angle : angle,
+                    layout == "Bucket" ? Vector3.forward : Vector3.up) * authored;
+                Assert.That(Quaternion.Angle(groups[i].transform.localRotation, expected), Is.LessThan(0.001f),
+                    $"{context}, member={i}, authored={authored.eulerAngles}, actual={groups[i].transform.localRotation.eulerAngles}, expected={expected.eulerAngles}");
+            }
+            if (layout == "Parallel")
+            {
+                var pairPoints = groups.SelectMany(g => VisibleCorners(g.transform, Matrix4x4.identity)).ToArray();
+                var geometry = cache[groups[0]];
+                var scale = (Vector3)geometry.GetType().GetField("Scale", PreparedElitePlayerFixture.INSTANCE).GetValue(geometry);
+                var position = (Vector3)geometry.GetType().GetField("Position", PreparedElitePlayerFixture.INSTANCE).GetValue(geometry);
+                var rotation = (Quaternion)geometry.GetType().GetField("Rotation", PreparedElitePlayerFixture.INSTANCE).GetValue(geometry);
+                float laneScale = groups[0].transform.localScale.x / scale.x;
+                // Undo pair narrowing independently; authored rotation can mix X into Z.
+                float pairFactor = columns > 1 ? (columns - 1f) / columns : 0.5f;
+                var ordinary = Matrix4x4.TRS(position, rotation, new Vector3(scale.x * laneScale / pairFactor, scale.y, scale.z));
+                var ordinaryPoints = VisibleCorners(groups[0].transform, ordinary, true);
+                float actualZ = (pairPoints.Min(p => p.z) + pairPoints.Max(p => p.z)) * 0.5f;
+                float ordinaryZ = (ordinaryPoints.Min(p => p.z) + ordinaryPoints.Max(p => p.z)) * 0.5f;
+                Assert.That(actualZ, Is.EqualTo(ordinaryZ).Within(0.00001f), "Parallel full visible centerZ must match ordinary gem: " + context);
+                foreach (var member in groups)
+                {
+                    var points = VisibleCorners(member.transform, Matrix4x4.identity);
+                    Assert.That((points.Min(p => p.z) + points.Max(p => p.z)) * 0.5f,
+                        Is.EqualTo(ordinaryZ).Within(0.00001f), "Each Parallel member independently retains ordinary visible depth: " + context);
+                }
+            }
+            if (!cymbal && layout != "Parallel") return; // V/Bucket drums retain clearance.
+            var referenceGeometry = cache[groups[0]];
+            var referenceRotation = (Quaternion)referenceGeometry.GetType().GetField("Rotation", PreparedElitePlayerFixture.INSTANCE).GetValue(referenceGeometry);
+            Vector3 direction = layout == "Parallel"
+                ? Quaternion.AngleAxis(lefty ? -25f : 25f, Vector3.up) * (referenceRotation * Vector3.forward) : Vector3.right;
+            if (layout == "Parallel" && direction.z < 0f) direction = -direction;
+            if (!cymbal)
+            {
+                var first = VisibleCorners(groups[0].transform, Matrix4x4.identity);
+                var second = VisibleCorners(groups[1].transform, Matrix4x4.identity);
+                Assert.That(ProjectedOverlap(first, second, 0f), Is.False, "Parallel geometry must not penetrate: " + context);
+                Assert.That(ProjectedOverlap(first, second, -0.0001f), Is.True, "Any inward lateral squeeze must overlap: " + context);
+                return;
+            }
+            var surfaces = groups.Select(g => BaseTriangles(g, highway)).ToArray();
+            Assert.That(surfaces[0].Length, Is.GreaterThan(0), context);
+            Assert.That(surfaces[1].Length, Is.GreaterThan(0), context);
+            float separation = surfaces[1].Min(p => Vector3.Dot(p, direction)) -
+                surfaces[0].Max(p => Vector3.Dot(p, direction));
+            if (layout == "Parallel")
+            {
+                var geometryType = Production("YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry");
+                float priorDelta = (float)geometryType.GetMethod("GetLateralContact", BindingFlags.Static | BindingFlags.NonPublic)
+                    .Invoke(null, new object[] { surfaces[0], surfaces[1] });
+                float priorDistance = SurfaceDistance(surfaces[0], surfaces[1].Select(p => p + Vector3.right * priorDelta).ToArray());
+                Debug.Log($"Prior projected-hull contact: lateralDelta={priorDelta:R}, complete3DDistance={priorDistance:R}; {context}");
+                float outward = SurfaceDistance(surfaces[0], surfaces[1].Select(p => p + Vector3.right * 0.0001f).ToArray());
+                Assert.That(outward, Is.GreaterThan(0.00001f), "Outward lateral movement must open the first-contact seam: " + context);
+            }
+            else Assert.That(separation, Is.EqualTo(0f).Within(0.00001f), "Nonpenetrating base supports: " + context);
+            float distance = SurfaceDistance(surfaces[0], surfaces[1]);
+            Assert.That(distance, Is.LessThan(0.00001f), $"Bases must physically touch in 3D, distance={distance}: {context}");
+        }
+
+        private static bool ProjectedOverlap(Vector3[] left, Vector3[] right, float shift)
+        {
+            var a = left.Select(p => new Vector2(p.x, p.z)).Distinct().ToArray();
+            var b = right.Select(p => new Vector2(p.x + shift, p.z)).Distinct().ToArray();
+            foreach (var points in new[] { a, b })
+            for (int i = 0; i < points.Length; i++)
+            for (int j = i + 1; j < points.Length; j++)
+            {
+                var edge = points[j] - points[i];
+                if (edge.sqrMagnitude < 1e-12f) continue;
+                var axis = new Vector2(-edge.y, edge.x).normalized;
+                if (a.Max(p => Vector2.Dot(p, axis)) <= b.Min(p => Vector2.Dot(p, axis)) + 0.000001f ||
+                    b.Max(p => Vector2.Dot(p, axis)) <= a.Min(p => Vector2.Dot(p, axis)) + 0.000001f) return false;
+            }
+            return true;
+        }
+
+        private static Vector3[] VisibleCorners(Transform group, Matrix4x4 replacement, bool replace = false)
+        {
+            var points = new System.Collections.Generic.List<Vector3>();
+            foreach (var filter in group.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var bounds = filter.sharedMesh.bounds;
+                var child = group.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                var matrix = (replace ? replacement : Matrix4x4.TRS(group.localPosition, group.localRotation, group.localScale)) * child;
+                for (int i = 0; i < 8; i++)
+                    points.Add(matrix.MultiplyPoint3x4(bounds.center + Vector3.Scale(bounds.extents,
+                        new Vector3((i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f, (i & 4) == 0 ? -1f : 1f))));
+            }
+            return points.ToArray();
+        }
+
+        private static Vector3[] BaseTriangles(Component group, Transform highway)
+        {
+            var result = new System.Collections.Generic.List<Vector3>();
+            foreach (var filter in group.GetComponentsInChildren<MeshFilter>())
+            {
+                var mesh = filter.sharedMesh;
+                Assert.That(mesh.isReadable, Is.True, mesh.name);
+                if (filter.transform.name == "Upper Cymbal" || filter.transform.parent.name == "Upper Cymbal") continue;
+                int[] indices;
+                if (filter.transform.name == "Base" || mesh.name == "Cymbal Base") indices = mesh.triangles;
+                else if (mesh.name.Contains("Cymbal") && mesh.subMeshCount > 2) indices = mesh.GetTriangles(2);
+                else continue;
+                var points = mesh.vertices;
+                var matrix = highway.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                foreach (int index in indices) result.Add(matrix.MultiplyPoint3x4(points[index]));
+                Debug.Log($"Flam base mesh {group.name}/{filter.name}, mesh={mesh.name}, triangles={indices.Length / 3}, transform={matrix}");
+            }
+            return result.ToArray();
+        }
+
+        // Independent point/triangle distance: a shared projection is insufficient
+        // when two support edges are staggered in height or depth.
+        [Test]
+        public void BaseSurfaceDistanceRejectsStaggeredCoplanarSupports()
+        {
+            var left = new[] { Vector3.zero, Vector3.up, Vector3.forward };
+            var staggered = left.Select(p => p + Vector3.forward * 3f).ToArray();
+            Assert.That(SurfaceDistance(left, staggered), Is.GreaterThan(1f),
+                "Identical X support planes do not establish physical contact.");
+            var touching = new[] { Vector3.zero, Vector3.down, Vector3.back };
+            Assert.That(SurfaceDistance(left, touching), Is.Zero.Within(0.000001f));
+        }
+
+        private static float SurfaceDistance(Vector3[] left, Vector3[] right)
+        {
+            float result = float.PositiveInfinity;
+            for (int side = 0; side < 2; side++)
+            {
+                var points = side == 0 ? left : right;
+                var triangles = side == 0 ? right : left;
+                foreach (var point in points)
+                for (int i = 0; i < triangles.Length; i += 3)
+                    result = Mathf.Min(result, PointTriangleDistance(point, triangles[i], triangles[i + 1], triangles[i + 2]));
+            }
+            float vertexDistance = result;
+            for (int i = 0; i < left.Length; i += 3)
+            for (int j = 0; j < right.Length; j += 3)
+            for (int a = 0; a < 3; a++)
+            for (int b = 0; b < 3; b++)
+                result = Mathf.Min(result, SegmentDistance(left[i + a], left[i + (a + 1) % 3], right[j + b], right[j + (b + 1) % 3]));
+            Debug.Log($"Base distance vertex/triangle={vertexDistance:R}, including edge/edge={result:R}");
+            return result;
+        }
+
+        private static float SegmentDistance(Vector3 p, Vector3 q, Vector3 r, Vector3 s)
+        {
+            var u = q - p;
+            var v = s - r;
+            var w = p - r;
+            float a = Vector3.Dot(u, u), b = Vector3.Dot(u, v), c = Vector3.Dot(v, v);
+            float d = Vector3.Dot(u, w), e = Vector3.Dot(v, w);
+            float t = a * c - b * b;
+            float x = t > 1e-20f ? Mathf.Clamp01((b * e - c * d) / t) : 0f;
+            float y = c > 1e-20f ? (b * x + e) / c : 0f;
+            if (y < 0f) { y = 0f; x = a > 1e-20f ? Mathf.Clamp01(-d / a) : 0f; }
+            else if (y > 1f) { y = 1f; x = a > 1e-20f ? Mathf.Clamp01((b - d) / a) : 0f; }
+            return Vector3.Distance(p + x * u, r + y * v);
+        }
+
+        [Test]
+        public void BaseSurfaceDistanceIncludesInteriorEdgeContact()
+        {
+            var a = new[] { new Vector3(-1f, 0f, 0f), new Vector3(1f, 0f, 0f), new Vector3(0f, -1f, 0f) };
+            var b = new[] { new Vector3(0f, 0f, -1f), new Vector3(0f, 0f, 1f), new Vector3(0f, 1f, 0f) };
+            Assert.That(a.Min(p => PointTriangleDistance(p, b[0], b[1], b[2])), Is.GreaterThan(0.1f));
+            Assert.That(b.Min(p => PointTriangleDistance(p, a[0], a[1], a[2])), Is.GreaterThan(0.1f));
+            Assert.That(SurfaceDistance(a, b), Is.LessThan(0.00001f));
+        }
+
+        private static float PointTriangleDistance(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            float Edge(Vector3 start, Vector3 end)
+            {
+                var edge = end - start;
+                return Vector3.Distance(p, start + edge * Mathf.Clamp01(Vector3.Dot(p - start, edge) / Mathf.Max(edge.sqrMagnitude, 1e-20f)));
+            }
+            var normal = Vector3.Cross(b - a, c - a);
+            float length = normal.magnitude;
+            if (length > 1e-10f)
+            {
+                normal /= length;
+                var q = p - normal * Vector3.Dot(p - a, normal);
+                float ab = Vector3.Dot(Vector3.Cross(b - a, q - a), normal);
+                float bc = Vector3.Dot(Vector3.Cross(c - b, q - b), normal);
+                float ca = Vector3.Dot(Vector3.Cross(a - c, q - c), normal);
+                if (ab >= 0f && bc >= 0f && ca >= 0f) return Mathf.Abs(Vector3.Dot(p - a, normal));
+            }
+            return Mathf.Min(Edge(a, b), Mathf.Min(Edge(b, c), Edge(c, a)));
+        }
+
         private static void AssertReceptorFacingV(Component element, Transform highway)
         {
             var groups = element.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
@@ -967,7 +1211,8 @@ namespace YARG.Tests.PlayMode
             return groups.Select(g => ActiveMeshBounds(g, highway)).OrderBy(b => b.min).ToArray();
         }
 
-        private static void AssertGameplayPairPoolReset(Component player, Component element, EliteDrumNote source)
+        private static void AssertGameplayPairPoolReset(Component player, Component element, EliteDrumNote source,
+            string layout = "V", bool lefty = false)
         {
             foreach (string shape in new[] { "regular", "flat", "ordinary" })
             {
@@ -995,7 +1240,9 @@ namespace YARG.Tests.PlayMode
                     Assert.That(scale.x, Is.EqualTo(authoredScale.x * factor).Within(0.00001f));
                     Assert.That(scale.y, Is.EqualTo(authoredScale.y).Within(0.00001f));
                     Assert.That(scale.z, Is.EqualTo(authoredScale.z).Within(0.00001f));
-                    var expectedRotation = shape == "regular" ? Quaternion.AngleAxis(i == 0 ? 25f : -25f, Vector3.up) * authoredRotation : authoredRotation;
+                    float angle = layout == "Parallel" ? (lefty ? -25f : 25f) : (i == 0 ? 25f : -25f);
+                    var expectedRotation = shape == "regular" ? Quaternion.AngleAxis(layout == "Bucket" ? -angle : angle,
+                        layout == "Bucket" ? Vector3.forward : Vector3.up) * authoredRotation : authoredRotation;
                     Assert.That(Quaternion.Angle(ordered[i].transform.localRotation, expectedRotation), Is.LessThan(0.001f),
                         "Pooled regular/flat/ordinary gems preserve authored rotation and never accumulate extra rotation.");
                     if (shape != "regular") Assert.That(ordered[i].transform.localPosition.z,

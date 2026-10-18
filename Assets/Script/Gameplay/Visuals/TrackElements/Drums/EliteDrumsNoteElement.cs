@@ -259,7 +259,10 @@ namespace YARG.Gameplay.Visuals
                 var r = splitGroups[baseIndex + SPLIT_RIGHT];
                 EliteDrumsRuntimeGeometry.FitPair(Geometry(l), l.transform, Geometry(r), r.transform,
                     Player.Layout.Lanes.Count, laneCenter, regionWidth, transform.localPosition.x,
-                    !NoteRef.IsFlatFlam);
+                    !NoteRef.IsFlatFlam, SettingsManager.Settings.EliteFlamLayout.Value,
+                    group is CYMBAL or CYMBAL_ACCENT or CYMBAL_GHOST or OPEN_HI_HAT or OPEN_HI_HAT_ACCENT
+                        or OPEN_HI_HAT_GHOST or CLOSED_HI_HAT or CLOSED_HI_HAT_ACCENT or CLOSED_HI_HAT_GHOST,
+                    Player.Player.Profile.LeftyFlip);
             }
             left.SetActive(true);
             right.SetActive(true);

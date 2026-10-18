@@ -134,8 +134,8 @@ namespace YARG.Tests.EditMode
             var models = new HashSet<string>();
             var flamRoles = new HashSet<EliteDrumsColorRole>();
             var firstCycle = new List<EliteDrumsColorRole>();
-            Assert.That(type.GetField("NOTE_COUNT").GetRawConstantValue(), Is.EqualTo(126));
-            for (int i = 0; i < 126; i++)
+            Assert.That(type.GetField("NOTE_COUNT").GetRawConstantValue(), Is.EqualTo(142));
+            for (int i = 0; i < 142; i++)
             {
                 var note = create.Invoke(generator, new object[] { i * 0.2d, null });
                 Assert.That(note, Is.Not.Null);
@@ -145,8 +145,8 @@ namespace YARG.Tests.EditMode
                 models.Add(note.GetType().GetField("NoteType").GetValue(note).ToString());
                 if ((bool) note.GetType().GetField("EliteHandFlam").GetValue(note))
                     flamRoles.Add(role);
-                if (i < 63) firstCycle.Add(role);
-                else Assert.That(role, Is.EqualTo(firstCycle[i - 63]), $"Repeated sample {i}");
+                if (i < 71) firstCycle.Add(role);
+                else Assert.That(role, Is.EqualTo(firstCycle[i - 71]), $"Repeated sample {i}");
             }
             Assert.That(flamRoles, Is.SupersetOf(new[] { EliteDrumsColorRole.Snare,
                 EliteDrumsColorRole.Tom1, EliteDrumsColorRole.Tom2, EliteDrumsColorRole.Tom3 }));
@@ -187,8 +187,9 @@ namespace YARG.Tests.EditMode
             var doubleKick = Describe(EliteDrumsColorRole.DoubleKick);
             Assert.That(Get(kick, "IsBar"), Is.True);
             Assert.That(Get(kick, "Width"), Is.EqualTo(1f));
-            Assert.That(Get(doubleKick, "Width"), Is.EqualTo(0.5f));
-            Assert.That(Get(doubleKick, "Offset"), Is.EqualTo(0.5f));
+            Assert.That(Get(doubleKick, "Width"), Is.EqualTo(1f),
+                "Standalone DoubleKick is a full bar; only an actual simultaneous pedal sample shortens it.");
+            Assert.That(Get(doubleKick, "Offset"), Is.EqualTo(0f));
             var stomp = Describe(EliteDrumsColorRole.Stomp);
             var splash = Describe(EliteDrumsColorRole.Splash);
             Assert.That(Get(stomp, "Width"), Is.EqualTo(0.5f),
@@ -218,7 +219,7 @@ namespace YARG.Tests.EditMode
                     Enum.Parse(Production("YARG.Themes.ThemeNoteType"), "Normal") }) });
 
             object missingHatNote = null;
-            for (int index = 0; index < 59; index++)
+            for (int index = 0; index < 71; index++)
             {
                 var generated = createNote.Invoke(generator, new object[] { index * 0.2d, null });
                 var generatedDescriptor = generated.GetType().GetField("EliteDescriptor").GetValue(generated);

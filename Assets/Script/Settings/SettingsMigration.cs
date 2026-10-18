@@ -60,6 +60,15 @@ namespace YARG.Settings
                 }
             }
 
+            // Compatibility for the short-lived branch toggle, independent of schema.
+            if (!settings.ContainsKey(nameof(SettingsManager.SettingContainer.EliteFlamLayout)) &&
+                settings.TryGetValue("AlternateEliteFlamLayout", out var alternate) &&
+                alternate.Type == JTokenType.Boolean)
+            {
+                settings[nameof(SettingsManager.SettingContainer.EliteFlamLayout)] =
+                    (int) (alternate.Value<bool>() ? EliteFlamLayout.Bucket : EliteFlamLayout.V);
+            }
+            settings.Remove("AlternateEliteFlamLayout");
             SetCurrentSchemaVersion(settings);
             return settings;
         }
