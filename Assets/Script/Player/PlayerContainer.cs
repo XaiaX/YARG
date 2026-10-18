@@ -716,40 +716,14 @@ namespace YARG.Player
                 UpdateProfileOrder();
             }
 
-            string profilesJson = JsonConvert.SerializeObject(_profiles, Formatting.Indented);
-
-            // We do this dance with the temporary file to avoid the possibility of corruption during saving
-            string tempPath = Path.Combine(ProfilesDirectory, Path.GetRandomFileName());
-
-            try
+            if (!ProfileFileStorage.TrySaveProfiles(ProfilesDirectory, _profiles, out int savedCount))
             {
-                File.WriteAllText(tempPath, profilesJson);
-            }
-            catch (Exception e)
-            {
-                YargLogger.LogFormatError("Failed to write profiles to file: {0}", e.Message);
                 return 0;
             }
-
-            // Verify that the newly written file is valid before replacing the old one
-            int? profileCount = VerifyProfileFile(tempPath);
-            if (profileCount is null || profileCount != _profiles.Count)
-            {
-                YargLogger.LogFormatError("Failed to verify new profiles file: {0} profiles were expected, but {1} were found", _profiles.Count, profileCount ?? -1);
-                File.Delete(tempPath);
-                return 0;
-            }
-
-            if (File.Exists(ProfilesPath))
-            {
-                File.Delete(ProfilesPath);
-            }
-
-            File.Move(tempPath, ProfilesPath);
 
             BindingsContainer.SaveBindings();
 
-            return _profiles.Count;
+            return savedCount;
         }
 
         private static bool SaveBackupProfiles()

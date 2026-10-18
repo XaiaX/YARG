@@ -5,6 +5,7 @@ using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Helpers;
@@ -25,6 +26,10 @@ namespace YARG.Menu.HighwayConfiguration
         [SerializeField] private NavigationGroup _navigation;
         [SerializeField] private EliteDrumsLayoutCell[] _cells;
         [SerializeField] private GameObject _popup;
+        [SerializeField] private AssignmentPopupLayout _popupLayout;
+        [SerializeField] private float _transformSectionRight;
+        private Vector2 _transformCanvasSize;
+        private bool _transformGeometryFits = true;
         [SerializeField] private Button _popupBackdropButton;
         [SerializeField] private NavigationGroup _popupNavigation;
         [SerializeField] private Button[] _choices;
@@ -43,6 +48,10 @@ namespace YARG.Menu.HighwayConfiguration
         [SerializeField] private TMP_Dropdown _layoutDropdown;
         private EliteDrumsLayoutPreset[] _layouts;
         private Guid? _temporaryLayoutId;
+        private EliteDrumsLayoutPreset _lastAcceptedProfileLayout;
+        private Guid? _lastEditorLayoutId;
+        private Guid? _profileSelectedLayoutId;
+        private EliteDrumsLayoutPreset _pendingManagedSelection;
         [SerializeField] private Button _openLayoutFolder;
         [SerializeField] private Button _renameLayout;
         [SerializeField] private Button _copyLayout;
@@ -50,6 +59,7 @@ namespace YARG.Menu.HighwayConfiguration
         [SerializeField] private Button _importLayout;
         [SerializeField] private Button _exportLayout;
         private bool _managementInitialized;
+        private bool _refreshingManagementList;
         [SerializeField] private TMP_Dropdown _previewColor;
         [SerializeField] private Transform _previewWorld;
         [SerializeField] private RawImage _previewImage;
@@ -58,6 +68,7 @@ namespace YARG.Menu.HighwayConfiguration
         private ColorProfile _previewColorProfile;
         private TrackPreviewBuilder _previewBuilder;
         [SerializeField] private TMP_Dropdown _previewOptions;
+        [SerializeField] private Toggle _leftyFlipToggle;
         private YARG.Settings.Types.DropdownSetting<string> _previewOptionSetting;
         private bool _forceStarPowerNotes;
         private bool _forceStarPower;
@@ -69,17 +80,28 @@ namespace YARG.Menu.HighwayConfiguration
         private EliteDrumsLayoutPreset _original;
         private EliteDrumsLayoutPreset _draft;
         private Action<EliteDrumsLayoutPreset> _saveDraft;
+        private Func<EliteDrumsLayoutPreset, EliteDrumsLayoutPreset> _commitDraft;
         private Action _closed;
         private Action _pendingDiscard;
         private string[] _choiceIds;
         private int _column;
         private bool _drum;
         private int? _returnFocus;
+        private CanvasGroup _backgroundInputGroup;
+        private bool _backgroundWasInteractable;
+        private int _popupDismissedFrame = -1;
+        private bool BackgroundInputAllowed => (_popup == null || !_popup.activeSelf) &&
+            (!Application.isPlaying || Time.frameCount != _popupDismissedFrame);
         private bool _initialized;
         private bool _controlsInitialized;
         private bool _newCopy;
         private bool _ownsScheme;
         private Guid? _profileColorId;
+        private Func<bool> _profileContextIsCurrent;
+        private bool _profileContextInvalidated;
+        private Func<EliteDrumsLayoutPreset, bool> _acceptProfileLayout;
+        private Func<ColorProfile, bool> _acceptProfileColor;
+        private Func<bool, bool> _acceptProfileLeftyFlip;
         private Action<string> _openFolder = FileExplorerHelper.OpenFolder;
         public void SetFolderOpener(Action<string> openFolder) => _openFolder = openFolder ?? FileExplorerHelper.OpenFolder;
 
@@ -121,10 +143,10 @@ namespace YARG.Menu.HighwayConfiguration
                 _previewColorLabel.text = Localize.Key("Menu.EliteLayout.Colors").ToUpperInvariant();
             if (_layoutDropdown != null)
             {
-                RefreshManagementList();
+                RefreshManagementList(selectLayout: false);
                 _layoutDropdown.onValueChanged.AddListener(index =>
                 {
-                    if (index >= 0 && index < _layouts.Length)
+                    if (!_refreshingManagementList && index >= 0 && index < _layouts.Length)
                         SelectManagedLayout(_layouts[index]);
                 });
                 _navigation.AddNavigatable(RuntimeNavigatable.Attach(_layoutDropdown.gameObject,
@@ -134,7 +156,8 @@ namespace YARG.Menu.HighwayConfiguration
             Register(_navigation, _back, RequestClose);
             if (_previewOptions != null)
             {
-                _previewOptionSetting = PreviewOptionsDropdown.Create(GetPreviewOptionsState, OnPreviewOptionSelected);
+                _previewOptionSetting = PreviewOptionsDropdown.Create(GetPreviewOptionsState, OnPreviewOptionSelected,
+                    includeLeftyFlip: false);
                 var optionValues = ((IEnumerable<string>)_previewOptionSetting).ToArray();
                 _previewOptions.ClearOptions();
                 _previewOptions.AddOptions(optionValues.Select(value => PreviewOptionsDropdown.DisplayValue(
@@ -151,6 +174,16 @@ namespace YARG.Menu.HighwayConfiguration
                 _navigation.AddNavigatable(RuntimeNavigatable.Attach(_previewOptions.gameObject,
                     () => RuntimeNavigatable.OpenDropdownList(_previewOptions)));
             }
+            if (_leftyFlipToggle != null)
+            {
+                _leftyFlipToggle.SetIsOnWithoutNotify(_leftyFlip);
+                _leftyFlipToggle.onValueChanged.AddListener(OnLeftyFlipToggleChanged);
+                var leftyNavigation = _leftyFlipToggle.gameObject.AddComponent<RuntimeNavigatable>();
+                leftyNavigation.ConfirmCallback = () => _leftyFlipToggle.isOn = !_leftyFlipToggle.isOn;
+                var focus = _leftyFlipToggle.transform.Find("Lefty Flip Focus");
+                if (focus != null) leftyNavigation.SelectionVisual = focus.gameObject.SetActive;
+                _navigation.AddNavigatable(leftyNavigation);
+            }
             if (_previewColor != null)
             {
                 _previewColors = CustomContentManager.ColorProfiles.AddOptionsToDropdown(_previewColor)
@@ -163,13 +196,33 @@ namespace YARG.Menu.HighwayConfiguration
                 _previewColor.onValueChanged.AddListener(index =>
                 {
                     if (index < 0 || index >= _previewColors.Length) return;
-                    _previewColorProfile = _previewColors[index];
+                    UpdateProfileContextControls();
+                    if (_profileContextInvalidated) return;
+                    var color = _previewColors[index];
+                    if (_profileContextIsCurrent != null &&
+                        (!_profileContextIsCurrent() || !_acceptProfileColor(color)))
+                    {
+                        int previous = Array.FindIndex(_previewColors, item => item.Id == _previewColorProfile?.Id);
+                        if (previous >= 0) _previewColor.SetValueWithoutNotify(previous);
+                        return;
+                    }
+                    _previewColorProfile = color;
                     RefreshCellIndicators();
                     if (_previewBuilder != null) _previewBuilder.RefreshColors(_previewColorProfile);
                     else RebuildPreview();
                 });
                 _navigation.AddNavigatable(RuntimeNavigatable.Attach(_previewColor.gameObject,
                     () => RuntimeNavigatable.OpenDropdownList(_previewColor)));
+            }
+            _backgroundInputGroup = GetComponent<CanvasGroup>();
+            if (_backgroundInputGroup == null) _backgroundInputGroup = gameObject.AddComponent<CanvasGroup>();
+            var popupInputGroup = _popup.GetComponent<CanvasGroup>();
+            if (popupInputGroup == null) popupInputGroup = _popup.AddComponent<CanvasGroup>();
+            popupInputGroup.ignoreParentGroups = true;
+            foreach (var navigatable in GetComponentsInChildren<NavigatableBehaviour>(true))
+            {
+                if (!navigatable.transform.IsChildOf(_popup.transform))
+                    navigatable.InputAllowed = () => BackgroundInputAllowed;
             }
         }
 
@@ -181,10 +234,24 @@ namespace YARG.Menu.HighwayConfiguration
             SetButtonLabel(_deleteLayout, Localize.Key("Menu.Common.Delete"));
             SetButtonLabel(_importLayout, Localize.Key("Menu.EliteLayout.Import"));
             SetButtonLabel(_exportLayout, Localize.Key("Menu.EliteLayout.Export"));
-            SetButtonLabel(_shiftLeft, Localize.Key("Menu.EliteLayout.ShiftLeft"));
-            SetButtonLabel(_shiftRight, Localize.Key("Menu.EliteLayout.ShiftRight"));
-            SetButtonLabel(_reverseLayout, Localize.Key("Menu.EliteLayout.Reverse"));
+            SetButtonLabel(_shiftLeft, EliteDrumsTransformButtonLayout.ShiftLeftLabel(Localize.Key("Menu.EliteLayout.ShiftLeft")));
+            SetButtonLabel(_shiftRight, EliteDrumsTransformButtonLayout.ShiftRightLabel(Localize.Key("Menu.EliteLayout.ShiftRight")));
+            SetButtonLabel(_reverseLayout, EliteDrumsTransformButtonLayout.ReverseLabel(Localize.Key("Menu.EliteLayout.Reverse")));
+            _transformCanvasSize = Vector2.zero;
             SetButtonLabel(_save, Localize.Key("Menu.Common.Save"));
+        }
+
+        private void RefreshTransformGeometry()
+        {
+            _transformCanvasSize = ((RectTransform) transform).rect.size;
+            if (_transformCanvasSize.x <= 0f || _transformSectionRight <= 0f ||
+                _shiftLeft == null || _reverseLayout == null || _shiftRight == null) return;
+            var actions = new[] { _shiftLeft, _reverseLayout, _shiftRight };
+            var wrappers = actions.Select(button => (RectTransform) button.transform.parent).ToArray();
+            var labels = wrappers.Select(wrapper => wrapper.GetComponentInChildren<TMP_Text>(true)).ToArray();
+            _transformGeometryFits = EliteDrumsTransformButtonLayout.Apply(wrappers, labels,
+                (RectTransform) transform, 0.0225f, _transformSectionRight);
+            UpdateTransformActions();
         }
 
         private void InitializeManagementControls()
@@ -215,12 +282,20 @@ namespace YARG.Menu.HighwayConfiguration
             }
 
             _layouts = layouts.ToArray();
-            _layoutDropdown.ClearOptions();
-            _layoutDropdown.AddOptions(_layouts.Select(layout => layout.Name).ToList());
-            int index = selected == null ? 0 : Array.FindIndex(_layouts, layout => layout.Id == selected.Id);
-            if (index < 0) index = 0;
-            _layoutDropdown.SetValueWithoutNotify(index);
-            if (selectLayout && _layouts.Length > 0) SelectManagedLayout(_layouts[index]);
+            _refreshingManagementList = true;
+            try
+            {
+                _layoutDropdown.ClearOptions();
+                _layoutDropdown.AddOptions(_layouts.Select(layout => layout.Name).ToList());
+                int index = selected == null ? 0 : Array.FindIndex(_layouts, layout => layout.Id == selected.Id);
+                if (index < 0) index = 0;
+                _layoutDropdown.SetValueWithoutNotify(index);
+            }
+            finally
+            {
+                _refreshingManagementList = false;
+            }
+            if (selectLayout && _layouts.Length > 0) SelectManagedLayout(_layouts[_layoutDropdown.value]);
             UpdateManagementActions();
         }
 
@@ -291,19 +366,28 @@ namespace YARG.Menu.HighwayConfiguration
             foreach (bool drum in new[] { false, true })
             {
                 var row = _cells.Where(cell => cell.Drum == drum && IsEnabled(cell))
-                    .OrderBy(cell => cell.Column).Cast<NavigatableBehaviour>().ToList();
+                    .OrderBy(NavigationX).Cast<NavigatableBehaviour>().ToList();
                 if (row.Count > 0) rows.Add(row);
             }
-            AddRow(_shiftLeft, _shiftRight, _reverseLayout);
+            AddRow(_leftyFlipToggle, _shiftLeft, _reverseLayout, _shiftRight);
             return rows;
 
             void AddRow(params Selectable[] controls)
             {
                 var row = controls.Where(control => control != null)
                     .Select(control => control.GetComponent<NavigatableBehaviour>())
-                    .Where(IsEnabled).ToList();
+                    .Where(target => IsEnabled(target) || IsSelectedInactiveShift(target))
+                    .OrderBy(NavigationX).ToList();
                 if (row.Count > 0) rows.Add(row);
             }
+        }
+
+        private bool IsSelectedInactiveShift(NavigatableBehaviour target)
+        {
+            if (target == null || !target.isActiveAndEnabled || _navigation.SelectedBehaviour != target)
+                return false;
+            return (_shiftLeft != null && target.gameObject == _shiftLeft.gameObject) ||
+                (_shiftRight != null && target.gameObject == _shiftRight.gameObject);
         }
 
         private static bool IsEnabled(NavigatableBehaviour target)
@@ -319,12 +403,76 @@ namespace YARG.Menu.HighwayConfiguration
             return rect != null ? rect.TransformPoint(rect.rect.center).x : target.transform.position.x;
         }
 
+        private bool IsUsableStoredLayout(EliteDrumsLayoutPreset preset) => preset != null &&
+            _temporaryLayoutId != preset.Id &&
+            EliteDrumsLayoutValidator.Validate(preset).IsRuntimeSupported &&
+            CustomContentManager.EliteDrumsLayouts.UsablePresets.Any(layout => layout.Id == preset.Id);
+
+        private void RestoreAcceptedProfileLayoutSelectionOnly()
+        {
+            if (_lastEditorLayoutId == null || _layoutDropdown == null) return;
+            int index = Array.FindIndex(_layouts, layout => layout.Id == _lastEditorLayoutId.Value);
+            if (index >= 0) _layoutDropdown.SetValueWithoutNotify(index);
+        }
+
+        private void RestoreAcceptedProfileLayoutSelection()
+        {
+            if (_lastAcceptedProfileLayout == null || _layoutDropdown == null) return;
+            int index = Array.FindIndex(_layouts, layout => layout.Id == _lastAcceptedProfileLayout.Id);
+            if (index < 0) return;
+            _layoutDropdown.SetValueWithoutNotify(index);
+            var accepted = _lastAcceptedProfileLayout.Copy();
+            _original = accepted;
+            _draft = accepted.Copy();
+            IsDirty = false;
+            _newCopy = false;
+            Render();
+            UpdateManagementActions();
+        }
+
+        private void UpdateProfileContextControls()
+        {
+            if (_profileContextIsCurrent == null || _profileContextIsCurrent() || _profileContextInvalidated) return;
+            _profileContextInvalidated = true;
+            foreach (var selectable in GetComponentsInChildren<Selectable>(true))
+                selectable.interactable = false;
+            if (_back != null) _back.interactable = true;
+            if (_popup.activeSelf) CancelPopup();
+            CancelDiscardConfirmation();
+            Close();
+        }
+
+        private void OnLeftyFlipToggleChanged(bool leftyFlip)
+        {
+            UpdateProfileContextControls();
+            if (_profileContextInvalidated || _profileContextIsCurrent != null &&
+                (!_profileContextIsCurrent() || !_acceptProfileLeftyFlip(leftyFlip)))
+            {
+                _leftyFlipToggle.SetIsOnWithoutNotify(_leftyFlip);
+                return;
+            }
+            _leftyFlip = leftyFlip;
+            UpdateTransformActions();
+            RefreshCellIndicators();
+            if (_previewBuilder != null) _previewBuilder.LeftyFlip = leftyFlip;
+            else RebuildPreview();
+        }
+
         private void SelectManagedLayout(EliteDrumsLayoutPreset preset)
         {
             if (preset == null) return;
+            UpdateProfileContextControls();
+            if (_profileContextInvalidated || _profileContextIsCurrent != null && !_profileContextIsCurrent())
+            {
+                RestoreAcceptedProfileLayoutSelection();
+                return;
+            }
             Action select = () =>
             {
                 var validation = EliteDrumsLayoutValidator.Validate(preset);
+                bool eligible = IsUsableStoredLayout(preset);
+                _lastEditorLayoutId = preset.Id;
+                _pendingManagedSelection = null;
                 if (!validation.IsStructurallyValid || preset.Merges.Length != 0)
                 {
                     _original = preset.Copy();
@@ -334,17 +482,29 @@ namespace YARG.Menu.HighwayConfiguration
                     RenderManagementStatus(preset);
                     UpdateManagementActions();
                     ClearPreview();
-                    return;
+                }
+                else
+                {
+                    _original = preset.Copy();
+                    _draft = preset.Copy();
+                    IsDirty = false;
+                    _newCopy = false;
+                    Render();
+                    UpdateManagementActions();
                 }
 
-                _original = preset.Copy();
-                _draft = preset.Copy();
-                IsDirty = false;
-                _newCopy = false;
-                Render();
-                UpdateManagementActions();
+                if (eligible && _profileContextIsCurrent != null && _profileContextIsCurrent() &&
+                    _acceptProfileLayout(preset.Copy()))
+                {
+                    _lastAcceptedProfileLayout = preset.Copy();
+                    _profileSelectedLayoutId = preset.Id;
+                }
             };
-            if (IsDirty) RequestDiscard(select);
+            if (IsDirty)
+            {
+                _pendingManagedSelection = preset.Copy();
+                RequestDiscard(select);
+            }
             else select();
         }
 
@@ -360,7 +520,7 @@ namespace YARG.Menu.HighwayConfiguration
                     {
                         var copy = (EliteDrumsLayoutPreset)selected.CopyWithNewName(name.Trim());
                         CustomContentManager.EliteDrumsLayouts.CopyPreset(selected, copy);
-                        RefreshManagementList(copy);
+                        RefreshManagementList(copy, selectLayout: false);
                         SelectManagedLayout(copy);
                     }
                     catch (Exception exception) { ShowManagementError(exception); }
@@ -379,17 +539,43 @@ namespace YARG.Menu.HighwayConfiguration
                 try
                 {
                     CustomContentManager.EliteDrumsLayouts.RenamePreset(selected, name.Trim());
-                    RefreshManagementList(selected);
+                    RefreshManagementList(selected, selectLayout: false);
                     SelectManagedLayout(selected);
                 }
                 catch (Exception exception) { ShowManagementError(exception); }
             }));
         }
 
+        private void CompleteLayoutDeletionSelection(bool deletesProfileSelection)
+        {
+            var fallback = EliteDrumsLayoutPreset.Compact;
+            bool fallbackUsable = CustomContentManager.EliteDrumsLayouts.UsablePresets
+                .Any(layout => layout.Id == fallback.Id);
+            if (deletesProfileSelection && fallbackUsable && _profileContextIsCurrent?.Invoke() == true &&
+                _acceptProfileLayout?.Invoke(fallback.Copy()) == true)
+            {
+                _lastAcceptedProfileLayout = fallback.Copy();
+                _profileSelectedLayoutId = fallback.Id;
+            }
+
+            var editorSelection = deletesProfileSelection || _profileContextIsCurrent == null
+                ? fallback
+                : _lastAcceptedProfileLayout ?? fallback;
+            RefreshManagementList(editorSelection, selectLayout: false);
+            _lastEditorLayoutId = editorSelection.Id;
+            _original = editorSelection.Copy();
+            _draft = editorSelection.Copy();
+            IsDirty = false;
+            _newCopy = false;
+            Render();
+            UpdateManagementActions();
+        }
+
         private void DeleteSelectedLayout()
         {
             var selected = SelectedLayout;
             if (selected == null || selected.DefaultPreset) return;
+            bool deletesProfileSelection = _profileContextIsCurrent != null && _profileSelectedLayoutId == selected.Id;
             RunAfterDiscard(() => PresetSubTab.ShowCompactConfirmation(
                 Localize.Key("Settings.PresetSetting.Dialog.DeletePreset.Title"),
                 Localize.KeyFormat("Settings.PresetSetting.Dialog.DeletePreset.Message", selected.Name),
@@ -398,10 +584,10 @@ namespace YARG.Menu.HighwayConfiguration
                     DialogManager.Instance.ClearDialog();
                     try
                     {
+                        UpdateProfileContextControls();
+                        if (_profileContextInvalidated) return;
                         CustomContentManager.EliteDrumsLayouts.DeletePreset(selected);
-                        var fallback = EliteDrumsLayoutPreset.Compact;
-                        RefreshManagementList(fallback);
-                        SelectManagedLayout(fallback);
+                        CompleteLayoutDeletionSelection(deletesProfileSelection);
                     }
                     catch (Exception exception) { ShowManagementError(exception); }
                 }, cancelColor: MenuData.Colors.BrightButton, armDelaySeconds: 2f));
@@ -425,7 +611,7 @@ namespace YARG.Menu.HighwayConfiguration
 
                     var imported = layouts.ImportPreset(path) as EliteDrumsLayoutPreset;
                     if (imported == null) return;
-                    RefreshManagementList(imported);
+                    RefreshManagementList(imported, selectLayout: false);
                     SelectManagedLayout(imported);
                 }
                 catch (Exception exception) { ShowManagementError(exception); }
@@ -513,16 +699,95 @@ namespace YARG.Menu.HighwayConfiguration
             }
         }
 
-        private static void Register(NavigationGroup group, Button button, Action action)
+        private void Register(NavigationGroup group, Button button, Action action)
         {
-            button.onClick.AddListener(() => { if (button.interactable) action(); });
-            group.AddNavigatable(RuntimeNavigatable.Attach(button.gameObject,
-                () => { if (button.interactable) action(); }));
+            bool Allowed() => button.interactable && (group == _popupNavigation || BackgroundInputAllowed);
+            button.onClick.AddListener(() => { if (Allowed()) action(); });
+            Action confirm = () => { if (Allowed()) action(); };
+            var popupRow = button.GetComponent<AssignmentPopupRow>();
+            var navigatable = popupRow != null ? popupRow.AttachNavigation(confirm) :
+                RuntimeNavigatable.Attach(button.gameObject, confirm);
+            if (popupRow != null) navigatable.InputAllowed = Allowed;
+            group.AddNavigatable(navigatable);
+        }
+
+        private void ClearProfileContext()
+        {
+            _profileContextIsCurrent = null;
+            _acceptProfileLayout = null;
+            _acceptProfileColor = null;
+            _acceptProfileLeftyFlip = null;
+            _lastAcceptedProfileLayout = null;
+            _commitDraft = null;
+        }
+
+        public void InitializeForProfile(EliteDrumsLayoutPreset layout, ColorProfile previewColor, bool leftyFlip,
+            Action<EliteDrumsLayoutPreset> save, Action closed, Func<bool> isProfileCurrent,
+            Func<EliteDrumsLayoutPreset, bool> acceptLayout, Func<ColorProfile, bool> acceptColor,
+            Func<bool, bool> acceptLeftyFlip) =>
+            InitializeForProfileCore(layout, previewColor, leftyFlip, save, null, closed, isProfileCurrent,
+                acceptLayout, acceptColor, acceptLeftyFlip);
+
+        public void InitializeForProfileWithCommit(EliteDrumsLayoutPreset layout, ColorProfile previewColor,
+            bool leftyFlip, Func<EliteDrumsLayoutPreset, EliteDrumsLayoutPreset> commit, Action closed,
+            Func<bool> isProfileCurrent, Func<EliteDrumsLayoutPreset, bool> acceptLayout,
+            Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip) =>
+            InitializeForProfileCore(layout, previewColor, leftyFlip, null,
+                commit ?? throw new ArgumentNullException(nameof(commit)), closed, isProfileCurrent,
+                acceptLayout, acceptColor, acceptLeftyFlip);
+
+        private void InitializeForProfileCore(EliteDrumsLayoutPreset layout, ColorProfile previewColor,
+            bool leftyFlip, Action<EliteDrumsLayoutPreset> save,
+            Func<EliteDrumsLayoutPreset, EliteDrumsLayoutPreset> commit, Action closed,
+            Func<bool> isProfileCurrent, Func<EliteDrumsLayoutPreset, bool> acceptLayout,
+            Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip)
+        {
+            var current = isProfileCurrent ?? throw new ArgumentNullException(nameof(isProfileCurrent));
+            var layoutAccepted = acceptLayout ?? throw new ArgumentNullException(nameof(acceptLayout));
+            var colorAccepted = acceptColor ?? throw new ArgumentNullException(nameof(acceptColor));
+            var leftyAccepted = acceptLeftyFlip ?? throw new ArgumentNullException(nameof(acceptLeftyFlip));
+            var validation = EliteDrumsLayoutValidator.Validate(layout);
+            if (!validation.IsStructurallyValid)
+                throw new ArgumentException("Only structurally valid layouts can be opened in the editor: " +
+                    string.Join(" ", validation.Errors), nameof(layout));
+            if (_initialized && IsDirty)
+            {
+                RequestDiscard(() => InitializeForProfileCore(layout, previewColor, leftyFlip, save, commit,
+                    closed, current, layoutAccepted, colorAccepted, leftyAccepted));
+                return;
+            }
+
+            ClearProfileContext();
+            _profileContextIsCurrent = current;
+            _profileContextInvalidated = false;
+            foreach (var selectable in GetComponentsInChildren<Selectable>(true))
+                selectable.interactable = true;
+            _acceptProfileLayout = layoutAccepted;
+            _acceptProfileColor = colorAccepted;
+            _acceptProfileLeftyFlip = leftyAccepted;
+            _profileColorId = previewColor?.Id;
+            _previewColorProfile = previewColor;
+            _leftyFlip = leftyFlip;
+            _commitDraft = commit;
+            InitializeCore(layout, save, closed);
+            _lastAcceptedProfileLayout = layout.Copy();
+            _profileSelectedLayoutId = layout.Id;
+            _lastEditorLayoutId = layout.Id;
+            if (_leftyFlipToggle != null) _leftyFlipToggle.SetIsOnWithoutNotify(leftyFlip);
+            if (_previewColor != null && _previewColors != null && previewColor != null)
+            {
+                int index = Array.FindIndex(_previewColors, color => color.Id == previewColor.Id);
+                if (index >= 0) _previewColor.SetValueWithoutNotify(index);
+                _previewColorProfile = previewColor;
+                RefreshCellIndicators();
+                RebuildPreview();
+            }
         }
 
         public void Initialize(EliteDrumsLayoutPreset preset, Action<EliteDrumsLayoutPreset> save,
             Action closed, ColorProfile previewColor)
         {
+            ClearProfileContext();
             _profileColorId = previewColor?.Id;
             _previewColorProfile = previewColor;
             Initialize(preset, save, closed);
@@ -538,20 +803,30 @@ namespace YARG.Menu.HighwayConfiguration
 
         public void Initialize(EliteDrumsLayoutPreset preset, Action<EliteDrumsLayoutPreset> save, Action closed)
         {
-            InitializeControls();
-            var validation = EliteDrumsLayoutValidator.Validate(preset);
-            if (!validation.IsStructurallyValid)
-                throw new ArgumentException("Only structurally valid layouts can be opened in the editor: " +
-                    string.Join(" ", validation.Errors), nameof(preset));
+            ClearProfileContext();
             if (_initialized && IsDirty)
             {
                 RequestDiscard(() => Initialize(preset, save, closed));
                 return;
             }
+            InitializeCore(preset, save, closed);
+        }
+
+        private void InitializeCore(EliteDrumsLayoutPreset preset, Action<EliteDrumsLayoutPreset> save, Action closed)
+        {
+            InitializeControls();
+            var validation = EliteDrumsLayoutValidator.Validate(preset);
             if (!validation.IsStructurallyValid)
-                throw new ArgumentException("Only structurally valid layouts can be edited.", nameof(preset));
+                throw new ArgumentException("Only structurally valid layouts can be opened in the editor: " +
+                    string.Join(" ", validation.Errors), nameof(preset));
+            if (_profileContextIsCurrent == null)
+            {
+                _leftyFlip = false;
+                _leftyFlipToggle?.SetIsOnWithoutNotify(false);
+            }
             _original = preset.Copy();
             _draft = preset.Copy();
+            if (_profileContextIsCurrent != null) _lastAcceptedProfileLayout = preset.Copy();
             if (_layoutDropdown != null)
             {
                 RefreshManagementList(preset, selectLayout: false);
@@ -574,7 +849,7 @@ namespace YARG.Menu.HighwayConfiguration
 
         public void OpenCell(int column, bool drum)
         {
-            if (_draft == null || _original.DefaultPreset ||
+            if (!BackgroundInputAllowed || _draft == null || _original.DefaultPreset ||
                 !EliteDrumsLayoutValidator.Validate(_draft).IsStructurallyValid || _draft.Merges.Length != 0) return;
             _column = column;
             _drum = drum;
@@ -592,11 +867,19 @@ namespace YARG.Menu.HighwayConfiguration
                 if (wrapper != null) wrapper.gameObject.SetActive(visible);
                 else _choices[i].gameObject.SetActive(visible);
                 _choiceLabels[i].text = visible
-                    ? PopupLabel(_choiceIds[i] == "hi-hat" && drum ? "hi-hat-pedal" : _choiceIds[i])
+                    ? EliteDrumsAssignmentChoice.FormatLabel(_draft, column, drum, _choiceIds[i],
+                        PopupLabel(_choiceIds[i] == "hi-hat" && drum ? "hi-hat-pedal" : _choiceIds[i]))
                     : string.Empty;
+                _choices[i].GetComponent<AssignmentPopupRow>()?.ResetSelection();
                 _choices[i].interactable = !visible || _choiceIds[i] != "clear" || canClear;
             }
+            _backgroundWasInteractable = _backgroundInputGroup.interactable;
+            _backgroundInputGroup.interactable = false;
+            EventSystem.current?.SetSelectedGameObject(null);
+            _popup.transform.SetAsLastSibling();
             _popup.SetActive(true);
+            _popupLayout?.SetTitle(Localize.Key("Menu.EliteLayout.AssignmentTitle"));
+            _popupLayout?.Refresh();
             // Choices reuse button instances, so restore every active choice's palette on each opening.
             if (MenuData.Instance != null)
             {
@@ -606,7 +889,9 @@ namespace YARG.Menu.HighwayConfiguration
                         _choiceIds[i] == "clear"
                             ? canClear ? MenuData.Colors.BrightButton : Color.gray
                             : MenuData.Colors.ConfirmButton;
-                    StyleManagementButton(_choices[i], color);
+                    var row = _choices[i].GetComponent<AssignmentPopupRow>();
+                    if (row != null) row.SetActionStyle(_choiceIds[i] is "cancel" or "clear", color);
+                    else StyleManagementButton(_choices[i], color);
                 }
             }
             // NavigationGroup skips inactive objects, but not disabled Buttons. Keep Clear visible
@@ -632,7 +917,7 @@ namespace YARG.Menu.HighwayConfiguration
 
         private void Choose(int index)
         {
-            if (index >= _choiceIds.Length) return;
+            if (!_popup.activeSelf || index < 0 || index >= _choiceIds.Length || !_choices[index].interactable) return;
             string id = _choiceIds[index];
             if (id == "cancel") { CancelPopup(); return; }
             var changed = id switch
@@ -653,19 +938,22 @@ namespace YARG.Menu.HighwayConfiguration
             _draft.Merges.Length == 0 && EliteDrumsLayoutValidator.Validate(_draft).IsStructurallyValid;
 
         private bool HasAssignedColumns => _draft.Slots.Any(slot => slot.Kind != EliteDrumsLayoutSlotKind.Empty);
-        public bool CanShiftLeft => CanTransformLayout && HasAssignedColumns &&
+        private bool CanShiftTowardLowerColumn => CanTransformLayout && HasAssignedColumns &&
             _draft.Slots[0].Kind == EliteDrumsLayoutSlotKind.Empty;
-        public bool CanShiftRight => CanTransformLayout && HasAssignedColumns &&
+        private bool CanShiftTowardHigherColumn => CanTransformLayout && HasAssignedColumns &&
             _draft.Slots[EliteDrumsLayoutPreset.SLOT_COUNT - 1].Kind == EliteDrumsLayoutSlotKind.Empty;
+        public bool CanShiftLeft => _leftyFlip ? CanShiftTowardHigherColumn : CanShiftTowardLowerColumn;
+        public bool CanShiftRight => _leftyFlip ? CanShiftTowardLowerColumn : CanShiftTowardHigherColumn;
         public bool CanReverseLayout => CanTransformLayout && HasAssignedColumns;
 
-        public void ShiftLeft() => TransformLayout(-1, false);
-        public void ShiftRight() => TransformLayout(1, false);
+        public void ShiftLeft() => TransformLayout(_leftyFlip ? 1 : -1, false);
+        public void ShiftRight() => TransformLayout(_leftyFlip ? -1 : 1, false);
         public void ReverseLayout() => TransformLayout(0, true);
 
         private void TransformLayout(int direction, bool reverse)
         {
-            if ((reverse ? !CanReverseLayout : direction < 0 ? !CanShiftLeft : !CanShiftRight) ||
+            bool canShiftInDirection = direction < 0 ? CanShiftTowardLowerColumn : CanShiftTowardHigherColumn;
+            if ((reverse ? !CanReverseLayout : !canShiftInDirection) ||
                 _popup != null && _popup.activeSelf || _discardConfirmationShowing) return;
 
             // Permute complete saved columns, not individual sources: rows, gaps and split kicks stay intact.
@@ -681,16 +969,8 @@ namespace YARG.Menu.HighwayConfiguration
             _draft = changed;
             IsDirty = _newCopy || !Equivalent(_original, _draft);
             Render();
-            // A shift can disable the button that invoked it at the boundary. Keep controller focus usable.
-            if (_navigation != null)
-            {
-                var rows = GetNavigationRows();
-                var selected = _navigation.SelectedBehaviour;
-                var actions = new[] { _shiftLeft, _shiftRight, _reverseLayout };
-                if (actions.Any(button => button != null && !button.interactable &&
-                    button.GetComponent<RuntimeNavigatable>() == selected))
-                    rows.SelectMany(row => row).FirstOrDefault()?.SetSelected(true, SelectionOrigin.Programmatically);
-            }
+            // Keep focus on the invoking action at the boundary. Confirm remains gated by
+            // interactability, while directional navigation can leave the inactive action.
         }
 
         private void UpdateTransformActions()
@@ -703,7 +983,7 @@ namespace YARG.Menu.HighwayConfiguration
             {
                 if (button == null) return;
                 var wrapper = button.GetComponentInParent<YARG.Menu.ColoredButton>(true);
-                (wrapper != null ? wrapper.gameObject : button.gameObject).SetActive(CanTransformLayout);
+                (wrapper != null ? wrapper.gameObject : button.gameObject).SetActive(CanTransformLayout && _transformGeometryFits);
                 button.interactable = enabled;
                 if (MenuData.Instance != null) StyleManagementButton(button, MenuData.Colors.BrightButton);
             }
@@ -718,7 +998,17 @@ namespace YARG.Menu.HighwayConfiguration
             if (!_popup.activeSelf) return;
             _popup.SetActive(false);
             NavigationGroup.RemoveFromNavigationStack(_popupNavigation);
-            _navigation.SelectAt(_returnFocus);
+            if (_backgroundInputGroup != null) _backgroundInputGroup.interactable = _backgroundWasInteractable;
+            _popupDismissedFrame = Time.frameCount;
+            // Saved column/row identity survives mirrored presentation and navigation reordering.
+            var origin = _cells.FirstOrDefault(cell => cell.Column == _column && cell.Drum == _drum);
+            if (origin != null)
+            {
+                _navigation.SelectAt(null);
+                origin.SetSelected(true, SelectionOrigin.Programmatically);
+                EventSystem.current?.SetSelectedGameObject(origin.gameObject);
+            }
+            else _navigation.SelectAt(_returnFocus);
         }
 
         /// <summary>Called by the full-screen picker blocker; its raycast consumes the click before this runs.</summary>
@@ -727,6 +1017,7 @@ namespace YARG.Menu.HighwayConfiguration
         /// <summary>Route the menu's back action here before closing its owning screen.</summary>
         public void Back()
         {
+            if (Application.isPlaying && Time.frameCount == _popupDismissedFrame) return;
             if (_popup.activeSelf) CancelPopup();
             else if (_discardConfirmationShowing)
                 CancelDiscardConfirmation();
@@ -735,15 +1026,35 @@ namespace YARG.Menu.HighwayConfiguration
 
         public void Save()
         {
-            if (!CanSave) return;
-            _saveDraft?.Invoke(_draft.Copy());
-            _original = _draft.Copy();
+            if (!BackgroundInputAllowed) return;
+            if (!CanSave || (_profileContextIsCurrent != null && !_profileContextIsCurrent()))
+            {
+                UpdateProfileContextControls();
+                return;
+            }
+            var savedDraft = _draft.Copy();
+            var committed = _commitDraft != null ? _commitDraft(savedDraft) : savedDraft;
+            if (_commitDraft == null) _saveDraft?.Invoke(savedDraft);
+            if (committed == null) return;
+            if (_layoutDropdown != null) RefreshManagementList(committed, selectLayout: false);
+            _lastEditorLayoutId = committed.Id;
+            if (_profileContextIsCurrent != null && _profileContextIsCurrent() && IsUsableStoredLayout(committed))
+            {
+                bool alreadyAccepted = _profileSelectedLayoutId == committed.Id;
+                if (alreadyAccepted || _acceptProfileLayout(committed.Copy()))
+                {
+                    _lastAcceptedProfileLayout = committed.Copy();
+                    _profileSelectedLayoutId = committed.Id;
+                }
+            }
+            _original = committed.Copy();
             IsDirty = false;
             Close();
         }
 
         public void RequestClose()
         {
+            if (!BackgroundInputAllowed) return;
             if (IsDirty) RequestDiscard(Close);
             else Close();
         }
@@ -754,6 +1065,8 @@ namespace YARG.Menu.HighwayConfiguration
             DialogManager.Instance?.ClearDialog();
             _discardConfirmationShowing = false;
             _pendingDiscard = null;
+            _pendingManagedSelection = null;
+            RestoreAcceptedProfileLayoutSelectionOnly();
         }
 
         private void RequestDiscard(Action action)
@@ -785,6 +1098,8 @@ namespace YARG.Menu.HighwayConfiguration
                 {
                     _discardConfirmationShowing = false;
                     _pendingDiscard = null;
+                    _pendingManagedSelection = null;
+                    RestoreAcceptedProfileLayoutSelectionOnly();
                 });
         }
 
@@ -793,6 +1108,7 @@ namespace YARG.Menu.HighwayConfiguration
             _draft = null;
             _initialized = false;
             gameObject.SetActive(false);
+            ClearProfileContext();
             _closed?.Invoke();
             if (_closed == null && MenuManager.Instance != null)
                 MenuManager.Instance.PopMenu();
@@ -864,9 +1180,13 @@ namespace YARG.Menu.HighwayConfiguration
             ClearPreview();
             NavigationGroup.RemoveFromNavigationStack(_navigation);
             NavigationGroup.RemoveFromNavigationStack(_popupNavigation);
+            if (_popup.activeSelf && _backgroundInputGroup != null)
+                _backgroundInputGroup.interactable = _backgroundWasInteractable;
             _popup.SetActive(false);
+            _popupNavigation.ClearNavigatables();
             _discardConfirmationShowing = false;
             _pendingDiscard = null;
+            _pendingManagedSelection = null;
         }
 
         private void Render()
@@ -895,6 +1215,7 @@ namespace YARG.Menu.HighwayConfiguration
             foreach (var cell in _cells)
             {
                 cell.gameObject.SetActive(true);
+                cell.SetLeftyFlip(_leftyFlip);
                 cell.Render(_draft.Slots[cell.Column], _previewColorProfile, _original?.DefaultPreset == true,
                     runtimeSupported);
             }
@@ -1031,6 +1352,9 @@ namespace YARG.Menu.HighwayConfiguration
 
         private void LateUpdate()
         {
+            if (!_popup.activeSelf && ((RectTransform) transform).rect.size != _transformCanvasSize)
+                RefreshTransformGeometry();
+            UpdateProfileContextControls();
             if (_previewWorld == null || _previewImage == null ||
                 !_previewImage.gameObject.activeInHierarchy) return;
 
@@ -1070,12 +1394,6 @@ namespace YARG.Menu.HighwayConfiguration
 
         internal static string Label(string id) => Localize.Key("Menu.EliteLayout.Item." + id);
 
-        private static string PopupLabel(string id) => id switch
-        {
-            "ride" => "RIDE CYMBAL",
-            "hi-hat" => "HI-HAT CYMBAL",
-            "hi-hat-pedal" => "HI-HAT PEDAL",
-            _ => Label(id).Replace("\n", " ").ToUpperInvariant()
-        };
+        private static string PopupLabel(string id) => Label(id).Replace("\n", " ").ToUpperInvariant();
     }
 }

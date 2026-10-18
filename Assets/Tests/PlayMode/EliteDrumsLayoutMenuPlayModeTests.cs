@@ -481,6 +481,7 @@ namespace YARG.Tests.PlayMode
             Call(Field(menu, "_navigation"), "ConfirmSelection");
             Call(Field(menu, "_popupNavigation"), "ConfirmSelection");
             Assert.That(menuType.GetProperty("IsDirty").GetValue(menu), Is.True);
+            yield return null; // Back is a new input, not the assignment's dismissal event.
             Call(menu, "Back");
             yield return null;
             Assert.That(_dialogManager.GetType().GetProperty("IsDialogShowing").GetValue(_dialogManager), Is.True);
@@ -522,7 +523,7 @@ namespace YARG.Tests.PlayMode
             var panel = popup.transform.Find("Assignment Popup Panel").GetComponent<RectTransform>();
             var popupRect = popup.GetComponent<RectTransform>();
             var outsideScreenPoint = RectTransformUtility.WorldToScreenPoint(null,
-                popupRect.TransformPoint(new Vector3(-popupRect.rect.width * 0.4f, 0f, 0f)));
+                popupRect.TransformPoint(new Vector3(popupRect.rect.xMin + 8f, 0f, 0f)));
             Assert.That(RectTransformUtility.RectangleContainsScreenPoint(popupRect, outsideScreenPoint), Is.True,
                 "The outside-click point must still be inside the full-screen blocker.");
             Assert.That(RectTransformUtility.RectangleContainsScreenPoint(panel, outsideScreenPoint), Is.False);
@@ -553,6 +554,7 @@ namespace YARG.Tests.PlayMode
             Assert.That(popup.activeSelf, Is.False);
             Assert.That(source.Slots[0].Cymbal, Is.Null, "The outside click must not assign the underlying cell.");
             UnityEngine.Object.Destroy(eventSystemObject);
+            yield return null; // The dismissal input must not reopen the picker in its release frame.
             Call(menu, "OpenCell", 0, false);
             var choiceIds = (string[])Field(menu, "_choiceIds");
             var choices = (Button[])Field(menu, "_choices");
@@ -576,6 +578,8 @@ namespace YARG.Tests.PlayMode
                     "Shrinking the picker must hide the entire option row, including its sibling label.");
                 Assert.That((string)((Component)labels.GetValue(i)).GetType().GetProperty("text").GetValue(labels.GetValue(i)), Is.Empty);
             }
+            Call(menu, "CancelPopup");
+            yield return null;
             Call(menu, "OpenCell", 0, true);
             var grownChoiceIds = (string[])Field(menu, "_choiceIds");
             Assert.That(grownChoiceIds.Length, Is.GreaterThan(choiceIds.Length));
@@ -584,6 +588,8 @@ namespace YARG.Tests.PlayMode
                 Assert.That(choices[i].transform.parent.gameObject.activeSelf, Is.True);
                 Assert.That((string)((Component)labels.GetValue(i)).GetType().GetProperty("text").GetValue(labels.GetValue(i)), Is.Not.Empty);
             }
+            Call(menu, "CancelPopup");
+            yield return null;
             Call(menu, "OpenCell", 1, false);
             var assignedChoices = (string[])Field(menu, "_choiceIds");
             int assignedClearIndex = Array.IndexOf(assignedChoices, "clear");
@@ -601,7 +607,7 @@ namespace YARG.Tests.PlayMode
             yield return null;
             Assert.That(((GameObject)Field(menu, "_popup")).activeSelf, Is.False);
             Assert.That(navigation.GetType().GetProperty("SelectedBehaviour").GetValue(navigation),
-                Is.SameAs(invokingCell));
+                Is.SameAs(((Array)Field(menu, "_cells")).GetValue(1)), "Dismissal restores the last opened saved column/row.");
             Assert.That(source.Slots[0].Cymbal, Is.Null);
 #else
             Assert.Ignore("Requires the serialized production prefab from the Editor asset database.");

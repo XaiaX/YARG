@@ -7,6 +7,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Game;
 #if UNITY_EDITOR
@@ -23,9 +24,17 @@ namespace YARG.Tests.PlayMode
         private const string MENU_PREFAB_PATH = "Assets/Prefabs/Menu/ProfileList/ProfileListMenu.prefab";
         private const string HEADER_PREFAB_PATH = "Assets/Prefabs/Menu/ProfileList/ListHeader.prefab";
         private const string MENU_COLORS_PATH = "Assets/Art/Menu/Data/MenuColors.asset";
+        private const string NAVIGATION_ICONS_PATH = "Assets/Art/Menu/Data/NavigationIcons.asset";
+        private const string HELPBAR_BUTTON_PATH = "Assets/Prefabs/Menu/Persistent/HelpBarButton.prefab";
 
         private GameObject _host;
-        private GameObject _menuDataObject;
+        private GameObject _menuServicesRoot;
+        private GameObject _canvasObject;
+        private Component _menuManager;
+        private GameObject _themeManagerObject;
+        private Action _injectedSaveAction;
+        private int _lifecycleSaveCount;
+        private int _preferenceSaveCount;
         private object _originalSettings;
         private bool _originalSettingsInitialized;
         private bool _capturedSettings;
@@ -48,6 +57,9 @@ namespace YARG.Tests.PlayMode
         private static FieldInfo PrivateField(Type type, string name, bool isStatic = false) =>
             type.GetField(name, isStatic ? PRIVATE_STATIC : PRIVATE_INSTANCE);
 
+        private static FieldInfo PrivateField(object target, string name) =>
+            PrivateField(target.GetType(), name);
+
         private static object Call(object target, string name, params object[] args)
         {
             var method = target.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
@@ -59,12 +71,30 @@ namespace YARG.Tests.PlayMode
         public IEnumerator SetUp()
         {
 #if UNITY_EDITOR
+            _lifecycleSaveCount = 0;
+            _preferenceSaveCount = 0;
             _capturedSettings = false;
             _ownsAudioManager = false;
+            _host = null;
+            _menuServicesRoot = null;
+            _canvasObject = null;
+            _menuManager = null;
+            _themeManagerObject = null;
+            _profiles = null;
+            _players = null;
+            _playersByProfile = null;
+            _profilesById = null;
+            _unloadedProfiles = null;
+            _originalProfiles = null;
+            _originalPlayers = null;
+            _originalPlayersByProfile = null;
+            _originalProfilesById = null;
+            _originalUnloadedProfiles = null;
+            _addedProfiles.Clear();
             SetUpSettingsAndAudio();
-            SetUpMenuData();
-            SetUpProductionMenu();
+            yield return SetUpThemeManager();
             SetUpProfiles();
+            SetUpProductionMenu();
             yield return null;
 #else
             Assert.Ignore("Requires production prefab assets from the Unity Editor asset database.");
@@ -103,36 +133,112 @@ namespace YARG.Tests.PlayMode
             }
         }
 
-        private void SetUpMenuData()
+        private IEnumerator SetUpThemeManager()
         {
-            var menuDataType = Production("YARG.Menu.Data.MenuData");
-            if (menuDataType.GetProperty("Instance", INHERITED_STATIC).GetValue(null) != null)
-                return;
+            var themeManagerType = Production("YARG.Themes.ThemeManager");
+            var instanceProperty = themeManagerType.GetProperty("Instance", INHERITED_STATIC);
+            if (instanceProperty.GetValue(null) == null)
+            {
+                _themeManagerObject = new GameObject("Profile selection PlayMode theme manager");
+                _themeManagerObject.AddComponent(themeManagerType);
+            }
+            yield return null;
 
-            var colors = AssetDatabase.LoadAssetAtPath<ScriptableObject>(MENU_COLORS_PATH);
-            Assert.That(colors, Is.Not.Null, "The production menu colors asset must be available.");
-            _menuDataObject = new GameObject("Profile selection PlayMode menu data");
-            _menuDataObject.SetActive(false);
-            var menuData = _menuDataObject.AddComponent(menuDataType);
-            PrivateField(menuDataType, "_colors").SetValue(menuData, colors);
-            _menuDataObject.SetActive(true);
+            var instance = instanceProperty.GetValue(null);
+            Assert.That(instance, Is.Not.Null, "The production theme manager must be initialized before the preview player starts.");
+            var defaultTheme = Production("YARG.Themes.ThemePreset").GetField("Default", BindingFlags.Public | BindingFlags.Static)
+                .GetValue(null);
+            var fretPrefab = themeManagerType.GetMethod("CreateFretPrefabFromTheme").Invoke(instance,
+                new[] { defaultTheme, Enum.Parse(Production("YARG.Themes.VisualStyle"), "FiveLaneDrums"), "fret" });
+            Assert.That(fretPrefab, Is.Not.Null, "The default theme must have a fret model for the preview player.");
         }
 
         private void SetUpProductionMenu()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(MENU_PREFAB_PATH);
             Assert.That(prefab, Is.Not.Null, "The production profile-list menu prefab must be available.");
-            _host = new GameObject("Profile selection PlayMode host");
-            _host.SetActive(false);
-            var menuObject = UnityEngine.Object.Instantiate(prefab, _host.transform, false);
-            var menuType = Production("YARG.Menu.ProfileList.ProfileListMenu");
-            var menu = menuObject.GetComponent(menuType);
-            Assert.That(menu, Is.Not.Null);
+            var colors = AssetDatabase.LoadAssetAtPath<ScriptableObject>(MENU_COLORS_PATH);
+            var icons = AssetDatabase.LoadAssetAtPath<ScriptableObject>(NAVIGATION_ICONS_PATH);
+            var buttonPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HELPBAR_BUTTON_PATH);
+            var headerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HEADER_PREFAB_PATH);
+            Assert.That(colors, Is.Not.Null);
+            Assert.That(icons, Is.Not.Null);
+            Assert.That(buttonPrefab, Is.Not.Null);
+            Assert.That(headerPrefab, Is.Not.Null);
 
-            // Suppress only the app-level menu callbacks (navigation schemes and profile persistence).
-            // The real child sidebar and NavigationGroup still receive Unity lifecycle callbacks.
-            ((Behaviour)menu).enabled = false;
+            _host = new GameObject("Profile selection PlayMode manager host");
+            _host.SetActive(false);
+            _canvasObject = new GameObject("Profile selection PlayMode canvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
+            _canvasObject.transform.SetParent(_host.transform, false);
+            _canvasObject.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            var underlying = new GameObject("Profile menu underlying entry", typeof(RectTransform), typeof(Canvas));
+            underlying.transform.SetParent(_canvasObject.transform, false);
+            var menuObjectType = Production("YARG.Menu.MenuObject");
+            var underlyingMenuObject = underlying.AddComponent(menuObjectType);
+            var menuManagerType = Production("YARG.Menu.MenuManager");
+            var menuEnum = menuManagerType.GetNestedType("Menu");
+            var underlyingMenu = Enum.Parse(menuEnum, "MainMenu");
+            menuObjectType.GetProperty("Menu").GetSetMethod(true).Invoke(underlyingMenuObject, new[] { underlyingMenu });
+            var manager = _host.AddComponent(menuManagerType);
+            _menuManager = (Component)manager;
+
+            var menuPrefabObject = UnityEngine.Object.Instantiate(prefab, _canvasObject.transform, false);
+            menuPrefabObject.SetActive(false);
+            var menuObject = menuPrefabObject.GetComponent(menuObjectType);
+            Assert.That(menuObject, Is.Not.Null, "Production profile prefab must have MenuObject.");
+            var profileListMenu = Enum.Parse(menuEnum, "ProfileList");
+            menuObjectType.GetProperty("Menu").GetSetMethod(true).Invoke(menuObject, new[] { profileListMenu });
+            _injectedSaveAction = () => _lifecycleSaveCount++;
+            var profileMenuType = Production("YARG.Menu.ProfileList.ProfileListMenu");
+            var profileMenu = menuPrefabObject.GetComponent(profileMenuType);
+            PrivateField(profileMenuType, "_profileListHeaderPrefab").SetValue(profileMenu, headerPrefab);
+            profileMenuType.GetMethod("SetSaveProfilesAction").Invoke(profileMenu, new object[] { _injectedSaveAction });
+            var sidebar = (Component)PrivateField(profileMenuType, "_profileSidebar").GetValue(profileMenu);
+            sidebar.GetType().GetMethod("SetSaveProfilesAction")
+                .Invoke(sidebar, new object[] { (Action)(() => _preferenceSaveCount++) });
+
+            _menuServicesRoot = new GameObject("Profile selection PlayMode navigation services");
+            _menuServicesRoot.SetActive(false);
+            var menuDataType = Production("YARG.Menu.Data.MenuData");
+            var menuDataInstance = menuDataType.GetProperty("Instance", INHERITED_STATIC).GetValue(null);
+            Assert.That(menuDataInstance, Is.Null,
+                "The fixture must own the single MenuData singleton so its menu colors are controlled.");
+            var menuData = _menuServicesRoot.AddComponent(menuDataType);
+            PrivateField(menuDataType, "_colors").SetValue(menuData, colors);
+            PrivateField(menuDataType, "_navigationIcons").SetValue(menuData, icons);
+
+            var helpBarObject = new GameObject("Profile menu test HelpBar");
+            helpBarObject.transform.SetParent(_menuServicesRoot.transform, false);
+            var helpBarType = Production("YARG.Menu.Persistent.HelpBar");
+            var helpBar = helpBarObject.AddComponent(helpBarType);
+            var buttonContainer = new GameObject("HelpBar buttons").transform;
+            buttonContainer.SetParent(helpBarObject.transform, false);
+            var musicPlayerObject = new GameObject("MusicPlayer");
+            musicPlayerObject.transform.SetParent(helpBarObject.transform, false);
+            musicPlayerObject.SetActive(false);
+            var musicPlayer = musicPlayerObject.AddComponent(Production("YARG.Menu.Persistent.MusicPlayer"));
+            PrivateField(helpBarType, "_buttonContainer").SetValue(helpBar, buttonContainer);
+            PrivateField(helpBarType, "_buttonPrefab").SetValue(helpBar, buttonPrefab);
+            helpBarType.GetProperty("MusicPlayer").GetSetMethod(true).Invoke(helpBar, new[] { musicPlayer });
+            _menuServicesRoot.AddComponent(Production("YARG.Menu.Navigation.Navigator"));
+
+            var dialogRoot = new GameObject("Dialog Container");
+            dialogRoot.transform.SetParent(_menuServicesRoot.transform, false);
+            var dialogType = Production("YARG.Menu.Persistent.DialogManager");
+            var dialog = _menuServicesRoot.AddComponent(dialogType);
+            PrivateField(dialogType, "_dialogContainer").SetValue(dialog, dialogRoot.transform);
+            PrivateField(dialogType, "_renameDialog").SetValue(dialog,
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Menu/Common/Dialogs/RenameDialog.prefab")
+                    .GetComponent(Production("YARG.Menu.Dialogs.RenameDialog")));
+            PrivateField(dialogType, "_messagePrefab").SetValue(dialog,
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Menu/Common/Dialogs/MessageDialog.prefab")
+                    .GetComponent(Production("YARG.Menu.Dialogs.MessageDialog")));
+            _menuServicesRoot.SetActive(true);
+            ((Behaviour)manager).enabled = false;
             _host.SetActive(true);
+            menuManagerType.GetMethod("PushMenu").Invoke(manager, new[] { underlyingMenu, true });
+            menuManagerType.GetMethod("ShowMenu", new[] { menuEnum, typeof(Transform) })
+                .Invoke(manager, new[] { profileListMenu, _canvasObject.transform });
         }
 
         private void SetUpProfiles()
@@ -193,7 +299,8 @@ namespace YARG.Tests.PlayMode
             GameMode = mode,
             NoteSpeed = noteSpeed,
             EnginePreset = EnginePreset.Default.Id,
-            ThemePreset = themeId
+            ThemePreset = themeId,
+            ColorProfile = ColorProfile.Default.Id
         };
 #endif
 
@@ -221,7 +328,7 @@ namespace YARG.Tests.PlayMode
             Assert.That(_profiles.Count, Is.EqualTo(3), "The fixture must contain exactly three profiles.");
             var profileViewType = Production("YARG.Menu.ProfileList.ProfileView");
             var rows = profiles.Select(profile => profileList.GetComponentsInChildren(profileViewType, true)
-                    .Cast<Component>().Single(row => ReferenceEquals(row.GetType().GetProperty("Profile").GetValue(row), profile)))
+                    .Cast<Component>().LastOrDefault(row => ReferenceEquals(row.GetType().GetProperty("Profile").GetValue(row), profile)))
                 .ToArray();
             Assert.That(rows, Has.Length.EqualTo(3),
                 "Production RefreshList must create all three mixed profile rows.");
@@ -401,6 +508,139 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ProfileEditorInitializesWithoutWrites()
+        {
+#if UNITY_EDITOR
+            Assert.That(_lifecycleSaveCount, Is.Zero, "Opening a profile menu must not save profiles.");
+            var eliteProfile = _addedProfiles.Single(profile => profile.GameMode == GameMode.EliteDrums);
+            Select(ProfileRow(GetProfileMenu(), eliteProfile));
+            yield return null;
+            OpenProfileEditor(eliteProfile);
+            Assert.That(GetActiveEditor(), Is.Not.Null, "The sidebar action must open the production editor menu.");
+            Assert.That(GetProfileMenu().gameObject.activeSelf, Is.False,
+                "The production editor menu hides the profile list through MenuManager.");
+            Assert.That(_preferenceSaveCount, Is.Zero, "Initializing the editor must not save preferences.");
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(1), "Hiding the profile list saves profiles exactly once.");
+            PopEditorBackToProfileMenu();
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(1), "Returning to the profile list must not save it again.");
+            Assert.That(_preferenceSaveCount, Is.Zero);
+            Assert.That(IsProfileMenuSelected(eliteProfile), Is.True);
+#else
+            Assert.Ignore("Requires production prefab assets from the Unity Editor asset database.");
+#endif
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ProfileEditorChangesRoundTripToSidebar()
+        {
+#if UNITY_EDITOR
+            var eliteProfile = _addedProfiles.Single(profile => profile.GameMode == GameMode.EliteDrums);
+            Select(ProfileRow(GetProfileMenu(), eliteProfile));
+            yield return null;
+            OpenProfileEditor(eliteProfile);
+            var editor = GetActiveEditor();
+            var color = GetAlternativeColor(eliteProfile.ColorProfile);
+            var colorDropdown = (Component)PrivateField(editor.GetType(), "_previewColor").GetValue(editor);
+            SelectDropdownIndex(colorDropdown, ColorIndex(editor, color));
+            var lefty = (Component)PrivateField(editor.GetType(), "_leftyFlipToggle").GetValue(editor);
+            lefty.GetType().GetProperty("isOn").SetValue(lefty, !eliteProfile.LeftyFlip);
+            Assert.That(_preferenceSaveCount, Is.EqualTo(2), "Color and lefty changes persist independently once each.");
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(1), "The profile list saves once when the editor hides it.");
+            PopEditorBackToProfileMenu();
+            Assert.That(IsProfileMenuSelected(eliteProfile), Is.True,
+                "Returning from the fullscreen editor must preserve the selected profile row.");
+            var sidebar = GetSidebar();
+            Assert.That((int)PrivateField(sidebar.GetType(), "_colorProfileDropdown").GetValue(sidebar)
+                .GetType().GetProperty("value").GetValue(PrivateField(sidebar.GetType(), "_colorProfileDropdown").GetValue(sidebar)),
+                Is.EqualTo(ColorProfileIndex(sidebar, eliteProfile.ColorProfile)));
+            Assert.That((bool)PrivateField(sidebar.GetType(), "_leftyFlipToggle").GetValue(sidebar)
+                .GetType().GetProperty("isOn").GetValue(PrivateField(sidebar.GetType(), "_leftyFlipToggle").GetValue(sidebar)),
+                Is.EqualTo(eliteProfile.LeftyFlip));
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(1), "Only the actual ProfileList hide lifecycle saves once.");
+            Assert.That(_preferenceSaveCount, Is.EqualTo(2));
+#else
+            Assert.Ignore("Requires production prefab assets from the Unity Editor asset database.");
+#endif
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ProfileEditorRejectsRemovedProfile()
+        {
+#if UNITY_EDITOR
+            var eliteProfile = _addedProfiles.Single(profile => profile.GameMode == GameMode.EliteDrums);
+            Select(ProfileRow(GetProfileMenu(), eliteProfile));
+            yield return null;
+            OpenProfileEditor(eliteProfile);
+            var beforeColor = eliteProfile.ColorProfile;
+            var beforeLefty = eliteProfile.LeftyFlip;
+            _profiles.Remove(eliteProfile);
+            _profilesById.Remove(eliteProfile.Id);
+            var editor = GetActiveEditor();
+            var lefty = (Component)PrivateField(editor.GetType(), "_leftyFlipToggle").GetValue(editor);
+            lefty.GetType().GetProperty("isOn").SetValue(lefty, !beforeLefty);
+            yield return null;
+            Assert.That(eliteProfile.ColorProfile, Is.EqualTo(beforeColor));
+            Assert.That(eliteProfile.LeftyFlip, Is.EqualTo(beforeLefty));
+            Assert.That(_preferenceSaveCount, Is.Zero, "Stale profile actions must not write preferences.");
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(1), "The profile menu still saves exactly once when hidden.");
+            Assert.That(GetActiveEditor().gameObject.activeSelf, Is.False,
+                "A stale profile callback closes the editor through its production close path.");
+            Assert.That(GetProfileMenu().gameObject.activeSelf, Is.True,
+                "Closing the editor reactivates the profile list through MenuManager.");
+#else
+            Assert.Ignore("Requires production prefab assets from the Unity Editor asset database.");
+#endif
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ProfileEditorLifecycleUsesInjectedPersistence()
+        {
+#if UNITY_EDITOR
+            var eliteProfile = _addedProfiles.Single(profile => profile.GameMode == GameMode.EliteDrums);
+            Select(ProfileRow(GetProfileMenu(), eliteProfile));
+            yield return null;
+
+            OpenProfileEditor(eliteProfile);
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(1),
+                "The editor's real ShowMenu route must invoke the injected profile-list persistence action once.");
+            Assert.That(_preferenceSaveCount, Is.Zero,
+                "Opening the editor must not invoke the separate preference persistence action.");
+
+            PopEditorBackToProfileMenu();
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(1),
+                "Popping the editor must not invoke profile-list persistence a second time.");
+            Assert.That(_preferenceSaveCount, Is.Zero);
+#else
+            Assert.Ignore("Requires production prefab assets from the Unity Editor asset database.");
+#endif
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ProfilePersistenceAdapterInvokesSaveOnce()
+        {
+#if UNITY_EDITOR
+            var menu = GetProfileMenu();
+            int called = 0;
+            Action fakeSave = () => called++;
+            menu.GetType().GetMethod("SetSaveProfilesAction").Invoke(menu, new object[] { fakeSave });
+            int originalCountBeforeDisable = _lifecycleSaveCount;
+            ((Behaviour)menu).enabled = false;
+            Assert.That(called, Is.EqualTo(1), "Disabling through MonoBehaviour lifecycle must invoke the replacement action once.");
+            Assert.That(_lifecycleSaveCount, Is.EqualTo(originalCountBeforeDisable),
+                "Replacing the adapter must not invoke the fixture's original persistence callback.");
+            ((Behaviour)menu).enabled = true;
+            Assert.That(called, Is.EqualTo(1), "Re-enabling must not invoke the disable persistence action again.");
+#else
+            Assert.Ignore("Requires production prefab assets from the Unity Editor asset database.");
+#endif
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator HiddenProfileMenuRestoresSelectionAndSavedLayoutUnlessProfileWasDeleted()
         {
 #if UNITY_EDITOR
@@ -476,6 +716,57 @@ namespace YARG.Tests.PlayMode
         }
 
 #if UNITY_EDITOR
+        private Component GetProfileMenu() => _host.GetComponentInChildren(Production("YARG.Menu.ProfileList.ProfileListMenu"), true);
+
+        private Component GetSidebar() => _host.GetComponentInChildren(Production("YARG.Menu.ProfileList.ProfileSidebar"), true);
+
+        private Component GetActiveEditor() =>
+            _host.GetComponentInChildren(Production("YARG.Menu.HighwayConfiguration.EliteDrumsLayoutMenu"), true);
+
+        private void OpenProfileEditor(YargProfile profile)
+        {
+            Assert.That(IsProfileMenuSelected(profile), Is.True,
+                "The profile's production row must be selected before opening its editor.");
+            Call(GetSidebar(), "OpenEliteDrumsLayoutConfigurationMenu");
+        }
+
+        private void PopEditorBackToProfileMenu() =>
+            Call(_menuManager, "PopMenu");
+
+        private bool IsProfileMenuSelected(YargProfile profile) => IsSelected(ProfileRow(GetProfileMenu(), profile));
+
+        private static ColorProfile GetAlternativeColor(Guid currentId) =>
+            ColorProfile.Defaults.First(color => color.Id != currentId);
+
+        private static int ColorIndex(Component editor, ColorProfile color)
+        {
+            var colors = (Array)PrivateField(editor.GetType(), "_previewColors").GetValue(editor);
+            for (int i = 0; i < colors.Length; i++)
+            {
+                if (((ColorProfile)colors.GetValue(i)).Id == color.Id)
+                    return i;
+            }
+
+            Assert.Fail($"Color profile {color.Id} must be available in the editor dropdown.");
+            return -1;
+        }
+
+        private static void SelectDropdownIndex(Component dropdown, int index) =>
+            dropdown.GetType().GetProperty("value").SetValue(dropdown, index);
+
+        private static int ColorProfileIndex(Component sidebar, Guid colorId)
+        {
+            var colors = (IList)PrivateField(sidebar.GetType(), "_colorProfilesByIndex").GetValue(sidebar);
+            for (int i = 0; i < colors.Count; i++)
+            {
+                if ((Guid)colors[i] == colorId)
+                    return i;
+            }
+
+            Assert.Fail($"Color profile {colorId} must be available in the sidebar dropdown.");
+            return -1;
+        }
+
         private static void Select(Component row) => Call(row, "SetSelected", true,
             Enum.Parse(Production("YARG.Menu.Navigation.SelectionOrigin"), "Programmatically"));
 
@@ -504,7 +795,7 @@ namespace YARG.Tests.PlayMode
             var profileList = (Transform)PrivateField(menu.GetType(), "_profileList").GetValue(menu);
             var profileViewType = Production("YARG.Menu.ProfileList.ProfileView");
             return profileList.GetComponentsInChildren(profileViewType, true)
-                .Cast<Component>().Single(row =>
+                .Cast<Component>().LastOrDefault(row =>
                     ReferenceEquals(row.GetType().GetProperty("Profile").GetValue(row), profile));
         }
 
@@ -567,10 +858,20 @@ namespace YARG.Tests.PlayMode
         public IEnumerator TearDown()
         {
             if (_host != null)
+            {
+                _host.SetActive(false);
                 UnityEngine.Object.Destroy(_host);
-            if (_menuDataObject != null)
-                UnityEngine.Object.Destroy(_menuDataObject);
+            }
+            if (_menuServicesRoot != null)
+                UnityEngine.Object.Destroy(_menuServicesRoot);
+            if (_themeManagerObject != null)
+                UnityEngine.Object.Destroy(_themeManagerObject);
             yield return null;
+
+            _host = null;
+            _menuServicesRoot = null;
+            _themeManagerObject = null;
+            _menuManager = null;
 
             if (_originalProfiles != null)
             {

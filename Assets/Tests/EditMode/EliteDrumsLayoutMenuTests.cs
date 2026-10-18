@@ -237,29 +237,38 @@ namespace YARG.Tests.EditMode
                 Assert.That(Text(labels.GetValue(Array.IndexOf(ids, "kick"))), Is.EqualTo("ALL KICKS"));
                 var palette = dataType.GetProperty("Colors", BindingFlags.Public | BindingFlags.Static).GetValue(null);
                 var buttons = (Button[])Field(_menu, "_choices");
-                var clear = buttons[Array.IndexOf(ids, "clear")];
-                var clearColor = clear.GetComponentsInParent<Component>(true)
-                    .First(c => c.GetType().Name == "ColoredButton");
-                var background = clearColor.GetType().GetProperty("BackgroundColor");
+                var rowType = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(assembly => assembly.GetType("YARG.Menu.HighwayConfiguration.AssignmentPopupRow"))
+                    .First(type => type != null);
+                var clearIndex = Array.IndexOf(ids, "clear");
+                var clear = buttons[clearIndex];
+                var clearRow = clear.GetComponent(rowType);
+                var actionColor = rowType.GetField("_actionColor", BindingFlags.Instance | BindingFlags.NonPublic);
+                var clearLabel = labels.GetValue(clearIndex);
+                var labelColor = clearLabel.GetType().GetProperty("color");
                 Assert.That(clear.interactable, Is.False, "An empty row cannot be cleared.");
-                Assert.That(background.GetValue(clearColor), Is.EqualTo(Color.gray));
-                var cancel = buttons[Array.IndexOf(ids, "cancel")];
-                var cancelColor = cancel.GetComponentsInParent<Component>(true)
-                    .First(c => c.GetType().Name == "ColoredButton");
-                Assert.That(cancelColor.GetType().GetProperty("BackgroundColor").GetValue(cancelColor),
+                Assert.That(actionColor.GetValue(clearRow), Is.EqualTo(Color.gray));
+                Assert.That(labelColor.GetValue(clearLabel), Is.EqualTo(actionColor.GetValue(clearRow)));
+                var cancelIndex = Array.IndexOf(ids, "cancel");
+                var cancel = buttons[cancelIndex];
+                var cancelRow = cancel.GetComponent(rowType);
+                Assert.That(actionColor.GetValue(cancelRow),
                     Is.EqualTo(palette.GetType().GetField("NavigationYellow").GetValue(palette)));
+                Assert.That(labelColor.GetValue(labels.GetValue(cancelIndex)), Is.EqualTo(actionColor.GetValue(cancelRow)));
                 Call(_menu, "CancelPopup");
                 var draft = (EliteDrumsLayoutPreset)_menuType.GetProperty("Draft").GetValue(_menu);
                 Assert.That(draft.Slots[2].Cymbal, Is.EqualTo("left-crash"),
                     "Full assigns a cymbal at column 2; column 0 only has a drum.");
                 Call(_menu, "OpenCell", 2, false);
                 ids = (string[])Field(_menu, "_choiceIds");
-                clear = buttons[Array.IndexOf(ids, "clear")];
-                clearColor = clear.GetComponentsInParent<Component>(true)
-                    .First(c => c.GetType().Name == "ColoredButton");
+                clearIndex = Array.IndexOf(ids, "clear");
+                clear = buttons[clearIndex];
+                clearRow = clear.GetComponent(rowType);
+                clearLabel = labels.GetValue(clearIndex);
                 Assert.That(clear.interactable, Is.True, "An assigned row can be cleared.");
-                Assert.That(background.GetValue(clearColor),
+                Assert.That(actionColor.GetValue(clearRow),
                     Is.EqualTo(palette.GetType().GetField("BrightButton").GetValue(palette)));
+                Assert.That(labelColor.GetValue(clearLabel), Is.EqualTo(actionColor.GetValue(clearRow)));
                 Call(_menu, "CancelPopup");
                 Call(_menu, "OpenCell", 8, true);
                 ids = (string[])Field(_menu, "_choiceIds");
@@ -866,7 +875,7 @@ namespace YARG.Tests.EditMode
                 "The management bottom border must clear the relocated assignment row.");
             Assert.That(management.yMax, Is.EqualTo(toolbar.yMin).Within(0.0001f));
             Assert.That(divider.center.x, Is.EqualTo(management.xMax).Within(0.0001f));
-            Assert.That(divider.width * 1920f, Is.EqualTo(1.5f).Within(0.01f));
+            Assert.That(divider.width * 1920f, Is.EqualTo(2f).Within(0.01f));
             Assert.That(divider.yMax, Is.EqualTo(toolbar.yMin).Within(0.0001f));
             Assert.That(divider.yMin, Is.EqualTo(ViewportBounds(_helpBar).yMax).Within(0.0001f),
                 "The static divider ends at the actual production Help Bar, not an estimated footer height.");
@@ -880,13 +889,14 @@ namespace YARG.Tests.EditMode
                 var bounds = ViewportBounds(rect);
                 Assert.That(bounds.xMin, Is.EqualTo(pair.Item2.xMin).Within(0.0001f));
                 Assert.That(bounds.xMax, Is.EqualTo(pair.Item2.xMax).Within(0.0001f));
-                Assert.That(bounds.yMin, Is.EqualTo(pair.Item2.yMin).Within(0.0001f));
-                Assert.That(bounds.height * 1080f, Is.EqualTo(1.5f).Within(0.01f));
+                Assert.That(bounds.center.y, Is.EqualTo(pair.Item2.yMin + 0.75f / 1080f).Within(0.0001f),
+                    "Thickening retains the authored separator centerline and section alignment.");
+                Assert.That(bounds.height * 1080f, Is.EqualTo(2f).Within(0.01f));
             }
             var separatorRect = (RectTransform)_instance.transform.Find("Toolbar Panel/Layout Colors Separator");
             var separator = ViewportBounds(separatorRect);
-            Assert.That(separator.height * 1080f, Is.EqualTo(80f).Within(0.1f));
-            Assert.That(separator.width * 1920f, Is.EqualTo(1.5f).Within(0.01f));
+            Assert.That(separator.height * 1080f, Is.EqualTo(56f).Within(0.1f));
+            Assert.That(separator.width * 1920f, Is.EqualTo(2f).Within(0.01f));
             Assert.That(separator.center.y, Is.EqualTo(toolbar.center.y).Within(0.0001f));
             var folder = (Button)Field(_menu, "_openLayoutFolder");
             var colorLabel = (Component)Field(_menu, "_previewColorLabel");
@@ -973,10 +983,11 @@ namespace YARG.Tests.EditMode
             Assert.That(preview.xMin, Is.EqualTo(0.66f).Within(0.0001f));
             Assert.That(preview.xMax, Is.EqualTo(0.99f).Within(0.0001f));
             var builtIn = ViewportBounds((RectTransform)_instance.transform.Find("Built In Notice"));
-            Assert.That(builtIn.yMin * 1080f, Is.EqualTo(333.6f).Within(0.1f));
-            Assert.That(builtIn.yMax * 1080f, Is.EqualTo(409.2f).Within(0.1f));
-            Assert.That(builtIn.xMin, Is.EqualTo(0.04f).Within(0.0001f));
-            Assert.That(builtIn.xMax, Is.EqualTo(0.63f).Within(0.0001f));
+            Assert.That(builtIn.yMin * 1080f, Is.EqualTo(264.6f).Within(0.1f));
+            Assert.That(builtIn.yMax * 1080f, Is.EqualTo(459f).Within(0.1f));
+            Assert.That(builtIn.xMin, Is.EqualTo(0.0225f).Within(0.0001f));
+            var divider = (RectTransform)_instance.transform.Find("Lefty Flip Divider");
+            Assert.That(builtIn.xMax, Is.EqualTo(divider.anchorMin.x - 0.009f).Within(0.0001f));
             var status = ViewportBounds((RectTransform)_instance.transform.Find("Status"));
             var colorsNotice = ViewportBounds((RectTransform)_instance.transform.Find("Colors Notice"));
             Assert.That(status.yMin * 1080f, Is.EqualTo(86.4f).Within(0.1f));

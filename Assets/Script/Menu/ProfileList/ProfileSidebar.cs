@@ -118,6 +118,7 @@ namespace YARG.Menu.ProfileList
 
         private ProfileView _profileView;
         private YargProfile _profile;
+        private System.Action _saveProfilesAction = () => PlayerContainer.SaveProfiles();
 
         private readonly List<GameMode> _gameModesByIndex = new();
         private readonly List<OpenLaneDisplayType> _openLaneDisplayTypesByIndex = new();
@@ -373,6 +374,11 @@ namespace YARG.Menu.ProfileList
             }
         }
 
+        public void SetSaveProfilesAction(System.Action saveProfilesAction)
+        {
+            _saveProfilesAction = saveProfilesAction ?? (() => PlayerContainer.SaveProfiles());
+        }
+
         public void OpenEliteDrumsLayoutConfigurationMenu()
         {
             if (_profile == null || _profile.GameMode != GameMode.EliteDrums)
@@ -390,17 +396,62 @@ namespace YARG.Menu.ProfileList
                     profileCanvas.rootCanvas.transform)
                 : MenuManager.Instance.ShowMenu(MenuManager.Menu.EliteDrumsLayout);
             var editor = menu.GetComponent<YARG.Menu.HighwayConfiguration.EliteDrumsLayoutMenu>();
-            editor.Initialize(layout, draft =>
+            bool IsCurrentProfile() => PlayerContainer.Profiles.Contains(profile) && ReferenceEquals(_profile, profile);
+            EliteDrumsLayoutPreset SaveLayout(EliteDrumsLayoutPreset draft)
             {
-                if (!PlayerContainer.Profiles.Contains(profile))
-                    return;
+                if (!IsCurrentProfile())
+                    return null;
 
-                var saved = CustomContentManager.EliteDrumsLayouts.CommitPreset(draft);
-                profile.EliteDrumsLayout = saved.Id;
-                if (ReferenceEquals(_profile, profile))
+                return CustomContentManager.EliteDrumsLayouts.CommitPreset(draft);
+            }
+
+            bool SaveColorProfile(ColorProfile colorProfile)
+            {
+                if (!IsCurrentProfile())
+                    return false;
+
+                if (profile.ColorProfile != colorProfile.Id)
+                {
+                    profile.ColorProfile = colorProfile.Id;
+                    _saveProfilesAction();
+                }
+
+                return true;
+            }
+
+            bool SaveLeftyFlip(bool leftyFlip)
+            {
+                if (!IsCurrentProfile())
+                    return false;
+
+                if (profile.LeftyFlip != leftyFlip)
+                {
+                    profile.LeftyFlip = leftyFlip;
+                    _saveProfilesAction();
+                }
+
+                _leftyFlipToggle.SetIsOnWithoutNotify(leftyFlip);
+                return true;
+            }
+
+            editor.InitializeForProfileWithCommit(layout,
+                CustomContentManager.ColorProfiles.GetPresetById(profile.ColorProfile),
+                profile.LeftyFlip, SaveLayout, () => MenuManager.Instance.PopMenu(), IsCurrentProfile,
+                acceptedLayout =>
+                {
+                    if (!IsCurrentProfile() || acceptedLayout == null ||
+                        !EliteDrumsLayoutValidator.Validate(acceptedLayout).IsRuntimeSupported)
+                        return false;
+
+                    if (profile.EliteDrumsLayout != acceptedLayout.Id)
+                    {
+                        profile.EliteDrumsLayout = acceptedLayout.Id;
+                        _saveProfilesAction();
+                    }
+
                     RefreshEliteLayoutDropdown();
-            }, () => MenuManager.Instance.PopMenu(),
-                CustomContentManager.ColorProfiles.GetPresetById(profile.ColorProfile));
+                    return true;
+                }, SaveColorProfile, SaveLeftyFlip);
         }
 
         private void RefreshEliteLayoutDropdown()

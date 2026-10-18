@@ -376,8 +376,8 @@ namespace YARG.Tests.EditMode
                 return lambda.Compile();
             }
 
-            object dropdownA = create.Invoke(null, new object[] { Provider(stateA), null });
-            object dropdownB = create.Invoke(null, new object[] { Provider(stateB), null });
+            object dropdownA = create.Invoke(null, new object[] { Provider(stateA), null, true });
+            object dropdownB = create.Invoke(null, new object[] { Provider(stateB), null, true });
             var dropdownInterface = Production("YARG.Settings.Types.IDropdownSetting");
             var indexToString = dropdownInterface.GetMethod("IndexToString");
             Assert.That(indexToString, Is.Not.Null);

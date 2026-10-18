@@ -200,6 +200,153 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ProfileControlsControllerTraversal()
+        {
+            yield return MirroredGridPointerAndNavigationEditSavedSlot();
+        }
+
+        [UnityTest]
+        public IEnumerator MirroredGridPointerAndNavigationEditSavedSlot()
+        {
+#if UNITY_EDITOR
+            _canvasObject = new GameObject("Mirrored Elite grid canvas", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+            var canvas = _canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.pixelPerfect = true;
+            _eventSystemObject = new GameObject("Mirrored Elite grid EventSystem", typeof(EventSystem),
+                Production("UnityEngine.InputSystem.UI.InputSystemUIInputModule"));
+            _eventSystem = _eventSystemObject.GetComponent<EventSystem>();
+            _managerObject = new GameObject("Mirrored Elite grid MenuManager");
+            _managerObject.transform.SetParent(_canvasObject.transform, false);
+            var managerType = Production("YARG.Menu.MenuManager");
+            var manager = (Behaviour)_managerObject.AddComponent(managerType);
+            manager.enabled = false;
+            yield return null;
+
+            var menuEnum = managerType.GetNestedType("Menu");
+            var menu = (Component)managerType.GetMethod("ShowMenu", new[] { menuEnum })
+                .Invoke(manager, new[] { Enum.Parse(menuEnum, "EliteDrumsLayout") });
+            _menuObject = menu.gameObject;
+            var menuType = Production("YARG.Menu.HighwayConfiguration.EliteDrumsLayoutMenu");
+            var configuration = _menuObject.GetComponent(menuType);
+            var preset = CreateValidSparseLayout("Lefty pointer mapping");
+            var previewColors = new YARG.Core.Game.ColorProfile("Lefty pointer preview colors");
+            int leftyCallbacks = 0;
+            var initializeForProfile = menuType.GetMethod("InitializeForProfile", BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(initializeForProfile, Is.Not.Null);
+            initializeForProfile.Invoke(configuration, new object[] { preset, previewColors, false,
+                (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), (Func<bool>)(() => true),
+                (Func<EliteDrumsLayoutPreset, bool>)(_ => true), (Func<YARG.Core.Game.ColorProfile, bool>)(_ => true),
+                (Func<bool, bool>)(value => { leftyCallbacks++; return true; }) });
+            yield return null;
+
+            var leftyToggle = (Toggle)menuType.GetField("_leftyFlipToggle", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration);
+            Assert.That(leftyToggle, Is.Not.Null);
+            var navigation = menuType.GetField("_navigation", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration);
+            var rows = (System.Collections.IEnumerable)menuType.GetMethod("GetNavigationRows", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(configuration, null);
+            var screenRows = rows.Cast<System.Collections.IEnumerable>()
+                .Select(row => row.Cast<Component>().ToArray()).ToArray();
+            var leftyNav = leftyToggle.GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable"));
+            Assert.That(screenRows.Any(row => row.Contains(leftyNav)), Is.True,
+                "The production lefty toggle must be included in the menu's actual screen-navigation rows.");
+            var navigateGrid = menuType.GetMethod("NavigateGrid", BindingFlags.Instance | BindingFlags.Public);
+            Assert.That(navigateGrid, Is.Not.Null);
+            var selectedProperty = navigation.GetType().GetProperty("SelectedBehaviour");
+            var leftyRow = screenRows.Single(row => row.Contains(leftyNav));
+            for (int step = 0; step < screenRows.Length * 2; step++)
+            {
+                if (leftyRow.Contains((Component)selectedProperty.GetValue(navigation))) break;
+                navigateGrid.Invoke(configuration, new object[] { 0, 1 });
+            }
+            for (int step = 0; step < leftyRow.Length; step++)
+            {
+                if (ReferenceEquals(selectedProperty.GetValue(navigation), leftyNav)) break;
+                navigateGrid.Invoke(configuration, new object[] { -1, 0 });
+            }
+            Assert.That(selectedProperty.GetValue(navigation), Is.SameAs(leftyNav),
+                "Screen-row traversal must reach the lefty toggle through the menu's directional navigation.");
+            navigation.GetType().GetMethod("ConfirmSelection").Invoke(navigation, null);
+            Assert.That(leftyToggle.isOn, Is.True);
+            Assert.That(leftyCallbacks, Is.EqualTo(1));
+            for (int reopen = 0; reopen < 3; reopen++)
+            {
+                initializeForProfile.Invoke(configuration, new object[] { preset, previewColors, true,
+                    (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), (Func<bool>)(() => true),
+                    (Func<EliteDrumsLayoutPreset, bool>)(_ => true), (Func<YARG.Core.Game.ColorProfile, bool>)(_ => true),
+                    (Func<bool, bool>)(value => { leftyCallbacks++; return true; }) });
+                yield return null;
+            }
+            Assert.That(leftyCallbacks, Is.EqualTo(1), "Repeated profile-editor openings must not synthesize preference callbacks.");
+            leftyToggle.isOn = false;
+            leftyToggle.isOn = true;
+            Assert.That(leftyCallbacks, Is.EqualTo(3), "Each user toggle activation must produce exactly one preference callback after reopening.");
+            var draft = (EliteDrumsLayoutPreset)menuType.GetProperty("Draft").GetValue(configuration);
+            Assert.That(draft.Slots[0].Drum, Is.EqualTo("snare"));
+            Assert.That(draft.Slots[1].Drum, Is.EqualTo("tom1"));
+            Assert.That(draft.Slots[1].Cymbal, Is.EqualTo("left-crash"));
+            Assert.That(draft.Slots[3].Kind, Is.EqualTo(EliteDrumsLayoutSlotKind.HiHat));
+            Assert.That(draft.Slots[4].Kind, Is.EqualTo(EliteDrumsLayoutSlotKind.Kick1));
+            Assert.That(draft.Slots[5].Kind, Is.EqualTo(EliteDrumsLayoutSlotKind.Kick2));
+            Assert.That(draft.Slots[7].Drum, Is.EqualTo("tom2"));
+            Assert.That(draft.Slots[8].Cymbal, Is.EqualTo("ride"));
+            Assert.That(draft.Slots[9].Cymbal, Is.EqualTo("right-crash"));
+
+            var cellType = Production("YARG.Menu.HighwayConfiguration.EliteDrumsLayoutCell");
+            var mirroredDrumCell = _menuObject.GetComponentsInChildren(cellType, true).Cast<Component>()
+                .Single(cell => (int)cellType.GetProperty("Column").GetValue(cell) == 1 &&
+                    (bool)cellType.GetProperty("Drum").GetValue(cell));
+            var button = (Button)cellType.GetField("_button", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mirroredDrumCell);
+            var rect = (RectTransform)button.transform;
+            var point = RectTransformUtility.WorldToScreenPoint(null, rect.TransformPoint(rect.rect.center));
+            var pointer = new PointerEventData(_eventSystem) { position = point, button = PointerEventData.InputButton.Left };
+            var hits = new System.Collections.Generic.List<RaycastResult>();
+            _eventSystem.RaycastAll(pointer, hits);
+            Assert.That(hits, Is.Not.Empty);
+            Assert.That(hits[0].gameObject.transform.IsChildOf(button.transform) || hits[0].gameObject == button.gameObject, Is.True);
+            ExecuteEvents.ExecuteHierarchy(hits[0].gameObject, pointer, ExecuteEvents.pointerDownHandler);
+            ExecuteEvents.ExecuteHierarchy(hits[0].gameObject, pointer, ExecuteEvents.pointerUpHandler);
+            ExecuteEvents.ExecuteHierarchy(hits[0].gameObject, pointer, ExecuteEvents.pointerClickHandler);
+            Assert.That(((GameObject)menuType.GetField("_popup", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration)).activeSelf, Is.True);
+            Assert.That((int)menuType.GetField("_column", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration), Is.EqualTo(1));
+            Assert.That((bool)menuType.GetField("_drum", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration), Is.True);
+            var mirroredLabel = cellType.GetField("_label", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(mirroredDrumCell);
+            Assert.That(Convert.ToString(mirroredLabel.GetType().GetProperty("text").GetValue(mirroredLabel)), Does.Contain("Tom"),
+                "The lefty-flipped cell must render the saved drum assignment at the same column.");
+
+            menuType.GetMethod("CancelPopup").Invoke(configuration, null);
+            yield return null; // Start a new input after the popup dismissal release was consumed.
+            var cellRows = (System.Collections.IEnumerable)menuType.GetMethod("GetNavigationRows", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(configuration, null);
+            var cellScreenRows = cellRows.Cast<System.Collections.IEnumerable>()
+                .Select(row => row.Cast<Component>().ToArray()).ToArray();
+            Assert.That(cellScreenRows.Any(row => row.Contains(mirroredDrumCell)), Is.True,
+                "The mirrored saved slot must remain in the menu's screen-navigation rows.");
+            var cellSelectedProperty = navigation.GetType().GetProperty("SelectedBehaviour");
+            Assert.That(cellSelectedProperty.GetValue(navigation), Is.SameAs(mirroredDrumCell),
+                "Closing the production picker must restore focus to the mirrored saved slot.");
+            var mirroredRow = cellScreenRows.Single(row => row.Contains(mirroredDrumCell));
+            navigateGrid.Invoke(configuration, new object[] { 1, 0 });
+            Assert.That(mirroredRow.Contains((Component)cellSelectedProperty.GetValue(navigation)), Is.True,
+                "Horizontal navigation must move through the mirrored screen-sorted cell row.");
+            navigateGrid.Invoke(configuration, new object[] { -1, 0 });
+            Assert.That(cellSelectedProperty.GetValue(navigation), Is.SameAs(mirroredDrumCell),
+                "Moving back through the production grid row must reselect the mirrored saved slot.");
+            navigation.GetType().GetMethod("ConfirmSelection").Invoke(navigation, null);
+            Assert.That(((GameObject)menuType.GetField("_popup", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration)).activeSelf, Is.True);
+            var choiceIds = (string[])menuType.GetField("_choiceIds", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration);
+            int editIndex = Array.IndexOf(choiceIds, "tom3");
+            Assert.That(editIndex, Is.GreaterThanOrEqualTo(0));
+            ((Button[])menuType.GetField("_choices", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration))[editIndex].onClick.Invoke();
+            draft = (EliteDrumsLayoutPreset)menuType.GetProperty("Draft").GetValue(configuration);
+            Assert.That(draft.Slots[1].Drum, Is.EqualTo("tom3"), "Editing through the lefty-flipped grid must update the same stable saved column.");
+#else
+            Assert.Ignore("Requires the production Elite Drums menu resource.");
+            yield break;
+#endif
+        }
+
+        [UnityTest]
         public IEnumerator RootCanvasMenuRemainsVisibleWhenPreviousMenuIsHidden()
         {
             _parentMenuObject = new GameObject("Profiles root Canvas", typeof(RectTransform),
@@ -395,9 +542,12 @@ namespace YARG.Tests.PlayMode
                 {
                     var labels = toggles.Select(toggle => (string)DropdownProperty(
                         toggle.GetComponentsInChildren(Production("TMPro.TMP_Text")).Cast<Component>().Single(), "text")).ToArray();
-                    foreach (string expected in new[] { "Star Power Notes", "Star Power Active", "Groove", "Lefty Flip" })
+                    Assert.That(labels, Has.Length.EqualTo(3), "The profile editor uses a separate lefty toggle, not a fourth preview dropdown option.");
+                    foreach (string expected in new[] { "Star Power Notes", "Star Power Active", "Groove" })
                         Assert.That(labels.Any(label => label.Contains(expected)), Is.True,
                             "The opened production list must contain the real option label: " + expected);
+                    Assert.That(labels.Any(label => label.Contains("Lefty Flip")), Is.False,
+                        "Lefty Flip must be controlled by the production toggle, not this dropdown.");
                 }
                 var viewport = list.GetComponentInChildren<ScrollRect>().viewport;
                 int visible = 0;
@@ -526,6 +676,23 @@ namespace YARG.Tests.PlayMode
             Assert.That(target == owner || target.transform.IsChildOf(owner.transform), Is.True,
                 "The top raycast at the item's center must belong to the production item, not its blocker or underlying menu.");
             return target;
+        }
+
+        private static EliteDrumsLayoutPreset CreateValidSparseLayout(string name)
+        {
+            var source = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Full.CopyWithNewName(name);
+            var savedSlots = source.Slots.Select(slot => slot.Copy()).ToArray();
+            var sparse = source.Copy();
+            sparse.Slots = EliteDrumsLayoutPreset.CreateEmptySlots();
+            sparse.Slots[0] = savedSlots[0].Copy();
+            sparse.Slots[1] = EliteDrumsLayoutSlot.Ordinary(savedSlots[3].Drum, savedSlots[2].Cymbal);
+            sparse.Slots[3] = savedSlots[1].Copy();
+            sparse.Slots[4] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
+            sparse.Slots[5] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
+            sparse.Slots[7] = savedSlots[4].Copy();
+            sparse.Slots[8] = savedSlots[6].Copy();
+            sparse.Slots[9] = savedSlots[7].Copy();
+            return sparse;
         }
 
         private static Type Production(string name) => AppDomain.CurrentDomain.GetAssemblies()

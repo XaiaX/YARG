@@ -686,6 +686,7 @@
 		"EliteLayout": {
 			"Name": "Elite Drums Layout",
 			"Title": "Elite Drums Highway",
+			"AssignmentTitle": "Assign A Piece",
 			"Layout": "Layout",
 			"Rename": "Rename",
 			"Copy": "Copy",
@@ -701,7 +702,7 @@
 			"CopyToEdit": "Built-in layouts are read-only. Press Copy to create an editable layout.",
 			"ShiftLeft": "Shift Left",
 			"ShiftRight": "Shift Right",
-			"Reverse": "Reverse",
+			"Reverse": "Swap",
 			"CopyName": "Name Your Layout",
 			"Discard": "Discard",
 			"KeepEditing": "Keep Editing",

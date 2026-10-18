@@ -485,6 +485,18 @@ namespace YARG.Tests.PlayMode
                 .Count(material => material != null && !AssetDatabase.Contains(material));
 
         [UnityTest]
+        public IEnumerator ProfileControlsRenderedLayoutAtReferenceResolutions() =>
+            RenderMenuAtReferenceResolutions("profile");
+
+        [UnityTest]
+        public IEnumerator LeftyGridResizePixelAlignment() =>
+            RenderMenuAtReferenceResolutions("flip-resize");
+
+        [UnityTest]
+        public IEnumerator ProfileLeftyPreviewMatchesCompactedLayout() =>
+            RenderMenuAtReferenceResolutions("lefty");
+
+        [UnityTest]
         public IEnumerator ProductionMenuCellsAndTypographyStayInsideCanvasAtReferenceResolutions() =>
             RenderMenuAtReferenceResolutions("baseline");
 
@@ -532,9 +544,32 @@ namespace YARG.Tests.PlayMode
             var root = Own(menuObject.gameObject);
             _menu = root.GetComponent(Production("YARG.Menu.HighwayConfiguration.EliteDrumsLayoutMenu"));
             var layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Responsive layout");
+            if (scenario is "lefty" or "flip-resize" or "profile")
+                layout = CreateValidSparseLayout("Responsive sparse profile layout");
             var previewColors = new ColorProfile("Responsive preview colors");
             previewColors.EliteDrums.Fret1 = System.Drawing.Color.Lime;
-            Call(_menu, "Initialize", layout, (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), previewColors);
+            if (scenario is "profile" or "lefty" or "flip-resize")
+            {
+                previewColors.EliteDrums.Fret2 = System.Drawing.Color.Magenta;
+                previewColors.EliteDrums.Fret4 = System.Drawing.Color.Cyan;
+                previewColors.EliteDrums.Fret5 = System.Drawing.Color.Yellow;
+                previewColors.EliteDrums.Fret6 = System.Drawing.Color.Orange;
+                previewColors.EliteDrums.Fret8 = System.Drawing.Color.Blue;
+                previewColors.EliteDrums.Fret9 = System.Drawing.Color.Red;
+                previewColors.EliteDrums.Fret10 = System.Drawing.Color.Purple;
+            }
+            int preferenceCallbacks = 0;
+            var initializeForProfile = _menu.GetType().GetMethod("InitializeForProfile", INSTANCE);
+            if (scenario is "profile" or "lefty" or "flip-resize")
+            {
+                Assert.That(initializeForProfile, Is.Not.Null, "Profile controls must initialize through the production profile contract.");
+                initializeForProfile.Invoke(_menu, new object[] { layout, previewColors, false,
+                    (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), (Func<bool>)(() => true),
+                    (Func<EliteDrumsLayoutPreset, bool>)(_ => true), (Func<ColorProfile, bool>)(_ => true),
+                    (Func<bool, bool>)(value => { preferenceCallbacks++; return true; }) });
+            }
+            else
+                Call(_menu, "Initialize", layout, (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), previewColors);
             yield return null;
 
             var canvas = hostCanvas;
@@ -583,6 +618,11 @@ namespace YARG.Tests.PlayMode
                 Assert.That(captureCamera.pixelHeight, Is.EqualTo(resolution.y));
                 Assert.That(target.width, Is.EqualTo(resolution.x));
                 Assert.That(target.height, Is.EqualTo(resolution.y));
+                yield return WaitForRenderedFrame(120, new[] { captureCamera });
+                yield return null;
+                Canvas.ForceUpdateCanvases();
+                yield return WaitForRenderedFrame(120, new[] { captureCamera });
+                yield return null;
                 Canvas.ForceUpdateCanvases();
                 foreach (var cell in cells.Cast<Component>())
                 {
@@ -627,11 +667,67 @@ namespace YARG.Tests.PlayMode
                     }
                 }
                 var previewImage = (RawImage)Field(_menu, "_previewImage");
+                var previewWorldForCapture = (Transform)Field(_menu, "_previewWorld");
+                var previewCamerasForCapture = previewWorldForCapture.GetComponentsInChildren<Camera>(true)
+                    .Where(camera => camera.gameObject.activeInHierarchy).ToArray();
+                if (scenario == "flip-resize")
+                {
+                    var toggle = (Toggle)Field(_menu, "_leftyFlipToggle");
+                    toggle.isOn = !toggle.isOn;
+                    toggle.isOn = !toggle.isOn;
+                    toggle.isOn = !toggle.isOn;
+                    Assert.That(preferenceCallbacks, Is.EqualTo(resolution.x == 1280 ? 3 : 6),
+                        "Repeated real toggle activations must dispatch one profile callback each.");
+                    yield return WaitForRenderedFrame(120, new[] { captureCamera });
+                    yield return null;
+                    Canvas.ForceUpdateCanvases();
+                    foreach (var cell in cells.Cast<Component>())
+                    {
+                        var corners = new Vector3[4];
+                        ((RectTransform)cell.transform).GetWorldCorners(corners);
+                        foreach (var corner in corners)
+                        {
+                            var pixel = RectTransformUtility.WorldToScreenPoint(captureCamera, corner);
+                            Assert.That(pixel.x, Is.EqualTo(Mathf.Round(pixel.x)).Within(0.05f), "Grid anchors remain pixel aligned after repeated flips/resizes.");
+                            Assert.That(pixel.y, Is.EqualTo(Mathf.Round(pixel.y)).Within(0.05f), "Grid anchors remain pixel aligned after repeated flips/resizes.");
+                        }
+                    }
+                }
+                Color32[] normalLeftyPreview = null;
+                if (scenario == "lefty")
+                {
+                    ((Toggle)Field(_menu, "_leftyFlipToggle")).isOn = false;
+                    yield return null;
+                    previewCamerasForCapture = previewWorldForCapture.GetComponentsInChildren<Camera>(true);
+                    yield return WaitForRenderedFrame(120, previewCamerasForCapture);
+                    yield return null;
+                    var normalTarget = previewImage.texture as RenderTexture;
+                    Assert.That(normalTarget, Is.Not.Null,
+                        "The normal-orientation baseline must use the live production preview target after resize.");
+                    Assert.That(normalTarget.IsCreated(), Is.True,
+                        "The normal-orientation preview target must be allocated before capture.");
+                    var baselineCamera = previewWorldForCapture.GetComponentsInChildren<Camera>(true)
+                        .First(camera => camera.gameObject.activeInHierarchy);
+                    Assert.That(baselineCamera.targetTexture, Is.SameAs(normalTarget),
+                        "The baseline image must be read from the preview camera's current target.");
+                    normalLeftyPreview = ReadFrame(normalTarget);
+                    var toggle = (Toggle)Field(_menu, "_leftyFlipToggle");
+                    Assert.That(toggle, Is.Not.Null, "The production prefab must expose its serialized lefty toggle.");
+                    int callbacksBeforeActivation = preferenceCallbacks;
+                    toggle.isOn = true;
+                    Assert.That(Convert.ToBoolean(Field(_menu, "_leftyFlip")), Is.True,
+                        "Activating the production toggle must enable lefty preview only.");
+                    var builder = Field(_menu, "_previewBuilder");
+                    Assert.That(Convert.ToBoolean(ReadProperty(builder, "LeftyFlip")), Is.True,
+                        "The live production preview builder must receive the lefty setting.");
+                    Assert.That(preferenceCallbacks - callbacksBeforeActivation, Is.EqualTo(1),
+                        "One real toggle activation produces exactly one preference callback at either resolution.");
+                }
                 Assert.That(previewImage.texture, Is.Not.Null, "The production menu must bind its initialized preview texture.");
                 Assert.That(previewImage.gameObject.activeInHierarchy, Is.True,
                     "The actual production preview pane must be visible in the canvas capture.");
-                var previewWorldForCapture = (Transform)Field(_menu, "_previewWorld");
-                var previewCamerasForCapture = previewWorldForCapture.GetComponentsInChildren<Camera>(true)
+                previewWorldForCapture = (Transform)Field(_menu, "_previewWorld");
+                previewCamerasForCapture = previewWorldForCapture.GetComponentsInChildren<Camera>(true)
                     .Where(camera => camera.gameObject.activeInHierarchy).ToArray();
                 Assert.That(previewCamerasForCapture, Is.Not.Empty, "The initialized preview must own active production cameras.");
                 float titleSize = Convert.ToSingle(ReadProperty(title, "fontSize"));
@@ -670,6 +766,34 @@ yield return WaitForRenderedFrame(120, camerasToObserve);
                 var paneBottom = RectTransformUtility.WorldToScreenPoint(captureCamera, paneCorners[0]);
                 var paneTop = RectTransformUtility.WorldToScreenPoint(captureCamera, paneCorners[2]);
                 var sourcePixels = ReadFrame(previewSource);
+                if (scenario == "lefty")
+                {
+                    Assert.That(CountHue(sourcePixels, new Color32(0, 255, 0, 255), 48), Is.GreaterThan(8),
+                        "The real compacted sparse layout preview must render its selected fret color after enabling lefty.");
+                    var unchangedSlots = ((EliteDrumsLayoutPreset)ReadProperty(_menu, "Draft")).Slots;
+                    Assert.That(unchangedSlots[0].Drum, Is.EqualTo("snare"));
+                    Assert.That(unchangedSlots[1].Drum, Is.EqualTo("tom1"));
+                    Assert.That(unchangedSlots[1].Cymbal, Is.EqualTo("left-crash"));
+                    Assert.That(unchangedSlots[3].Kind, Is.EqualTo(EliteDrumsLayoutSlotKind.HiHat));
+                    Assert.That(unchangedSlots[4].Kind, Is.EqualTo(EliteDrumsLayoutSlotKind.Kick1));
+                    Assert.That(unchangedSlots[5].Kind, Is.EqualTo(EliteDrumsLayoutSlotKind.Kick2));
+                    Assert.That(unchangedSlots[7].Drum, Is.EqualTo("tom2"));
+                    Assert.That(unchangedSlots[7].Cymbal, Is.Null);
+                    Assert.That(unchangedSlots[7].Kind, Is.EqualTo(EliteDrumsLayoutSlotKind.Ordinary));
+                    Assert.That(normalLeftyPreview, Is.Not.Null);
+                    int mirroredPixelAgreement = Enumerable.Range(0, sourcePixels.Length).Count(index =>
+                    {
+                        int x = index % previewSource.width;
+                        int y = index / previewSource.width;
+                        var before = normalLeftyPreview[y * previewSource.width + previewSource.width - 1 - x];
+                        var after = sourcePixels[index];
+                        return Mathf.Abs(before.r - after.r) <= 24 && Mathf.Abs(before.g - after.g) <= 24 &&
+                            Mathf.Abs(before.b - after.b) <= 24;
+                    });
+                    Assert.That(mirroredPixelAgreement, Is.GreaterThan(sourcePixels.Length / 3),
+                        "Lefty must mirror the preview image without reversing saved slot assignments.");
+                    WriteFramePng(previewSource, $"/tmp/yarg-lefty-compact-preview-{resolution.x}x{resolution.y}.png");
+                }
                 var crop = previewImage.uvRect;
                 int sourceCropLime = Enumerable.Range(0, sourcePixels.Length).Count(index =>
                     crop.Contains(new Vector2((index % previewSource.width + 0.5f) / previewSource.width,
@@ -1281,6 +1405,23 @@ yield return WaitForRenderedFrame(120, new[] { captureCamera });
             }
         }
 
+        private static EliteDrumsLayoutPreset CreateValidSparseLayout(string name)
+        {
+            var source = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Full.CopyWithNewName(name);
+            var savedSlots = source.Slots.Select(slot => slot.Copy()).ToArray();
+            var sparse = source.Copy();
+            sparse.Slots = EliteDrumsLayoutPreset.CreateEmptySlots();
+            sparse.Slots[0] = savedSlots[0].Copy();
+            sparse.Slots[1] = EliteDrumsLayoutSlot.Ordinary(savedSlots[3].Drum, savedSlots[2].Cymbal);
+            sparse.Slots[3] = savedSlots[1].Copy();
+            sparse.Slots[4] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
+            sparse.Slots[5] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
+            sparse.Slots[7] = savedSlots[4].Copy();
+            sparse.Slots[8] = savedSlots[6].Copy();
+            sparse.Slots[9] = savedSlots[7].Copy();
+            return sparse;
+        }
+
         private static EliteDrumsLayoutPreset TenLaneLayout()
         {
             var layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Full.CopyWithNewName("Rendered ten lane");
@@ -1302,6 +1443,9 @@ yield return WaitForRenderedFrame(120, new[] { captureCamera });
                 "The preview options dropdown must be visible in the production menu.");
             var optionList = ReadProperty(options, "options") as System.Collections.IList;
             Assert.That(optionList, Is.Not.Null.And.Not.Empty, "The toolbar must expose real preview option choices.");
+            Assert.That(optionList.Count, Is.EqualTo(3), "The profile editor uses its dedicated lefty toggle, not a fourth preview dropdown option.");
+            Assert.That(optionList.Cast<object>().Any(option => Convert.ToString(ReadProperty(option, "text")).Contains("Lefty Flip")),
+                Is.False, "The preview dropdown must not compete with the production lefty toggle.");
             var initialPlayer = PreviewPlayer(menu);
             Assert.That(initialPlayer, Is.Not.Null, "Production preview player must exist before options are changed.");
             var previewBuilder = Field(menu, "_previewBuilder");

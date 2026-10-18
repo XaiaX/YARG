@@ -135,7 +135,10 @@ namespace YARG.Menu.Navigation
             // so the row is selected in the same frame the dialog opens.
             foreach (var button in GetComponentsInChildren<Button>(true))
             {
-                button.onClick.AddListener(() => SetSelected(true, SelectionOrigin.Mouse));
+                button.onClick.AddListener(() =>
+                {
+                    if (isActiveAndEnabled) SetSelected(true, SelectionOrigin.Mouse);
+                });
             }
 
             // TMP_Dropdown is a Selectable, not a Button — there's no onClick
@@ -170,7 +173,7 @@ namespace YARG.Menu.Navigation
 
         public override void Confirm()
         {
-            ConfirmCallback?.Invoke();
+            if (CanReceiveInput) ConfirmCallback?.Invoke();
         }
 
         /// <summary>

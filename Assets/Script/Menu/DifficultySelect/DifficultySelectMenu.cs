@@ -1637,6 +1637,7 @@ namespace YARG.Menu.DifficultySelect
 
         private void OnDisable()
         {
+            _navGroup.SelectionChanged -= UpdateForSelectionChanged;
             if (_directMaestroCoroutine != null)
             {
                 StopCoroutine(_directMaestroCoroutine);

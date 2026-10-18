@@ -41,6 +41,13 @@ namespace YARG.Menu.ProfileList
 
         private readonly int _maxConnected = HighwayCameraRendering.MAX_MATRICES;
         private YargProfile _profileToRestore;
+        private System.Action _saveProfilesAction = () => PlayerContainer.SaveProfiles();
+
+        public void SetSaveProfilesAction(System.Action saveProfilesAction)
+        {
+            _saveProfilesAction = saveProfilesAction ?? (() => PlayerContainer.SaveProfiles());
+            _profileSidebar?.SetSaveProfilesAction(_saveProfilesAction);
+        }
 
         public bool CanConnectProfile => PlayerContainer.Players.Count < _maxConnected;
 
@@ -61,7 +68,7 @@ namespace YARG.Menu.ProfileList
             CaptureSelectedProfile();
 
             PlayerContainer.EnsureValidInstruments();
-            PlayerContainer.SaveProfiles();
+            _saveProfilesAction();
 
             // Update player icons if a profile has changed its GameMode.
             // Persistent singletons may already be destroyed when Unity exits play mode.

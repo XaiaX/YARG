@@ -41,6 +41,33 @@ namespace YARG.Editor
         [MenuItem("YARG/Build Elite Drums Layout Menu")]
         public static void Build()
         {
+            YARG.Helpers.PathHelper.Init();
+            var localizationManager = typeof(YARG.Localization.LocalizationManager);
+            var localizationMap = (System.Collections.Generic.IDictionary<string, string>)localizationManager
+                .GetField("_localizationMap", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(null);
+            var previousLocalizations = localizationMap.ToArray();
+            var cultureProperty = localizationManager.GetProperty("CultureCode");
+            var previousCulture = cultureProperty.GetValue(null);
+            try
+            {
+                var loadLanguage = localizationManager.GetMethod("TryParseAndLoadLanguage",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                if (!(bool)loadLanguage.Invoke(null, new object[] { "en-US" }))
+                    throw new System.InvalidOperationException(
+                        "The menu builder requires the production English localization for measurement.");
+                BuildWithEnglishLocalization();
+            }
+            finally
+            {
+                localizationMap.Clear();
+                foreach (var entry in previousLocalizations) localizationMap.Add(entry.Key, entry.Value);
+                cultureProperty.GetSetMethod(true).Invoke(null, new[] { previousCulture });
+            }
+        }
+
+        private static void BuildWithEnglishLocalization()
+        {
             var root = Rect("EliteDrumsLayoutMenu", null, Vector2.zero);
             Stretch(root.GetComponent<RectTransform>());
             root.SetActive(false);
@@ -300,54 +327,124 @@ namespace YARG.Editor
                 backdrop.raycastTarget = true;
                 var backdropButton = popup.AddComponent<Button>();
                 backdropButton.targetGraphic = backdrop;
+                backdropButton.transition = Selectable.Transition.None;
                 backdropButton.onClick.AddListener(menu.CancelPopupFromOutside);
                 var popupPanel = AnchoredRect("Assignment Popup Panel", popup.transform,
-                    new Vector2(0.32f, 0.18f), new Vector2(0.68f, 0.82f), Vector2.zero, Vector2.zero);
+                    new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+                popupPanel.GetComponent<RectTransform>().sizeDelta = new Vector2(600f, 735f);
+                var difficultyPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/Prefabs/Menu/DifficultySelect/DifficultySelectMenu.prefab");
+                if (difficultyPrefab == null) throw new System.InvalidOperationException("Missing difficulty menu prefab.");
+                var authoredMenu = difficultyPrefab.transform.Find("Menu");
                 var panelBackground = popupPanel.AddComponent<Image>();
-                panelBackground.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(DIALOG_BACKGROUND_PATH);
-                if (panelBackground.sprite == null) throw new System.InvalidOperationException("Missing dialog background sprite.");
-                panelBackground.type = Image.Type.Sliced;
-                panelBackground.color = Color.white;
-                var panelOutline = popupPanel.AddComponent<Outline>();
-                panelOutline.effectColor = new Color(0.32f, 0.36f, 0.4f, 1f);
-                panelOutline.effectDistance = new Vector2(1f, -1f);
-                var panelMask = popupPanel.AddComponent<Mask>();
-                panelMask.showMaskGraphic = true;
+                panelBackground.color = Color.clear;
+                panelBackground.canvasRenderer.cullTransparentMesh = false;
+                panelBackground.raycastTarget = true;
+                // Only the straight-sided body is rectangular; outer corners belong to the bands.
+                var listSurface = AnchoredRect("Dark List Surface", popupPanel.transform, Vector2.zero,
+                    Vector2.one, new Vector2(0f, 15f), new Vector2(0f, -80f)).AddComponent<Image>();
+                listSurface.color = new Color(1f / 255f, 8f / 255f, 14f / 255f, 1f);
+                listSurface.raycastTarget = false;
+                // A click on empty panel space must terminate here, not bubble to the backdrop.
+                var panelBlocker = popupPanel.AddComponent<Button>();
+                panelBlocker.targetGraphic = panelBackground;
+                panelBlocker.transition = Selectable.Transition.None;
+                panelBlocker.navigation = new Navigation { mode = Navigation.Mode.None };
                 var popupNavigation = popup.AddComponent<NavigationGroup>();
-                var titleBand = AnchoredRect("Assignment Popup Header Band", popupPanel.transform,
-                    new Vector2(0f, 0.86f), Vector2.one, Vector2.zero, Vector2.zero);
-                var titleBandImage = titleBand.AddComponent<Image>();
-                titleBandImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(DIALOG_HEADER_PATH);
-                if (titleBandImage.sprite == null) throw new System.InvalidOperationException("Missing dialog header sprite.");
-                titleBandImage.type = Image.Type.Sliced;
-                titleBandImage.color = Color.white;
-                titleBandImage.raycastTarget = false;
-                // Match the production shared-header treatment (Barlow Medium, normal weight) used by
-                // menus such as difficulty select, instead of the bold display font.
-                var popupTitle = Text("Assignment Popup Title", titleBand.transform, "Assign A Piece",
-                    Vector2.zero, Vector2.zero, 30, false);
-                popupTitle.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(
-                    "Assets/Art/Fonts/Barlow/Barlow-Medium.asset");
-                popupTitle.fontStyle = FontStyles.Normal;
-                Stretch(popupTitle.rectTransform, 8f);
-                popupTitle.textWrappingMode = TextWrappingModes.NoWrap;
-                popupTitle.overflowMode = TextOverflowModes.Ellipsis;
+                var titleBand = Object.Instantiate(authoredMenu.Find("Header").gameObject, popupPanel.transform, false);
+                titleBand.name = "Assignment Popup Header Band";
+                var popupTitle = titleBand.GetComponentInChildren<TMP_Text>(true);
+                foreach (Transform child in titleBand.transform)
+                {
+                    if (child != popupTitle.transform) Object.DestroyImmediate(child.gameObject);
+                }
+                Object.DestroyImmediate(titleBand.GetComponent<HorizontalLayoutGroup>());
+                Stretch(popupTitle.rectTransform);
+                popupTitle.rectTransform.offsetMin = new Vector2(48f, 12f);
+                popupTitle.rectTransform.offsetMax = new Vector2(-48f, -12f);
+                popupTitle.text = YARG.Localization.Localize.Key("Menu.EliteLayout.AssignmentTitle");
+                popupTitle.enableAutoSizing = false;
+                popupTitle.textWrappingMode = TextWrappingModes.Normal;
+                popupTitle.overflowMode = TextOverflowModes.Overflow;
+                foreach (var graphic in titleBand.GetComponentsInChildren<Graphic>(true)) graphic.raycastTarget = false;
+                var footer = Object.Instantiate(authoredMenu.Find("Footer").gameObject, popupPanel.transform, false);
+                footer.GetComponent<Image>().raycastTarget = false;
+                var headerBacking = ConfigurePopupBand(titleBand, EliteAssignmentPopupSpriteBuilder.EnsureHeader());
+                ConfigurePopupBand(footer, EliteAssignmentPopupSpriteBuilder.EnsureFooter());
+                var viewport = AnchoredRect("Assignment Choices Viewport", popupPanel.transform,
+                    Vector2.zero, Vector2.one, new Vector2(0f, 15f), new Vector2(0f, -80f));
+                viewport.AddComponent<RectMask2D>();
+                var content = AnchoredRect("Assignment Choices", viewport.transform,
+                    new Vector2(0f, 1f), Vector2.one, Vector2.zero, Vector2.zero);
+                var contentRect = content.GetComponent<RectTransform>();
+                contentRect.pivot = new Vector2(0.5f, 1f);
+                var list = content.AddComponent<VerticalLayoutGroup>();
+                list.childControlWidth = true;
+                list.childControlHeight = true;
+                list.childForceExpandWidth = true;
+                list.childForceExpandHeight = false;
+                var fitter = content.AddComponent<ContentSizeFitter>();
+                fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                var scroll = popupPanel.AddComponent<ScrollRect>();
+                scroll.viewport = viewport.GetComponent<RectTransform>();
+                scroll.content = contentRect;
+                scroll.horizontal = false;
+                scroll.vertical = true;
+                scroll.movementType = ScrollRect.MovementType.Clamped;
+                scroll.scrollSensitivity = 36f;
+                var rowPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/Prefabs/Menu/DifficultySelect/DifficultyItem.prefab");
+                var coloredRowPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/Prefabs/Menu/DifficultySelect/DifficultyItemColored.prefab");
+                var coloredSelection = coloredRowPrefab.transform.Find("Selected Background").GetComponent<Image>();
                 var choices = new Button[10];
                 var choiceLabels = new TMP_Text[choices.Length];
                 for (int i = 0; i < choices.Length; i++)
                 {
-                    float y = 0.82f - i * 0.085f;
-                    var choiceButton = Button("Choice " + i, popup.transform, Vector2.zero,
-                        out choiceLabels[i]);
-                    choiceButton.transform.parent.SetParent(popupPanel.transform, false);
-                    var choiceRect = ButtonWrapperRect(choiceButton);
-                    choiceRect.anchorMin = new Vector2(0.12f, y - 0.035f);
-                    choiceRect.anchorMax = new Vector2(0.88f, y + 0.035f);
-                    choiceRect.offsetMin = choiceRect.offsetMax = Vector2.zero;
-                    choiceLabels[i].fontSize = 32;
+                    var row = Object.Instantiate(rowPrefab, content.transform, false);
+                    row.name = "Choice " + i;
+                    Object.DestroyImmediate(row.GetComponent<YARG.Menu.DifficultySelect.DifficultyItem>());
+                    Object.DestroyImmediate(row.GetComponent<NavigatableButton>());
+                    Object.DestroyImmediate(row.GetComponent<VerticalLayoutGroup>());
+                    row.transform.Find("Header").gameObject.SetActive(false);
+                    var rowHeight = row.AddComponent<LayoutElement>();
+                    rowHeight.minHeight = rowHeight.preferredHeight = 64f;
+                    var label = row.transform.Find("Body").GetComponent<TMP_Text>();
+                    Stretch(label.rectTransform);
+                    label.rectTransform.offsetMin = new Vector2(24f, 8f);
+                    label.rectTransform.offsetMax = new Vector2(-24f, -8f);
+                    label.textWrappingMode = TextWrappingModes.Normal;
+                    label.overflowMode = TextOverflowModes.Overflow;
+                    label.enableAutoSizing = false;
+                    var selection = row.transform.Find("Selected Background").GetComponent<Image>();
+                    var ordinarySprite = selection.sprite;
+                    var ordinaryColor = selection.color;
+                    EditorUtility.CopySerialized(coloredSelection, selection);
+                    foreach (var graphic in row.GetComponentsInChildren<Graphic>(true))
+                        graphic.raycastTarget = false;
+                    var buttonObject = AnchoredRect("Button", row.transform, Vector2.zero, Vector2.one,
+                        Vector2.zero, Vector2.zero);
+                    var hitTarget = buttonObject.AddComponent<Image>();
+                    hitTarget.color = Color.clear;
+                    hitTarget.canvasRenderer.cullTransparentMesh = false;
+                    hitTarget.raycastTarget = true;
+                    var choiceButton = buttonObject.AddComponent<Button>();
+                    choiceButton.targetGraphic = hitTarget;
+                    choiceButton.transition = Selectable.Transition.None;
+                    choiceButton.navigation = new Navigation { mode = Navigation.Mode.None };
+                    // Keep the ordinary authored glow; action mode adopts the colored Done fill.
+                    if (coloredSelection.sprite != null)
+                        throw new System.InvalidOperationException("Difficulty colored row must use a solid selection fill.");
+                    var adapter = buttonObject.AddComponent<AssignmentPopupRow>();
+                    adapter.Configure(selection, label, ordinarySprite, ordinaryColor);
+                    choiceLabels[i] = label;
                     choices[i] = choiceButton;
                 }
 
+                var popupLayout = popup.AddComponent<AssignmentPopupLayout>();
+                popupLayout.Configure(popupPanel.GetComponent<RectTransform>(), root.GetComponent<RectTransform>(),
+                    popupTitle, choiceLabels, scroll, listSurface.rectTransform, headerBacking);
+                Set(menu, "_popupLayout", popupLayout);
                 Set(menu, "_navigation", navigation);
                 SetArray(menu, "_cells", cells);
                 Set(menu, "_popup", popup);
@@ -372,45 +469,112 @@ namespace YARG.Editor
                 var builtInNotice = (GameObject)PrefabUtility.InstantiatePrefab(builtInNoticePrefab);
                 builtInNotice.name = "Built In Notice";
                 builtInNotice.transform.SetParent(root.transform, false);
+                const float ACTION_ROW_Y = 0.3438889f;
+                const float TRANSFORM_LEFT = 0.0225f;
+                const float ACTION_GAP = 12f;
+                float leftSectionRight = MountLeftyFlipControl(root.transform, menu, ACTION_ROW_Y);
                 var noticeRect = builtInNotice.GetComponent<RectTransform>();
-                SetAnchors(noticeRect, new Vector2(0.04f, 0.3088889f), new Vector2(0.63f, 0.3788889f));
+                SetAnchors(noticeRect, new Vector2(TRANSFORM_LEFT, 0.245f), new Vector2(leftSectionRight, 0.425f));
+                foreach (var noticeText in builtInNotice.GetComponentsInChildren<TMP_Text>(true))
+                {
+                    noticeText.alignment = TextAlignmentOptions.Center;
+                    noticeText.textWrappingMode = TextWrappingModes.Normal;
+                    noticeText.overflowMode = TextOverflowModes.Overflow;
+                    noticeText.enableAutoSizing = false;
+                }
                 builtInNotice.SetActive(false);
                 Set(menu, "_builtInNotice", builtInNotice);
-                var transformLabels = new[] { "Shift Left", "Shift Right", "Reverse" };
-                var transformFields = new[] { "_shiftLeft", "_shiftRight", "_reverseLayout" };
+                var transformLabels = new[]
+                {
+                    EliteDrumsTransformButtonLayout.ShiftLeftLabel(YARG.Localization.Localize.Key("Menu.EliteLayout.ShiftLeft")),
+                    EliteDrumsTransformButtonLayout.ReverseLabel(YARG.Localization.Localize.Key("Menu.EliteLayout.Reverse")),
+                    EliteDrumsTransformButtonLayout.ShiftRightLabel(YARG.Localization.Localize.Key("Menu.EliteLayout.ShiftRight"))
+                };
+                var transformNames = new[] { "Shift Left", "Reverse", "Shift Right" };
+                var transformFields = new[] { "_shiftLeft", "_reverseLayout", "_shiftRight" };
+                var transformButtons = new Button[transformLabels.Length];
+                var transformTexts = new TMP_Text[transformLabels.Length];
+                float totalActionWidth = 0f;
                 for (int i = 0; i < transformLabels.Length; i++)
                 {
-                    var action = Button(transformLabels[i], root.transform, Vector2.zero, out var text,
-                        MANAGEMENT_BUTTON_PATH);
+                    transformButtons[i] = Button(transformNames[i], root.transform, Vector2.zero,
+                        out transformTexts[i], MANAGEMENT_BUTTON_PATH);
+                    transformTexts[i].font = EliteDrumsTransformFontBuilder.EnsureTransformFont(transformTexts[i].font);
+                    transformTexts[i].text = transformLabels[i];
+                    transformTexts[i].fontSize = 24f;
+                    transformTexts[i].enableAutoSizing = false;
+                    totalActionWidth += transformTexts[i].GetPreferredValues(transformLabels[i]).x + 32f;
+                }
+                totalActionWidth += ACTION_GAP * (transformLabels.Length - 1);
+                float availableActionWidth = (leftSectionRight - TRANSFORM_LEFT) * 1920f;
+                // Final equal-width fitting below also handles longer localized captions.
+                float actionX = (TRANSFORM_LEFT + leftSectionRight) * 960f - totalActionWidth / 2f;
+                for (int i = 0; i < transformLabels.Length; i++)
+                {
+                    var action = transformButtons[i];
+                    float width = transformTexts[i].GetPreferredValues(transformLabels[i]).x + 32f;
                     var wrapper = ButtonWrapperRect(action);
-                    SetButtonRect(wrapper, new Vector2(0.14f + i * 0.195f, 0.3438889f),
-                        new Vector2(210f, MANAGEMENT_BUTTON_HEIGHT));
+                    SetButtonRect(wrapper, new Vector2((actionX + width / 2f) / 1920f, ACTION_ROW_Y),
+                        new Vector2(width, MANAGEMENT_BUTTON_HEIGHT));
                     var buttonRect = action.GetComponent<RectTransform>();
                     buttonRect.anchorMin = new Vector2(0f, 0.5f);
                     buttonRect.anchorMax = new Vector2(1f, 0.5f);
                     buttonRect.anchoredPosition = Vector2.zero;
                     buttonRect.sizeDelta = new Vector2(0f, 50f);
-                    text.rectTransform.offsetMin = new Vector2(8f, 2f);
-                    text.rectTransform.offsetMax = new Vector2(-8f, -2f);
-                    text.fontSize = 24f;
+                    transformTexts[i].rectTransform.offsetMin = new Vector2(8f, 2f);
+                    transformTexts[i].rectTransform.offsetMax = new Vector2(-8f, -2f);
                     wrapper.gameObject.SetActive(false);
                     Set(menu, transformFields[i], action);
+                    actionX += width + ACTION_GAP;
                 }
+                // An inactive root Canvas has no resolved screen rect during prefab authoring.
+                var authoredRootRect = root.GetComponent<RectTransform>();
+                var originalRootSize = authoredRootRect.sizeDelta;
+                authoredRootRect.sizeDelta = new Vector2(1920f, 1080f);
+                if (!EliteDrumsTransformButtonLayout.Apply(transformButtons.Select(ButtonWrapperRect).ToArray(),
+                    transformTexts, root.GetComponent<RectTransform>(), TRANSFORM_LEFT, leftSectionRight))
+                    throw new System.InvalidOperationException("Transform labels cannot fit at the readable font-size floor.");
+                authoredRootRect.sizeDelta = originalRootSize;
+                var serializedMenu = new SerializedObject(menu);
+                serializedMenu.FindProperty("_transformSectionRight").floatValue = leftSectionRight;
+                serializedMenu.ApplyModifiedPropertiesWithoutUndo();
                 Set(menu, "_layoutDropdown", layoutDropdown);
                 Set(menu, "_previewColor", previewColor);
                 Set(menu, "_previewOptions", previewOptions);
                 Set(menu, "_previewWorld", world.transform);
                 Set(menu, "_previewImage", previewImage);
+                popup.transform.SetAsLastSibling();
                 popup.SetActive(false);
                 Directory.CreateDirectory(Path.GetDirectoryName(PREFAB_PATH));
                 PrefabUtility.SaveAsPrefabAsset(root, PREFAB_PATH);
                 AssetDatabase.SaveAssets();
-                MountProfileSelector();
+                // The profile entry point is already authored in its own prefab; generating
+                // this editor must not rewrite the source used for its standard controls.
             }
             finally
             {
                 Object.DestroyImmediate(root);
             }
+        }
+
+        private static RectTransform ConfigurePopupBand(GameObject bandObject, EliteAssignmentPopupSpriteBuilder.Band band)
+        {
+            var artwork = bandObject.GetComponent<Image>();
+            artwork.sprite = band.Artwork;
+            artwork.type = Image.Type.Sliced;
+            artwork.pixelsPerUnitMultiplier = band.PixelsPerUnitMultiplier();
+            artwork.raycastTarget = false;
+            var backing = AnchoredRect(bandObject.name + " Opaque Backing", bandObject.transform.parent,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            EditorUtility.CopySerialized(bandObject.GetComponent<RectTransform>(), backing.GetComponent<RectTransform>());
+            backing.transform.SetSiblingIndex(bandObject.transform.GetSiblingIndex());
+            var image = backing.AddComponent<Image>();
+            image.sprite = band.Backing;
+            image.color = new Color(1f / 255f, 8f / 255f, 14f / 255f, 1f);
+            image.type = Image.Type.Sliced;
+            image.pixelsPerUnitMultiplier = band.PixelsPerUnitMultiplier();
+            image.raycastTarget = false;
+            return backing.GetComponent<RectTransform>();
         }
 
         private static float ReadHelpBarTop()
@@ -593,11 +757,158 @@ namespace YARG.Editor
         private static void AddBoundary(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax,
             Vector2 offsetMin, Vector2 offsetMax)
         {
+            // Keep every editor separator at the same two-pixel stroke, regardless of
+            // the caller's legacy thickness. Compact toolbar dividers are centered at 56px.
+            if (anchorMin.x == anchorMax.x)
+            {
+                float center = (offsetMin.x + offsetMax.x) / 2f;
+                offsetMin.x = center - 1f;
+                offsetMax.x = center + 1f;
+                if (name == "Layout Colors Separator" || name == "Lefty Flip Divider")
+                {
+                    float centerY = (offsetMin.y + offsetMax.y) / 2f;
+                    offsetMin.y = centerY - 28f;
+                    offsetMax.y = centerY + 28f;
+                }
+            }
+            else
+            {
+                float center = (offsetMin.y + offsetMax.y) / 2f;
+                offsetMin.y = center - 1f;
+                offsetMax.y = center + 1f;
+            }
             var boundary = AnchoredRect(name, parent, anchorMin, anchorMax, offsetMin, offsetMax);
             var image = boundary.AddComponent<Image>();
-            // Use BaseSetting/Divider's muted preset color, with a lighter-weight line.
+            // Use BaseSetting/Divider's muted preset color.
             image.color = new Color(16f / 255f, 28f / 255f, 43f / 255f, 1f);
             image.raycastTarget = false;
+        }
+
+        private static float MountLeftyFlipControl(Transform editorRoot, EliteDrumsLayoutMenu menu,
+            float rowY)
+        {
+            const float GRID_RIGHT = ASSIGNMENT_LEFT + 9f * 0.061f + 0.056f;
+            const float DIVIDER_GAP = 0.018f;
+            const float TOGGLE_RIGHT_INSET = 15f;
+            const float LABEL_TOGGLE_GAP = 12f;
+            const float LABEL_ROW_PADDING = 20f;
+            const string SOURCE_PATH = "Assets/Prefabs/Menu/ProfileList/ProfileListMenu.prefab";
+            const string LOCALIZATION_KEY = "Menu.DifficultySelect.LeftyFlip";
+
+            var contents = PrefabUtility.LoadPrefabContents(SOURCE_PATH);
+            try
+            {
+                var sidebar = contents.GetComponentInChildren<YARG.Menu.ProfileList.ProfileSidebar>(true);
+                var sidebarData = new SerializedObject(sidebar);
+                var sourceToggle = sidebarData.FindProperty("_leftyFlipToggle").objectReferenceValue as Toggle;
+                if (sourceToggle == null)
+                    throw new System.InvalidOperationException("Profile List must serialize its Lefty Flip toggle.");
+                var sourceRow = sourceToggle.transform;
+                var sourceContentObject = sidebarData.FindProperty("_sidebarContent").objectReferenceValue;
+                var sourceContent = sourceContentObject is GameObject contentObject
+                    ? contentObject.transform : ((Component)sourceContentObject).transform;
+                while (sourceRow.parent != sourceContent)
+                {
+                    if (sourceRow.parent == null)
+                        throw new System.InvalidOperationException("Lefty Flip must be a direct profile-sidebar row.");
+                    sourceRow = sourceRow.parent;
+                }
+
+                var row = Object.Instantiate(sourceRow.gameObject, editorRoot, false);
+                row.name = "Lefty Flip";
+                var toggle = row.GetComponentsInChildren<Toggle>(true).Single();
+                var label = row.GetComponentsInChildren<TMP_Text>(true)
+                    .FirstOrDefault(text => text.name == "Option Name");
+                if (label == null)
+                    throw new System.InvalidOperationException("Lefty Flip source row must contain its authored label.");
+                // The authored on-state graphic is a sibling of Toggle, not its child.
+                // Move it before removing sidebar decoration so Toggle retains both states.
+                var onGraphic = toggle.graphic;
+                if (onGraphic == null)
+                    throw new System.InvalidOperationException("Lefty Flip source toggle must contain its on-state graphic.");
+                onGraphic.transform.SetParent(toggle.transform, false);
+                var onRect = onGraphic.rectTransform;
+                onRect.anchorMin = Vector2.zero;
+                onRect.anchorMax = Vector2.one;
+                onRect.pivot = new Vector2(0.5f, 0.5f);
+                onRect.offsetMin = Vector2.zero;
+                onRect.offsetMax = Vector2.zero;
+                foreach (var decoration in row.GetComponentsInChildren<Image>(true)
+                             .Where(image => image.transform != toggle.transform
+                                 && !image.transform.IsChildOf(toggle.transform)))
+                    Object.DestroyImmediate(decoration.gameObject);
+
+                var sourceToggleRect = sourceToggle.GetComponent<RectTransform>();
+                var sourceGraphicRect = sourceToggle.graphic.rectTransform;
+                float toggleWidth = sourceGraphicRect.rect.width * sourceGraphicRect.localScale.x
+                    * sourceToggleRect.localScale.x;
+                float toggleHeight = sourceGraphicRect.rect.height * sourceGraphicRect.localScale.y
+                    * sourceToggleRect.localScale.y;
+                float labelPreferredWidth = label.GetPreferredValues(
+                    YARG.Localization.Localize.Key(LOCALIZATION_KEY)).x;
+                float labelWidth = labelPreferredWidth + LABEL_TOGGLE_GAP + LABEL_ROW_PADDING;
+                float rightSectionWidth = (toggleWidth + TOGGLE_RIGHT_INSET + labelWidth) / 1920f;
+                float dividerX = GRID_RIGHT - rightSectionWidth - DIVIDER_GAP / 2f;
+                float leftSectionRight = dividerX - DIVIDER_GAP / 2f;
+                var rowRect = row.GetComponent<RectTransform>();
+                rowRect.anchorMin = new Vector2(dividerX + DIVIDER_GAP / 2f, rowY);
+                rowRect.anchorMax = new Vector2(GRID_RIGHT, rowY);
+                rowRect.pivot = new Vector2(1f, 0.5f);
+                rowRect.anchoredPosition = Vector2.zero;
+                rowRect.sizeDelta = new Vector2(0f, toggleHeight);
+
+                var toggleEvents = new SerializedObject(toggle);
+                var persistentCalls = toggleEvents.FindProperty("onValueChanged.m_PersistentCalls.m_Calls");
+                persistentCalls.arraySize = 0;
+                toggleEvents.ApplyModifiedPropertiesWithoutUndo();
+                foreach (var component in row.GetComponentsInChildren<MonoBehaviour>(true))
+                {
+                    if (component == null || component is Toggle) continue;
+                    if (component.GetType().Namespace?.StartsWith("YARG.Menu.Navigation") == true)
+                        Object.DestroyImmediate(component);
+                }
+
+                label.text = YARG.Localization.Localize.Key(LOCALIZATION_KEY);
+                var localized = label.GetComponent<YARG.Localization.LocalizeText>() ??
+                    label.gameObject.AddComponent<YARG.Localization.LocalizeText>();
+                var localizedData = new SerializedObject(localized);
+                localizedData.FindProperty("_localizationKey").stringValue = LOCALIZATION_KEY;
+                localizedData.ApplyModifiedPropertiesWithoutUndo();
+
+                var toggleRect = toggle.GetComponent<RectTransform>();
+                toggleRect.anchorMin = new Vector2(1f, 0.5f);
+                toggleRect.anchorMax = new Vector2(1f, 0.5f);
+                toggleRect.pivot = new Vector2(1f, 0.5f);
+                toggleRect.anchoredPosition = new Vector2(-TOGGLE_RIGHT_INSET, 0f);
+                // The source Toggle root is stretched across the sidebar row; its rect is not
+                // the checkbox size. Give the copied control the authored graphic's local bounds.
+                toggleRect.sizeDelta = sourceGraphicRect.rect.size;
+                toggleRect.localScale = sourceToggleRect.localScale;
+                var labelRect = label.rectTransform;
+                labelRect.anchorMin = new Vector2(0f, 0f);
+                labelRect.anchorMax = new Vector2(0f, 1f);
+                labelRect.pivot = new Vector2(0f, 0.5f);
+                labelRect.anchoredPosition = new Vector2(LABEL_ROW_PADDING / 2f, 0f);
+                labelRect.sizeDelta = new Vector2(labelWidth - LABEL_ROW_PADDING, 0f);
+
+                var focus = AnchoredRect("Lefty Flip Focus", toggle.transform,
+                    Vector2.zero, Vector2.one, new Vector2(-4f, -4f), new Vector2(4f, 4f));
+                var focusImage = focus.AddComponent<Image>();
+                focusImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+                    "Assets/Art/Menu/Common/Buttons/ButtonOutline.png");
+                focusImage.type = Image.Type.Sliced;
+                focusImage.fillCenter = true;
+                focusImage.color = RuntimeNavigatable.SelectedTextColor;
+                focusImage.raycastTarget = false;
+                focus.SetActive(false);
+
+                AddBoundary("Lefty Flip Divider", editorRoot,
+                    new Vector2(dividerX, rowY), new Vector2(dividerX, rowY),
+                    new Vector2(-1f, -28f), new Vector2(1f, 28f));
+                Set(menu, "_leftyFlipToggle", toggle);
+                return leftSectionRight;
+            }
+            finally { PrefabUtility.UnloadPrefabContents(contents); }
         }
 
         private static void MountProfileSelector()

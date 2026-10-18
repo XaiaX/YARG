@@ -19,6 +19,10 @@ namespace YARG.Menu.Navigation
 
         public bool Selected { get; private set; }
 
+        // Optional owner-scoped input gate. Programmatic deselection and teardown remain available.
+        public Func<bool> InputAllowed { get; set; }
+        protected bool CanReceiveInput => InputAllowed?.Invoke() ?? true;
+
         /// <summary>
         /// Whether moving the pointer over this element selects it. Disable this
         /// for rows that never join a navigation group (like menu titles), so the
@@ -53,6 +57,7 @@ namespace YARG.Menu.Navigation
 
         public void SetSelected(bool selected, SelectionOrigin selectionOrigin)
         {
+            if (selected && selectionOrigin != SelectionOrigin.Programmatically && !CanReceiveInput) return;
             if (Selected == selected) return;
 
             Selected = selected;

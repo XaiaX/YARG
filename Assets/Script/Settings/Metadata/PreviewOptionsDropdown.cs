@@ -35,14 +35,14 @@ namespace YARG.Settings.Metadata
         {
             private readonly Func<State> _getState;
 
-            public OptionsDropdownSetting(Func<State> getState, Action<string> onChange)
+            public OptionsDropdownSetting(Func<State> getState, Action<string> onChange, bool includeLeftyFlip)
                 : base(HEADER, null, localizable: false)
             {
                 _getState = getState;
                 Add(STAR_POWER_NOTES);
                 Add(STAR_POWER_ACTIVE);
                 Add(GROOVE);
-                Add(LEFTY_FLIP);
+                if (includeLeftyFlip) Add(LEFTY_FLIP);
                 OnChange = value =>
                 {
                     onChange?.Invoke(value);
@@ -53,8 +53,8 @@ namespace YARG.Settings.Metadata
             public override string ValueToString(string value) => DisplayValue(value, _getState());
         }
 
-        public static DropdownSetting<string> Create(Func<State> getState, Action<string> onChange) =>
-            new OptionsDropdownSetting(getState, onChange);
+        public static DropdownSetting<string> Create(Func<State> getState, Action<string> onChange,
+            bool includeLeftyFlip = true) => new OptionsDropdownSetting(getState, onChange, includeLeftyFlip);
 
         public static string Caption => Localize.Key("Settings.PresetSetting.PreviewVisuals.Visuals.Name");
 

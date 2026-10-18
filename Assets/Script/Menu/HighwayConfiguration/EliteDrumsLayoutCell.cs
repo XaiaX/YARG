@@ -18,13 +18,59 @@ namespace YARG.Menu.HighwayConfiguration
         private bool _selected;
         private Vector2 _authoredOffsetMin;
         private Vector2 _authoredOffsetMax;
+        private Vector2 _authoredAnchorMin;
+        private Vector2 _authoredAnchorMax;
+        private Vector2 _authoredPillAnchorMin;
+        private Vector2 _authoredPillAnchorMax;
+        private bool _authoredGeometryCaptured;
 
         protected override void Awake()
         {
             base.Awake();
+            CaptureAuthoredGeometry();
+        }
+
+        private void CaptureAuthoredGeometry()
+        {
+            if (_authoredGeometryCaptured) return;
             var rect = (RectTransform)transform;
             _authoredOffsetMin = rect.offsetMin;
             _authoredOffsetMax = rect.offsetMax;
+            _authoredAnchorMin = rect.anchorMin;
+            _authoredAnchorMax = rect.anchorMax;
+            if (_fretPill != null)
+            {
+                var pillRect = _fretPill.rectTransform;
+                _authoredPillAnchorMin = pillRect.anchorMin;
+                _authoredPillAnchorMax = pillRect.anchorMax;
+            }
+            _authoredGeometryCaptured = true;
+        }
+
+        public void SetLeftyFlip(bool leftyFlip)
+        {
+            CaptureAuthoredGeometry();
+            var rect = (RectTransform)transform;
+            float gridLeft = _authoredAnchorMin.x - Column * 0.061f;
+            float gridRight = gridLeft + 9 * 0.061f + 0.056f;
+            rect.anchorMin = leftyFlip
+                ? new Vector2(gridLeft + gridRight - _authoredAnchorMax.x, _authoredAnchorMin.y)
+                : _authoredAnchorMin;
+            rect.anchorMax = leftyFlip
+                ? new Vector2(gridLeft + gridRight - _authoredAnchorMin.x, _authoredAnchorMax.y)
+                : _authoredAnchorMax;
+            rect.offsetMin = _authoredOffsetMin;
+            rect.offsetMax = _authoredOffsetMax;
+            if (_fretPill != null)
+            {
+                var pillRect = _fretPill.rectTransform;
+                pillRect.anchorMin = leftyFlip
+                    ? new Vector2(gridLeft + gridRight - _authoredPillAnchorMax.x, _authoredPillAnchorMin.y)
+                    : _authoredPillAnchorMin;
+                pillRect.anchorMax = leftyFlip
+                    ? new Vector2(gridLeft + gridRight - _authoredPillAnchorMin.x, _authoredPillAnchorMax.y)
+                    : _authoredPillAnchorMax;
+            }
         }
 
         private void LateUpdate()
@@ -77,7 +123,7 @@ namespace YARG.Menu.HighwayConfiguration
 
         public override void Confirm()
         {
-            if (_button != null && _button.interactable)
+            if (CanReceiveInput && _button != null && _button.interactable)
                 _menu.OpenCell(Column, Drum);
         }
 
