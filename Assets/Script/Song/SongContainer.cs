@@ -626,8 +626,7 @@ namespace YARG.Song
                 StarAmount key = StarAmount.NoPart;
                 if (useAggregateDrums)
                 {
-                    var preferredInstrument = MidiDrumkitHelper.GetPreferredInstrumentForSong(song);
-                    if (preferredInstrument.HasValue && song[preferredInstrument.Value].IsActive())
+                    if (ScoreContainer.GetMidiDrumCandidate(song, profile).HasValue)
                     {
                         if (!_runtimeStars.TryGetValue(song, out key))
                         {
@@ -727,7 +726,7 @@ namespace YARG.Song
             foreach (SongEntry song in _songs)
             {
                 if (profile.GameMode == GameMode.EliteDrums
-                    ? ScoreContainer.PredictMidiDrumPlayback(song, profile) == null
+                    ? ScoreContainer.GetMidiDrumCandidate(song, profile) == null
                     : !song[instrument].IsActive())
                 {
                     InsertSorted(buckets[^1], song, comparer);
@@ -822,7 +821,7 @@ namespace YARG.Song
             foreach (SongEntry song in _songs)
             {
                 if (profile.GameMode == GameMode.EliteDrums
-                    ? ScoreContainer.PredictMidiDrumPlayback(song, profile) == null
+                    ? ScoreContainer.GetMidiDrumCandidate(song, profile) == null
                     : !song[instrument].IsActive())
                 {
                     InsertSorted(noPart, song, comparer);

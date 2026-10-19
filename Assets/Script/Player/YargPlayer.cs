@@ -25,14 +25,29 @@ namespace YARG.Player
         public bool SittingOut;
 
         public ResolvedDrumPlayback ResolvedDrumPlayback { get; private set; }
+        public DrumScoreIdentity? DrumScoreIdentity { get; private set; }
         public InstrumentDifficulty<DrumNote> PlayableDrumDifficulty { get; private set; }
         public InstrumentDifficulty<EliteDrumNote> PlayableEliteDrumDifficulty { get; private set; }
 
         public void ClearDrumPlayback()
         {
             ResolvedDrumPlayback = null;
+            DrumScoreIdentity = null;
             PlayableDrumDifficulty = null;
             PlayableEliteDrumDifficulty = null;
+        }
+
+        public int? ScoreDrumExtraKicks => Profile.GameMode == GameMode.EliteDrums && DrumScoreIdentity is { } identity
+            ? (identity.HasExtraKickContribution ? 1 : 0) : (int?) null;
+
+        public Difficulty ScoreDifficulty => DrumScoreIdentity?.BaseDifficulty ?? Profile.CurrentDifficulty;
+
+        public void SetDrumScoreIdentity(DrumScoreIdentity identity)
+        {
+            if (ResolvedDrumPlayback == null || identity.BaseDifficulty != ResolvedDrumPlayback.BaseDifficulty ||
+                identity.ScoreCategory != ResolvedDrumPlayback.ScoreCategory)
+                throw new InvalidOperationException("Score identity must match the loaded drum source and base difficulty.");
+            DrumScoreIdentity = identity;
         }
 
         public void SetDrumPlayback(ResolvedDrumPlayback resolved,

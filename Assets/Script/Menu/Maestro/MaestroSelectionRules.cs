@@ -87,10 +87,10 @@ namespace YARG.Menu.Maestro
             Instrument.FourLaneDrums, Instrument.ProDrums, Instrument.FiveLaneDrums, Instrument.EliteDrums,
         });
 
-        public static ResolvedDrumPlayback ResolveMidiDrums(SongEntry song, Instrument output,
-            Difficulty tier, Modifier modifiers) => DrumOutputResolver.Resolve(song.AuthoredDrumSourceFacts,
+        public static DrumCandidate? ResolveMidiDrums(SongEntry song, Instrument output,
+            Difficulty tier, Modifier modifiers) => DrumCandidateResolver.Resolve(song.DrumSourcePresence,
                 output, tier, (modifiers & Modifier.EnableEliteUpconversion) != 0,
-                (modifiers & Modifier.Enable2xKicks) != 0, (modifiers & Modifier.PreferEliteDowncharts) != 0);
+                (modifiers & Modifier.PreferEliteDowncharts) != 0);
 
         public static bool IsMidiDrumTierPlayable(IReadOnlyList<SongEntry> songs, Instrument output,
             Difficulty tier, Modifier modifiers) => songs.Count > 0 && songs.All(song =>

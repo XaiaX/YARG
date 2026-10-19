@@ -148,7 +148,10 @@ namespace YARG.Menu.ScoreScreen
             _playerName.text = Player.Profile.Name;
 
             _instrument.text = Player.Profile.CurrentInstrument.ToLocalizedName();
-            _difficulty.text = Player.Profile.CurrentDifficulty.ToDisplayName();
+            _difficulty.text = Player.DrumScoreIdentity is { } identity
+                ? YARG.Scores.PlayerScoreRecord.GetDifficultyDisplayName(identity.BaseDifficulty,
+                    identity.HasExtraKickContribution ? 1 : 0)
+                : Player.Profile.CurrentDifficulty.ToDisplayName();
 
             if (_difficultyRing != null)
             {

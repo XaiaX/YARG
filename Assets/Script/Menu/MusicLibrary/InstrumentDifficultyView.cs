@@ -48,6 +48,12 @@ namespace YARG.Menu.MusicLibrary
                 _percentText.text = $"{Mathf.FloorToInt(scoreInfo.Percent * 100f)}%";
             }
 
+            // Keep the compact base-tier icon and existing bounds. The shared label rule
+            // supplies the extra-kick marker at every tier; detailed text lives in history.
+            var difficultyLabel = YARG.Scores.PlayerScoreRecord.GetDifficultyDisplayName(
+                scoreInfo.Difficulty, scoreInfo.DrumExtraKicks);
+            if (scoreInfo.DrumExtraKicks == 1 && difficultyLabel.EndsWith("+"))
+                _percentText.text = "+ " + _percentText.text;
             _percentText.color = scoreInfo.IsFc ? FcGold : Color.white;
         }
 

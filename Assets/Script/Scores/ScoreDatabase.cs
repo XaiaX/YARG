@@ -66,7 +66,7 @@ namespace YARG.Scores
     /// </remarks>
     public class ScoreDatabase : IDisposable
     {
-        public const int CURRENT_SCHEMA_VERSION = 1;
+        public const int CURRENT_SCHEMA_VERSION = 2;
 
         public SQLiteConnection _db;
         private int _currentLibraryHashRevision = -1;
@@ -107,6 +107,14 @@ namespace YARG.Scores
                     _db.Execute(
                         "UPDATE PlayerScores SET DrumScoreCategory = ? WHERE Instrument = ?",
                         (int) DrumScoreCategory.LegacyUnknownElite, (int) Instrument.EliteDrums);
+                }
+
+                // Add in place so primary keys and replay relationships remain untouched. Historical
+                // rows intentionally remain NULL: their kick policy cannot be inferred from difficulty.
+                if (version < 2 && hasScores &&
+                    !_db.GetTableInfo("PlayerScores").Any(column => column.Name == "DrumExtraKicks"))
+                {
+                    _db.Execute("ALTER TABLE PlayerScores ADD COLUMN DrumExtraKicks INTEGER NULL");
                 }
 
                 _db.CreateTable<GameRecord>();
@@ -406,6 +414,7 @@ namespace YARG.Scores
                         ON ps.GameRecordId = gr.Id
                     WHERE ps.PlayerId = ?
                         AND ps.Instrument = ?{difficultyFilter}
+                        AND ps.DrumExtraKicks IS NULL
                         AND ps.IsReplay = 0
                 )
                 SELECT * FROM RankedScores WHERE ScoreRank = 1";
@@ -452,6 +461,7 @@ namespace YARG.Scores
                         ON ps.GameRecordId = gr.Id
                     WHERE ps.PlayerId = ?
                         AND ps.Instrument = ?{difficultyFilter}
+                        AND ps.DrumExtraKicks IS NULL
                         AND ps.IsReplay = 0
                 )
                 SELECT * FROM RankedScores WHERE ScoreRank = 1";
@@ -480,12 +490,13 @@ namespace YARG.Scores
         )
         {
             string query =
-                @"SELECT * FROM PlayerScores
+                @"SELECT PlayerScores.* FROM PlayerScores
                 INNER JOIN GameRecords
                     ON PlayerScores.GameRecordId = GameRecords.Id
                 WHERE GameRecords.SongChecksum = ?
                     AND PlayerScores.PlayerId = ?
                     AND PlayerScores.Instrument = ?
+                    AND PlayerScores.DrumExtraKicks IS NULL
                     AND PlayerScores.IsReplay = 0";
 
             if (currentDifficultyOnly)
@@ -528,12 +539,13 @@ namespace YARG.Scores
         )
         {
             string query =
-                @"SELECT * FROM PlayerScores
+                @"SELECT PlayerScores.* FROM PlayerScores
                 INNER JOIN GameRecords
                     ON PlayerScores.GameRecordId = GameRecords.Id
                 WHERE GameRecords.SongChecksum = ?
                     AND PlayerScores.PlayerId = ?
                     AND PlayerScores.Instrument = ?
+                    AND PlayerScores.DrumExtraKicks IS NULL
                     AND PlayerScores.IsReplay = 0";
 
             if (currentDifficultyOnly)
@@ -589,6 +601,10 @@ namespace YARG.Scores
                     AND PlayerScores.IsReplay = 0";
 
             bool useAggregateDrums = profile.GameMode == GameMode.EliteDrums;
+            if (!useAggregateDrums)
+            {
+                query += " AND PlayerScores.DrumExtraKicks IS NULL";
+            }
 
             if (useAggregateDrums)
             {
@@ -669,6 +685,7 @@ namespace YARG.Scores
                         ON ps.GameRecordId = gr.Id
                     WHERE ps.PlayerId = ?
                         AND ps.Instrument = ?{difficultyFilter}
+                        AND ps.DrumExtraKicks IS NULL
                         AND ps.IsReplay = 0
                 )
                 SELECT * FROM RankedScores WHERE ScoreRank = 1";
@@ -731,6 +748,7 @@ namespace YARG.Scores
                         ON ps.GameRecordId = gr.Id
                     WHERE ps.PlayerId = ?
                         AND ps.Instrument {inClause}{difficultyFilter}
+                        {(profile.GameMode == GameMode.EliteDrums ? "" : "AND ps.DrumExtraKicks IS NULL")}
                         AND ps.IsReplay = 0
                 )
                 SELECT * FROM RankedScores WHERE ScoreRank = 1";
@@ -748,16 +766,18 @@ namespace YARG.Scores
             HashWrapper songChecksum,
             Guid playerId,
             IReadOnlyList<Instrument> instruments,
-            bool highestDifficultyOnly)
+            bool highestDifficultyOnly,
+            bool includeKnownEliteScores = false)
         {
             string inClause = BuildInstrumentInClause(instruments);
             string query =
-                $@"SELECT * FROM PlayerScores
+                $@"SELECT PlayerScores.* FROM PlayerScores
                 INNER JOIN GameRecords
                     ON PlayerScores.GameRecordId = GameRecords.Id
                 WHERE GameRecords.SongChecksum = ?
                     AND PlayerScores.PlayerId = ?
                     AND PlayerScores.Instrument {inClause}
+                    {(includeKnownEliteScores ? "" : "AND PlayerScores.DrumExtraKicks IS NULL")}
                     AND PlayerScores.IsReplay = 0";
 
             if (highestDifficultyOnly)
@@ -781,16 +801,18 @@ namespace YARG.Scores
             HashWrapper songChecksum,
             Guid playerId,
             IReadOnlyList<Instrument> instruments,
-            bool highestDifficultyOnly)
+            bool highestDifficultyOnly,
+            bool includeKnownEliteScores = false)
         {
             string inClause = BuildInstrumentInClause(instruments);
             string query =
-                $@"SELECT * FROM PlayerScores
+                $@"SELECT PlayerScores.* FROM PlayerScores
                 INNER JOIN GameRecords
                     ON PlayerScores.GameRecordId = GameRecords.Id
                 WHERE GameRecords.SongChecksum = ?
                     AND PlayerScores.PlayerId = ?
                     AND PlayerScores.Instrument {inClause}
+                    {(includeKnownEliteScores ? "" : "AND PlayerScores.DrumExtraKicks IS NULL")}
                     AND PlayerScores.IsReplay = 0";
 
             if (highestDifficultyOnly)
@@ -811,24 +833,28 @@ namespace YARG.Scores
         }
 
         /// <summary>
-        /// Queries one resolved MIDI drum score context. Kick policy is deliberately not a score key.
-        /// Difficulty normalization is a query projection only; returned historical records are unchanged.
+        /// Queries one MIDI drum source context. A null kick filter includes both known variants
+        /// and ambiguous historical rows for library history. Historical difficulty stays literal.
         /// </summary>
         public PlayerScoreRecord QueryPlayerMidiDrumScore(HashWrapper songChecksum, Guid playerId,
-            Instrument output, Difficulty baseDifficulty, DrumScoreCategory category, HighScoreHistoryMode mode)
+            Instrument output, Difficulty baseDifficulty, DrumScoreCategory category, HighScoreHistoryMode mode,
+            int? drumExtraKicks = null)
         {
             if (!ResolvedDrumPlayback.IsOutput(output)) throw new ArgumentOutOfRangeException(nameof(output));
+            if (drumExtraKicks is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(drumExtraKicks));
             if (baseDifficulty == Difficulty.ExpertPlus) baseDifficulty = Difficulty.Expert;
+            // Normalize the query tier only; returned historical records retain literal ExpertPlus.
             string tier = $"CASE WHEN ps.Difficulty = {(int) Difficulty.ExpertPlus} THEN {(int) Difficulty.Expert} ELSE ps.Difficulty END";
             bool currentOnly = mode is HighScoreHistoryMode.HighestScoreCurrentDifficulty or
                 HighScoreHistoryMode.HighestPercentageCurrentDifficulty;
+            string kickOrder = "CASE WHEN ps.DrumExtraKicks = 1 THEN 2 WHEN ps.DrumExtraKicks = 0 THEN 1 ELSE 0 END";
             string order = mode switch
             {
                 HighScoreHistoryMode.HighestScoreOverall or HighScoreHistoryMode.HighestScoreCurrentDifficulty => "ps.Score DESC",
-                HighScoreHistoryMode.HighestScoreDifficulty => $"{tier} DESC, ps.Score DESC",
+                HighScoreHistoryMode.HighestScoreDifficulty => $"{tier} DESC, {kickOrder} DESC, ps.Score DESC",
                 HighScoreHistoryMode.HighestPercentageOverall or HighScoreHistoryMode.HighestPercentageCurrentDifficulty =>
                     "ps.Percent DESC, ps.Score DESC, ps.IsFc DESC",
-                HighScoreHistoryMode.HighestPercentageDifficulty => $"{tier} DESC, ps.Percent DESC, ps.Score DESC, ps.IsFc DESC",
+                HighScoreHistoryMode.HighestPercentageDifficulty => $"{tier} DESC, {kickOrder} DESC, ps.Percent DESC, ps.Score DESC, ps.IsFc DESC",
                 _ => throw new ArgumentOutOfRangeException(nameof(mode)),
             };
             string query = $@"SELECT ps.* FROM PlayerScores ps
@@ -836,9 +862,11 @@ namespace YARG.Scores
                 WHERE gr.SongChecksum = ? AND ps.PlayerId = ? AND ps.Instrument = ?
                     AND ps.DrumScoreCategory = ? AND ps.IsReplay = 0
                     {(currentOnly ? $"AND ({tier}) = ?" : "")}
+                    {(drumExtraKicks.HasValue ? "AND (ps.DrumExtraKicks IS NULL OR ps.DrumExtraKicks = ?)" : "")}
                 ORDER BY {order}, ps.Id DESC LIMIT 1";
             var args = new List<object> { songChecksum.HashBytes, playerId, (int) output, (int) category };
             if (currentOnly) args.Add((int) baseDifficulty);
+            if (drumExtraKicks.HasValue) args.Add(drumExtraKicks.Value);
             return FindWithQuery<PlayerScoreRecord>(query, args.ToArray());
         }
 

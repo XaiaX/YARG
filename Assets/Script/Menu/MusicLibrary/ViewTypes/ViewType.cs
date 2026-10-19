@@ -24,6 +24,7 @@ namespace YARG.Menu.MusicLibrary
             public float      Percent;
             public int        Score;
             public Difficulty Difficulty;
+            public int?       DrumExtraKicks;
             public Instrument Instrument;
             public bool       IsFc;
         }

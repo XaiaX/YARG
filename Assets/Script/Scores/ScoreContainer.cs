@@ -40,15 +40,19 @@ namespace YARG.Scores
         private static readonly Dictionary<(HashWrapper Song, Guid Player, Instrument Output, Difficulty Tier,
             DrumScoreCategory Category, HighScoreHistoryMode Mode, Modifier Preferences, int Revision), PlayerScoreRecord> MidiScores = new();
 
-        public static ResolvedDrumPlayback PredictMidiDrumPlayback(SongEntry song, YargProfile profile)
+        public static DrumCandidate? GetMidiDrumCandidate(SongEntry song, YargProfile profile)
         {
             var tier = profile.CurrentDifficulty == Difficulty.ExpertPlus ? Difficulty.Expert : profile.CurrentDifficulty;
             var modifiers = profile.CurrentModifiers;
-            return DrumOutputResolver.Resolve(song.AuthoredDrumSourceFacts, profile.CurrentInstrument, tier,
+            return DrumCandidateResolver.Resolve(song.DrumSourcePresence, profile.CurrentInstrument, tier,
                 (modifiers & Modifier.EnableEliteUpconversion) != 0,
-                (modifiers & Modifier.Enable2xKicks) != 0,
                 (modifiers & Modifier.PreferEliteDowncharts) != 0);
         }
+
+        public static PlayerScoreRecord GetMidiDrumHighScore(HashWrapper song, Guid playerId,
+            Instrument output, DrumScoreIdentity identity, HighScoreHistoryMode mode)
+            => _db.QueryPlayerMidiDrumScore(song, playerId, output, identity.BaseDifficulty,
+                identity.ScoreCategory, mode, identity.HasExtraKickContribution ? 1 : 0);
 
         /// <summary>Use actual resolved playback during gameplay, rather than predicting from profile preferences.</summary>
         public static PlayerScoreRecord GetMidiDrumHighScore(HashWrapper song, Guid playerId,
@@ -65,15 +69,17 @@ namespace YARG.Scores
         public static PlayerScoreRecord GetPredictedMidiDrumHighScore(SongEntry song, YargProfile profile,
             HighScoreHistoryMode mode)
         {
-            var playback = PredictMidiDrumPlayback(song, profile);
-            if (playback == null) return null;
-            // Kick inclusion changes neither source category nor score comparability.
+            var candidate = GetMidiDrumCandidate(song, profile);
+            if (!candidate.HasValue) return null;
+            var playback = candidate.Value;
+            // Library history includes both known kick variants and ambiguous historical scores.
             var preferences = profile.CurrentModifiers & (Modifier.EnableEliteUpconversion | Modifier.PreferEliteDowncharts);
             var key = (song.Hash, profile.Id, playback.RequestedOutput, playback.BaseDifficulty,
                 playback.ScoreCategory, mode, preferences, SongContainer.LibraryRevision);
             if (!MidiScores.TryGetValue(key, out var score))
             {
-                score = GetMidiDrumHighScore(song.Hash, profile.Id, playback, mode);
+                score = _db.QueryPlayerMidiDrumScore(song.Hash, profile.Id, playback.RequestedOutput,
+                    playback.BaseDifficulty, playback.ScoreCategory, mode);
                 MidiScores[key] = score;
             }
             return score;
@@ -84,6 +90,7 @@ namespace YARG.Scores
         private static Difficulty _currentDifficulty = Difficulty.Easy;
         private static HighScoreHistoryMode _currentHighScoreHistoryMode;
         private static bool       _scoresWereFetched;
+        private static int        _scoreCacheLibraryRevision = -1;
 
         private static bool HighestDifficultyOnly
             => SettingsManager.Settings.HighScoreHistory.Value is
@@ -308,7 +315,7 @@ namespace YARG.Scores
             if (allowCacheUpdate)
                 FetchHighScores(playerId, new[] { instrument });
 
-            if (_currentPlayerId == playerId && _currentInstrumentSetKey == BuildInstrumentSetKey(instrument))
+            if (IsScoreCacheValid(playerId, BuildInstrumentSetKey(instrument)))
                 return PlayerHighScores.GetValueOrDefault(songChecksum);
 
             return GetHighScoreFromDatabase(songChecksum, playerId, instrument);
@@ -400,7 +407,7 @@ namespace YARG.Scores
             if (allowCacheUpdate)
                 FetchHighScores(playerId, new[] { instrument });
 
-            if (_currentPlayerId == playerId && _currentInstrumentSetKey == BuildInstrumentSetKey(instrument))
+            if (IsScoreCacheValid(playerId, BuildInstrumentSetKey(instrument)))
                 return PlayerHighPercentages.GetValueOrDefault(songChecksum);
 
             return GetHighestPercentageFromDatabase(songChecksum, playerId, instrument);
@@ -421,6 +428,16 @@ namespace YARG.Scores
             }
         }
 
+        private static bool IsScoreCacheValid(Guid playerId, string instrumentKey)
+        {
+            var profile = PlayerContainer.GetProfileById(playerId);
+            return _scoresWereFetched && _currentPlayerId == playerId &&
+                _currentInstrumentSetKey == instrumentKey &&
+                _currentDifficulty == (profile?.CurrentDifficulty ?? Difficulty.Expert) &&
+                _currentHighScoreHistoryMode == SettingsManager.Settings.HighScoreHistory.Value &&
+                _scoreCacheLibraryRevision == SongContainer.LibraryRevision;
+        }
+
         private static void FetchHighScores(Guid playerId, IReadOnlyList<Instrument> instruments)
         {
             if (instruments == null || instruments.Count == 0) return;
@@ -434,6 +451,7 @@ namespace YARG.Scores
                 _currentInstrumentSetKey == instrumentKey &&
                 _currentDifficulty == currentDifficulty &&
                 _currentHighScoreHistoryMode == currentHighScoreHistoryMode &&
+                _scoreCacheLibraryRevision == SongContainer.LibraryRevision &&
                 _scoresWereFetched)
             {
                 // Already cached. No need to fetch again from the database.
@@ -486,6 +504,7 @@ namespace YARG.Scores
                 _currentDifficulty = currentDifficulty;
                 _currentHighScoreHistoryMode = currentHighScoreHistoryMode;
                 _currentInstrumentSetKey = instrumentKey;
+                _scoreCacheLibraryRevision = SongContainer.LibraryRevision;
                 _scoresWereFetched = true;
             }
             catch (Exception e)
@@ -702,9 +721,7 @@ namespace YARG.Scores
                 FetchHighScores(playerId, instruments);
 
             string instrumentKey = BuildInstrumentSetKey(instruments);
-            if (_currentPlayerId == playerId &&
-                _currentInstrumentSetKey == instrumentKey &&
-                _scoresWereFetched)
+            if (IsScoreCacheValid(playerId, instrumentKey))
             {
                 return PlayerHighScores.GetValueOrDefault(songChecksum);
             }
@@ -740,9 +757,7 @@ namespace YARG.Scores
                 FetchHighScores(playerId, instruments);
 
             string instrumentKey = BuildInstrumentSetKey(instruments);
-            if (_currentPlayerId == playerId &&
-                _currentInstrumentSetKey == instrumentKey &&
-                _scoresWereFetched)
+            if (IsScoreCacheValid(playerId, instrumentKey))
             {
                 return PlayerHighPercentages.GetValueOrDefault(songChecksum);
             }

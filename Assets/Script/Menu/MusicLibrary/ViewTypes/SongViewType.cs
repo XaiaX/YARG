@@ -100,6 +100,7 @@ namespace YARG.Menu.MusicLibrary
             {
                 Score = _playerScoreRecord.Score,
                 Difficulty = _playerScoreRecord.Difficulty,
+                DrumExtraKicks = _playerScoreRecord.DrumExtraKicks,
                 Percent = _playerScoreRecord.GetPercent(),
                 Instrument = _playerScoreRecord.Instrument,
                 IsFc = _playerScoreRecord.IsFc

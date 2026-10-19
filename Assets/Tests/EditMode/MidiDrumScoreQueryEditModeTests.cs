@@ -55,7 +55,7 @@ namespace YARG.Tests.EditMode
                     var categoryType = TypeFor("YARG.Core.Game.DrumScoreCategory");
                     var history = Enum.ToObject(TypeFor("YARG.Scores.HighScoreHistoryMode"), mode);
                     Func<int, object, object> read = (category, output) => query.Invoke(database,
-                        new[] { hash, (object)player, output, expert, Enum.ToObject(categoryType, category), history });
+                        new[] { hash, (object)player, output, expert, Enum.ToObject(categoryType, category), history, null });
                     var result = read(1, elite);
                     Assert.That(Property<int>(result, "Id"), Is.EqualTo(expectedId));
                     if (expectedId == 12) Assert.That(Property<object>(result, "Difficulty"), Is.EqualTo(expertPlus), "Historical difficulty must not be mutated.");
@@ -68,12 +68,214 @@ namespace YARG.Tests.EditMode
                     var classicQuery = database.GetType().GetMethod("QueryPlayerSongHighScore");
                     var classic = classicQuery.Invoke(database, new[] { hash, (object)player, elite, false, true, expert });
                     Assert.That(Property<object>(classic, "Difficulty"), Is.EqualTo(expert), "Classic equality remains unnormalized.");
+
+                    insert(21, pro, expert, 0, 20000, 1f, false, player, 41);
+                    insert(22, pro, expert, 0, 15000, .95f, false, player, 41);
+                    sql("UPDATE PlayerScores SET DrumExtraKicks = 0 WHERE Id = 21", Array.Empty<object>());
+                    sql("UPDATE PlayerScores SET DrumExtraKicks = 1 WHERE Id = 22", Array.Empty<object>());
+                    var ordinaryPro = classicQuery.Invoke(database, new[] { hash, (object)player, pro, false, true, expert });
+                    Assert.That(Property<int>(ordinaryPro, "Id"), Is.EqualTo(17), "Known Elite scores cannot enter ordinary output queries, even with Classic category.");
+                    Assert.That(Property<int>(read(0, pro), "Id"), Is.EqualTo(mode == 1 || mode == 4 ? 22 : 21),
+                        "Highest-tier history orders known plus above base; overall/current history compares score or percentage.");
+                    var selectedBase = query.Invoke(database, new[] { hash, (object)player, pro, expert,
+                        Enum.ToObject(categoryType, 0), history, (object)0 });
+                    Assert.That(Property<int>(selectedBase, "Id"), Is.EqualTo(21));
+                    var selectedPlus = query.Invoke(database, new[] { hash, (object)player, pro, expert,
+                        Enum.ToObject(categoryType, 0), history, (object)1 });
+                    Assert.That(Property<int>(selectedPlus, "Id"), Is.EqualTo(mode == 0 || mode == 2 ? 17 : 22),
+                        "Selected-plus lookup retains ambiguous historical rows: their higher percentage wins percentage-led modes, while highest-tier modes rank known plus first.");
+                    var ordinaryPercent = database.GetType().GetMethod("QueryPlayerSongHighestPercentage")
+                        .Invoke(database, new[] { hash, (object)player, pro, false, true, expert });
+                    Assert.That(Property<int>(ordinaryPercent, "Id"), Is.EqualTo(17));
+                    var outputs = Array.CreateInstance(pro.GetType(), 1);
+                    outputs.SetValue(pro, 0);
+                    foreach (string method in new[] { "QueryPlayerSongHighScoreForInstruments", "QueryPlayerSongHighestPercentageForInstruments" })
+                    {
+                        var ordinary = database.GetType().GetMethod(method).Invoke(database,
+                            new object[] { hash, player, outputs, false, false });
+                        Assert.That(Property<int>(ordinary, "Id"), Is.EqualTo(17), method);
+                    }
+                    var hashes = Array.CreateInstance(hash.GetType(), 1);
+                    hashes.SetValue(hash, 0);
+                    foreach (string method in new[] { "QueryPlayerHighScores", "QueryPlayerHighestPercentages" })
+                    {
+                        var rows = ((System.Collections.IEnumerable)database.GetType().GetMethod(method)
+                            .Invoke(database, new object[] { player, pro, false, true, expert, hashes, 1 }))
+                            .Cast<object>().ToArray();
+                        Assert.That(rows.Length, Is.EqualTo(1), method);
+                        Assert.That(Property<int>(rows[0], "Id"), Is.EqualTo(17), method);
+                    }
+                    var profileType = TypeFor("YARG.Core.Game.YargProfile");
+                    var profile = Activator.CreateInstance(profileType);
+                    profileType.GetField("Id").SetValue(profile, player);
+                    profileType.GetField("GameMode").SetValue(profile, Enum.Parse(TypeFor("YARG.Core.GameMode"), "FourLaneDrums"));
+                    profileType.GetField("CurrentInstrument").SetValue(profile, pro);
+                    profileType.GetField("CurrentDifficulty").SetValue(profile, expert);
+                    foreach (string method in new[] { "QueryPlayerBestStars", "QueryPlayerBestStarsForInstruments" })
+                    {
+                        var args = method.EndsWith("ForInstruments")
+                            ? new object[] { profile, outputs, history, hashes, 1 }
+                            : new object[] { profile, history, hashes, 1 };
+                        var rows = ((System.Collections.IEnumerable)database.GetType().GetMethod(method).Invoke(database, args)).Cast<object>().ToArray();
+                        Assert.That(rows.Length, Is.EqualTo(1), method);
+                        Assert.That(Property<int>(rows[0], "Id"), Is.EqualTo(17), method);
+                    }
+                    var counts = ((System.Collections.IEnumerable)database.GetType().GetMethod("QueryPlayerMostPlayedSongs")
+                        .Invoke(database, new[] { profile, Enum.ToObject(TypeFor("YARG.Scores.SortOrdering"), 0) })).Cast<object>().ToArray();
+                    Assert.That(counts.Sum(row => Property<int>(row, "Count")), Is.EqualTo(1), "Ordinary play count excludes known Elite scores.");
                 }
             }
             finally
             {
                 Directory.Delete(directory, true);
             }
+        }
+
+        [Test]
+        public void SongContainer_ActualScoreAndPercentageSorts_RespectHistoryMode_AndRestoreStatics()
+        {
+            var songContainer = TypeFor("YARG.Song.SongContainer");
+            var scoreContainer = TypeFor("YARG.Scores.ScoreContainer");
+            var playerContainer = TypeFor("YARG.Player.PlayerContainer");
+            var settingsType = TypeFor("YARG.Settings.SettingsManager");
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+            var settingsProperty = settingsType.GetProperty("Settings");
+            var oldSettings = settingsProperty.GetValue(null);
+            var songField = songContainer.GetField("_songs", flags);
+            var oldSongs = songField.GetValue(null);
+            var players = (System.Collections.IList)playerContainer.GetField("_players", flags).GetValue(null);
+            var oldPlayers = players.Cast<object>().ToArray();
+            var scoreFields = scoreContainer.GetFields(flags).Where(field => !field.IsLiteral).ToArray();
+            var oldScoreState = scoreFields.ToDictionary(field => field, field => field.GetValue(null));
+            var dictionaries = oldScoreState.Values.OfType<System.Collections.IDictionary>().Distinct().ToArray();
+            var oldDictionaries = dictionaries.ToDictionary(dictionary => dictionary,
+                dictionary => dictionary.Cast<System.Collections.DictionaryEntry>().ToArray());
+            string path = Path.Combine(Path.GetTempPath(), "YARG-sort-" + Guid.NewGuid().ToString("N") + ".db");
+            IDisposable database = null;
+            try
+            {
+                var isolatedSettings = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(settingsProperty.PropertyType);
+                var historyProperty = settingsProperty.PropertyType.GetProperty("HighScoreHistory");
+                var historyType = historyProperty.PropertyType;
+                var isolatedHistory = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(historyType);
+                settingsProperty.PropertyType.GetField("<HighScoreHistory>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(isolatedSettings, isolatedHistory);
+                settingsProperty.GetSetMethod(true).Invoke(null, new[] { isolatedSettings });
+                var profileType = TypeFor("YARG.Core.Game.YargProfile");
+                var profile = Activator.CreateInstance(profileType);
+                profileType.GetField("GameMode").SetValue(profile, Enum.Parse(TypeFor("YARG.Core.GameMode"), "EliteDrums"));
+                var output = Enum.Parse(TypeFor("YARG.Core.Instrument"), "EliteDrums");
+                var expert = Enum.Parse(TypeFor("YARG.Core.Difficulty"), "Expert");
+                profileType.GetField("CurrentInstrument").SetValue(profile, output);
+                profileType.GetField("CurrentDifficulty").SetValue(profile, expert);
+                var playerType = TypeFor("YARG.Player.YargPlayer");
+                var player = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(playerType);
+                playerType.GetProperty("Profile").GetSetMethod(true).Invoke(player, new[] { profile });
+                players.Clear();
+                players.Add(player);
+                var songType = TypeFor("YARG.Core.Song.SongEntry");
+                var concreteSong = songType.Assembly.GetTypes().Single(type => type.Name == "UnpackedIniEntry");
+                var songs = Array.CreateInstance(songType, 2);
+                var hashes = new object[2];
+                for (int i = 0; i < 2; i++)
+                {
+                    var song = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(concreteSong);
+                    var partsType = TypeFor("YARG.Core.Song.AvailableParts");
+                    var parts = partsType.GetField("Default").GetValue(null);
+                    var native = partsType.GetField("NativeEliteDrums");
+                    native.SetValue(parts, Enum.ToObject(native.FieldType, 1 << Convert.ToInt32(expert)));
+                    songType.GetField("_parts", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(song, parts);
+                    var bytes = new byte[20]; bytes[0] = (byte)(i + 1);
+                    hashes[i] = TypeFor("YARG.Core.Song.HashWrapper").GetMethod("Deserialize", new[] { typeof(Stream) })
+                        .Invoke(null, new object[] { new MemoryStream(bytes) });
+                    songType.GetField("_hash", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(song, hashes[i]);
+                    songs.SetValue(song, i);
+                }
+                songField.SetValue(null, songs);
+                database = (IDisposable)Activator.CreateInstance(TypeFor("YARG.Scores.ScoreDatabase"), path);
+                scoreContainer.GetField("_db", flags).SetValue(null, database);
+                scoreContainer.GetMethod("InvalidateScoreCache").Invoke(null, null);
+                var connection = database.GetType().GetField("_db").GetValue(database);
+                var execute = connection.GetType().GetMethod("Execute", new[] { typeof(string), typeof(object[]) });
+                Action<string, object[]> sql = (text, args) => execute.Invoke(connection, new object[] { text, args });
+                var id = profileType.GetField("Id").GetValue(profile);
+                for (int i = 0; i < 2; i++)
+                {
+                    sql("INSERT INTO GameRecords(Id, SongChecksum) VALUES (?, ?)", new[] { (object)(i + 1), hashes[i].GetType().GetProperty("HashBytes").GetValue(hashes[i]) });
+                    sql("INSERT INTO PlayerScores(GameRecordId, PlayerId, Instrument, Difficulty, DrumScoreCategory, DrumExtraKicks, Score, Percent, IsReplay) VALUES (?, ?, ?, ?, 1, 0, ?, ?, 0)",
+                        new[] { (object)(i + 1), id, output, expert, i == 0 ? 100000 : 200000, i == 0 ? .8f : .9f });
+                }
+                // The first song's lower base tier wins overall, but must not win current/highest tier.
+                sql("INSERT INTO PlayerScores(GameRecordId, PlayerId, Instrument, Difficulty, DrumScoreCategory, DrumExtraKicks, Score, Percent, IsReplay) VALUES (1, ?, ?, ?, 1, 1, 500000, 1.0, 0)",
+                    new[] { id, output, Enum.Parse(expert.GetType(), "Hard") });
+                var settings = settingsProperty.GetValue(null);
+                var history = settings.GetType().GetProperty("HighScoreHistory").GetValue(settings);
+                var value = history.GetType().GetProperty("Value");
+                foreach (int mode in new[] { 0, 1, 2, 3, 4, 5 })
+                {
+                    history.GetType().GetMethod("SetValueWithoutNotify").Invoke(history,
+                        new[] { Enum.ToObject(value.PropertyType, mode) });
+                    foreach (string method in new[] { "GetScore", "GetPercentage" })
+                    {
+                        var categories = (System.Collections.IEnumerable)songContainer.GetMethod(method, flags).Invoke(null, null);
+                        var flattened = categories.Cast<object>().SelectMany(category =>
+                            ((System.Collections.IEnumerable)category.GetType().GetProperty("Songs").GetValue(category)).Cast<object>()).ToArray();
+                        Assert.That(flattened.Length, Is.EqualTo(2), method);
+                        Assert.That(flattened[0], Is.SameAs(songs.GetValue(mode == 0 || mode == 3 ? 0 : 1)), method + " mode " + mode);
+                    }
+                }
+            }
+            finally
+            {
+                songField.SetValue(null, oldSongs);
+                players.Clear(); foreach (var player in oldPlayers) players.Add(player);
+                settingsProperty.GetSetMethod(true).Invoke(null, new[] { oldSettings });
+                foreach (var pair in oldScoreState) if (!pair.Key.IsInitOnly) pair.Key.SetValue(null, pair.Value);
+                foreach (var dictionary in dictionaries)
+                {
+                    dictionary.Clear();
+                    foreach (var pair in oldDictionaries[dictionary]) dictionary.Add(pair.Key, pair.Value);
+                }
+                database?.Dispose();
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void EliteDifficultyLabels_AndOrdering()
+        {
+            var recordType = TypeFor("YARG.Scores.PlayerScoreRecord");
+            var difficultyType = TypeFor("YARG.Core.Difficulty");
+            var label = recordType.GetMethod("GetDifficultyDisplayName", BindingFlags.Static | BindingFlags.Public);
+            var order = recordType.GetMethod("GetDifficultyOrder", BindingFlags.Static | BindingFlags.Public);
+            double previousPlus = double.NegativeInfinity;
+            foreach (string tier in new[] { "Beginner", "Easy", "Medium", "Hard", "Expert" })
+            {
+                var difficulty = Enum.Parse(difficultyType, tier);
+                Func<int?, bool, string> display = (kicks, detailed) =>
+                    (string)label.Invoke(null, new object[] { difficulty, kicks, detailed });
+                Func<int?, double> rank = kicks =>
+                    (double)order.Invoke(null, new object[] { difficulty, kicks });
+                Assert.That(display(0, true), Is.EqualTo(tier));
+                Assert.That(display(1, true), Is.EqualTo(tier + "+"));
+                Assert.That(display(null, true), Is.EqualTo(tier + " (extra kicks unknown)"));
+                Assert.That(display(null, false), Is.EqualTo(tier));
+                Assert.That(rank(0), Is.EqualTo(Convert.ToInt32(difficulty) * 2));
+                Assert.That(rank(1), Is.EqualTo(Convert.ToInt32(difficulty) * 2 + 1));
+                Assert.That(rank(1), Is.GreaterThan(rank(0)));
+                Assert.That(rank(0), Is.GreaterThan(rank(null)), "Unknown follows both known variants in descending order.");
+                Assert.That(rank(null), Is.GreaterThan(previousPlus), "Unknown stays within its base tier.");
+                previousPlus = rank(1);
+            }
+            var legacy = Activator.CreateInstance(recordType);
+            recordType.GetProperty("Difficulty").SetValue(legacy, Enum.Parse(difficultyType, "ExpertPlus"));
+            Assert.That((string)recordType.GetMethod("GetDifficultyDisplayName", new[] { typeof(bool) })
+                .Invoke(legacy, new object[] { true }), Is.EqualTo("Expert+ (extra kicks unknown)"));
+            Assert.That(Property<double>(legacy, "DifficultyOrder"), Is.EqualTo(
+                (double)order.Invoke(null, new object[] { Enum.Parse(difficultyType, "Expert"), null })));
+            Assert.That(recordType.GetProperty("DifficultyOrder").GetCustomAttributes(false)
+                .Any(attribute => attribute.GetType().FullName == "SQLite.IgnoreAttribute"), Is.True,
+                "Display ordering must not add another persisted schema column.");
         }
 
         [TestCase("Classic", "Classic drums")]

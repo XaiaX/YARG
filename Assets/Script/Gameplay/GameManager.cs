@@ -880,7 +880,8 @@ namespace YARG.Gameplay
                     PlayerId = profile.Id,
 
                     Instrument = profile.CurrentInstrument,
-                    Difficulty = profile.CurrentDifficulty,
+                    Difficulty = player.Player.ScoreDifficulty,
+                    DrumExtraKicks = player.Player.ScoreDrumExtraKicks,
                     DrumScoreCategory = player.Player.ResolvedDrumPlayback?.ScoreCategory ??
                         (profile.CurrentInstrument == Instrument.EliteDrums
                             ? DrumScoreCategory.LegacyUnknownElite : DrumScoreCategory.Classic),

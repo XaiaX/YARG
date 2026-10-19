@@ -239,6 +239,11 @@ namespace YARG.Gameplay
 
             // Spawn players
             CreatePlayers();
+            if (RecoverPlayerLoadFailure(_loadState == LoadFailureState.Error ? _loadFailureMessage : null,
+                message => ToastManager.ToastError(message), () => global.LoadScene(SceneIndex.Menu)))
+            {
+                return;
+            }
             YargLogger.LogFormatDebug("Calculating star cutoffs for {0} players", _players.Count);
             EngineManager.StarScoreThresholds = EngineManager.GetStarScoreCutoffs(_players.ConvertAll(p => p.BaseEngine.StarScoreThresholds));
             YargLogger.LogFormatDebug("Star score thresholds: {0}", string.Join(", ", EngineManager.StarScoreThresholds));
@@ -510,6 +515,25 @@ namespace YARG.Gameplay
             _players.Add(trackPlayer);
         }
 
+        internal static string ValidateSelectedDrumOutput(PreparedDrumPlayback playback, string playerName) =>
+            playback != null && DrumPlaybackPreparer.IsPlayable(playback) ? null :
+                $"The selected MIDI Drumkit output is empty for {playerName}. " +
+                "Please choose another difficulty or drum output.";
+
+        // Return true when Start must stop loading, after reporting the error and returning to selection.
+        internal static bool RecoverPlayerLoadFailure(string failureMessage, Action<string> showError,
+            Action returnToSelection)
+        {
+            if (failureMessage == null)
+            {
+                return false;
+            }
+
+            showError(failureMessage);
+            returnToSelection();
+            return true;
+        }
+
         private void CreatePlayers()
         {
             try
@@ -581,14 +605,41 @@ namespace YARG.Gameplay
                                     profile.IsModifierActive(Modifier.Enable2xKicks),
                                     profile.IsModifierActive(Modifier.PreferEliteDowncharts));
                             if (resolved == null)
-                                throw new InvalidOperationException(
-                                    $"MIDI Drumkit player '{profile.Name}' has no eligible drum source at the selected difficulty.");
+                            {
+                                _loadState = LoadFailureState.Error;
+                                _loadFailureMessage = $"No playable MIDI Drumkit source for {profile.Name} at the selected difficulty. " +
+                                    "Please choose another difficulty or drum output.";
+                                return;
+                            }
                             profile.CurrentInstrument = resolved.RequestedOutput;
                             profile.EliteDrumsDownchartTarget = null;
-                            var playable = DrumPlaybackPreparer.Prepare(Chart, resolved,
-                                notes => profile.ApplyModifiers(notes, Chart.SyncTrack),
-                                notes => profile.ApplyModifiers(notes, Chart.SyncTrack));
+                            // Snapshot the deterministic drum adjustments. Both comparison variants operate
+                            // only on their own notes; no profile/player callback is invoked twice.
+                            bool noKicks = profile.IsModifierActive(Modifier.NoKicks);
+                            bool noDynamics = profile.IsModifierActive(Modifier.NoDynamics);
+                            bool noHiHat = profile.IsModifierActive(Modifier.NoHiHat);
+                            bool noHiHatPedal = profile.NoHiHatPedal;
+                            var playable = DrumPlaybackPreparer.PrepareForScore(Chart, resolved,
+                                notes =>
+                                {
+                                    if (noKicks) notes.RemoveKickDrumNotes();
+                                    if (noDynamics) notes.RemoveDynamics();
+                                },
+                                notes =>
+                                {
+                                    if (noKicks) notes.RemoveEliteKickDrumNotes();
+                                    if (noHiHat || noHiHatPedal) notes.RemoveEliteHiHatNotes(noHiHat, noHiHatPedal);
+                                    if (noDynamics) notes.RemoveEliteDynamics();
+                                });
+                            var outputFailure = ValidateSelectedDrumOutput(playable, profile.Name);
+                            if (outputFailure != null)
+                            {
+                                _loadState = LoadFailureState.Error;
+                                _loadFailureMessage = outputFailure;
+                                return;
+                            }
                             player.SetDrumPlayback(resolved, playable.Classic, playable.Elite);
+                            player.SetDrumScoreIdentity(playable.ScoreIdentity.Value);
                             resolvedEliteInstrument = resolved.RequestedOutput;
                         }
                         else
@@ -599,9 +650,10 @@ namespace YARG.Gameplay
                     }
 
                     var scoreInstrument = resolvedEliteInstrument ?? player.Profile.CurrentInstrument;
-                    var lastHighScore = player.ResolvedDrumPlayback != null
+                    var lastHighScore = player.ResolvedDrumPlayback != null && player.DrumScoreIdentity is { } scoreIdentity
                         ? ScoreContainer.GetMidiDrumHighScore(Song.Hash, player.Profile.Id,
-                            player.ResolvedDrumPlayback, SettingsManager.Settings.HighScoreHistory.Value)?.Score
+                            player.ResolvedDrumPlayback.RequestedOutput, scoreIdentity,
+                            SettingsManager.Settings.HighScoreHistory.Value)?.Score
                         : ScoreContainer.GetHighScore(Song.Hash, player.Profile.Id, scoreInstrument, false)?.Score;
                     YargLogger.LogFormatInfo("Current high score for player {0} on {1}: {2}",
                         player.Profile.Name, player.Profile.CurrentInstrument, lastHighScore ?? 0);

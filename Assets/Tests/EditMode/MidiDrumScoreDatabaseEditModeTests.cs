@@ -68,7 +68,8 @@ namespace YARG.Tests.EditMode
                 using (var database = OpenDatabase(_path))
                 {
                     var connection = Connection(database);
-                    Assert.That(Scalar(connection, "PRAGMA user_version"), Is.EqualTo(1));
+                    Assert.That(Scalar(connection, "PRAGMA user_version"), Is.EqualTo(2));
+                    Assert.That(Scalar(connection, "SELECT COUNT(*) FROM PlayerScores WHERE DrumExtraKicks IS NULL"), Is.EqualTo(4));
                     Assert.That(Scalar(connection, "SELECT COUNT(*) FROM pragma_table_info('PlayerScores') WHERE name = 'DrumScoreCategory'"), Is.EqualTo(1));
                     Assert.That(Scalar(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?", CATEGORY_INDEX), Is.EqualTo(1));
                     Assert.That(Scalar(connection, "SELECT COUNT(*) FROM PlayerScores WHERE GameRecordId = 41 AND Score = 12345"), Is.EqualTo(4));
@@ -131,7 +132,32 @@ namespace YARG.Tests.EditMode
             }
             using (var database = OpenDatabase(_path))
             {
-                Assert.That(Scalar(Connection(database), "PRAGMA user_version"), Is.EqualTo(1));
+                Assert.That(Scalar(Connection(database), "PRAGMA user_version"), Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public void VersionOneUpgrade_AddsNullableKickIdentityWithoutRewritingRows()
+        {
+            using (var legacy = OpenNative())
+            {
+                Execute(legacy, LEGACY_GAME_SCHEMA);
+                Execute(legacy, LEGACY_SCORE_SCHEMA);
+                Execute(legacy, LEGACY_PLAYER_SCHEMA);
+                Execute(legacy, "ALTER TABLE PlayerScores ADD COLUMN DrumScoreCategory INTEGER NOT NULL DEFAULT 0");
+                Execute(legacy, "INSERT INTO GameRecords(Id, ReplayFileName, ReplayChecksum) VALUES (41, 'v1.replay', X'0102')");
+                Execute(legacy, "INSERT INTO PlayerScores(Id, GameRecordId, Difficulty, DrumScoreCategory, IsReplay) VALUES (71, 41, 4, 1, 1)");
+                Execute(legacy, "PRAGMA user_version = 1");
+            }
+            for (int reopen = 0; reopen < 2; reopen++)
+            {
+                using (var database = OpenDatabase(_path))
+                {
+                    var connection = Connection(database);
+                    Assert.That(Scalar(connection, "PRAGMA user_version"), Is.EqualTo(2));
+                    Assert.That(Scalar(connection, "SELECT COUNT(*) FROM PlayerScores WHERE Id = 71 AND GameRecordId = 41 AND Difficulty = 4 AND DrumScoreCategory = 1 AND IsReplay = 1 AND DrumExtraKicks IS NULL"), Is.EqualTo(1));
+                    Assert.That(Scalar(connection, "SELECT COUNT(*) FROM GameRecords WHERE Id = 41 AND ReplayFileName = 'v1.replay' AND ReplayChecksum = X'0102'"), Is.EqualTo(1));
+                }
             }
         }
 

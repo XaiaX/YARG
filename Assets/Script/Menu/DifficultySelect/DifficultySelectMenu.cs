@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using YARG.Core;
+using YARG.Core.Chart;
 using YARG.Core.Extensions;
 using YARG.Core.Game;
 using YARG.Core.Input;
@@ -166,6 +167,41 @@ namespace YARG.Menu.DifficultySelect
         private readonly List<Modifier> _itemModifiers = new();
 
         private List<SongEntry> _songList;
+        private SongEntry _selectedDrumSourcesSong;
+        private bool _selectedDrumSourcesAttempted;
+        private AuthoredDrumSourceCollection _selectedDrumSources;
+
+        private void ClearSelectedDrumSources()
+        {
+            _selectedDrumSourcesSong = null;
+            _selectedDrumSourcesAttempted = false;
+            _selectedDrumSources = null;
+        }
+
+        // Explicit selected-song analysis only: availability and label getters never parse charts.
+        // Synchronous by design, bounded to one song per menu lifecycle; retain no full chart.
+        internal void LoadSelectedDrumSourcesForLabels()
+        {
+            var song = _songList?.Count == 1 ? _songList[0] : null;
+            if (!ReferenceEquals(song, _selectedDrumSourcesSong))
+            {
+                ClearSelectedDrumSources();
+                _selectedDrumSourcesSong = song;
+            }
+            if (song == null || CurrentPlayer.Profile.GameMode != GameMode.EliteDrums ||
+                _selectedDrumSourcesAttempted)
+                return;
+
+            _selectedDrumSourcesAttempted = true;
+            try
+            {
+                _selectedDrumSources = song.LoadChart()?.AuthoredDrumSources;
+            }
+            catch (Exception exception)
+            {
+                YargLogger.LogWarning($"Could not load selected-song drum sources for difficulty labels: {exception}");
+            }
+        }
 
         private IReadOnlyList<YargPlayer> _explicitPlayers;
 
@@ -220,6 +256,7 @@ namespace YARG.Menu.DifficultySelect
             _songTitleText.text = GlobalVariables.State.CurrentSong.Name;
             _artistText.text = GlobalVariables.State.CurrentSong.Artist;
 
+            ClearSelectedDrumSources();
             if (GlobalVariables.State.PlayingAShow)
             {
                 _songList = GlobalVariables.State.ShowSongs;
@@ -831,15 +868,18 @@ namespace YARG.Menu.DifficultySelect
         {
             string label = difficulty.ToLocalizedName();
             var profile = CurrentPlayer.Profile;
-            if (profile.GameMode == GameMode.EliteDrums)
+            if (profile.GameMode == GameMode.EliteDrums && _songList?.Count == 1 &&
+                ReferenceEquals(_songList[0], _selectedDrumSourcesSong) && _selectedDrumSources != null)
             {
-                var resolved = MaestroSelectionRules.ResolveMidiDrums(GlobalVariables.State.CurrentSong,
-                    profile.CurrentInstrument, difficulty, profile.CurrentModifiers);
-                if (resolved != null)
+                bool extra = profile.IsModifierActive(Modifier.Enable2xKicks);
+                var facts = _selectedDrumSources.Tiers.Values.Select(sourceTier => sourceTier.Facts).ToArray();
+                var resolved = DrumOutputResolver.Resolve(facts, profile.CurrentInstrument, difficulty,
+                    profile.IsModifierActive(Modifier.EnableEliteUpconversion), extra,
+                    profile.IsModifierActive(Modifier.PreferEliteDowncharts));
+                var tier = difficulty == Difficulty.Beginner ? Difficulty.Easy : difficulty;
+                if (resolved != null && _selectedDrumSources.TryGetTier(resolved.SourceFormat, tier, out var authored))
                 {
-                    var facts = GlobalVariables.State.CurrentSong.AuthoredDrumSourceFacts.First(fact =>
-                        fact.Source == resolved.SourceFormat && fact.Tier == resolved.SourceDifficulty);
-                    string suffix = facts.KickSuffix(profile.IsModifierActive(Modifier.Enable2xKicks));
+                    string suffix = authored.Facts.KickSuffix(extra);
                     if (suffix.Length > 0) label += " " + suffix;
                 }
             }
@@ -1415,6 +1455,7 @@ namespace YARG.Menu.DifficultySelect
             }
 
             RecomputeSelectionAvailability();
+            LoadSelectedDrumSourcesForLabels();
             CurrentPlayer.SittingOut = false;
             UpdatePossibleDifficulties();
             UpdateForPlayer();
@@ -1503,6 +1544,7 @@ namespace YARG.Menu.DifficultySelect
         internal void InitializeSelection(IReadOnlyList<YargPlayer> players, List<SongEntry> songs,
             int playerIndex)
         {
+            ClearSelectedDrumSources();
             _explicitPlayers = players;
             _songList = songs;
             _playerIndex = playerIndex;
@@ -1637,7 +1679,8 @@ namespace YARG.Menu.DifficultySelect
 
         private void OnDisable()
         {
-            _navGroup.SelectionChanged -= UpdateForSelectionChanged;
+            ClearSelectedDrumSources();
+            if (_navGroup != null) _navGroup.SelectionChanged -= UpdateForSelectionChanged;
             if (_directMaestroCoroutine != null)
             {
                 StopCoroutine(_directMaestroCoroutine);

@@ -145,15 +145,15 @@ namespace YARG.Tests.PlayMode
         {
             public DoneInputSong()
             {
-                var facts = new[]
-                {
-                    new DrumSourceTierFacts(DrumSourceFormat.Elite, Difficulty.Expert, true, false, true, false, true),
-                    new DrumSourceTierFacts(DrumSourceFormat.FourLane, Difficulty.Expert, true, false, true, false, true),
-                };
-                typeof(SongEntry).GetField("_authoredDrumSourceFacts", INSTANCE)
-                    .SetValue(this, Array.AsReadOnly(facts));
-                Assert.That(DrumOutputResolver.Resolve(AuthoredDrumSourceFacts, Instrument.EliteDrums,
-                    Difficulty.Expert, false, false, false), Is.Not.Null, "Fixture must provide playable native Elite drums.");
+                var parts = AvailableParts.Default;
+                parts.NativeEliteDrums = DifficultyMask.Expert;
+                parts.NativeFourLaneDrums = DifficultyMask.Expert;
+                parts.EliteDrums.Difficulties = DifficultyMask.Expert;
+                parts.FourLaneDrums.Difficulties = DifficultyMask.Expert;
+                parts.EliteDrumsDownchart.Difficulties = DifficultyMask.Expert;
+                typeof(SongEntry).GetField("_parts", INSTANCE).SetValue(this, parts);
+                Assert.That(DrumCandidateResolver.Resolve(DrumSourcePresence, Instrument.EliteDrums,
+                    Difficulty.Expert, false, false), Is.Not.Null, "Fixture must provide native Elite presence.");
             }
 
             public override EntryType SubType => EntryType.Ini;

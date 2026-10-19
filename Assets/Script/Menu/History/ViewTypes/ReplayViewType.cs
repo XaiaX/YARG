@@ -82,7 +82,8 @@ namespace YARG.Menu.History
                 ? string.Join(", ", records
                     .Where(record => record.Instrument is Instrument.FourLaneDrums or Instrument.ProDrums or
                         Instrument.FiveLaneDrums or Instrument.EliteDrums)
-                    .Select(record => GetDrumSourceLabel(record.DrumScoreCategory)).Distinct())
+                    .Select(record => GetDrumSourceLabel(record.DrumScoreCategory) +
+                        " · " + record.GetDifficultyDisplayName(detailed: true)).Distinct())
                 : string.Empty;
             string secondaryText = string.IsNullOrEmpty(sourceLabels)
                 ? _artistName
