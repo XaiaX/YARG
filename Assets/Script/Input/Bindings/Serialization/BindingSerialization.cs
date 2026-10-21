@@ -38,6 +38,9 @@ namespace YARG.Input.Serialization
     {
         public List<SerializedInputDevice> Devices = new();
         public List<SerializedMic> Microphones = new();
+        // Parallel to Microphones: zero keeps the automatic needle, 1-7 select a saved appearance.
+        public List<int> MicrophoneNeedleIds = new();
+        public List<float> MicrophoneSensitivityOffsets = new();
 
         // Legacy single microphone, only filled when loading v0-v2 files
         public SerializedMic? Microphone;
@@ -132,7 +135,7 @@ namespace YARG.Input.Serialization
         {
             try
             {
-                var serialized = SerializeBindingsV3(bindings);
+                var serialized = SerializeBindingsV4(bindings);
                 string bindingsJson = JsonConvert.SerializeObject(serialized, Formatting.Indented);
                 File.WriteAllText(bindingsPath, bindingsJson);
             }
@@ -165,6 +168,7 @@ namespace YARG.Input.Serialization
                     1 => DeserializeBindingsV1(jObject),
                     2 => DeserializeBindingsV2(jObject),
                     3 => DeserializeBindingsV3(jObject),
+                    4 => DeserializeBindingsV4(jObject),
                     _ => throw new NotImplementedException($"Unhandled bindings version {version}!")
                 };
 

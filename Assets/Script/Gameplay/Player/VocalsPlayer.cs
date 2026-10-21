@@ -53,7 +53,7 @@ namespace YARG.Gameplay.Player
         private readonly List<AsyncOperationHandle<Material>> _needleMaterials = new();
         private Instrument _chartSource;
         private int _micCount = 1;
-        private List<SerializedMic> _microphoneSlots;
+        private List<MicrophoneSlot> _microphoneSlots;
         private bool IsPartySession => Player.Profile.GameMode == GameMode.PartyVocals;
 
         public static Instrument ResolveChartSource(YargPlayer player, SongChart chart)
@@ -114,8 +114,7 @@ namespace YARG.Gameplay.Player
             _chartSource = chartSource;
             var multiTrack = chart.GetVocalsTrack(_chartSource);
             if (IsPartySession && !player.IsReplay)
-                _microphoneSlots = player.Bindings.Microphones.Select(mic => mic.Serialize())
-                    .Concat(player.Bindings.UnresolvedMicrophones).ToList();
+                _microphoneSlots = player.Bindings.MicrophoneSlots.ToList();
             _micCount = IsPartySession
                 ? (player.IsReplay ? ((VocalsEngineParameters) player.EngineParameterOverride).PartyVocalsMicCount
                     : Mathf.Max(1, _microphoneSlots.Count))
@@ -182,17 +181,15 @@ namespace YARG.Gameplay.Player
             if (IsPartySession && !player.IsReplay && !player.Profile.IsBot && _microphoneSlots.Count > 0)
             {
                 connectedSlots = new bool[_micCount];
-                // Session slots contain connected bindings first, then unresolved bindings.
-                // A name match cannot distinguish two microphones of the same model.
-                for (int mic = 0; mic < player.Bindings.Microphones.Count; mic++)
-                    connectedSlots[mic] = true;
+                for (int mic = 0; mic < _microphoneSlots.Count; mic++)
+                    connectedSlots[mic] = _microphoneSlots[mic].IsConnected;
             }
             _hud.ShowPlayerName(player, _needleIds, connectedSlots);
 
             // Create and start an input context for the mics
             if (!Player.IsReplay && (player.Bindings.Microphones.Count > 0 || _microphoneSlots?.Count > 0))
             {
-                _inputContext = new MicInputContext(player.Bindings.Microphones, GameManager, IsPartySession, _microphoneSlots);
+                _inputContext = new MicInputContext(player.Bindings.Microphones, GameManager, IsPartySession, boundSlots: _microphoneSlots);
                 _inputContext.Start();
             }
 
@@ -548,6 +545,7 @@ namespace YARG.Gameplay.Player
             transform.localPosition = Vector3.zero;
             // Clone only the visual subtree; the profile still owns one player and HUD.
             var originalRoot = _hittingParticleGroup.transform.parent;
+            var assignedNeedles = _microphoneSlots == null ? null : MicrophoneNeedleAssignments.Resolve(_microphoneSlots);
             for (int mic = 0; mic < _micCount; mic++)
             {
                 var root = mic == 0 ? originalRoot : Instantiate(originalRoot, transform);
@@ -556,6 +554,8 @@ namespace YARG.Gameplay.Player
                 var rotation = mic == 0 ? _needleTransform : FindClonedTransform(_needleTransform, originalRoot, root);
                 var particles = mic == 0 ? _hittingParticleGroup : FindClonedTransform(_hittingParticleGroup.transform, originalRoot, root).GetComponent<ParticleGroup>();
                 var needleId = (firstMaterial - 1 + mic) % NEEDLES_COUNT + 1;
+                if (assignedNeedles != null && mic < assignedNeedles.Length)
+                    needleId = assignedNeedles[mic];
                 _needleIds.Add(needleId);
                 var material = Addressables.LoadAssetAsync<Material>($"VocalNeedle/{needleId}");
                 _needleMaterials.Add(material);

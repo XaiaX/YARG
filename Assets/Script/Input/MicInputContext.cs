@@ -12,6 +12,7 @@ namespace YARG.Input
         private readonly List<MicDevice> _connectedDevices;
 
         private readonly SerializedMic[] _slotIdentities;
+        private readonly IReadOnlyList<MicrophoneSlot> _boundSlots;
         private bool _recording;
         private readonly HashSet<MicDevice> _startedDevices = new();
         private readonly bool _separateMicrophones;
@@ -20,18 +21,20 @@ namespace YARG.Input
         public int MicrophoneCount => _devices.Count;
 
         public MicInputContext(List<MicDevice> devices, GameManager gameManager, bool separateMicrophones = false,
-            IReadOnlyList<SerializedMic> sessionSlots = null)
+            IReadOnlyList<SerializedMic> sessionSlots = null, IReadOnlyList<MicrophoneSlot> boundSlots = null)
         {
             _separateMicrophones = separateMicrophones;
+            _boundSlots = boundSlots;
             _connectedDevices = devices;
             _devices = separateMicrophones ? new List<MicDevice>() : devices;
             if (separateMicrophones)
             {
-                int count = sessionSlots?.Count ?? devices.Count;
+                int count = boundSlots?.Count ?? sessionSlots?.Count ?? devices.Count;
                 _slotIdentities = new SerializedMic[count];
                 for (int i = 0; i < count; i++)
                 {
-                    _slotIdentities[i] = sessionSlots == null ? devices[i].Serialize() : sessionSlots[i];
+                    _slotIdentities[i] = boundSlots != null ? boundSlots[i].Identity :
+                        sessionSlots == null ? devices[i].Serialize() : sessionSlots[i];
                     _devices.Add(null);
                 }
                 for (int i = 0; i < count; i++) RefreshSlot(i);
@@ -74,7 +77,8 @@ namespace YARG.Input
         private MicDevice RefreshSlot(int slot)
         {
             var device = _devices[slot];
-            if (device != null && _connectedDevices.Contains(device)) return device;
+            if (device != null && _connectedDevices.Contains(device) &&
+                (_boundSlots == null || _boundSlots[slot].Device == device)) return device;
 
             if (device != null)
             {
@@ -82,6 +86,17 @@ namespace YARG.Input
                 _startedDevices.Remove(device);
             }
             _devices[slot] = null;
+            if (_boundSlots != null)
+            {
+                var bound = _boundSlots[slot].Device;
+                if (bound != null && _connectedDevices.Contains(bound))
+                {
+                    _devices[slot] = bound;
+                    if (_recording) StartRecording(bound);
+                    return bound;
+                }
+                return null;
+            }
             var identity = _slotIdentities[slot];
             foreach (var candidate in _connectedDevices)
             {

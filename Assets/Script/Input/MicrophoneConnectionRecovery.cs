@@ -6,35 +6,27 @@ namespace YARG.Input
 {
     public static class MicrophoneConnectionRecovery
     {
-        public static bool DisconnectUnavailable(List<MicDevice> connected, List<SerializedMic> unresolved)
+        public static bool DisconnectUnavailable(IReadOnlyList<MicrophoneSlot> slots)
         {
             bool changed = false;
-            for (int i = connected.Count - 1; i >= 0; i--)
+            foreach (var slot in slots)
             {
-                var device = connected[i];
-                if (device.IsConnected) continue;
-                var identity = device.Serialize();
-                connected.RemoveAt(i);
-                // Equal names/channels can represent separate physical microphones.
-                unresolved.Add(identity);
-                device.Dispose();
+                if (slot.Device == null || slot.IsConnected) continue;
+                slot.Device.Dispose();
+                slot.Device = null;
                 changed = true;
             }
             return changed;
         }
 
-        public static bool Resolve(List<MicDevice> connected, List<SerializedMic> unresolved,
-            Func<string, int, MicDevice> create)
+        public static bool Resolve(IReadOnlyList<MicrophoneSlot> slots, Func<string, int, MicDevice> create)
         {
             bool changed = false;
-            for (int i = unresolved.Count - 1; i >= 0; i--)
+            foreach (var slot in slots)
             {
-                var identity = unresolved[i];
-                var device = create(identity.BaseName, identity.Channel);
-                if (device == null) continue;
-                connected.Add(device);
-                unresolved.RemoveAt(i);
-                changed = true;
+                if (slot.Device != null) continue;
+                slot.Device = create(slot.Identity.BaseName, slot.Identity.Channel);
+                changed |= slot.Device != null;
             }
             return changed;
         }

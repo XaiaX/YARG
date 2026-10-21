@@ -16,6 +16,7 @@ using YARG.Localization;
 using YARG.Menu.Data;
 using YARG.Menu.Filters;
 using YARG.Menu.Persistent;
+using YARG.Menu.Navigation;
 using YARG.Menu.ProfileInfo;
 using YARG.Player;
 using YARG.Scores;
@@ -125,6 +126,9 @@ namespace YARG.Menu.ProfileList
 
         private ProfileView _profileView;
         private YargProfile _profile;
+        private ColoredButton _microphoneSetupButton;
+        private PartyMicrophoneSetup _microphoneSetup;
+        private RuntimeNavigatable _microphoneSetupNavigation;
 
         private readonly List<GameMode> _gameModesByIndex = new();
         private readonly List<OpenLaneDisplayType> _openLaneDisplayTypesByIndex = new();
@@ -139,6 +143,24 @@ namespace YARG.Menu.ProfileList
 
         private void Awake()
         {
+            _microphoneSetup = gameObject.AddComponent<PartyMicrophoneSetup>();
+            var source = _profileActionButtons[0].GetComponentInParent<ColoredButton>(true);
+            _microphoneSetupButton = Instantiate(source, _sidebarContent.transform);
+            _microphoneSetupButton.name = "Microphone Setup";
+            _microphoneSetupButton.GetComponentInChildren<Button>(true).onClick = new Button.ButtonClickedEvent();
+            _microphoneSetupButton.OnClick.AddListener(() =>
+            {
+                var player = PlayerContainer.GetPlayerFromProfile(_profile);
+                if (player != null) _microphoneSetup.Show(player.Bindings, _profileView);
+            });
+            _microphoneSetupNavigation = RuntimeNavigatable.Attach(_microphoneSetupButton.gameObject,
+                () => _microphoneSetupButton.OnClick.Invoke());
+            _microphoneSetupButton.Text.text = Localize.Key("Menu.ProfileList.MicrophoneSetup");
+            _microphoneSetupButton.gameObject.AddComponent<LayoutElement>().preferredHeight = 64f;
+            ((RectTransform) _microphoneSetupButton.transform).SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 64f);
+            _microphoneSetupButton.transform.SetSiblingIndex(1);
+            _microphoneSetupButton.gameObject.SetActive(false);
+
             // Setup dropdown items
             _gameModeDropdown.options.Clear();
             foreach (var gameMode in _gameModes)
@@ -236,6 +258,7 @@ namespace YARG.Menu.ProfileList
 
         public void UpdateSidebar(YargProfile profile, ProfileView profileView)
         {
+            _microphoneSetup.Close();
             _profile = profile;
             _profileView = profileView;
 
@@ -318,6 +341,11 @@ namespace YARG.Menu.ProfileList
             _editButton.SetActive(!profile.IsBot);
 
             EnableSettingsForGameMode();
+            _microphoneSetupButton.gameObject.SetActive(profile.GameMode == GameMode.PartyVocals && !profile.IsBot);
+            if (_microphoneSetupNavigation.NavigationGroup == null && _profileView.NavigationGroup != null)
+            {
+                _profileView.NavigationGroup.AddNavigatable(_microphoneSetupNavigation);
+            }
         }
 
         private void EnableSettingsForGameMode()
@@ -362,6 +390,7 @@ namespace YARG.Menu.ProfileList
 
         public void HideContents()
         {
+            _microphoneSetup?.Close();
             _contents.SetActive(false);
         }
 

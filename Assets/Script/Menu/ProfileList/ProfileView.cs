@@ -55,6 +55,9 @@ namespace YARG.Menu.ProfileList
 
         public YargProfile Profile { get; private set; }
 
+        public IconButton MicrophoneMoveUpTemplate => _moveUpButton.GetComponentInParent<IconButton>(true);
+        public IconButton MicrophoneMoveDownTemplate => _moveDownButton.GetComponentInParent<IconButton>(true);
+
         /// <summary>The set-aside record this view represents, or null for a normal profile row.</summary>
         public PlayerContainer.UnloadedProfile UnloadedRecord { get; private set; }
 

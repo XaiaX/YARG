@@ -591,6 +591,19 @@
             }
         },
         "ProfileList": {
+            "MicrophoneSetup": "Microphones and Needles",
+            "MicrophoneSlot": "{0}. {1}",
+            "MicrophoneConnected": "Connected — speak into this mic to identify it",
+            "MicrophoneMissing": "× Not connected",
+            "NoMicrophones": "Add a microphone to this profile first",
+            "MoveMicrophoneUp": "Move up",
+            "MoveMicrophoneDown": "Move down",
+            "AutomaticNeedle": "Auto",
+            "SensitivityOffset": "PITCH SENSITIVITY OFFSET (dB)",
+            "SensitivityHelp": "Use lower values to detect quieter singing. Added to global offset: {0} dB",
+            "InputDecibels": "PITCH DETECTION THRESHOLD: {0} dBFS",
+            "MicrophoneDevice": "Device {0}",
+            "MicrophoneDeviceUnknown": "Device unavailable",
             "MissingMicrophone": "{0} (not connected)",
             "Name": "Profiles",
             "ActiveProfiles" : "Active Profiles",
@@ -1540,7 +1553,7 @@
             },
             "MicrophoneSensitivity": {
                 "Name": "Microphone Sensitivity (Db)",
-                "Description": "Adjusts your microphone's sensitivity in decibels. Lower values are more sensitive."
+                "Description": "Sets the default pitch detection threshold for microphones. Lower values detect quieter singing. Party Vocals profiles can add a sensitivity offset for each microphone."
             },
             "MusicPlayerVolume": {
                 "Name": "Music Player Volume",
