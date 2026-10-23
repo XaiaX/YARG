@@ -22,6 +22,16 @@ namespace YARG.Menu.Settings
         private Transform _container;
 
         private bool _focused;
+        private readonly List<string> _actionKeys = new();
+
+        internal string RefreshIdentity => string.Join("\n", _actionKeys);
+        internal int? SelectedActionIndex => _navGroup.SelectedIndex;
+
+        internal void RestoreActionIndex(int? index)
+        {
+            if (index.HasValue && _navGroup.Count > 0)
+                _navGroup.SelectAt(Mathf.Clamp(index.Value, 0, _navGroup.Count - 1));
+        }
 
         public readonly struct CustomButton
         {
@@ -47,6 +57,7 @@ namespace YARG.Menu.Settings
 
                 button.GetComponentInChildren<TextMeshProUGUI>().text = labelText;
 
+                _actionKeys.Add(buttonInfo.Label);
                 var capture = buttonInfo.Action;
                 button.GetComponentInChildren<Button>()
                     .onClick.AddListener(() => InvokeFocusedAction(capture));
@@ -69,6 +80,7 @@ namespace YARG.Menu.Settings
                     Localize.Key("Settings.Button", buttonName);
 
                 // Set button action
+                _actionKeys.Add(buttonName);
                 var capture = buttonName;
                 button.GetComponentInChildren<Button>()
                     .onClick.AddListener(() => InvokeFocusedAction(() => SettingsManager.InvokeButton(capture)));
@@ -83,6 +95,7 @@ namespace YARG.Menu.Settings
 
         public void SetCustomCallback(Action action, string localizationKey)
         {
+            _actionKeys.Add(localizationKey);
             _buttonTemplate.GetComponentInChildren<TextMeshProUGUI>().text = Localize.Key(localizationKey);
 
             _buttonTemplate.GetComponentInChildren<Button>().onClick.AddListener(() => InvokeFocusedAction(action));
@@ -111,7 +124,8 @@ namespace YARG.Menu.Settings
 
             _focused = true;
             _navGroup.PushNavGroupToStack();
-            _navGroup.SelectFirst();
+            if (!_navGroup.SelectedIndex.HasValue)
+                _navGroup.SelectFirst();
         }
 
         private void InvokeFocusedAction(Action action)

@@ -240,6 +240,12 @@ namespace YARG.Menu.Navigation
             }
         }
 
+        public void Select(NavigatableBehaviour control, SelectionOrigin selectionOrigin = SelectionOrigin.Programmatically)
+        {
+            int index = _navigatables.IndexOf(control);
+            if (index >= 0) SelectAt(index, selectionOrigin);
+        }
+
         public void SelectAt(int? index, SelectionOrigin selectionOrigin = SelectionOrigin.Programmatically)
         {
             if (index == SelectedIndex || _navigatables.Count < 1)

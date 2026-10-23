@@ -287,7 +287,6 @@ namespace YARG.Settings
                 nameof(Settings.MaestroEnable),
                 nameof(Settings.MaestroGoDirectlyToSummary),
                 nameof(Settings.SuppressReplayAnalysisDialogs),
-                nameof(Settings.UseCumulativeSongUpdates),
                 new ButtonRowMetadata(nameof(Settings.ShowMaestroPairingPin), () => Settings.MaestroEnable.Value),
                 nameof(Settings.SaveScoresWithBots),
                 nameof(Settings.FrameGraph),
@@ -352,8 +351,7 @@ namespace YARG.Settings
 
                 var settingsJson = JObject.Parse(text);
                 settingsJson = SettingsMigration.Migrate(settingsJson, out _settingsCanBeSaved);
-                Settings = JsonConvert.DeserializeObject<SettingContainer>(
-                    settingsJson.ToString(Formatting.None), JsonSettings);
+                Settings = DeserializeSongSourceSettings(settingsJson);
             }
             catch (Exception e)
             {
@@ -385,6 +383,24 @@ namespace YARG.Settings
 
                 settingType.ForceInvokeCallback();
             }
+        }
+
+        public static SettingContainer DeserializeSongSourceSettings(JObject settingsJson)
+        {
+            var settings = JsonConvert.DeserializeObject<SettingContainer>(
+                settingsJson.ToString(Formatting.None), JsonSettings) ?? new SettingContainer();
+            if (!settingsJson.ContainsKey(nameof(SettingContainer.ExplicitSongSourcesConfigured)))
+            {
+                // Never infer a supplemental source from the existing song roots.
+                settings.SongUpdatesDtaPath = string.Empty;
+                settings.SongUpgradesDtaPath = string.Empty;
+                settings.ShowExplicitSongSourcesWarning = true;
+            }
+            settings.ExplicitSongSourcesConfigured = true;
+            settings.SongUpdatesDtaPath ??= string.Empty;
+            settings.SongUpgradesDtaPath ??= string.Empty;
+            settings.SongFolders ??= new List<string>();
+            return settings;
         }
 
         public static void SaveSettings()

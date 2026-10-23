@@ -1,7 +1,7 @@
 {
     "name": "YARG.SongRefreshCoordinator",
     "rootNamespace": "YARG.Song",
-    "references": ["UniTask"],
+    "references": ["UniTask", "YARG.Core.Package"],
     "autoReferenced": true,
     "noEngineReferences": false,
     "allowUnsafeCode": true

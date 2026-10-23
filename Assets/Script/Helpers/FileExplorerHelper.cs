@@ -22,6 +22,8 @@ namespace YARG.Helpers
             }
 
             _fileBrowser.gameObject.SetActive(true);
+            // The file picker shares static filters with folder browsing.
+            FileBrowser.SetFilters(true);
 
             var inputBlocker = Navigator.Instance?.PushInputBlocker();
 
@@ -56,7 +58,18 @@ namespace YARG.Helpers
             }
         }
 
+        public static void OpenChooseSourceDtaFile(string startingDir, string extension, Action<string> callback)
+        {
+            OpenChooseFile(startingDir, extension, callback, filesFirst: true);
+        }
+
         public static void OpenChooseFile(string startingDir, string extension, Action<string> callback)
+        {
+            OpenChooseFile(startingDir, extension, callback, filesFirst: false);
+        }
+
+        private static void OpenChooseFile(string startingDir, string extension, Action<string> callback,
+            bool filesFirst)
         {
             if (_fileBrowser == null)
             {
@@ -98,7 +111,7 @@ namespace YARG.Helpers
                         YargLogger.LogException(ex, $"Error when handling file {path}!");
                     }
                 }, () => inputBlocker?.Dispose(), FileBrowser.PickMode.Files, false, startingDir, null,
-                    "Choose File");
+                    "Choose File", filesFirst: filesFirst);
             }
             catch
             {

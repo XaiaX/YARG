@@ -72,6 +72,73 @@ namespace YARG.Menu.Settings
 
         private bool _showAdvanced;
 
+        private readonly List<(NavigatableBehaviour Control, string Key)> _refreshControls = new();
+
+        private void CacheRefreshControls()
+        {
+            _refreshControls.Clear();
+            var rows = new Dictionary<SettingsDirectory, string>();
+            var occurrences = new Dictionary<string, int>();
+            int folderIndex = 0;
+            int sourceIndex = 0;
+            foreach (var row in _settingsContainer.GetComponentsInChildren<SettingsDirectory>())
+            {
+                string key;
+                if (folderIndex < SettingsManager.Settings.SongFolders.Count)
+                {
+                    string path = SettingsManager.Settings.SongFolders[folderIndex++] ?? string.Empty;
+                    occurrences.TryGetValue(path, out int occurrence);
+                    occurrences[path] = occurrence + 1;
+                    key = $"folder:{path.Length}:{path}:{occurrence}";
+                }
+                else
+                {
+                    key = $"source:{sourceIndex++}";
+                }
+                rows.Add(row, key);
+            }
+
+            var duplicates = new Dictionary<string, int>();
+            foreach (var control in _settingsContainer.GetComponentsInChildren<NavigatableBehaviour>())
+            {
+                if (control.NavigationGroup != _settingsNavGroup) continue;
+                var directory = control.GetComponentInParent<SettingsDirectory>();
+                var setting = control.GetComponent<BaseSettingVisual>();
+                string key;
+                if (directory != null && rows.TryGetValue(directory, out var rowKey))
+                {
+                    // The relative control path distinguishes browse/remove within the same row.
+                    key = rowKey + ":" + RelativeControlPath(directory.transform, control.transform);
+                }
+                else if (setting != null)
+                {
+                    key = $"setting:{setting.IsPresetSetting}:{setting.UnlocalizedName}";
+                }
+                else if (control is SettingsButton button)
+                {
+                    key = "action:" + button.RefreshIdentity;
+                }
+                else
+                {
+                    key = control.GetType().FullName + ":" + control.name;
+                }
+                duplicates.TryGetValue(key, out int occurrence);
+                duplicates[key] = occurrence + 1;
+                _refreshControls.Add((control, key + ":" + occurrence));
+            }
+        }
+
+        private static string RelativeControlPath(Transform row, Transform control)
+        {
+            string path = control.name;
+            while (control.parent != null && control.parent != row)
+            {
+                control = control.parent;
+                path = control.name + "/" + path;
+            }
+            return path;
+        }
+
         public bool ShowAdvanced
         {
             get => SettingsManager.Settings?.ShowAdvancedSettings?.Value ?? _showAdvanced;
@@ -313,14 +380,8 @@ namespace YARG.Menu.Settings
 
         public void RefreshAndKeepPosition()
         {
-            // Everything gets recreated, so we must cache the index before hand
-            int? beforeIndex = _settingsNavGroup.SelectedIndex;
-
-            UpdateSettings(false);
+            RefreshSettingsKeepPosition();
             RefreshPreview();
-
-            // Restore selection
-            _settingsNavGroup.SelectAt(beforeIndex);
         }
 
         /// <summary>
@@ -331,10 +392,54 @@ namespace YARG.Menu.Settings
         public void RefreshSettingsKeepPosition()
         {
             int? beforeIndex = _settingsNavGroup.SelectedIndex;
+            string selectedKey = null;
+            var actionChoices = new Dictionary<string, int?>();
+            foreach (var entry in _refreshControls)
+            {
+                if (entry.Control == _settingsNavGroup.SelectedBehaviour) selectedKey = entry.Key;
+                if (entry.Control is SettingsButton button) actionChoices[entry.Key] = button.SelectedActionIndex;
+            }
+            Vector2 beforePosition = _scrollRect != null ? _scrollRect.normalizedPosition : Vector2.up;
+            if (_scrollRect != null)
+            {
+                _scrollRect.DOKill();
+                _scrollRect.StopMovement();
+            }
 
             UpdateSettings(false);
 
-            _settingsNavGroup.SelectAt(beforeIndex);
+            NavigatableBehaviour restored = null;
+            foreach (var entry in _refreshControls)
+            {
+                if (entry.Key == selectedKey) restored = entry.Control;
+                if (entry.Control is SettingsButton button && actionChoices.TryGetValue(entry.Key, out var choice))
+                    button.RestoreActionIndex(choice);
+            }
+            // Only fall back to the nearest index if the logical control was removed.
+            // Programmatic selection must not scroll that control into view.
+            if (restored != null)
+                _settingsNavGroup.Select(restored);
+            else
+                _settingsNavGroup.SelectAt(GetRestoredSelectionIndex(beforeIndex, _settingsNavGroup.Count));
+
+            if (_scrollRect != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                if (_scrollRect.content != null)
+                {
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(_scrollRect.content);
+                }
+                Canvas.ForceUpdateCanvases();
+                _scrollRect.normalizedPosition = beforePosition;
+                _scrollRect.StopMovement();
+            }
+        }
+
+        private static int? GetRestoredSelectionIndex(int? previousIndex, int count)
+        {
+            return previousIndex.HasValue && count > 0
+                ? Mathf.Clamp(previousIndex.Value, 0, count - 1)
+                : null;
         }
 
         private void UpdateSettings(bool resetScroll)
@@ -343,11 +448,17 @@ namespace YARG.Menu.Settings
 
             _settingsNavGroup.ClearNavigatables();
 
-            // Destroy all previous settings
+            // Destroy is deferred until end-of-frame. Remove old rows from layout now
+            // so a same-frame rebuild measures only the replacement controls.
+            foreach (Transform child in _settingsContainer)
+            {
+                child.gameObject.SetActive(false);
+            }
             _settingsContainer.DestroyChildren();
 
             // Build the settings tab
             CurrentTab?.BuildSettingTab(_settingsContainer, _settingsNavGroup);
+            CacheRefreshControls();
 
             if (resetScroll)
             {

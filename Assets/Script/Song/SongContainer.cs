@@ -91,13 +91,12 @@ namespace YARG.Song
 
     public static class SongContainer
     {
-        private static readonly SongRefreshCoordinator _refreshCoordinator = new(quick =>
-        {
-            var context = _pendingRefreshContext;
-            _pendingRefreshContext = null;
-            return RunRefreshCore(quick, context);
-        });
-        private static LoadingContext _pendingRefreshContext;
+        private static readonly SongRefreshCoordinator _refreshCoordinator = new(RunRefreshCore,
+            () => YARG.Menu.Navigation.Navigator.Instance?.PushInputBlocker());
+        public static SongSourceConfiguration AppliedSources { get; private set; }
+        public static SongScanResult LastScanResult { get; private set; }
+        public static int? UpdatesDefinitionCount { get; private set; }
+        public static int? UpgradesDefinitionCount { get; private set; }
         public static bool IsRebuildingLibrary => _refreshCoordinator.IsRebuilding;
         private static SongCache _songCache = new();
         private static SortedSongs _sortedSongs = new();
@@ -157,14 +156,10 @@ namespace YARG.Song
         private static bool AllowedByRating(SongRating rating) => rating <= SettingsManager.Settings.MaxSongRating.Value;
 
 #nullable enable
-        public static UniTask RunRefresh(bool quick, LoadingContext? context = null)
-        {
-            _pendingRefreshContext = context;
-            return _refreshCoordinator.Request(quick);
-        }
+        public static UniTask RunRefresh(bool quick, LoadingContext? context = null) =>
+            RunRefresh(SongScanScope.All, quick, context);
 
-        private static async UniTask RunRefreshCore(bool quick, LoadingContext? context)
-#nullable disable
+        public static UniTask RunRefresh(SongScanScope scope, bool quick = false, LoadingContext? context = null)
         {
             var directories = new List<string>(SettingsManager.Settings.SongFolders);
             string setlistPath = PathHelper.SetlistPath;
@@ -172,19 +167,24 @@ namespace YARG.Song
             {
                 directories.Add(setlistPath);
             }
+            var sources = new SongSourceConfiguration(directories,
+                SettingsManager.Settings.SongUpdatesDtaPath,
+                SettingsManager.Settings.SongUpgradesDtaPath);
+            return _refreshCoordinator.Request(new SongRefreshRequest(scope, sources, quick, context,
+                SettingsManager.Settings.UseFullDirectoryForPlaylists.Value));
+        }
 
-            bool useCumulativeSongUpdates = SettingsManager.Settings.UseCumulativeSongUpdates.Value;
+        private static async UniTask RunRefreshCore(SongRefreshRequest request)
+#nullable disable
+        {
+            var context = request.Context as LoadingContext;
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var previousSongCache = _songCache;
-            SongCache refreshedSongCache = null;
+            SongScanResult result = null;
             var task = UniTask.RunOnThreadPool(() =>
             {
-                refreshedSongCache = CacheHandler.RunScan(quick,
-                    PathHelper.SongCachePath,
-                    PathHelper.BadSongsPath,
-                    SettingsManager.Settings.UseFullDirectoryForPlaylists.Value,
-                    directories,
-                    useCumulativeSongUpdates);
+                result = CacheHandler.RunScan(request.Scope, request.Sources, request.Quick,
+                    PathHelper.SongCachePath, PathHelper.BadSongsPath, request.FullDirectoryPlaylists, deferCommit: true);
             });
 
             while (task.Status == UniTaskStatus.Pending)
@@ -198,30 +198,57 @@ namespace YARG.Song
 
             // A failed scan must not replace the library with a null or partial cache.
             await task;
-
-            PlaylistContainer.ReplaceUpdatedSongHashes(
-                FindUpdatedSongHashes(previousSongCache, refreshedSongCache));
-            _songCache = refreshedSongCache;
+            using var preparedScan = result;
+            LastScanResult = result;
+            if (result.Status != SongScanStatus.Success || result.Cache == null)
+            {
+                throw new InvalidOperationException(result.Message);
+            }
+            var refreshedSongCache = result.Cache;
 
             if (SettingsManager.Settings.Genrelizer.Value is GenrelizerMode.Genrelize && !GlobalVariables.OfflineMode)
             {
-                Genrelizer.GenrelizeAll(_songCache, false);
+                Genrelizer.GenrelizeAll(refreshedSongCache, false);
             }
             else if (SettingsManager.Settings.Genrelizer.Value is GenrelizerMode.Overgenrelize && !GlobalVariables.OfflineMode)
             {
-                Genrelizer.GenrelizeAll(_songCache, true);
+                Genrelizer.GenrelizeAll(refreshedSongCache, true);
             }
             else
             {
-                Genrelizer.DegenrelizeAll(_songCache);
+                Genrelizer.DegenrelizeAll(refreshedSongCache);
             }
-            SongSorting.SortEntries(_songCache, _sortedSongs);
-            FillContainers();
+            var sorted = new SortedSongs();
+            SongSorting.SortEntries(refreshedSongCache, sorted);
+            var updatedHashes = FindUpdatedSongHashes(previousSongCache, refreshedSongCache);
+            var publishContainers = BuildContainers(refreshedSongCache, sorted);
+            result.Commit();
+            publishContainers();
+            AppliedSources = result.AppliedSources;
+            UpdatesDefinitionCount = result.UpdatesDefinitionCount;
+            UpgradesDefinitionCount = result.UpgradesDefinitionCount;
+            try
+            {
+                PlaylistContainer.ReplaceUpdatedSongHashes(updatedHashes);
+            }
+            catch (Exception ex)
+            {
+                // Playlist persistence is a follow-up to a successful library publication.
+                YargLogger.LogException(ex);
+            }
             stopwatch.Stop();
 
             YargLogger.LogFormatInfo("Scan time: {0}s", stopwatch.Elapsed.TotalSeconds);
             MusicLibraryMenu.SetReload(MusicLibraryReloadState.Full);
-            SongSources.LoadSprites(context);
+            try
+            {
+                SongSources.LoadSprites(context);
+            }
+            catch (Exception ex)
+            {
+                // Presentation failures must not turn a published library into a failed refresh.
+                YargLogger.LogException(ex);
+            }
         }
 
         private static Dictionary<HashWrapper, HashWrapper> FindUpdatedSongHashes(
@@ -952,63 +979,91 @@ namespace YARG.Song
             context.SetLoadingText(phrase, subText);
         }
 
-        private static void FillContainers()
+        // Tests can fail a completed candidate build before any published state changes.
+        private static Action _containerBuildCompletedForTesting;
+
+        private static void FillContainers(SongCache songCache, SortedSongs sortedSongs)
         {
-            InvalidateStarsCache();
-            _songs = SetAllSongs(_songCache.Entries);
+            var publish = BuildContainers(songCache, sortedSongs);
+            publish();
+        }
 
-            _sortArtists      = Convert(_sortedSongs.Artists, SongAttribute.Artist);
-            _sortAlbums       = Convert(_sortedSongs.Albums, SongAttribute.Album);
-            _sortGenres       = Convert(_sortedSongs.Genres, SongAttribute.Genre);
-            _sortSubgenres    = Convert(_sortedSongs.Subgenres, SongAttribute.Subgenre);
-            _sortCharters     = Convert(_sortedSongs.Charters, SongAttribute.Charter);
-            _sortPlaylists    = Convert(_sortedSongs.Playlists, SongAttribute.Playlist);
-            _sortSources      = Convert(_sortedSongs.Sources, SongAttribute.Source);
-            _sortArtistAlbums = Combine(_sortedSongs.ArtistAlbums);
+        private static Action BuildContainers(SongCache songCache, SortedSongs sortedSongs)
+        {
+            var songs = SetAllSongs(songCache.Entries, out var songsByHash);
 
-            _sortTitles       = Cast(_sortedSongs.Titles);
-            _sortYears        = Cast(_sortedSongs.Years);
-            _sortSongLengths  = GetSongLengthSort();
-            _playables = null;
+            var sortArtists      = Convert(sortedSongs.Artists, SongAttribute.Artist);
+            var sortAlbums       = Convert(sortedSongs.Albums, SongAttribute.Album);
+            var sortGenres       = Convert(sortedSongs.Genres, SongAttribute.Genre);
+            var sortSubgenres    = Convert(sortedSongs.Subgenres, SongAttribute.Subgenre);
+            var sortCharters     = Convert(sortedSongs.Charters, SongAttribute.Charter);
+            var sortPlaylists    = Convert(sortedSongs.Playlists, SongAttribute.Playlist);
+            var sortSources      = Convert(sortedSongs.Sources, SongAttribute.Source);
+            var sortArtistAlbums = Combine(sortedSongs.ArtistAlbums);
 
-            _sortDatesAdded = new SongCategory[_sortedSongs.DatesAdded.Count];
+            var sortTitles       = Cast(sortedSongs.Titles);
+            var sortYears        = Cast(sortedSongs.Years);
+            var sortSongLengths  = GetSongLengthSort(sortedSongs);
+
+            var sortDatesAdded = new SongCategory[sortedSongs.DatesAdded.Count];
             {
                 int index = 0;
-                foreach (var node in _sortedSongs.DatesAdded)
+                foreach (var node in sortedSongs.DatesAdded)
                 {
-                    _sortDatesAdded[index++] = new(node.Key.ToLongDateString(), node.Value.ToArray(), node.Key.ToString("y"));
+                    sortDatesAdded[index++] = new(node.Key.ToLongDateString(), node.Value.ToArray(), node.Key.ToString("y"));
                 }
             }
 
-            _sortInstruments.Clear();
-            foreach (var instrument in _sortedSongs.Instruments)
+            var sortInstruments = new Dictionary<Instrument, SongCategory[]>();
+            foreach (var instrument in sortedSongs.Instruments)
             {
-                try
-                {
-                    var noPart = _songs.Where(song => !song[instrument.Key].IsActive()).ToList();
-                    noPart.Sort(new IntensityComparer(instrument.Key));
+                var noPart = songs.Where(song => !song[instrument.Key].IsActive()).ToList();
+                noPart.Sort(new IntensityComparer(instrument.Key));
 
-                    var arr = new SongCategory[instrument.Value.Count + (noPart.Count > 0 ? 1 : 0)];
-                    int index = 0;
-                    AddIntensityCategories(arr, ref index, instrument.Value);
-                    AddNoPartCategory(arr, ref index, noPart);
-                    _sortInstruments.Add(instrument.Key, arr);
-                }
-                catch (Exception ex)
-                {
-                    YargLogger.LogException(ex);
-                }
+                var arr = new SongCategory[instrument.Value.Count + (noPart.Count > 0 ? 1 : 0)];
+                int index = 0;
+                AddIntensityCategories(arr, ref index, instrument.Value);
+                AddNoPartCategory(arr, ref index, noPart);
+                sortInstruments.Add(instrument.Key, arr);
             }
 
-            var noAggregateDrumsPart = _songs.Where(song => !MidiDrumkitHelper.HasAnyDrumPart(song)).ToList();
+            var noAggregateDrumsPart = songs.Where(song => !MidiDrumkitHelper.HasAnyDrumPart(song)).ToList();
             noAggregateDrumsPart.Sort(new AggregateDrumsIntensityComparer());
-            _sortAggregateDrums = new SongCategory[
-                _sortedSongs.AggregateDrums.Count + (noAggregateDrumsPart.Count > 0 ? 1 : 0)];
+            var sortAggregateDrums = new SongCategory[
+                sortedSongs.AggregateDrums.Count + (noAggregateDrumsPart.Count > 0 ? 1 : 0)];
             {
                 int index = 0;
-                AddIntensityCategories(_sortAggregateDrums, ref index, _sortedSongs.AggregateDrums);
-                AddNoPartCategory(_sortAggregateDrums, ref index, noAggregateDrumsPart);
+                AddIntensityCategories(sortAggregateDrums, ref index, sortedSongs.AggregateDrums);
+                AddNoPartCategory(sortAggregateDrums, ref index, noAggregateDrumsPart);
             }
+
+            _containerBuildCompletedForTesting?.Invoke();
+
+            // Allocate the publication action before committing any candidate state.
+            return () =>
+            {
+                _songCache = songCache;
+                _sortedSongs = sortedSongs;
+                _songs = songs;
+                _songsByHash = songsByHash;
+                _sortArtists = sortArtists;
+                _sortAlbums = sortAlbums;
+                _sortGenres = sortGenres;
+                _sortSubgenres = sortSubgenres;
+                _sortCharters = sortCharters;
+                _sortPlaylists = sortPlaylists;
+                _sortSources = sortSources;
+                _sortArtistAlbums = sortArtistAlbums;
+                _sortTitles = sortTitles;
+                _sortYears = sortYears;
+                _sortSongLengths = sortSongLengths;
+                _sortDatesAdded = sortDatesAdded;
+                _sortInstruments = sortInstruments;
+                _sortAggregateDrums = sortAggregateDrums;
+                _playables = null;
+                InvalidateStarsCache();
+                LibraryRevision++;
+            };
 
             static void AddIntensityCategories(SongCategory[] categories, ref int index,
                 SortedDictionary<int, List<SongEntry>> intensities)
@@ -1038,11 +1093,10 @@ namespace YARG.Song
                 categories[index++] = new SongCategory(label, noPart.ToArray(), label);
             }
 
-            LibraryRevision++;
-
-            static SongEntry[] SetAllSongs(Dictionary<HashWrapper, List<SongEntry>> entries)
+            static SongEntry[] SetAllSongs(Dictionary<HashWrapper, List<SongEntry>> entries,
+                out Dictionary<HashWrapper, List<SongEntry>> songsByHash)
             {
-                _songsByHash.Clear();
+                songsByHash = new Dictionary<HashWrapper, List<SongEntry>>();
 
                 int songCount = 0;
                 foreach (var node in entries)
@@ -1066,13 +1120,13 @@ namespace YARG.Song
                     {
                         if (AllowedByRating(node.Value[i].GetSongRating(SettingsManager.Settings.CensorMatureContent.Value)))
                         {
-                            if (_songsByHash.ContainsKey(node.Key))
+                            if (songsByHash.ContainsKey(node.Key))
                             {
-                                _songsByHash[node.Key].Add(node.Value[i]);
+                                songsByHash[node.Key].Add(node.Value[i]);
                             }
                             else
                             {
-                                _songsByHash.Add(node.Key, new List<SongEntry> { node.Value[i] });
+                                songsByHash.Add(node.Key, new List<SongEntry> { node.Value[i] });
                             }
 
                             songs[index++] = node.Value[i];
@@ -1163,17 +1217,17 @@ namespace YARG.Song
                 return sections;
             }
 
-            static SongCategory[] GetSongLengthSort()
+            static SongCategory[] GetSongLengthSort(SortedSongs sortedSongs)
             {
                 if (SettingsManager.Settings.SongLengthLabels.Value == SongLengthLabelMode.RangeLabels)
                 {
-                    return Cast(_sortedSongs.SongLengths);
+                    return Cast(sortedSongs.SongLengths);
                 }
 
                 var groups = new SortedDictionary<int, List<SongEntry>>();
 
                 // The range categories and their contents are already ordered by duration.
-                foreach (var range in _sortedSongs.SongLengths.Values)
+                foreach (var range in sortedSongs.SongLengths.Values)
                 {
                     foreach (var song in range)
                     {
@@ -1253,8 +1307,9 @@ namespace YARG.Song
 
         public static void RequestContainerRefresh()
         {
-            SongSorting.SortEntries(_songCache, _sortedSongs);
-            FillContainers();
+            var sorted = new SortedSongs();
+            SongSorting.SortEntries(_songCache, sorted);
+            FillContainers(_songCache, sorted);
         }
 
         readonly struct IntensityComparer : IComparer<SongEntry>

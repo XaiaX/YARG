@@ -135,6 +135,10 @@ namespace YARG.Settings
             #region Hidden Settings
 
             public List<string> SongFolders = new();
+            public string SongUpdatesDtaPath = string.Empty;
+            public string SongUpgradesDtaPath = string.Empty;
+            public bool ExplicitSongSourcesConfigured = true;
+            public bool ShowExplicitSongSourcesWarning;
 
             public bool ShowAntiPiracyDialog = true;
             public bool ShowEngineInconsistencyDialog = true;

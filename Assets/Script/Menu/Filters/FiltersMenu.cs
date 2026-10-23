@@ -1090,9 +1090,9 @@ namespace YARG.Menu.Filters
             ref int cacheCount,
             Func<IReadOnlyList<string>> build)
         {
-            if (cache != null && cacheCount == SongContainer.Count) return cache;
+            if (cache != null && cacheCount == SongContainer.LibraryRevision) return cache;
 
-            cacheCount = SongContainer.Count;
+            cacheCount = SongContainer.LibraryRevision;
             cache = build();
             return cache;
         }
@@ -1501,13 +1501,13 @@ namespace YARG.Menu.Filters
         {
             var labelMode = SettingsManager.Settings.SongLengthLabels.Value;
             if (_cachedLengths != null &&
-                _cachedLengthSongCount == SongContainer.Count &&
+                _cachedLengthSongCount == SongContainer.LibraryRevision &&
                 _cachedLengthLabelMode == labelMode)
             {
                 return _cachedLengths;
             }
 
-            _cachedLengthSongCount = SongContainer.Count;
+            _cachedLengthSongCount = SongContainer.LibraryRevision;
             _cachedLengthLabelMode = labelMode;
 
             var counts = GetLengthCounts();
@@ -1604,9 +1604,9 @@ namespace YARG.Menu.Filters
 #region Intensities
         private static IReadOnlyList<string> GetAllIntensitiesCached(Instrument instrument)
         {
-            if (_cachedIntensitySongCount != SongContainer.Count)
+            if (_cachedIntensitySongCount != SongContainer.LibraryRevision)
             {
-                _cachedIntensitySongCount = SongContainer.Count;
+                _cachedIntensitySongCount = SongContainer.LibraryRevision;
                 _cachedIntensitiesByInstrument.Clear();
             }
 
@@ -1829,7 +1829,7 @@ namespace YARG.Menu.Filters
             unchecked
             {
                 int hash = 17;
-                hash = (hash * 31) + SongContainer.Count;
+                hash = (hash * 31) + SongContainer.LibraryRevision;
 
                 void MixString(string value)
                 {

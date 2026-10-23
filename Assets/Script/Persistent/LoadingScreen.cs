@@ -98,8 +98,16 @@ namespace YARG
                 });
             }
 
-            // Fast scan (cache read) on startup
-            await SongContainer.RunRefresh(true, context);
+            // Fast scan (cache read) on startup; an unavailable selected source needs an actionable diagnostic.
+            try
+            {
+                await SongContainer.RunRefresh(YARG.Core.Song.Cache.SongScanScope.All, quick: true, context: context);
+            }
+            catch (Exception ex)
+            {
+                YargLogger.LogException(ex);
+                DialogManager.Instance.ShowMessage(Localize.Key("Menu.Settings.Sources.Invalid"), ex.Message);
+            }
         }
 
         private static async UniTask UpdateSourcesAndGenres(LoadingContext context)

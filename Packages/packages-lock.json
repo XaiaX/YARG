@@ -382,11 +382,10 @@
       "hash": "3b99078d26b362733ad9bf463f98c83b8a1b4c9f"
     },
     "com.yasirkula.simplefilebrowser": {
-      "version": "https://github.com/yasirkula/UnitySimpleFileBrowser.git",
+      "version": "file:com.yasirkula.simplefilebrowser",
       "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "e24fa529103603043f6dad1b66192ff72954ef6e"
+      "source": "embedded",
+      "dependencies": {}
     },
     "in.yarg.core": {
       "version": "file:../YARG.Core/YARG.Core",

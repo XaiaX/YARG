@@ -1330,16 +1330,22 @@ namespace YARG.Menu.MusicLibrary
 
         public async void RefreshSongs()
         {
-            // Stop any library preview audio so the loading screen doesn't inherit it
-            await StopPreviewAsync();
-
-            SetSidebarDifficultiesVisible(false);
-            _sidebar.gameObject.SetActive(false);
-            using var context = new LoadingContext();
+            if (SongContainer.IsRebuildingLibrary) return;
+            using var inputBlocker = Navigator.Instance?.PushInputBlocker();
             try
             {
-                await SongContainer.RunRefresh(false, context);
+                // Stop preview audio inside the protected action, before opening the loading screen.
+                await StopPreviewAsync();
+                SetSidebarDifficultiesVisible(false);
+                _sidebar.gameObject.SetActive(false);
+                using var context = new LoadingContext();
+                await SongContainer.RunRefresh(YARG.Core.Song.Cache.SongScanScope.All, context: context);
                 RefreshAndReselect();
+            }
+            catch (Exception exception)
+            {
+                YARG.Core.Logging.YargLogger.LogException(exception);
+                DialogManager.Instance.ShowMessage(Localize.Key("Menu.Settings.Sources.Invalid"), exception.Message);
             }
             finally
             {

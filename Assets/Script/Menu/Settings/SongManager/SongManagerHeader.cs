@@ -17,17 +17,46 @@ namespace YARG.Menu.Settings
             CheckBadSongsFile();
         }
 
+        public ColoredButton ActionTemplate { get; private set; }
+
+        public void Configure(System.Action showHelp)
+        {
+            foreach (var button in GetComponentsInChildren<ColoredButton>(true))
+            {
+                if (button == _badSongsButton) continue;
+                var unityButton = button.GetComponentInChildren<UnityEngine.UI.Button>();
+                if (unityButton == null) continue;
+                for (int i = 0; i < unityButton.onClick.GetPersistentEventCount(); i++)
+                {
+                    string method = unityButton.onClick.GetPersistentMethodName(i);
+                    if (method == nameof(RefreshSongs))
+                    {
+                        button.Text.text = YARG.Localization.Localize.Key("Menu.Settings.Sources.ScanAll");
+                        ActionTemplate = button;
+                    }
+                    else if (method == nameof(AddNewFolder))
+                    {
+                        button.Text.text = YARG.Localization.Localize.Key("Menu.Settings.Sources.Help");
+                        // Replace the persistent Add Folder callback, not just runtime listeners.
+                        unityButton.onClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+                        unityButton.onClick.AddListener(() => showHelp());
+                        break;
+                    }
+                }
+            }
+            CheckBadSongsFile();
+        }
+
         public void AddNewFolder()
         {
             SettingsManager.Settings.SongFolders.Add(string.Empty);
+            SettingsManager.SaveSettings();
             SettingsMenu.Instance.RefreshAndKeepPosition();
         }
 
         public async void RefreshSongs()
         {
-            using var context = new LoadingContext();
-            await SongContainer.RunRefresh(false, context);
-            SettingsMenu.Instance.RefreshAndKeepPosition();
+            await SongSourceActions.Scan(SongScanScope.All);
         }
 
         private void CheckBadSongsFile()

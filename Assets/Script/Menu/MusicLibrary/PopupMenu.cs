@@ -169,7 +169,7 @@ namespace YARG.Menu.MusicLibrary
                 gameObject.SetActive(false);
             });
 
-            CreateItem("ScanSongs", () =>
+            CreateItem("ScanAll", () =>
             {
                 _musicLibrary.RefreshSongs();
                 gameObject.SetActive(false);
