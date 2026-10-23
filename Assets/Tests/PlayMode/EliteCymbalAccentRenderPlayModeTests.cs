@@ -188,6 +188,18 @@ namespace YARG.Tests.PlayMode
                 (Name: "accent-starpower", Type: "CymbalAccent", StarPower: true),
                 (Name: "ghost-regular", Type: "CymbalGhost", StarPower: false),
                 (Name: "ghost-starpower", Type: "CymbalGhost", StarPower: true),
+                (Name: "ClosedHiHatGhost-regular", Type: "ClosedHiHatGhost", StarPower: false),
+                (Name: "ClosedHiHatGhost-starpower", Type: "ClosedHiHatGhost", StarPower: true),
+                (Name: "ClosedHiHat-regular", Type: "ClosedHiHat", StarPower: false),
+                (Name: "ClosedHiHat-starpower", Type: "ClosedHiHat", StarPower: true),
+                (Name: "ClosedHiHatAccent-regular", Type: "ClosedHiHatAccent", StarPower: false),
+                (Name: "ClosedHiHatAccent-starpower", Type: "ClosedHiHatAccent", StarPower: true),
+                (Name: "OpenHiHatGhost-regular", Type: "OpenHiHatGhost", StarPower: false),
+                (Name: "OpenHiHatGhost-starpower", Type: "OpenHiHatGhost", StarPower: true),
+                (Name: "OpenHiHat-regular", Type: "OpenHiHat", StarPower: false),
+                (Name: "OpenHiHat-starpower", Type: "OpenHiHat", StarPower: true),
+                (Name: "OpenHiHatAccent-regular", Type: "OpenHiHatAccent", StarPower: false),
+                (Name: "OpenHiHatAccent-starpower", Type: "OpenHiHatAccent", StarPower: true),
             };
             foreach (var testCase in cases)
             {
@@ -203,6 +215,9 @@ namespace YARG.Tests.PlayMode
                 Assert.That(fakeNoteType.IsInstanceOfType(note), Is.True);
                 Assert.That(note.gameObject.activeInHierarchy, Is.True);
                 var noteRef = Get(note, "NoteRef");
+                noteRef.GetType().GetField("Time").SetValue(noteRef,
+                    Convert.ToDouble(Get(_player, "PreviewTime")) + 0.2d);
+                Call(note, "RefreshPosition");
                 Assert.That(Get(noteRef, "NoteType"), Is.EqualTo(noteType),
                     $"{testCase.Name}: the spotlight request must reach the spawned FakeNote.");
                 var activeRenderers = note.GetComponentsInChildren<Renderer>(true)
@@ -255,7 +270,7 @@ namespace YARG.Tests.PlayMode
                 if (_captureTarget == null)
                 {
                     _captureTarget = (RenderTexture)CallStatic(Production("YARG.Helpers.CameraPreviewTexture"),
-                        "CreateOwnedPreviewTexture", 512, 512, "Elite cymbal accent runtime capture");
+                        "CreateOwnedPreviewTexture", 1024, 1024, "Elite cymbal accent runtime capture");
                 }
                 // Rebind before every case: the owned target must reach HighwayCameraRendering through its
                 // preview-target API. Assigning camera.targetTexture directly leaves the highway renderer's

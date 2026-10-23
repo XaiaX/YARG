@@ -409,13 +409,13 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator StompAndSplashModelsUseThreeResolvedColumnsIncludingConcurrentKick()
+        public IEnumerator StompAndSplashModelsUseAvailableNeighborColumnsWithoutShrinkingConcurrentKick()
         {
             EliteDrumNote Pedal(EliteDrumsHatPedalType type, double time, uint tick) => new(
                 EliteDrumPad.HatPedal, DrumNoteType.Neutral, EliteDrumsHatState.Indifferent, type,
                 false, DrumNoteFlags.None, NoteFlags.None, EliteDrumsChannelFlag.None, time, tick, false);
 
-            foreach (int layoutKind in new[] { 0, 1, 2 })
+            foreach (int layoutKind in new[] { 0, 1, 2, 3, 4 })
             foreach (bool lefty in new[] { false, true })
             {
                 var layout = EliteDrumsLayoutPreset.Compact;
@@ -429,6 +429,14 @@ namespace YARG.Tests.PlayMode
                     layout = EliteDrumsLayoutPreset.Full;
                     layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
                     layout.Slots[9] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
+                }
+                if (layoutKind is 3 or 4)
+                {
+                    layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Pedal edge test");
+                    int hat = System.Array.FindIndex(layout.Slots,
+                        slot => slot.Kind == EliteDrumsLayoutSlotKind.HiHat);
+                    int edge = layoutKind == 3 ? 0 : 4;
+                    (layout.Slots[hat], layout.Slots[edge]) = (layout.Slots[edge], layout.Slots[hat]);
                 }
                 var standaloneStomp = Pedal(EliteDrumsHatPedalType.Stomp, 1d, 480);
                 var pairedStomp = Pedal(EliteDrumsHatPedalType.Stomp, 2d, 960);
@@ -452,13 +460,14 @@ namespace YARG.Tests.PlayMode
                 float highwayWidth = (float) Production("YARG.Gameplay.Player.TrackPlayer")
                     .GetField("TRACK_WIDTH").GetRawConstantValue();
                 int laneCount = (int) player.GetType().GetProperty("LaneCount").GetValue(player);
-                float threeLaneWidth = highwayWidth * 3f / laneCount;
+                int sections = layoutKind is 3 or 4 ? 2 : 3;
+                float pedalWidth = highwayWidth * sections / laneCount;
                 foreach (var (note, expectedWidth) in new[]
                 {
-                    (standaloneStomp, threeLaneWidth),
-                    (pairedStomp, threeLaneWidth),
-                    (standaloneSplash, threeLaneWidth),
-                    (pairedSplash, threeLaneWidth),
+                    (standaloneStomp, pedalWidth),
+                    (pairedStomp, pedalWidth),
+                    (standaloneSplash, pedalWidth),
+                    (pairedSplash, pedalWidth),
                 })
                 {
                     var element = player.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement"), true)
@@ -475,10 +484,10 @@ namespace YARG.Tests.PlayMode
                     float visualPedalLane = (int) player.GetType().GetMethod("GetVisualPosition", new[] { typeof(EliteDrumNote) })
                         .Invoke(player, new object[] { note });
                     float hiHatCenter = (visualPedalLane + 0.5f) * (highwayWidth / laneCount) - highwayWidth / 2f;
-                    float expectedCenter = Mathf.Clamp(hiHatCenter, -highwayWidth / 2f + threeLaneWidth / 2f,
-                        highwayWidth / 2f - threeLaneWidth / 2f);
+                    float expectedCenter = Mathf.Clamp(hiHatCenter, -highwayWidth / 2f + pedalWidth / 2f,
+                        highwayWidth / 2f - pedalWidth / 2f);
                     Assert.That(center, Is.EqualTo(expectedCenter).Within(0.01f),
-                        $"Pedals stay centered on the nearest valid three-column region; layoutKind={layoutKind}, lefty={lefty}.");
+                        $"Pedals stay centered on the hat and its available immediate neighbors; layoutKind={layoutKind}, lefty={lefty}.");
                     Assert.That((renderers.Min(renderer => renderer.bounds.min.x) - player.transform.position.x) / parentScale,
                         Is.GreaterThanOrEqualTo(-highwayWidth / 2f - 0.01f));
                     Assert.That((renderers.Max(renderer => renderer.bounds.max.x) - player.transform.position.x) / parentScale,
@@ -488,13 +497,13 @@ namespace YARG.Tests.PlayMode
                 string kickMode = resolvedLayout.GetType().GetProperty("KickMode").GetValue(resolvedLayout).ToString();
                 string expectedKickMode = layoutKind switch
                 {
-                    0 => "Bars",
+                    0 or 3 or 4 => "Bars",
                     1 => "Combined",
                     _ => "Split",
                 };
                 Assert.That(kickMode, Is.EqualTo(expectedKickMode),
                     $"layoutKind={layoutKind} must exercise the expected resolved kick mode.");
-                float expectedKickWidth = kickMode == "Bars" ? highwayWidth / 2f : highwayWidth / laneCount;
+                float expectedKickWidth = kickMode == "Bars" ? highwayWidth : highwayWidth / laneCount;
                 foreach (var kick in new[] { pairedKick, pairedSplashKick })
                 {
                     var kickElement = player.GetComponentsInChildren(
@@ -608,7 +617,7 @@ namespace YARG.Tests.PlayMode
             chart.SyncTrack.Tempos.Add(new TempoChange(120, 0, 0));
             chart.SyncTrack.Tempos.Add(new TempoChange(60, 1, testCase.resolution));
             _fixture = new InitializedElitePlayerFixture();
-            yield return _fixture.Initialize(chart, Profile(false), EliteDrumsLayoutPreset.Compact);
+            yield return _fixture.Initialize(chart, Profile(false), EliteDrumsLayoutPreset.Compact, legacyTheme: true);
             try
             {
                 var player = _fixture.Player;

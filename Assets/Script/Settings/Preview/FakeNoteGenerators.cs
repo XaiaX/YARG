@@ -119,8 +119,8 @@ namespace YARG.Settings.Preview
                     _ => ThemeNoteType.ClosedHiHat
                 };
             }
-            if (role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash)
-                type = ThemeNoteType.DedicatedLaneKick;
+            if (role == EliteDrumsColorRole.Stomp) type = ThemeNoteType.HatStomp;
+            if (role == EliteDrumsColorRole.Splash) type = ThemeNoteType.HatSplash;
             if (role == EliteDrumsColorRole.Wildcard) type = ThemeNoteType.Wildcard;
             float width = role is EliteDrumsColorRole.KickFlam
                 or EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash ? 0.5f : 1f;
@@ -152,10 +152,6 @@ namespace YARG.Settings.Preview
                 _lastPedalCompanion = pedalCombination % 2 == 0
                     ? EliteDrumsColorRole.Stomp : EliteDrumsColorRole.Splash;
                 var kick = DescribeForKickLayout(kickRole, ThemeNoteType.Normal, _kickMode);
-                // Only simultaneous bar kick/pedal examples need a half-bar kick.
-                if (_kickMode == EliteDrumsLayoutKickMode.Bars)
-                    kick = new ElitePreviewDescriptor(kick.Role, kick.Fret, kick.ModelType,
-                        kick.IsBar, 0.5f, kickRole == EliteDrumsColorRole.DoubleKick ? 0.5f : -0.5f);
                 return CreateRoleNote(time, kick);
             }
             if (index >= ROLE_COUNT * 3)

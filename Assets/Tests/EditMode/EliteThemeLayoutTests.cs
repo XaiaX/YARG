@@ -38,7 +38,7 @@ namespace YARG.Tests.EditMode
             var five = Models(comp, "FiveLaneDrums");
             var parent = root.transform.Find("Elite Lane Notes");
             Assert.That(parent, Is.Not.Null);
-            Assert.That(elite.Count, Is.EqualTo(15));
+            Assert.That(elite.Count, Is.EqualTo(17));
             foreach (DictionaryEntry entry in elite)
             {
                 var model = (GameObject) entry.Value;
@@ -124,16 +124,6 @@ namespace YARG.Tests.EditMode
             var infos = (IDictionary) player.GetField("_gameModeInfos", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
             var info = infos[Enum.Parse(typeof(YARG.Core.GameMode), "EliteDrums")];
             Assert.That(info.GetType().GetField("NoteVisualStyle").GetValue(info), Is.EqualTo(Style("EliteDrums")));
-        }
-
-        [TestCase(EliteDrumsColorRole.Stomp)]
-        [TestCase(EliteDrumsColorRole.Splash)]
-        public void ElitePedalPreviewUsesAuthoredDedicatedKick(EliteDrumsColorRole role)
-        {
-            var descriptor = Production("YARG.Settings.Preview.EliteDrumsFakeNoteGenerator")
-                .GetMethod("Describe").Invoke(null, new[] { (object) role, NoteType("Normal") });
-            Assert.That(descriptor.GetType().GetProperty("ModelType").GetValue(descriptor).ToString(),
-                Is.EqualTo("DedicatedLaneKick"));
         }
 
         [TestCase(false)]

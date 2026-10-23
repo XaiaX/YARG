@@ -491,6 +491,21 @@ namespace YARG.Gameplay.Visuals
             double duration = syncTrack.TickToTime(tick + 1) - syncTrack.TickToTime(tick);
             return duration > 0d ? duration : 0d;
         }
+        internal static int GetPedalRegion(int visualColumn, int laneCount, float highwayWidth,
+            out float center, out float width)
+        {
+            center = width = 0f;
+            if (laneCount <= 0 || !float.IsFinite(highwayWidth) || highwayWidth <= 0f) return 0;
+            int column = Mathf.Clamp(visualColumn, 0, laneCount - 1);
+            int first = Mathf.Max(0, column - 1);
+            int last = Mathf.Min(laneCount - 1, column + 1);
+            int sections = last - first + 1;
+            float laneWidth = highwayWidth / laneCount;
+            center = (first + last + 1) * 0.5f * laneWidth - highwayWidth * 0.5f;
+            width = sections * laneWidth;
+            return sections;
+        }
+
         internal static void GetRegion(EliteDrumsPlayer player, EliteDrumNote note, bool offset,
             out float center, out float width)
         {
@@ -509,19 +524,11 @@ namespace YARG.Gameplay.Visuals
             {
                 center = 0;
                 width = TrackPlayer.TRACK_WIDTH;
-                if (player.UsesHistoricalPedalBars && EliteDrumsNoteElement.TryGetPairedPedalKickLayout(note,
-                    player.Player.Profile.LeftyFlip, out float pairedCenter, out float pairedWidth))
-                {
-                    center = pairedCenter;
-                    width = pairedWidth;
-                }
                 return;
             }
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
             {
-                center = Mathf.Clamp(center, -TrackPlayer.TRACK_WIDTH / 2f + 1.5f * width,
-                    TrackPlayer.TRACK_WIDTH / 2f - 1.5f * width);
-                width *= 3f;
+                GetPedalRegion(position, layout.Lanes.Count, TrackPlayer.TRACK_WIDTH, out center, out width);
                 return;
             }
 

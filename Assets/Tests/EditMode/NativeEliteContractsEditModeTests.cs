@@ -457,7 +457,7 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void HatPedalStompAndSplashUseDedicatedLaneModel()
+        public void GhostFlaggedHatPedalsKeepTheirDistinctStompAndSplashModels()
         {
             var element = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
             Assert.That(element, Is.Not.Null);
@@ -480,14 +480,22 @@ namespace YARG.Tests.EditMode
                 false, YARG.Core.Chart.DrumNoteFlags.None, YARG.Core.Chart.NoteFlags.None,
                 YARG.Core.Chart.EliteDrumNote.EliteDrumsChannelFlag.None, 1d, 480, false);
 
-            Assert.That((int) group.Invoke(null, new object[] { stomp, true }), Is.EqualTo(7),
-                "Stomp must use the dedicated-lane bar model.");
-            Assert.That((int) group.Invoke(null, new object[] { splash, true }), Is.EqualTo(7),
-                "Splash must use the same dedicated-lane bar model as stomp.");
+            foreach (bool cymbalModels in new[] { false, true })
+            {
+                Assert.That((int) group.Invoke(null, new object[] { stomp, cymbalModels }), Is.EqualTo(15),
+                    "Stomp keeps its own model slot even when a chart carries a ghost flag.");
+                Assert.That((int) group.Invoke(null, new object[] { splash, cymbalModels }), Is.EqualTo(16),
+                    "Splash keeps its own model slot rather than sharing the stomp or kick model.");
+            }
+        }
 
+        [Test]
+        public void LegacyDedicatedKickScaleRemainsUnchanged()
+        {
+            var element = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
             var scaleStomp = element.GetMethod("ScaleStompModel",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            var model = new GameObject("Stomp scale contract");
+            var model = new GameObject("Legacy dedicated kick scale contract");
             try
             {
                 var noteGroupType = Type.GetType("YARG.Gameplay.Visuals.NoteGroup, Assembly-CSharp");
@@ -496,90 +504,11 @@ namespace YARG.Tests.EditMode
                 noteGroup.transform.localScale = new Vector3(2f, 3f, 4f);
                 scaleStomp.Invoke(null, new object[] { noteGroup });
                 Assert.That(noteGroup.transform.localScale, Is.EqualTo(new Vector3(6f, 3f, 4f)),
-                    "Stomp must scale laterally by three without changing its vertical/depth scale.");
+                    "The legacy dedicated model scale changes only laterally.");
             }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(model);
-            }
-        }
-
-        [Test]
-        public void PairedPedalAndSingleKickSplitHighwayAndResetForUnpairedNotes()
-        {
-            var element = Type.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement, Assembly-CSharp");
-            var layout = element.GetMethod("TryGetPairedPedalKickLayout",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            Assert.That(layout, Is.Not.Null);
-
-            YARG.Core.Chart.EliteDrumNote Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad pad,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType pedalType, bool doubleKick = false) =>
-                new(pad, YARG.Core.Chart.DrumNoteType.Neutral,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatState.Indifferent, pedalType,
-                    false, YARG.Core.Chart.DrumNoteFlags.None, YARG.Core.Chart.NoteFlags.None,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsChannelFlag.None, 1d, 480, doubleKick);
-
-            var kick = Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp);
-            var pedal = Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Splash);
-            kick.AddChildNote(pedal);
-            foreach (bool lefty in new[] { false, true })
-            {
-                foreach (var (note, pedalSide, targetWidth) in new[]
-                {
-                    (kick, false, 1f), (pedal, true, 1f)
-                })
-                {
-                    object[] args = { note, lefty, 0f, 0f };
-                    Assert.That((bool) layout.Invoke(null, args), Is.True);
-                    Assert.That((float) args[2], Is.EqualTo((pedalSide == lefty ? 0.5f : -0.5f)),
-                        "The bars should occupy opposite halves and mirror in lefty mode.");
-                    Assert.That((float) args[3], Is.EqualTo(targetWidth));
-                }
-            }
-
-            foreach (var unpaired in new[]
-            {
-                Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp),
-                Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal,
-                    YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp)
-            })
-            {
-                object[] args = { unpaired, false, 0f, 0f };
-                Assert.That((bool) layout.Invoke(null, args), Is.False);
-                Assert.That((float) args[3], Is.EqualTo(1f));
-            }
-            var parentPedal = Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp);
-            var childKick = Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp);
-            parentPedal.AddChildNote(childKick);
-            foreach (var member in parentPedal.AllNotes)
-            {
-                object[] args = { member, false, 0f, 0f };
-                Assert.That((bool) layout.Invoke(null, args), Is.True,
-                    "Pairing must work regardless of which note is the chord parent.");
-            }
-            var invisible = Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.InvisibleTerminator);
-            var ordinaryKick = Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp);
-            ordinaryKick.AddChildNote(invisible);
-            object[] invisibleArgs = { ordinaryKick, false, 0f, 0f };
-            Assert.That((bool) layout.Invoke(null, invisibleArgs), Is.False,
-                "Invisible pedal controls must not shrink a visible kick.");
-
-            var invalidKick = Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Kick,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp, doubleKick: true);
-            invalidKick.AddChildNote(Make(YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal,
-                YARG.Core.Chart.EliteDrumNote.EliteDrumsHatPedalType.Stomp));
-            foreach (var member in invalidKick.AllNotes)
-            {
-                object[] args = { member, false, 0f, 0f };
-                Assert.That((bool) layout.Invoke(null, args), Is.False,
-                    "An invalid 2x kick/pedal chord should not be formatted as a valid pair.");
             }
         }
 

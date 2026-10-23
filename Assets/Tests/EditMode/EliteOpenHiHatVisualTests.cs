@@ -94,7 +94,7 @@ namespace YARG.Tests.EditMode
                 (int) select.Invoke(null, new object[] { note, cymbals });
             Assert.That(Group(Note(EliteDrumPad.HiHat)), Is.EqualTo(1));
             Assert.That(Group(Note(EliteDrumPad.LeftCrash, hat: EliteDrumsHatState.Open)), Is.EqualTo(1));
-            Assert.That(Group(Note(EliteDrumPad.HatPedal, hat: EliteDrumsHatState.Open)), Is.EqualTo(7));
+            Assert.That(Group(Note(EliteDrumPad.HatPedal, hat: EliteDrumsHatState.Open)), Is.EqualTo(15));
             Assert.That(Group(Note(EliteDrumPad.HiHat, hat: EliteDrumsHatState.Open), false), Is.EqualTo(0));
             var flam = Note(EliteDrumPad.HiHat, hat: EliteDrumsHatState.Open);
             flam.IsFlam = true;
@@ -166,8 +166,6 @@ namespace YARG.Tests.EditMode
         }
 
         [TestCase("Cymbal", "Top.Cone", false)]
-        [TestCase("OpenHiHat", "Top.Cone", true)]
-        [TestCase("ClosedHiHat", "Top.Flat", false)]
         public void EliteCymbalsShareNeutralBaseAndIndependentlyColoredTops(string type, string topName, bool open)
         {
             const string partsPath = "Assets/Art/Meshes/Gameplay/Notes/Rectangular/EliteCymbalParts.fbx";
@@ -241,7 +239,7 @@ namespace YARG.Tests.EditMode
                 // NoteGroup places the note root at zero; visual child offsets must survive that.
                 model.transform.SetParent(null);
                 model.transform.localPosition = Vector3.zero;
-                var part = model.transform.Find("Cymbal Assembly/Base").GetComponent<MeshFilter>();
+                var part = model.GetComponentsInChildren<MeshFilter>().Single(filter => filter.name == "Base");
                 var original = reference.GetComponentInChildren<MeshFilter>();
                 Vector3 RimMinimum(GameObject root, MeshFilter filter, int submesh)
                 {
@@ -252,7 +250,9 @@ namespace YARG.Tests.EditMode
                 }
                 // Original Note_Base ring is submesh 2; the neutral base's exported ring is submesh 1.
                 var expected = RimMinimum(reference, original, 2);
-                var actual = RimMinimum(model, part, 1);
+                var actual = type == "Cymbal" ? RimMinimum(model, part, 1) :
+                    part.sharedMesh.vertices.Select(v => model.transform.InverseTransformPoint(part.transform.TransformPoint(v)))
+                        .Aggregate(new Vector3(float.MaxValue, float.MaxValue, float.MaxValue), Vector3.Min);
                 Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.00001f),
                     "The chrome rim must sit at the existing cymbal's height above the highway.");
                 Assert.That(actual.z, Is.EqualTo(expected.z).Within(0.00001f),
@@ -261,38 +261,38 @@ namespace YARG.Tests.EditMode
             finally { UnityEngine.Object.DestroyImmediate(model); }
         }
 
-        [TestCase("OpenHiHatAccent", "CymbalAccent", true)]
-        [TestCase("OpenHiHatGhost", "CymbalGhost", true)]
-        [TestCase("ClosedHiHatAccent", "CymbalAccent", false)]
-        [TestCase("ClosedHiHatGhost", "CymbalGhost", false)]
-        public void AccentAndGhostHatsKeepTheirExistingCymbalGeometry(string type, string ordinary, bool open)
+        [TestCase("OpenHiHat")]
+        [TestCase("ClosedHiHat")]
+        [TestCase("HatStomp")]
+        [TestCase("HatSplash")]
+        [TestCase("OpenHiHatAccent")]
+        [TestCase("OpenHiHatGhost")]
+        [TestCase("ClosedHiHatAccent")]
+        [TestCase("ClosedHiHatGhost")]
+        public void HatsHaveReusablePartsAndStarPowerMetal(string type)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(THEME_PATH);
             var comp = prefab.GetComponent(Production("YARG.Themes.ThemeComponent"));
             var fetch = comp.GetType().GetMethod("GetNoteModelsForVisualStyle");
             var styles = Production("YARG.Themes.VisualStyle");
-            var five = (IDictionary) fetch.Invoke(comp, new[] { Enum.Parse(styles, "FiveLaneDrums"), (object) false });
-            var four = (IDictionary) fetch.Invoke(comp, new[] { Enum.Parse(styles, "FourLaneDrums"), (object) false });
             var elite = (IDictionary) fetch.Invoke(comp, new[] { Enum.Parse(styles, "EliteDrums"), (object) false });
             var model = (GameObject) elite[TypeValue(type)];
             var noteType = Production("YARG.Themes.ThemeNote");
             Assert.That(model.GetComponentsInChildren(noteType).Length, Is.EqualTo(1));
-            Assert.That(model.transform.Find("Cymbal Assembly"), Is.Null);
             var filters = model.GetComponentsInChildren<MeshFilter>();
-            Assert.That(filters.Length, Is.EqualTo(open ? 2 : 1));
-            var upper = model.transform.Find("Upper Cymbal");
-            foreach (var filter in filters)
-            {
-                var source = (GameObject) (type == "OpenHiHatAccent" && !filter.transform.IsChildOf(upper)
-                    ? four[TypeValue(ordinary)] : five[TypeValue(ordinary)]);
-                var original = source.GetComponentInChildren<MeshFilter>();
-                Assert.That(filter.sharedMesh, Is.SameAs(original.sharedMesh));
-                var expectedMaterials = original.GetComponent<MeshRenderer>().sharedMaterials;
-                // The artist swapped the closed ghost's bright and dark center regions.
-                if (type == "ClosedHiHatGhost")
-                    (expectedMaterials[2], expectedMaterials[3]) = (expectedMaterials[3], expectedMaterials[2]);
-                Assert.That(filter.GetComponent<MeshRenderer>().sharedMaterials, Is.EqualTo(expectedMaterials));
-            }
+            Assert.That(filters.Any(f => f.name == "Base"), Is.True);
+            Assert.That(filters.Any(f => f.name == "Top"), Is.True);
+            var metalEntries = ((IEnumerable) noteType.GetProperty("ColoredMetalMaterials")
+                .GetValue(model.GetComponent(noteType))).Cast<object>().ToArray();
+            foreach (var renderer in model.GetComponentsInChildren<MeshRenderer>())
+                for (int index = 0; index < renderer.sharedMaterials.Length; index++)
+                    if (renderer.sharedMaterials[index].name == "CymbalMetal")
+                        Assert.That(metalEntries.Any(entry =>
+                            (MeshRenderer) entry.GetType().GetField("Mesh").GetValue(entry) == renderer &&
+                            (int) entry.GetType().GetField("MaterialIndex").GetValue(entry) == index), Is.True,
+                            $"{type}/{renderer.name} chrome must respond to Star Power.");
+            if (type == "OpenHiHatAccent")
+                Assert.That(filters.Any(f => f.name == "AccentCap"), Is.True);
             foreach (string property in new[] { "ColoredMaterials", "ColoredMaterialsNoStarPower",
                 "ColoredMetalMaterials", "ColoredSecondaryMaterials" })
                 foreach (var entry in ((IEnumerable) noteType.GetProperty(property).GetValue(model.GetComponent(noteType))).Cast<object>())

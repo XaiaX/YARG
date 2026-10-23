@@ -1,0 +1,3 @@
+# Elite hi-hat authoring snapshot
+
+Editable Blender sources, authoring/export utilities, preserved variants, and their notes from the approved 2026-10-23 work. The ZIP retains paths relative to the branch-level folder above the Unity project; extract there to reconstruct the original layout. Current export sources are `docs/prototypes/elite-unity-integration/upright-strip-pass/hi-hats.blend` and `rounded-shimmer-pass/straight-modular-pedals.blend`. The shipped FBXs, materials, shader and prefabs are already in Assets; this archive is not required to build the game. Some historical diagnostic scripts retain local paths and need adjustment on another machine.

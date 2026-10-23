@@ -55,6 +55,9 @@ namespace YARG.Themes
         ClosedHiHat       = 29,
         ClosedHiHatAccent = 30,
         ClosedHiHatGhost  = 31,
+
+        HatStomp  = 32,
+        HatSplash = 33,
     }
 
     public class ThemeNote : MonoBehaviour
@@ -76,6 +79,12 @@ namespace YARG.Themes
         [Space]
         [SerializeField]
         private MeshEmissionMaterialIndex[] _coloredSecondaryMaterials;
+
+        [SerializeField]
+        [Tooltip("Pedal geometry is anchored at the strike position and needs no legacy visual lead.")]
+        private bool _pedalStrikeAligned;
+
+        public bool PedalStrikeAligned => _pedalStrikeAligned;
 
         public IEnumerable<MeshEmissionMaterialIndex> ColoredMaterials => _coloredMaterials;
         public IEnumerable<MeshEmissionMaterialIndex> ColoredMaterialsNoStarPower => _coloredMaterialsNoStarPower;

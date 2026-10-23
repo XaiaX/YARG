@@ -174,36 +174,34 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void OnlyTheStandardOpenTopUsesTheMeasuredConeTipAndAuthoredRestPose()
+        public void OpenVariantsRockAroundTheirOwnTopWithAnAuthoredNeutralPose()
         {
             var type = Type.GetType("YARG.Gameplay.Visuals.HiHatBeatAnimation, Assembly-CSharp", true);
             var theme = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Prefabs/Gameplay/Visual/Themes/RectangularTheme.prefab");
             var components = theme.GetComponentsInChildren(type, true);
-            Assert.That(components.Length, Is.EqualTo(1));
-            var animation = components[0];
-            Assert.That(animation.transform.parent.parent.name, Is.EqualTo("OpenHiHat Note"));
-            var serialized = new SerializedObject(animation);
-            foreach (var field in new[] { "_restPosition", "_restRotation", "_pivotLocal", "_swayDegrees",
-                "_mode", "_fadeBeats", "_backPosition", "_backRotation", "_forwardPosition", "_forwardRotation" })
-                Assert.That(serialized.FindProperty(field), Is.Not.Null, $"Configure {field} for tip-centered sway.");
-            Assert.That(serialized.FindProperty("_restPosition").vector3Value, Is.EqualTo(REST));
-            Assert.That(serialized.FindProperty("_swayDegrees").floatValue, Is.EqualTo(2f));
-            Assert.That(serialized.FindProperty("_mode").enumValueIndex, Is.EqualTo(1));
-            Assert.That(serialized.FindProperty("_fadeBeats").floatValue, Is.EqualTo(2f));
-            Assert.That(serialized.FindProperty("_backPosition").vector3Value,
-                Is.EqualTo(new Vector3(0f, 0.00220106752f, -0.00300104637f)));
-            Assert.That(serialized.FindProperty("_forwardPosition").vector3Value,
-                Is.EqualTo(new Vector3(0f, 0.00222244998f, -0.00112135429f)));
-            var rotation = serialized.FindProperty("_restRotation").quaternionValue;
-            Assert.That(Quaternion.Angle(rotation, animation.transform.localRotation), Is.LessThan(0.001f));
-            var pivot = serialized.FindProperty("_pivotLocal").vector3Value;
-            var mesh = animation.GetComponent<MeshFilter>().sharedMesh;
-            float height = (rotation * Vector3.Scale(animation.transform.localScale, pivot)).y;
-            foreach (var vertex in mesh.vertices)
-                Assert.That((rotation * Vector3.Scale(animation.transform.localScale, vertex)).y,
-                    Is.LessThanOrEqualTo(height + 0.0000001f));
-            Assert.That(pivot.z, Is.GreaterThan(0.005f), "The fulcrum must be the cone tip, not the rim or object origin.");
+            Assert.That(components.Length, Is.EqualTo(3));
+            foreach (var animation in components)
+            {
+                var serialized = new SerializedObject(animation);
+                Assert.That(serialized.FindProperty("_restPosition").vector3Value, Is.EqualTo(Vector3.zero));
+                Assert.That(serialized.FindProperty("_restRotation").quaternionValue, Is.EqualTo(Quaternion.identity));
+                Assert.That(serialized.FindProperty("_mode").enumValueIndex, Is.EqualTo(1));
+                Assert.That(serialized.FindProperty("_fadeBeats").floatValue, Is.EqualTo(2f));
+                var pivot = serialized.FindProperty("_pivotLocal").vector3Value;
+                var top = animation.transform.Find("Top").GetComponent<MeshFilter>();
+                foreach (var vertex in top.sharedMesh.vertices)
+                    Assert.That(animation.transform.InverseTransformPoint(top.transform.TransformPoint(vertex)).y,
+                        Is.LessThanOrEqualTo(pivot.y + 0.00001f));
+                foreach (string pose in new[] { "_back", "_forward" })
+                {
+                    var position = serialized.FindProperty(pose + "Position").vector3Value;
+                    var rotation = serialized.FindProperty(pose + "Rotation").quaternionValue;
+                    Assert.That(Vector3.Distance(position + rotation * pivot, pivot), Is.LessThan(0.00001f),
+                        "Rocking should not move the cymbal tip away from its authored position.");
+                }
+            }
         }
+
     }
 }

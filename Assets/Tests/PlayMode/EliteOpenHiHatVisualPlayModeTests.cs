@@ -44,7 +44,7 @@ namespace YARG.Tests.PlayMode
                     {
                         groupType.GetMethod("SetColorWithEmission").Invoke(group, new object[] { color, Color.yellow });
                         groupType.GetMethod("SetMetalColor").Invoke(group, new object[] { Color.magenta });
-                        if (baseRenderer != null) Assert.That(baseRenderer.sharedMaterials.Select(m => m.color).ToArray(), Is.EqualTo(baseColors),
+                        if (name == "Cymbal" && baseRenderer != null) Assert.That(baseRenderer.sharedMaterials.Select(m => m.color).ToArray(), Is.EqualTo(baseColors),
                             $"{name}: chrome base must remain neutral through lane and Star Power recoloring.");
                         var note = group.GetComponentInChildren(Production("YARG.Themes.ThemeNote"), true);
                         foreach (string field in new[] { "ColoredMaterials", "ColoredMetalMaterials" })

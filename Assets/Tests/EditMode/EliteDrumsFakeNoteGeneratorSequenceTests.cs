@@ -131,7 +131,7 @@ namespace YARG.Tests.EditMode
                         : roleIndex == 1 ? "ClosedHiHat" + (dynamics == "Normal" ? "" : dynamics)
                         : roleIndex == 10 || roleIndex == 11 ? "Kick"
                         : roleIndex == 12 ? mode == "Bars" ? "Kick" : mode == "Combined" ? "Accent" : "DedicatedLaneKick"
-                        : roleIndex == 13 || roleIndex == 14 ? "DedicatedLaneKick"
+                        : roleIndex == 13 ? "HatStomp" : roleIndex == 14 ? "HatSplash"
                         : roleIndex == 16 ? "Wildcard" : dynamics;
                     Assert.That(Dynamics(note), Is.EqualTo(expectedModel), $"Retained dynamics {i}");
                 }
@@ -160,7 +160,7 @@ namespace YARG.Tests.EditMode
         [TestCase("Bars")]
         [TestCase("Combined")]
         [TestCase("Split")]
-        public void StandaloneKickDescriptorsStayFullWidthAndOnlyBarsPedalPairsUseHalfWidth(string mode)
+        public void StandaloneAndSimultaneousPedalKickDescriptorsStayFullWidth(string mode)
         {
             var samples = Sequence(mode);
             foreach (int index in new[] { 10, 11, 27, 28, 44, 45 })
@@ -176,12 +176,11 @@ namespace YARG.Tests.EditMode
                 var (note, companions) = samples[index];
                 Assert.That(companions, Has.Length.EqualTo(1));
                 Assert.That(Read(companions[0], "Time"), Is.EqualTo(Read(note, "Time")),
-                    "A half-bar kick must have an actual simultaneous pedal companion.");
+                    "The paired example must retain its simultaneous pedal companion.");
                 Assert.That(Role(companions[0]), Is.EqualTo(index % 2 == 1 ? "Stomp" : "Splash"));
                 var descriptor = Read(note, "EliteDescriptor");
-                Assert.That(Property(descriptor, "Width"), Is.EqualTo(mode == "Bars" ? 0.5f : 1f));
-                Assert.That(Property(descriptor, "Offset"), Is.EqualTo(mode == "Bars"
-                    ? Role(note) == "DoubleKick" ? 0.5f : -0.5f : 0f));
+                Assert.That(Property(descriptor, "Width"), Is.EqualTo(1f));
+                Assert.That(Property(descriptor, "Offset"), Is.EqualTo(0f));
             }
         }
 

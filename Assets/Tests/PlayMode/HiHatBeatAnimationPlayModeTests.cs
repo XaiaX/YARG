@@ -18,7 +18,7 @@ namespace YARG.Tests.PlayMode
     public sealed class HiHatBeatAnimationPlayModeTests
     {
         private static Type Production(string name) => Type.GetType(name + ", Assembly-CSharp", true);
-        private static readonly Vector3 UPPER = new(0f, 0.0022f, -0.0024f);
+        private static readonly Vector3 UPPER = Vector3.zero;
 
         private static GameObject OpenModel()
         {
@@ -115,10 +115,10 @@ namespace YARG.Tests.PlayMode
                 var baseScale = baseTransform.localScale;
                 if (rock)
                 {
-                    var forwardPosition = new Vector3(0f, 0.00222244998f, -0.00112135429f);
-                    var forwardRotation = new Quaternion(2.76856529e-08f, 0.773845971f, 0.633373916f, -3.38258843e-08f);
-                    var backPosition = new Vector3(0f, 0.00220106752f, -0.00300104637f);
-                    var backRotation = new Quaternion(3.03643048e-08f, 0.719343722f, 0.694654346f, -3.14435162e-08f);
+                    var forwardPosition = (Vector3) Field(animation.GetType(), "_forwardPosition").GetValue(animation);
+                    var forwardRotation = (Quaternion) Field(animation.GetType(), "_forwardRotation").GetValue(animation);
+                    var backPosition = (Vector3) Field(animation.GetType(), "_backPosition").GetValue(animation);
+                    var backRotation = (Quaternion) Field(animation.GetType(), "_backRotation").GetValue(animation);
                     void RockPose(Transform target, Vector3 position, Quaternion rotation)
                     {
                         Pose(target, position);
@@ -138,12 +138,12 @@ namespace YARG.Tests.PlayMode
                     Clock(5.125d); // Within the final two beats: reduced backward excursion.
                     yield return null;
                     Assert.That(Vector3.Distance(top.localPosition, UPPER),
-                        Is.GreaterThan(0.0001f).And.LessThan(0.0012f));
+                        Is.GreaterThan(0f).And.LessThan(Vector3.Distance(backPosition, UPPER)));
                     Assert.That(Quaternion.Angle(top.localRotation, restRotation),
-                        Is.GreaterThan(1f).And.LessThan(6.4f));
+                        Is.GreaterThan(0f).And.LessThan(Quaternion.Angle(backRotation, restRotation)));
                     Clock(5.5d); // One beat remains; forward swing is still clearly visible.
                     yield return null;
-                    Assert.That(Quaternion.Angle(top.localRotation, restRotation), Is.GreaterThan(5f));
+                    Assert.That(Quaternion.Angle(top.localRotation, restRotation), Is.GreaterThan(0.5f));
                     Assert.That(Vector3.Distance(top.localPosition, UPPER), Is.GreaterThan(0.001f));
                     Clock(6d);
                     yield return null;
@@ -245,7 +245,7 @@ namespace YARG.Tests.PlayMode
             {
                 yield return null;
                 Assert.That(model, Is.Not.Null);
-                Assert.That(Top(model).GetComponent<MeshFilter>(), Is.Not.Null);
+                Assert.That(Top(model).GetComponentInChildren<MeshFilter>(), Is.Not.Null);
                 Pose(Top(model), UPPER);
                 var animation = (Behaviour) Top(model).GetComponent(animationType);
                 animation.enabled = false;

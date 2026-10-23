@@ -45,10 +45,12 @@ namespace YARG.Themes
                 (ThemeNoteType.OpenHiHatGhost, ThemeNoteType.CymbalGhost),
                 (ThemeNoteType.ClosedHiHat, ThemeNoteType.Cymbal),
                 (ThemeNoteType.ClosedHiHatAccent, ThemeNoteType.CymbalAccent),
-                (ThemeNoteType.ClosedHiHatGhost, ThemeNoteType.CymbalGhost)
+                (ThemeNoteType.ClosedHiHatGhost, ThemeNoteType.CymbalGhost),
+                (ThemeNoteType.HatStomp, ThemeNoteType.DedicatedLaneKick),
+                (ThemeNoteType.HatSplash, ThemeNoteType.DedicatedLaneKick)
             })
             {
-                // A theme without the optional slot keeps its own ordinary cymbal.
+                // Missing optional hat/pedal slots retain the theme's own cymbal or bar.
                 // An authored regular hat model keeps its shape during Star Power even
                 // if it has no separate SP model; NoteGroup supplies the recoloring.
                 if (regular.ContainsKey(hat)) continue;

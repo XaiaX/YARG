@@ -64,6 +64,14 @@ namespace YARG.Gameplay.Visuals
         private MaterialInfo[] _allColoredCache;
         private MaterialInfo[] _coloredMetalMaterialCache;
 
+        public bool PedalStrikeAligned => _themeNote != null && _themeNote.PedalStrikeAligned;
+
+        public void ConfigurePedalSections(int count)
+        {
+            var modular = GetComponentInChildren<ModularPedalVisual>(true);
+            if (modular != null) modular.Configure(count);
+        }
+
         public void Initialize()
         {
             _coloredMaterialCache = _themeNote.ColoredMaterials.Select(MaterialInfo.From).ToArray();

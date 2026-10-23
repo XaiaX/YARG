@@ -603,9 +603,19 @@ namespace YARG.Tests.PlayMode
             }
         }
 
-        [UnityTest]
-        public IEnumerator ActualStompAndSplashPreviewModelsMatchRuntimeTickLeadWithoutChangingNoteOrKickTiming()
+        private static readonly (int hatLane, bool lefty)[] PedalLayouts =
         {
+            (0, false), (0, true), (1, false), (1, true), (4, false), (4, true)
+        };
+
+        [UnityTest]
+        public IEnumerator AlignedStompAndSplashPreviewModelsMatchRuntimeWithoutChangingNoteOrKickTiming(
+            [ValueSource(nameof(PedalLayouts))] (int hatLane, bool lefty) testCase)
+        {
+            var layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Pedal preview parity");
+            (layout.Slots[1], layout.Slots[testCase.hatLane]) = (layout.Slots[testCase.hatLane], layout.Slots[1]);
+            var profile = Profile();
+            profile.LeftyFlip = testCase.lefty;
             const uint tick = 480;
             const double noteTime = 0.5d;
             var stomp = Pedal(EliteDrumsHatPedalType.Stomp, noteTime, tick);
@@ -615,7 +625,7 @@ namespace YARG.Tests.PlayMode
             var splashKick = Kick(noteTime + 0.5d, tick * 2);
             splash.AddChildNote(splashKick);
             _fixture = new InitializedElitePlayerFixture();
-            yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(stomp, splash), Profile(), EliteDrumsLayoutPreset.Compact);
+            yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(stomp, splash), profile, layout);
 
             var runtime = _fixture.Player;
             var spawn = runtime.GetType().GetMethod("SpawnNote", INSTANCE);
@@ -637,10 +647,8 @@ namespace YARG.Tests.PlayMode
                 float runtimeLead = childGroup.transform.localPosition.z;
                 double runtimeTime = pedal.Time;
                 uint runtimeTick = pedal.Tick;
-                double tickDuration = _fixture.Chart.SyncTrack.TickToTime(pedal.Tick + 1) -
-                    _fixture.Chart.SyncTrack.TickToTime(pedal.Tick);
-                float runtimeSpeed = Convert.ToSingle(runtime.GetType().GetProperty("NoteSpeed").GetValue(runtime));
-                Assert.That(runtimeLead, Is.EqualTo(-(float)(runtimeSpeed * tickDuration)).Within(TOLERANCE));
+                Assert.That(runtimeLead, Is.Zero.Within(TOLERANCE));
+                Assert.That((bool)Get(childGroup, "PedalStrikeAligned"), Is.True);
                 Assert.That(pedal.Time, Is.EqualTo(runtimeTime));
                 Assert.That(pedal.Tick, Is.EqualTo(runtimeTick));
             }
@@ -650,7 +658,8 @@ namespace YARG.Tests.PlayMode
             var playerType = Production("YARG.Settings.Preview.FakeTrackPlayer");
             var preview = previewRoot.AddComponent(playerType);
             playerType.GetProperty("SelectedGameMode", INSTANCE).SetValue(preview, GameMode.EliteDrums);
-            playerType.GetProperty("EliteLayoutOverride", INSTANCE).SetValue(preview, EliteDrumsLayoutPreset.Compact);
+            playerType.GetProperty("EliteLayoutOverride", INSTANCE).SetValue(preview, layout);
+            playerType.GetProperty("LeftyFlip", INSTANCE).SetValue(preview, testCase.lefty);
 
             var poolObject = new GameObject("Production pedal preview pool");
             poolObject.transform.SetParent(previewRoot.transform, false);
@@ -685,7 +694,6 @@ namespace YARG.Tests.PlayMode
             yield return null;
             ((Behaviour)preview).enabled = false;
 
-            var noteSpeed = Convert.ToSingle(playerType.GetField("NOTE_SPEED", BindingFlags.Public | BindingFlags.Static).GetRawConstantValue());
             var modelType = Production("YARG.Themes.ThemeNoteType");
             var noteType = Production("YARG.Settings.Preview.FakeNote");
             foreach (var (role, runtimeNote) in new[]
@@ -713,11 +721,17 @@ namespace YARG.Tests.PlayMode
                 var model = (Component)noteType.GetField("_currentNoteGroup", INSTANCE).GetValue(fake);
                 Assert.That(model, Is.SameAs(expectedGroup),
                     $"{role} {(starPower ? "Star Power" : "regular")} must use the production group resolution, including authored fallbacks.");
-                float expected = -noteSpeed / 960f;
+                var live = runtimeElements.Single(component => ReferenceEquals(Get(component, "NoteRef"), runtimeNote));
+                var expectedBounds = HorizontalBounds((Component)Get(live, "NoteGroup"), runtime.transform);
+                var actualBounds = HorizontalBounds(model, preview.transform);
+                Assert.That(actualBounds.width, Is.EqualTo(expectedBounds.width).Within(0.02f));
+                Assert.That(actualBounds.center, Is.EqualTo(expectedBounds.center).Within(0.02f));
+                float expected = 0f;
+                Assert.That((bool)Get(model, "PedalStrikeAligned"), Is.True);
                 Assert.That(model.transform.localPosition.z, Is.EqualTo(expected).Within(TOLERANCE));
                 Call(fake, "OnSettingChanged");
                 Assert.That(model.transform.localPosition.z, Is.EqualTo(expected).Within(TOLERANCE),
-                    "Reapplying preview settings must preserve the production model child's one-tick lead.");
+                    "Reapplying preview settings must preserve the authored strike anchor.");
                 Assert.That((double)noteRef.GetType().GetField("Time").GetValue(noteRef), Is.EqualTo(previewTime),
                     "Reapplying preview settings must not change the generated preview note time.");
                 Assert.That(runtimeNote.Time, Is.EqualTo(pedalTiming[runtimeNote].time));
@@ -729,6 +743,9 @@ namespace YARG.Tests.PlayMode
                 Assert.That(reused, Is.SameAs(fake));
                 var reusedModel = (Component)noteType.GetField("_currentNoteGroup", INSTANCE).GetValue(reused);
                 Assert.That(reusedModel.transform.localPosition.z, Is.EqualTo(expected).Within(TOLERANCE));
+                var reusedBounds = HorizontalBounds(reusedModel, preview.transform);
+                Assert.That(reusedBounds.width, Is.EqualTo(expectedBounds.width).Within(0.02f));
+                Assert.That(reusedBounds.center, Is.EqualTo(expectedBounds.center).Within(0.02f));
             }
 
             foreach (var kick in new[] { stompKick, splashKick })

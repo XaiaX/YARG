@@ -152,6 +152,7 @@ namespace YARG.Settings.Preview
                 ThemeNoteType.ClosedHiHat => ThemeNoteType.Cymbal,
                 ThemeNoteType.ClosedHiHatAccent => ThemeNoteType.CymbalAccent,
                 ThemeNoteType.ClosedHiHatGhost => ThemeNoteType.CymbalGhost,
+                ThemeNoteType.HatStomp or ThemeNoteType.HatSplash => ThemeNoteType.DedicatedLaneKick,
                 _ => type
             };
             if (ordinaryType != type) return FindNoteGroup(ordinaryType, starPower);
@@ -343,9 +344,19 @@ namespace YARG.Settings.Preview
 
             // Update height
             float width = NoteRef.EliteDescriptor?.Width ?? 1f;
-            if (NoteRef.EliteDescriptor is { Role: EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash } &&
-                info.EliteLayout != null)
-                width = 3f / info.LaneCount;
+            bool layoutPedal = NoteRef.EliteDescriptor is { Role: EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash } &&
+                info.EliteLayout != null;
+            float pedalCenter = 0f;
+            float pedalWidth = 0f;
+            int pedalSections = 0;
+            if (layoutPedal)
+            {
+                int column = info.EliteLayout.SourceToLane["hi-hat"];
+                if (FakeTrackPlayer.LeftyFlip) column = info.LaneCount - 1 - column;
+                pedalSections = EliteDrumsRuntimeGeometry.GetPedalRegion(column, info.LaneCount,
+                    TrackPlayer.TRACK_WIDTH, out pedalCenter, out pedalWidth);
+                width = 1f;
+            }
             transform.localScale = new Vector3(width, highwayPreset.NoteHeight, 1f);
             if (NoteRef.EliteDescriptor is { } elite)
             {
@@ -354,11 +365,8 @@ namespace YARG.Settings.Preview
                 _currentNoteGroup.transform.localPosition = _authoredGroupPositions[_currentNoteGroup];
                 float? fittedWidth = null;
                 float x = elite.IsBar
-                    ? (elite.Role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash) &&
-                      info.EliteLayout != null
-                        ? Mathf.Clamp(info.EliteLayout.GetSourceX("hi-hat", TrackPlayer.TRACK_WIDTH,
-                            FakeTrackPlayer.LeftyFlip), -TrackPlayer.TRACK_WIDTH / 2f + 1.5f * TrackPlayer.TRACK_WIDTH / info.LaneCount,
-                            TrackPlayer.TRACK_WIDTH / 2f - 1.5f * TrackPlayer.TRACK_WIDTH / info.LaneCount)
+                    ? layoutPedal
+                        ? pedalCenter
                         : info.EliteLayout is { KickMode: EliteDrumsLayoutKickMode.Split } barLayout
                             ? (elite.Role == EliteDrumsColorRole.DoubleKick
                                 ? barLayout.GetSourceX("kick2", TrackPlayer.TRACK_WIDTH, FakeTrackPlayer.LeftyFlip)
@@ -441,14 +449,15 @@ namespace YARG.Settings.Preview
                     var renderedTransform = _currentNoteGroup.transform;
                     if (info.LaneCount > 0)
                     {
-                        float targetWidth = TrackPlayer.TRACK_WIDTH * 3f / info.LaneCount *
-                            Mathf.Abs(transform.parent.lossyScale.x);
+                        _currentNoteGroup.ConfigurePedalSections(pedalSections);
+                        float targetWidth = pedalWidth * Mathf.Abs(transform.parent.lossyScale.x);
                         float targetCenter = transform.parent.TransformPoint(new Vector3(x, 0f, 0f)).x;
                         FitCurrentModelWidth(targetWidth, targetCenter);
                     }
                     double tickDuration = 1d / (120d * 480d / 60d);
                     renderedTransform.localPosition = renderedTransform.localPosition.WithZ(
-                        EliteDrumsRuntimeGeometry.GetVisualLeadOffset((float) FakeTrackPlayer.NOTE_SPEED, tickDuration));
+                        _currentNoteGroup.PedalStrikeAligned ? 0f :
+                            EliteDrumsRuntimeGeometry.GetVisualLeadOffset((float) FakeTrackPlayer.NOTE_SPEED, tickDuration));
                 }
                 if (info.EliteLayout != null && (NoteRef.EliteHandFlam || NoteRef.ElitePairPartner != null))
                 {
@@ -608,7 +617,8 @@ namespace YARG.Settings.Preview
             // wrapper, keeping all author-edited model transforms intact.
             foreach (var pair in fake._noteGroups)
             {
-                if (pair.NoteType is not (ThemeNoteType.Kick or ThemeNoteType.DedicatedLaneKick or ThemeNoteType.Wildcard))
+                if (pair.NoteType is not (ThemeNoteType.Kick or ThemeNoteType.DedicatedLaneKick or
+                    ThemeNoteType.HatStomp or ThemeNoteType.HatSplash or ThemeNoteType.Wildcard))
                     continue;
                 var renderers = pair.Group.GetComponentsInChildren<MeshRenderer>(true);
                 if (renderers.Length == 0) continue;

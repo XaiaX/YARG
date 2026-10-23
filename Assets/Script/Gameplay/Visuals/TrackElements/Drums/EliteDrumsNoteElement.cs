@@ -20,7 +20,7 @@ namespace YARG.Gameplay.Visuals
         private const int GHOST = 4;
         private const int CYMBAL_ACCENT = 5;
         private const int CYMBAL_GHOST = 6;
-        private const int STOMP = 7;
+        private const int DEDICATED_KICK = 7;
         private const int OPEN_HI_HAT = 8;
         private const int OPEN_HI_HAT_ACCENT = 9;
         private const int OPEN_HI_HAT_GHOST = 10;
@@ -28,7 +28,9 @@ namespace YARG.Gameplay.Visuals
         private const int CLOSED_HI_HAT_ACCENT = 12;
         private const int CLOSED_HI_HAT_GHOST = 13;
         private const int WILDCARD = 14;
-        private const int COUNT = 15;
+        private const int HAT_STOMP = 15;
+        private const int HAT_SPLASH = 16;
+        private const int COUNT = 17;
         [SerializeField] private Vector3 _normalStompScale;
         [SerializeField] private Vector3 _starStompScale;
         [SerializeField] private Vector3 _normalStompPosition;
@@ -69,6 +71,10 @@ namespace YARG.Gameplay.Visuals
         {
             (models, starpowerModels) = ThemeNoteModelFallbacks.ResolveEliteModels(models, starpowerModels);
             CreateNoteGroupArrays(COUNT);
+            _normalGemScales = new Vector3[COUNT];
+            _starGemScales = new Vector3[COUNT];
+            _normalGemPositions = new Vector3[COUNT];
+            _starGemPositions = new Vector3[COUNT];
             AssignNoteGroup(models, starpowerModels, NORMAL, ThemeNoteType.Normal);
             AssignNoteGroup(models, starpowerModels, CYMBAL, ThemeNoteType.Cymbal);
             AssignNoteGroup(models, starpowerModels, KICK, ThemeNoteType.Kick);
@@ -76,7 +82,7 @@ namespace YARG.Gameplay.Visuals
             AssignNoteGroup(models, starpowerModels, GHOST, ThemeNoteType.Ghost);
             AssignNoteGroup(models, starpowerModels, CYMBAL_ACCENT, ThemeNoteType.CymbalAccent);
             AssignNoteGroup(models, starpowerModels, CYMBAL_GHOST, ThemeNoteType.CymbalGhost);
-            AssignNoteGroup(models, starpowerModels, STOMP, ThemeNoteType.DedicatedLaneKick);
+            AssignNoteGroup(models, starpowerModels, DEDICATED_KICK, ThemeNoteType.DedicatedLaneKick);
             AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT, ThemeNoteType.OpenHiHat);
             AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT_ACCENT, ThemeNoteType.OpenHiHatAccent);
             AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT_GHOST, ThemeNoteType.OpenHiHatGhost);
@@ -85,14 +91,16 @@ namespace YARG.Gameplay.Visuals
             AssignNoteGroup(models, starpowerModels, CLOSED_HI_HAT_GHOST, ThemeNoteType.ClosedHiHatGhost);
 
             AssignNoteGroup(models, starpowerModels, WILDCARD, ThemeNoteType.Wildcard);
+            AssignNoteGroup(models, starpowerModels, HAT_STOMP, ThemeNoteType.HatStomp);
+            AssignNoteGroup(models, starpowerModels, HAT_SPLASH, ThemeNoteType.HatSplash);
 
-            ScaleStompModel(NoteGroups[STOMP]);
-            if (StarPowerNoteGroups[STOMP] != NoteGroups[STOMP])
-                ScaleStompModel(StarPowerNoteGroups[STOMP]);
-            _normalStompScale = NoteGroups[STOMP].transform.localScale;
-            _starStompScale = StarPowerNoteGroups[STOMP].transform.localScale;
-            _normalStompPosition = NoteGroups[STOMP].transform.localPosition;
-            _starStompPosition = StarPowerNoteGroups[STOMP].transform.localPosition;
+            ScaleStompModel(NoteGroups[DEDICATED_KICK]);
+            if (StarPowerNoteGroups[DEDICATED_KICK] != NoteGroups[DEDICATED_KICK])
+                ScaleStompModel(StarPowerNoteGroups[DEDICATED_KICK]);
+            _normalStompScale = NoteGroups[DEDICATED_KICK].transform.localScale;
+            _starStompScale = StarPowerNoteGroups[DEDICATED_KICK].transform.localScale;
+            _normalStompPosition = NoteGroups[DEDICATED_KICK].transform.localPosition;
+            _starStompPosition = StarPowerNoteGroups[DEDICATED_KICK].transform.localPosition;
             CreateSplitGemGroups();
             for (int i = 0; i < COUNT; i++)
             {
@@ -153,36 +161,6 @@ namespace YARG.Gameplay.Visuals
         {
             var scale = stompModel.transform.localScale;
             stompModel.transform.localScale = new Vector3(scale.x * 3f, scale.y, scale.z);
-        }
-
-        // In a pedal+kick chord, both use the same bar model and occupy opposite
-        // halves of the highway. Keep this choice independent of chord parent order.
-        internal static bool TryGetPairedPedalKickLayout(EliteDrumNote note, bool lefty,
-            out float x, out float targetWidth)
-        {
-            x = 0;
-            targetWidth = 1;
-            bool isKick = note.Pad == (int) EliteDrumNote.EliteDrumPad.Kick;
-            bool isPedal = note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal &&
-                !note.IsInvisibleTerminator;
-            if (!isKick && !isPedal) return false;
-
-            bool hasCounterpart = false;
-            foreach (var member in note.ParentOrSelf.AllNotes)
-            {
-                if (isKick && !note.IsDoubleKick &&
-                    member.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal &&
-                    !member.IsInvisibleTerminator)
-                    hasCounterpart = true;
-                if (isPedal && member.Pad == (int) EliteDrumNote.EliteDrumPad.Kick &&
-                    !member.IsDoubleKick)
-                    hasCounterpart = true;
-            }
-            if (!hasCounterpart) return false;
-
-            x = (isPedal == lefty ? 1f : -1f) * TrackPlayer.TRACK_WIDTH / 4f;
-            targetWidth = TrackPlayer.TRACK_WIDTH / 2f;
-            return true;
         }
 
         private void CreateSplitGemGroups()
@@ -341,11 +319,11 @@ namespace YARG.Gameplay.Visuals
 
         private void ResetStompGroups()
         {
-            var normal = NoteGroups[STOMP].transform;
+            var normal = NoteGroups[DEDICATED_KICK].transform;
             normal.localScale = _normalStompScale;
             normal.localPosition = _normalStompPosition;
-            if (StarPowerNoteGroups[STOMP] == NoteGroups[STOMP]) return;
-            var star = StarPowerNoteGroups[STOMP].transform;
+            if (StarPowerNoteGroups[DEDICATED_KICK] == NoteGroups[DEDICATED_KICK]) return;
+            var star = StarPowerNoteGroups[DEDICATED_KICK].transform;
             star.localScale = _starStompScale;
             star.localPosition = _starStompPosition;
         }
@@ -439,18 +417,25 @@ namespace YARG.Gameplay.Visuals
                 (NoteRef.IsFlam || NoteRef.IsFlatFlam);
             bool combinedKickFlam = dedicatedKickFlam &&
                 Player.Layout.KickMode == EliteDrumsLayoutKickMode.Combined;
-            bool pairedBar = Player.UsesHistoricalPedalBars && Player.UsesKickBars &&
-                TryGetPairedPedalKickLayout(NoteRef, Player.Player.Profile.LeftyFlip, out _, out _);
             var groups = IsStarPowerVisible ? StarPowerNoteGroups : NoteGroups;
             bool splitFlam = IsSplitFlam(NoteRef, true);
             int group = combinedKickFlam ? ACCENT :
-                pairedBar || kick && !Player.UsesKickBars ? STOMP : splitFlam ? GetSplitGroup() :
+                kick && !Player.UsesKickBars ? DEDICATED_KICK : splitFlam ? GetSplitGroup() :
                 GetGemGroup(NoteRef, Player.Player.Profile.UseCymbalModels);
             NoteGroup = groups[group];
             if (splitFlam)
                 InitializeSplitFlam(group, center, width);
-            else if (kick || group == STOMP)
+            else if (kick || group is HAT_STOMP or HAT_SPLASH)
+            {
+                if (group is HAT_STOMP or HAT_SPLASH)
+                {
+                    int sections = Mathf.RoundToInt(width / Player.Layout.GetLaneWidth(TrackPlayer.TRACK_WIDTH));
+                    NoteGroups[group].ConfigurePedalSections(sections);
+                    if (StarPowerNoteGroups[group] != NoteGroups[group])
+                        StarPowerNoteGroups[group].ConfigurePedalSections(sections);
+                }
                 FitFootWidth(group, width, center);
+            }
             else if (EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
             {
                 FitCollision(group, partner, center, width);
@@ -515,7 +500,8 @@ namespace YARG.Gameplay.Visuals
             double tickDuration = EliteDrumsRuntimeGeometry.GetNextTickDuration(sync, note.Tick);
             var renderedTransform = renderedGroup.transform;
             renderedTransform.localPosition = renderedTransform.localPosition.WithZ(
-                EliteDrumsRuntimeGeometry.GetVisualLeadOffset(Player.NoteSpeed, tickDuration));
+                renderedGroup.PedalStrikeAligned ? 0f :
+                    EliteDrumsRuntimeGeometry.GetVisualLeadOffset(Player.NoteSpeed, tickDuration));
         }
 
         public override void HitNote()
@@ -568,9 +554,9 @@ namespace YARG.Gameplay.Visuals
             if (EliteDrumsPlayer.IsFootPad(note.Pad)) return KICK;
             // The authored flam flag is a visual cue in native V1, not a second scored hit.
             if (note.IsFlam || note.IsFlatFlam) return ACCENT;
-            // Both playable pedal events use the bar; dedicated roles distinguish stomp and splash.
+            // Pedal gestures have independent optional models; legacy themes retain their own bar.
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
-                return STOMP;
+                return note.IsSplash ? HAT_SPLASH : HAT_STOMP;
             return GetSplitGroup(note, useCymbalModels);
         }
 
