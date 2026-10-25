@@ -16,7 +16,7 @@ namespace YARG.Tests.PlayMode
         private static Type Production(string name) => Type.GetType(name + ", Assembly-CSharp", true);
 
         [UnityTest]
-        public IEnumerator ActualRectangularCymbalsRecolorTopsWhileBasesRemainNeutral()
+        public IEnumerator ActualRectangularCymbalsRecolorLaneAndMetalWhileDarkRegionsStayFixed()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Prefabs/Gameplay/Visual/Themes/RectangularTheme.prefab");
@@ -37,15 +37,18 @@ namespace YARG.Tests.PlayMode
                     var group = (Component) groupType.GetMethod("CreateNoteGroupFromTheme")
                         .Invoke(null, new[] { (object) parent.transform, models[type] });
                     groupType.GetMethod("Initialize").Invoke(group, null);
-                    var baseRenderer = group.transform.GetComponentsInChildren<MeshRenderer>(true)
-                        .SingleOrDefault(r => r.name == "Base");
-                    var baseColors = baseRenderer == null ? null : baseRenderer.sharedMaterials.Select(m => m.color).ToArray();
+                    var darkSlots = group.GetComponentsInChildren<MeshRenderer>(true)
+                        .SelectMany(r => r.sharedMaterials.Select((m, i) => (Renderer: r, Index: i, Material: m)))
+                        .Where(slot => slot.Material.name.StartsWith("EliteHiHatDark", StringComparison.Ordinal))
+                        .Select(slot => (slot.Renderer, slot.Index, Color: slot.Material.color)).ToArray();
+                    Assert.That(darkSlots, Is.Not.Empty);
                     foreach (var color in new[] { Color.white, new Color(0.9f, 0.8f, 0.75f) })
                     {
                         groupType.GetMethod("SetColorWithEmission").Invoke(group, new object[] { color, Color.yellow });
                         groupType.GetMethod("SetMetalColor").Invoke(group, new object[] { Color.magenta });
-                        if (name == "Cymbal" && baseRenderer != null) Assert.That(baseRenderer.sharedMaterials.Select(m => m.color).ToArray(), Is.EqualTo(baseColors),
-                            $"{name}: chrome base must remain neutral through lane and Star Power recoloring.");
+                        foreach (var slot in darkSlots)
+                            Assert.That(slot.Renderer.sharedMaterials[slot.Index].color, Is.EqualTo(slot.Color),
+                                $"{name}: dark regions must remain fixed through lane and Star Power recoloring.");
                         var note = group.GetComponentInChildren(Production("YARG.Themes.ThemeNote"), true);
                         foreach (string field in new[] { "ColoredMaterials", "ColoredMetalMaterials" })
                         {

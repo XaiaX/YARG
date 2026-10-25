@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -9,38 +10,49 @@ namespace YARG.Tests.EditMode
     public sealed class EliteCymbalAccentMaterialTests
     {
         private const string THEME_PATH = "Assets/Prefabs/Gameplay/Visual/Themes/RectangularTheme.prefab";
-        private const string CRESCENT_MATERIAL_PATH = "Assets/Art/Materials/Gameplay/Notes/Rectangular/CymbalGhostCenter.mat";
-        private const int CRESCENT_MATERIAL_INDEX = 4;
-
         private static Type Production(string name) => Type.GetType(name + ", Assembly-CSharp", true);
 
-        [Test]
-        public void EliteCymbalAccentUsesItsAuthoredCrescentMaterialAtSlotFive()
+        [TestCase("CymbalAccent")]
+        [TestCase("ClosedHiHatAccent")]
+        [TestCase("OpenHiHatAccent")]
+        public void AccentTopKeepsColoredPointsChromeAndDarkContoursSeparate(string type)
         {
-            var themePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(THEME_PATH);
-            var expectedCrescentMaterial = AssetDatabase.LoadAssetAtPath<Material>(CRESCENT_MATERIAL_PATH);
-            Assert.That(themePrefab, Is.Not.Null);
-            Assert.That(expectedCrescentMaterial, Is.Not.Null);
-
-            var theme = themePrefab.GetComponent(Production("YARG.Themes.ThemeComponent"));
-            Assert.That(theme, Is.Not.Null);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(THEME_PATH);
+            var theme = prefab.GetComponent(Production("YARG.Themes.ThemeComponent"));
             var style = Enum.Parse(Production("YARG.Themes.VisualStyle"), "EliteDrums");
-            var noteType = Enum.Parse(Production("YARG.Themes.ThemeNoteType"), "CymbalAccent");
+            var noteType = Enum.Parse(Production("YARG.Themes.ThemeNoteType"), type);
             var models = (IDictionary) theme.GetType().GetMethod("GetNoteModelsForVisualStyle")
                 .Invoke(theme, new[] { style, (object) false });
-            Assert.That(models.Contains(noteType), Is.True, "The authored Elite cymbal-accent model is missing.");
-
             var accent = (GameObject) models[noteType];
             Assert.That(accent.transform.parent.name, Is.EqualTo("Elite Lane Notes"));
-            var renderers = accent.GetComponentsInChildren<MeshRenderer>(true);
-            Assert.That(renderers, Is.Not.Empty);
-            foreach (var renderer in renderers)
-            {
-                var materials = renderer.sharedMaterials;
-                Assert.That(materials.Length, Is.GreaterThan(CRESCENT_MATERIAL_INDEX), renderer.name);
-                Assert.That(materials[CRESCENT_MATERIAL_INDEX], Is.SameAs(expectedCrescentMaterial),
-                    $"Elite CymbalAccent renderer {renderer.name} must retain its authored crescent material in slot 5.");
-            }
+            var top = accent.GetComponentsInChildren<MeshFilter>().Single(f => f.name == "Top");
+            var materials = top.GetComponent<MeshRenderer>().sharedMaterials;
+            Assert.That(materials.Select(m => m.name), Is.EquivalentTo(new[]
+                { "CymbalMiddle", "CymbalMetal", "EliteHiHatDark" }));
+            for (int i = 0; i < materials.Length; i++)
+                Assert.That(top.sharedMesh.GetIndexCount(i), Is.GreaterThan(0), materials[i].name);
+        }
+
+        [TestCase("Cymbal")]
+        [TestCase("CymbalGhost")]
+        [TestCase("CymbalAccent")]
+        [TestCase("OpenHiHat")]
+        [TestCase("OpenHiHatGhost")]
+        [TestCase("OpenHiHatAccent")]
+        public void TallCymbalTipsSampleTheTextureCenter(string type)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Prefabs/Gameplay/Visual/EliteDrums/HiHats/" + type + ".prefab");
+            var top = prefab.GetComponentsInChildren<MeshFilter>().Single(f => f.name == "Top");
+            var vertices = top.sharedMesh.vertices;
+            var uvs = top.sharedMesh.uv;
+            float highest = vertices.Max(v => top.transform.TransformPoint(v).y);
+            var tipIndices = Enumerable.Range(0, vertices.Length)
+                .Where(i => top.transform.TransformPoint(vertices[i]).y > highest - 0.000001f).ToArray();
+            Assert.That(tipIndices, Is.Not.Empty);
+            foreach (int index in tipIndices)
+                Assert.That(Vector2.Distance(uvs[index], new Vector2(0.5f, 0.5f)), Is.LessThan(0.0001f),
+                    "Texture projection must remove tilt before mapping the cone; height must not shift the texture ring.");
         }
     }
 }
