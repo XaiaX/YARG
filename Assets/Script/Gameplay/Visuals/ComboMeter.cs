@@ -61,14 +61,13 @@ namespace YARG.Gameplay.Visuals
 
         public void SetCombo(int multiplier, int displayMultiplier, int maxMultiplier, int combo, bool codaStarted)
         {
-            _multiplierText.enabled = false;
-
-            // No multiplier text or updates while coda is active
+            // Preserve the last visible combo while the meter moves offscreen for BRE.
             if (codaStarted)
             {
-                _comboMesh.material.SetFloat(_spriteIndexProperty, 0);
                 return;
             }
+
+            _multiplierText.enabled = false;
 
             if (displayMultiplier > 1)
             {

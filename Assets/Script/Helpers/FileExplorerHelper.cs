@@ -60,7 +60,7 @@ namespace YARG.Helpers
 
         public static void OpenChooseSourceDtaFile(string startingDir, string extension, Action<string> callback)
         {
-            OpenChooseFile(startingDir, extension, callback, filesFirst: true);
+            OpenChooseFile(startingDir, extension, callback, filesFirst: true, supplementalSources: true);
         }
 
         public static void OpenChooseFile(string startingDir, string extension, Action<string> callback)
@@ -69,7 +69,7 @@ namespace YARG.Helpers
         }
 
         private static void OpenChooseFile(string startingDir, string extension, Action<string> callback,
-            bool filesFirst)
+            bool filesFirst, bool supplementalSources = false)
         {
             if (_fileBrowser == null)
             {
@@ -78,7 +78,11 @@ namespace YARG.Helpers
 
             _fileBrowser.gameObject.SetActive(true);
 
-            if (string.IsNullOrEmpty(extension))
+            if (supplementalSources)
+            {
+                FileBrowser.SetFilters(false, new FileBrowser.Filter("Song sources", ".dta", ".yargup"));
+            }
+            else if (string.IsNullOrEmpty(extension))
             {
                 FileBrowser.SetFilters(true);
             }

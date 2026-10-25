@@ -68,14 +68,15 @@ namespace YARG.Tests.EditMode
             Assert.That(Read(settings, "ShowExplicitSongSourcesWarning"), Is.False);
         }
 
-        [Test]
-        public void ArbitraryDtaPickerNamesAreAcceptedAndMissingPathsRejected()
+        [TestCase("DTA")]
+        [TestCase("yargup")]
+        public void SourcePickerAcceptsLooseAndPackagedNamesAndRejectsMissingPaths(string extension)
         {
             var actions = Production("YARG.Menu.Settings.SongSourceActions");
             var validate = actions.GetMethod("ValidateSelection");
             string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
-            string path = Path.Combine(directory, "community-elite.DTA");
+            string path = Path.Combine(directory, "community-elite." + extension);
             try
             {
                 File.WriteAllText(path, "()");

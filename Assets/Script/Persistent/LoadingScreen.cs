@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using TMPro;
@@ -60,16 +60,6 @@ namespace YARG
 
             // Load sources and genre mappings concurrently
             await UpdateSourcesAndGenres(context);
-
-            // Load (sub)genre mappings
-            try
-            {
-                await Genrelizer.LoadGenreMappings();
-            }
-            catch (Exception ex)
-            {
-                YargLogger.LogException(ex);
-            }
 
             // Auto connect profiles, using the same order that they were previously connected.
             if (SettingsManager.Settings.ReconnectProfiles.Value)

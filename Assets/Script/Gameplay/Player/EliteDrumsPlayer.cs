@@ -1,3 +1,4 @@
+﻿// pattern: Imperative Shell
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -251,7 +252,7 @@ namespace YARG.Gameplay.Player
                 return false;
             }
 
-            if (!IsNativeAuthoredHandLane(record)) return false;
+            if (!IsNativeAuthoredLane(record)) return false;
             var firstSource = record.MemberSources[0];
             if (firstSource == null)
             {
@@ -273,7 +274,7 @@ namespace YARG.Gameplay.Player
             EliteDrumNativeAuthoredLaneRecord record,
             IReadOnlyDictionary<EliteDrumSourceDefinition, EliteDrumNote> surviving)
         {
-            if (!IsNativeAuthoredHandLane(record) ||
+            if (!IsNativeAuthoredLane(record) ||
                 !record.MemberSources.All(source => surviving.ContainsKey(source))) return null;
 
             double start = double.PositiveInfinity;
@@ -288,10 +289,18 @@ namespace YARG.Gameplay.Player
         }
 
         internal static bool IsNativeAuthoredHandLane(EliteDrumNativeAuthoredLaneRecord record) =>
-            record != null && record.MemberSources.Count >= 2 && !IsFootPad((int) record.AuthoredPad) &&
+            IsNativeAuthoredLane(record) && !IsFootPad((int) record.AuthoredPad);
+
+        private static bool IsNativeAuthoredLane(EliteDrumNativeAuthoredLaneRecord record) =>
+            record != null && record.MemberSources.Count >= 2 &&
             record.AuthoredPad != EliteDrumPad.HatPedal && record.MemberSources.All(source =>
                 source != null && source.Pad == (int) record.AuthoredPad &&
-                source.StartTick >= record.StartTick && source.StartTick < record.EndTick);
+                record.ContainsTick(source.StartTick));
+
+        // Native Elite rolls render from their per-pad authored records below.
+        // Playback also supplies generic lane flags for engine bookkeeping; feeding
+        // those flags to TrackPlayer would draw a second, cross-pad-truncated strip.
+        protected override bool ShouldSpawnNativeLane(EliteDrumNote note) => false;
 
         protected override void OnNoteSpawned(EliteDrumNote parentNote)
         {
@@ -336,35 +345,31 @@ namespace YARG.Gameplay.Player
                     continue;
                 }
 
-                // Kick/pedal markers do not have a hand lane in the five-lane presentation.
                 int pad = (int) record.AuthoredPad;
-                if (IsFootPad(pad) || pad == (int) EliteDrumPad.HatPedal)
+                foreach (int receptor in GetNativeAuthoredLaneReceptors(pad, Layout.KickMode))
                 {
-                    continue;
-                }
+                    if (!LanePool.CanSpawnAmount(1)) BeforeNativeLaneAllocation(1);
+                    var lane = TakeNativeLane();
+                    if (lane == null) continue;
 
-                if (!LanePool.CanSpawnAmount(1))
-                {
-                    BeforeNativeLaneAllocation(1);
+                    var position = _ordering.TryGetValue(receptor, out var info) ? info.Position : LaneCount / 2;
+                    // Kick bars use the same full-width strip as classic drums. Dedicated
+                    // and split kicks follow their configured receptor columns instead.
+                    lane.SetTimeRange(timeRange.Start, timeRange.End);
+                    lane.SetIndexRange(position, position);
+                    lane.SetAppearance(Instrument.FiveLaneDrums, position, position, LaneCount,
+                        GetLaneColor(Player.ColorProfile.EliteDrums, surviving[record.MemberSources[0]]).ToUnityColor(),
+                        GetLaneScale());
+                    lane.ToggleFullWidth(IsFootPad(pad) && UsesKickBars);
+                    lane.EnableFromPool();
                 }
-
-                var lane = TakeNativeLane();
-                if (lane == null)
-                {
-                    continue;
-                }
-
-                var info = _ordering[pad];
-                // Match classic drums: the strip spans playable gem onsets, not the
-                // wider authored phrase marker (nor any removed practice members).
-                lane.SetTimeRange(timeRange.Start, timeRange.End);
-                lane.SetIndexRange(info.Position, info.Position);
-                lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, info.Position, LaneCount,
-                    GetLaneColor(Player.ColorProfile.EliteDrums, surviving[record.MemberSources[0]]).ToUnityColor(),
-                    GetLaneScale());
-                lane.EnableFromPool();
             }
         }
+
+        internal static int[] GetNativeAuthoredLaneReceptors(int pad, EliteDrumsLayoutKickMode kickMode) =>
+            IsFootPad(pad) && kickMode == EliteDrumsLayoutKickMode.Split
+                ? new[] { pad, SECOND_KICK_RECEPTOR }
+                : new[] { pad };
 
         protected override void SpawnNote(EliteDrumNote note)
         {
@@ -391,7 +396,9 @@ namespace YARG.Gameplay.Player
                     Layout.Lanes[ApplyLefty(laneIndex)].SavedColumn).ToUnityColor(), GetLaneScale());
         }
 
-        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / LaneCount;
+        // Match Pro drums: its four-column baseline mesh scale is corrected for
+        // the five-unit fret-array padding before adapting to the actual columns.
+        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / 4f * (0.97f * 5f / LaneCount);
 
         protected override void RescaleLanesForBRE()
         {

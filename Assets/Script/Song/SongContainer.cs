@@ -222,7 +222,13 @@ namespace YARG.Song
             SongSorting.SortEntries(refreshedSongCache, sorted);
             var updatedHashes = FindUpdatedSongHashes(previousSongCache, refreshedSongCache);
             var publishContainers = BuildContainers(refreshedSongCache, sorted);
-            result.Commit();
+            var commitTask = UniTask.RunOnThreadPool(() => result.Commit());
+            while (commitTask.Status == UniTaskStatus.Pending)
+            {
+                if (context != null) UpdateSongUi(context);
+                await UniTask.NextFrame();
+            }
+            await commitTask;
             publishContainers();
             AppliedSources = result.AppliedSources;
             UpdatesDefinitionCount = result.UpdatesDefinitionCount;
@@ -945,6 +951,14 @@ namespace YARG.Song
 
         private static void UpdateSongUi(LoadingContext context)
         {
+            if (CacheHandler.SourceValidation is { } validation)
+            {
+                string count = validation.Total > 0
+                    ? $"Files checked: {validation.Completed:N0} / {validation.Total:N0}\n"
+                    : string.Empty;
+                context.SetLoadingText(validation.Phase, count + System.IO.Path.GetFileName(validation.File));
+                return;
+            }
             var tracker = CacheHandler.Progress;
 
             string phrase = string.Empty;

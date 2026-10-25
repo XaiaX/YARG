@@ -36,8 +36,10 @@ namespace YARG.Menu.Settings
 
         public static string ValidateSelection(string path)
         {
-            if (!string.Equals(Path.GetExtension(path), ".dta", StringComparison.OrdinalIgnoreCase))
-                throw new IOException("Select a .dta file.");
+            var extension = Path.GetExtension(path);
+            if (!string.Equals(extension, ".dta", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(extension, ".yargup", StringComparison.OrdinalIgnoreCase))
+                throw new IOException("Select a .dta or .yargup file.");
             var normalized = NormalizePath(path);
             using var stream = File.Open(normalized, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             return normalized;
