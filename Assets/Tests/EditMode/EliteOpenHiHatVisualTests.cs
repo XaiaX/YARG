@@ -199,7 +199,8 @@ namespace YARG.Tests.EditMode
             for (int index = 0; index < renderer.sharedMaterials.Length; index++)
             {
                 string material = renderer.sharedMaterials[index].name;
-                bool isColor = material == "CymbalMiddle" || material == "CymbalGhostCenter" || material == "EliteCymbalGapLight";
+                bool isColor = material == "CymbalMiddle" || material == "CymbalGhostCenter" || material == "EliteCymbalGapLight"
+                    || material == "EliteOpenHatInterior" || material == "EliteOpenHatGlow";
                 Assert.That(Contains(colored, renderer, index), Is.EqualTo(isColor), type + "/" + renderer.name);
                 Assert.That(Contains(metal, renderer, index), Is.EqualTo(material == "CymbalMetal"), type + "/" + renderer.name);
             }
