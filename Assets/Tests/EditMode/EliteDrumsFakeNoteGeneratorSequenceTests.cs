@@ -61,14 +61,12 @@ namespace YARG.Tests.EditMode
             };
             var pedalRoles = new[] { "Kick", "DoubleKick", "KickFlam", "Stomp", "Splash" };
             var actual = new List<string>();
-            foreach (int index in new[] { 10, 11, 12, 13, 14 })
+            foreach (int index in new[] { 12, 13, 17, 19, 20 })
             {
                 var (note, companions) = samples[index];
                 string role = Role(note);
-                Assert.That(role, Is.EqualTo(pedalRoles[index - 10]));
-                if (role == "KickFlam")
-                    Assert.That(companions.All(extra => Role(extra) == "KickFlam"), Is.True,
-                        "KickFlam may keep its existing layout-specific split/half-bar companion, never a pedal.");
+                Assert.That(role, Is.EqualTo(pedalRoles[Array.IndexOf(new[] { 12, 13, 17, 19, 20 }, index)]));
+                Assert.That(companions, Is.Empty, "A stacked kick flam is one preview note, matching gameplay.");
                 actual.Add(role);
             }
             foreach (int index in new[] { 67, 68, 69, 70 })
@@ -80,18 +78,7 @@ namespace YARG.Tests.EditMode
                 actual.Add($"{role}+{Role(companions[0])}");
             }
             Assert.That(actual, Is.EqualTo(expected), "Pedal examples must occur once in the exact requested order.");
-            foreach (int index in new[] { 10, 11, 13, 14 })
-                Assert.That(samples[index].Companions, Is.Empty, "Standalone kick and pedal examples must remain alone.");
-            if (kickMode == "Bars")
-            {
-                Assert.That(samples[12].Companions, Has.Length.EqualTo(1));
-                Assert.That((bool)Property(Read(samples[12].Companions[0], "EliteDescriptor"), "IsBar"), Is.True,
-                    "The accepted Bars KickFlam remains two half-bar notes.");
-            }
-            if (kickMode == "Split")
-                Assert.That(Property(Read(samples[12].Companions.Single(), "EliteDescriptor"), "DedicatedLaneSource"), Is.EqualTo("kick2"));
-            if (kickMode == "Combined")
-                Assert.That(samples[12].Companions, Is.Empty);
+
         }
 
         [TestCase("Bars")]
@@ -122,18 +109,32 @@ namespace YARG.Tests.EditMode
                 int index = i % CYCLE_LENGTH;
                 if (index < 51)
                 {
-                    int roleIndex = index % 17;
-                    Assert.That(Role(note), Is.EqualTo(roles[roleIndex]), $"Retained role {i}");
-                    string dynamics = index / 17 == 1 ? "Accent" : index / 17 == 2 ? "Ghost" : "Normal";
-                    string expectedModel = roleIndex == 2 || (roleIndex >= 4 && roleIndex <= 6)
-                        ? dynamics == "Normal" ? "Cymbal" : "Cymbal" + dynamics
-                        : roleIndex == 3 ? "OpenHiHat" + (dynamics == "Normal" ? "" : dynamics)
-                        : roleIndex == 1 ? "ClosedHiHat" + (dynamics == "Normal" ? "" : dynamics)
-                        : roleIndex == 10 || roleIndex == 11 ? "Kick"
-                        : roleIndex == 12 ? mode == "Bars" ? "Kick" : mode == "Combined" ? "Accent" : "DedicatedLaneKick"
-                        : roleIndex == 13 ? "HatStomp" : roleIndex == 14 ? "HatSplash"
-                        : roleIndex == 16 ? "Wildcard" : dynamics;
-                    Assert.That(Dynamics(note), Is.EqualTo(expectedModel), $"Retained dynamics {i}");
+                    if (index >= 10 && index <= 18)
+                    {
+                        int sample = index - 10;
+                        string role = sample >= 6 ? "KickFlam" : sample % 2 == 0 ? "Kick" : "DoubleKick";
+                        string suffix = sample < 2 || sample == 6 ? "Ghost" : sample is 4 or 5 or 8 ? "Accent" : "";
+                        string expected = (mode == "Bars" ? "" : "DedicatedLane") +
+                            (sample >= 6 ? "KickFlam" : "Kick") + suffix;
+                        Assert.That(Role(note), Is.EqualTo(role));
+                        Assert.That(Dynamics(note), Is.EqualTo(expected));
+                        Assert.That(companions, Is.Empty);
+                    }
+                    else
+                    {
+                        int nonKickIndex = index < 10 ? index : index - 9;
+                        int roleIndex = nonKickIndex % 14;
+                        if (roleIndex >= 10) roleIndex += 3;
+                        Assert.That(Role(note), Is.EqualTo(roles[roleIndex]), $"Retained role {i}");
+                        string dynamics = nonKickIndex / 14 == 1 ? "Accent" : nonKickIndex / 14 == 2 ? "Ghost" : "Normal";
+                        string expectedModel = roleIndex == 2 || (roleIndex >= 4 && roleIndex <= 6)
+                            ? dynamics == "Normal" ? "Cymbal" : "Cymbal" + dynamics
+                            : roleIndex == 3 ? "OpenHiHat" + (dynamics == "Normal" ? "" : dynamics)
+                            : roleIndex == 1 ? "ClosedHiHat" + (dynamics == "Normal" ? "" : dynamics)
+                            : roleIndex == 13 ? "HatStomp" : roleIndex == 14 ? "HatSplash"
+                            : roleIndex == 16 ? "Wildcard" : dynamics;
+                        Assert.That(Dynamics(note), Is.EqualTo(expectedModel), $"Retained dynamics {i}");
+                    }
                 }
                 else if (index < 67)
                 {
@@ -163,7 +164,7 @@ namespace YARG.Tests.EditMode
         public void StandaloneAndSimultaneousPedalKickDescriptorsStayFullWidth(string mode)
         {
             var samples = Sequence(mode);
-            foreach (int index in new[] { 10, 11, 27, 28, 44, 45 })
+            foreach (int index in new[] { 10, 11, 12, 13, 14, 15, 16, 17, 18 })
             {
                 var (note, companions) = samples[index];
                 Assert.That(companions, Is.Empty);
@@ -185,7 +186,7 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void SplitKickFlamStillCreatesBothDedicatedKicksAndSpotlightsRemainPrimaryOnly()
+        public void SplitKickFlamUsesOneStackAndSpotlightsRemainPrimaryOnly()
         {
             var (type, generator, create, chord) = NewGenerator("Split");
             object kickFlam = null;
@@ -197,9 +198,8 @@ namespace YARG.Tests.EditMode
             Assert.That(kickFlam, Is.Not.Null);
             var splitExtras = ((IEnumerable)chord.Invoke(generator,
                 new[] { Read(kickFlam, "Time"), kickFlam, null })).Cast<object>().ToArray();
-            Assert.That(splitExtras.Length, Is.EqualTo(1));
-            Assert.That(Role(splitExtras[0]), Is.EqualTo("KickFlam"));
-            Assert.That(Property(Read(splitExtras[0], "EliteDescriptor"), "DedicatedLaneSource"), Is.EqualTo("kick2"));
+            Assert.That(splitExtras, Is.Empty);
+            Assert.That(Property(Read(kickFlam, "EliteDescriptor"), "DedicatedLaneSource"), Is.EqualTo("kick1"));
 
             var spotlightType = Production("YARG.Settings.Preview.FakeNoteSpotlight");
             var spotlight = Activator.CreateInstance(spotlightType, new object[] { 0, true, false, false });

@@ -13,6 +13,15 @@ namespace YARG.Themes
             IReadOnlyDictionary<ThemeNoteType, GameObject> starPowerModels)
         {
             var (regular, starPower) = ResolveHiHatModels(models, starPowerModels);
+            foreach (var type in EliteKickAppearance.OptionalTypes)
+            {
+                if (regular.ContainsKey(type)) continue;
+                var fallback = EliteKickAppearance.IsDedicated(type)
+                    ? ThemeNoteType.DedicatedLaneKick : ThemeNoteType.Kick;
+                if (regular.TryGetValue(fallback, out var kick)) regular.Add(type, kick);
+                if (!starPower.ContainsKey(type) && starPower.TryGetValue(fallback, out var starKickModel))
+                    starPower.Add(type, starKickModel);
+            }
             if (!regular.TryGetValue(ThemeNoteType.Wildcard, out var wildcard))
             {
                 if (!regular.TryGetValue(ThemeNoteType.Kick, out wildcard)) return (regular, starPower);

@@ -30,7 +30,8 @@ namespace YARG.Gameplay.Visuals
         private const int WILDCARD = 14;
         private const int HAT_STOMP = 15;
         private const int HAT_SPLASH = 16;
-        private const int COUNT = 17;
+        private const int KICK_VARIANTS_START = 17;
+        private const int COUNT = 27;
         [SerializeField] private Vector3 _normalStompScale;
         [SerializeField] private Vector3 _starStompScale;
         [SerializeField] private Vector3 _normalStompPosition;
@@ -93,6 +94,9 @@ namespace YARG.Gameplay.Visuals
             AssignNoteGroup(models, starpowerModels, WILDCARD, ThemeNoteType.Wildcard);
             AssignNoteGroup(models, starpowerModels, HAT_STOMP, ThemeNoteType.HatStomp);
             AssignNoteGroup(models, starpowerModels, HAT_SPLASH, ThemeNoteType.HatSplash);
+
+            for (int i = 0; i < EliteKickAppearance.OptionalTypes.Count; i++)
+                AssignNoteGroup(models, starpowerModels, KICK_VARIANTS_START + i, EliteKickAppearance.OptionalTypes[i]);
 
             ScaleStompModel(NoteGroups[DEDICATED_KICK]);
             if (StarPowerNoteGroups[DEDICATED_KICK] != NoteGroups[DEDICATED_KICK])
@@ -413,14 +417,9 @@ namespace YARG.Gameplay.Visuals
             EliteDrumsRuntimeGeometry.GetRegion(Player, NoteRef, false, out float center, out float width);
             transform.localPosition = new Vector3(center, 0, 0);
             bool kick = EliteDrumsPlayer.IsFootPad(NoteRef.Pad);
-            bool dedicatedKickFlam = kick && Player.Layout.KickMode != EliteDrumsLayoutKickMode.Bars &&
-                (NoteRef.IsFlam || NoteRef.IsFlatFlam);
-            bool combinedKickFlam = dedicatedKickFlam &&
-                Player.Layout.KickMode == EliteDrumsLayoutKickMode.Combined;
             var groups = IsStarPowerVisible ? StarPowerNoteGroups : NoteGroups;
             bool splitFlam = IsSplitFlam(NoteRef, true);
-            int group = combinedKickFlam ? ACCENT :
-                kick && !Player.UsesKickBars ? DEDICATED_KICK : splitFlam ? GetSplitGroup() :
+            int group = kick ? GetKickGroup(NoteRef, !Player.UsesKickBars) : splitFlam ? GetSplitGroup() :
                 GetGemGroup(NoteRef, Player.Player.Profile.UseCymbalModels);
             NoteGroup = groups[group];
             if (splitFlam)
@@ -551,13 +550,22 @@ namespace YARG.Gameplay.Visuals
             if (IsSplitFlam(note, splitEliteFlamGems))
                 return GetSplitGroup(note, useCymbalModels);
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.Wildcard) return WILDCARD;
-            if (EliteDrumsPlayer.IsFootPad(note.Pad)) return KICK;
+            if (EliteDrumsPlayer.IsFootPad(note.Pad)) return GetKickGroup(note, false);
             // The authored flam flag is a visual cue in native V1, not a second scored hit.
             if (note.IsFlam || note.IsFlatFlam) return ACCENT;
             // Pedal gestures have independent optional models; legacy themes retain their own bar.
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
                 return note.IsSplash ? HAT_SPLASH : HAT_STOMP;
             return GetSplitGroup(note, useCymbalModels);
+        }
+
+        private static int GetKickGroup(EliteDrumNote note, bool dedicated)
+        {
+            var type = EliteKickAppearance.Select(note.IsAccent, note.IsGhost,
+                note.IsFlam || note.IsFlatFlam, dedicated);
+            if (type == ThemeNoteType.Kick) return KICK;
+            if (type == ThemeNoteType.DedicatedLaneKick) return DEDICATED_KICK;
+            return KICK_VARIANTS_START + EliteKickAppearance.OptionalTypes.IndexOf(type);
         }
 
         internal static (System.Drawing.Color Body, System.Drawing.Color Emission, System.Drawing.Color Metal)
@@ -582,6 +590,13 @@ namespace YARG.Gameplay.Visuals
                 NoteRef, splitFlam, IsStarPowerVisible, NoteRef.WasMissed);
             NoteGroup.SetColorWithEmission(color.ToUnityColor(), original.ToUnityColor());
             NoteGroup.SetMetalColor(metal.ToUnityColor());
+            if (EliteDrumsPlayer.IsFootPad(NoteRef.Pad) && (NoteRef.IsFlam || NoteRef.IsFlatFlam)
+                && NoteGroup.HasKickFlamColors)
+            {
+                var (lower, upper) = EliteKickAppearance.FlamColors(Player.Player.ColorProfile.EliteDrums,
+                    IsStarPowerVisible, NoteRef.WasMissed);
+                NoteGroup.SetKickFlamColors(lower.ToUnityColor(), upper.ToUnityColor(), LeftyFlip);
+            }
             if (IsSplitFlam(NoteRef, true))
             {
                 int baseIndex = GetSplitGroup() * 2;

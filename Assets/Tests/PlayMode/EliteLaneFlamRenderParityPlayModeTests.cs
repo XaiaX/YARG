@@ -88,11 +88,11 @@ namespace YARG.Tests.PlayMode
                     AssertSplitGroups(element, 0);
                     var groups = (Array) element.GetType().GetField("NoteGroups", INSTANCE).GetValue(element);
                     var selected = element.GetType().BaseType.GetField("NoteGroup", INSTANCE).GetValue(element);
-                    int expected = (int) element.GetType().GetField("KICK",
+                    int expected = (int)element.GetType().GetMethod("GetGemGroup",
                         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
-                        .GetRawConstantValue();
+                        .Invoke(null, new object[] { kick, true });
                     Assert.That(selected, Is.SameAs(groups.GetValue(expected)),
-                        "Both kicks retain the established kick model; only effective flags and colors change in the lane.");
+                        "Only an effective kick flam selects the stacked model; lane members use ordinary kicks.");
                 }
                 yield return Fixture.Dispose();
                 Fixture = null;

@@ -38,7 +38,7 @@ namespace YARG.Tests.EditMode
             var five = Models(comp, "FiveLaneDrums");
             var parent = root.transform.Find("Elite Lane Notes");
             Assert.That(parent, Is.Not.Null);
-            Assert.That(elite.Count, Is.EqualTo(17));
+            Assert.That(elite.Count, Is.EqualTo(27));
             foreach (DictionaryEntry entry in elite)
             {
                 var model = (GameObject) entry.Value;

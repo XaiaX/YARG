@@ -64,6 +64,9 @@ namespace YARG.Gameplay.Visuals
         private MaterialInfo[] _allColoredCache;
         private MaterialInfo[] _coloredMetalMaterialCache;
 
+        private MaterialInfo[] _coloredKick2MaterialCache;
+        public bool HasKickFlamColors => _themeNote.ColoredKick2Materials?.Any() == true;
+
         public bool PedalStrikeAligned => _themeNote != null && _themeNote.PedalStrikeAligned;
 
         public void ConfigurePedalSections(int count)
@@ -79,6 +82,9 @@ namespace YARG.Gameplay.Visuals
             _allColoredCache = _coloredMaterialCache.Concat(_coloredMaterialNoStarPowerCache).ToArray();
             _coloredMetalMaterialCache = _themeNote.ColoredMetalMaterials.Select(MaterialInfo.From).ToArray();
             _coloredSecondaryMaterialCache = _themeNote.ColoredSecondaryMaterials?.Select(MaterialInfo.From).ToArray() ?? System.Array.Empty<MaterialInfo>();
+
+            _coloredKick2MaterialCache = _themeNote.ColoredKick2Materials?.Select(MaterialInfo.From).ToArray()
+                ?? System.Array.Empty<MaterialInfo>();
 
             // Set random values
             var randomFloat = Random.Range(-1f, 1f);
@@ -120,6 +126,28 @@ namespace YARG.Gameplay.Visuals
                 float a = info.EmissionAddition;
                 var realColor = colorNoStarPower + new Color(a, a, a);
 
+                info.MaterialCache.color = realColor;
+                info.MaterialCache.SetColor(_emissionColor, realColor * info.EmissionMultiplier);
+            }
+        }
+
+        public void SetKickFlamColors(Color kick, Color doubleKick, bool lefty = false)
+        {
+            if (lefty && _themeNote.KickFlamSwapForLefty)
+            {
+                (kick, doubleKick) = (doubleKick, kick);
+            }
+            ApplyKickBeamColor(_coloredMaterialCache, kick, _themeNote.KickFlamOpacity);
+            ApplyKickBeamColor(_coloredKick2MaterialCache, doubleKick, _themeNote.KickFlamOpacity);
+        }
+
+        private static void ApplyKickBeamColor(MaterialInfo[] cache, Color color, float opacity)
+        {
+            foreach (var info in cache)
+            {
+                float addition = info.EmissionAddition;
+                var realColor = new Color(color.r + addition, color.g + addition,
+                    color.b + addition, color.a * opacity);
                 info.MaterialCache.color = realColor;
                 info.MaterialCache.SetColor(_emissionColor, realColor * info.EmissionMultiplier);
             }

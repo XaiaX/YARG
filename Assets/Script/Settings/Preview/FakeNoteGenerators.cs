@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using YARG.Core.Game;
 using YARG.Core.Chart;
@@ -94,12 +94,18 @@ namespace YARG.Settings.Preview
                 _ => ThemeNoteType.Cymbal
             } : dynamics;
             string dedicatedLaneSource = null;
-            if (role == EliteDrumsColorRole.KickFlam && kickMode != EliteDrumsLayoutKickMode.Bars)
+            if (role is EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick or EliteDrumsColorRole.KickFlam)
             {
-                bar = false;
-                dedicatedLaneSource = kickMode == EliteDrumsLayoutKickMode.Combined ? "kick" : "kick1";
-                fret = kickMode == EliteDrumsLayoutKickMode.Combined ? 9 : 8;
-                type = kickMode == EliteDrumsLayoutKickMode.Combined ? ThemeNoteType.Accent : ThemeNoteType.DedicatedLaneKick;
+                bool dedicated = kickMode != EliteDrumsLayoutKickMode.Bars;
+                type = EliteKickAppearance.Select(dynamics == ThemeNoteType.Accent, dynamics == ThemeNoteType.Ghost,
+                    role == EliteDrumsColorRole.KickFlam, dedicated);
+                if (dedicated)
+                {
+                    bar = false;
+                    dedicatedLaneSource = kickMode == EliteDrumsLayoutKickMode.Combined ? "kick" :
+                        role == EliteDrumsColorRole.DoubleKick ? "kick2" : "kick1";
+                    fret = dedicatedLaneSource == "kick1" ? 8 : 9;
+                }
             }
             if (role == EliteDrumsColorRole.HatOpen)
             {
@@ -122,9 +128,8 @@ namespace YARG.Settings.Preview
             if (role == EliteDrumsColorRole.Stomp) type = ThemeNoteType.HatStomp;
             if (role == EliteDrumsColorRole.Splash) type = ThemeNoteType.HatSplash;
             if (role == EliteDrumsColorRole.Wildcard) type = ThemeNoteType.Wildcard;
-            float width = role is EliteDrumsColorRole.KickFlam
-                or EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash ? 0.5f : 1f;
-            float offset = role is EliteDrumsColorRole.KickFlam or EliteDrumsColorRole.Stomp
+            float width = role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash ? 0.5f : 1f;
+            float offset = role is EliteDrumsColorRole.Stomp
                 or EliteDrumsColorRole.Splash ? -0.5f : 0f;
             if (dedicatedLaneSource != null)
             {
@@ -173,19 +178,32 @@ namespace YARG.Settings.Preview
                 flam.EliteFlatFlam = (index - ROLE_COUNT * 3) % 2 == 1;
                 return flam;
             }
-            var dynamics = (index / ROLE_COUNT) switch
+            if (index >= 10 && index <= 18)
+            {
+                int sample = index - 10;
+                var kickStrength = sample < 2 || sample == 6 ? ThemeNoteType.Ghost
+                    : sample is 4 or 5 or 8 ? ThemeNoteType.Accent : ThemeNoteType.Normal;
+                var kickRole = sample >= 6 ? EliteDrumsColorRole.KickFlam : sample % 2 == 0
+                    ? EliteDrumsColorRole.Kick : EliteDrumsColorRole.DoubleKick;
+                return CreateRoleNote(time, DescribeForKickLayout(kickRole, kickStrength, _kickMode));
+            }
+            // Keep all non-kick samples in their original relative order. The nine kick
+            // samples now form one comparison block in the first strength pass.
+            int nonKickIndex = index < 10 ? index : index - 9;
+            int nonKickRoleCount = ROLE_COUNT - 3;
+            var dynamics = (nonKickIndex / nonKickRoleCount) switch
             {
                 1 => ThemeNoteType.Accent, 2 => ThemeNoteType.Ghost, _ => ThemeNoteType.Normal
             };
-            // Preview order is independent of the persisted color-role enum values.
-            var role = (index % ROLE_COUNT) switch
+            int roleIndex = nonKickIndex % nonKickRoleCount;
+            if (roleIndex >= 10) roleIndex += 3;
+            var role = roleIndex switch
             {
                 1 => EliteDrumsColorRole.HatClosed,
                 2 => EliteDrumsColorRole.HatIndifferent,
                 3 => EliteDrumsColorRole.HatOpen,
-                _ => (EliteDrumsColorRole) (index % ROLE_COUNT)
+                _ => (EliteDrumsColorRole)roleIndex
             };
-            // Historical serialized role remains supported, but is not a selectable single gem.
             if (role == EliteDrumsColorRole.HandFlam) role = EliteDrumsColorRole.Snare;
             return CreateRoleNote(time, DescribeForKickLayout(role, dynamics, _kickMode));
         }
@@ -212,16 +230,7 @@ namespace YARG.Settings.Preview
         {
             if (baseNote.EliteDescriptor is not { } descriptor) yield break;
             if (baseNote.EliteHandFlam) yield break;
-            if (descriptor.Role == EliteDrumsColorRole.KickFlam)
-            {
-                if (_kickMode == EliteDrumsLayoutKickMode.Split)
-                    yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 9,
-                        ThemeNoteType.DedicatedLaneKick, false, 1f, 0f, "kick2"));
-                else if (_kickMode == EliteDrumsLayoutKickMode.Bars)
-                    yield return CreateRoleNote(time, new ElitePreviewDescriptor(descriptor.Role, 0,
-                        descriptor.ModelType, true, 0.5f, 0.5f));
-            }
-            else if (descriptor.Role is EliteDrumsColorRole.Tom1 or EliteDrumsColorRole.Tom2 or EliteDrumsColorRole.Tom3)
+            if (descriptor.Role is EliteDrumsColorRole.Tom1 or EliteDrumsColorRole.Tom2 or EliteDrumsColorRole.Tom3)
             {
                 var role = descriptor.Role switch
                 {

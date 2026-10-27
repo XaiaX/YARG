@@ -58,6 +58,17 @@ namespace YARG.Themes
 
         HatStomp  = 32,
         HatSplash = 33,
+
+        KickGhost = 34,
+        KickAccent = 35,
+        KickFlam = 36,
+        KickFlamGhost = 37,
+        KickFlamAccent = 38,
+        DedicatedLaneKickGhost = 39,
+        DedicatedLaneKickAccent = 40,
+        DedicatedLaneKickFlam = 41,
+        DedicatedLaneKickFlamGhost = 42,
+        DedicatedLaneKickFlamAccent = 43,
     }
 
     public class ThemeNote : MonoBehaviour
@@ -83,6 +94,18 @@ namespace YARG.Themes
         [SerializeField]
         [Tooltip("Pedal geometry is anchored at the strike position and needs no legacy visual lead.")]
         private bool _pedalStrikeAligned;
+
+        [SerializeField]
+        private MeshEmissionMaterialIndex[] _coloredKick2Materials;
+        [SerializeField, Range(0f, 1f)]
+        private float _kickFlamOpacity = 1f;
+        [SerializeField]
+        [Tooltip("Swap the two kick colors for lefty mode on horizontally split flam models.")]
+        private bool _kickFlamSwapForLefty;
+
+        public IEnumerable<MeshEmissionMaterialIndex> ColoredKick2Materials => _coloredKick2Materials;
+        public float KickFlamOpacity => _kickFlamOpacity;
+        public bool KickFlamSwapForLefty => _kickFlamSwapForLefty;
 
         public bool PedalStrikeAligned => _pedalStrikeAligned;
 

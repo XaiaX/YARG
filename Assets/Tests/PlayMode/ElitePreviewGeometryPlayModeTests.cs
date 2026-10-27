@@ -263,6 +263,85 @@ namespace YARG.Tests.PlayMode
             yield return null;
         }
 
+        [UnityTest]
+        public IEnumerator KickDynamicsKeepWidthAndBeamColorsAcrossLayoutsStarPowerAndPoolReuse()
+        {
+            var noteType = Production("YARG.Themes.ThemeNoteType");
+            foreach (bool lefty in new[] { false, true })
+            foreach (var mode in new[] { EliteDrumsLayoutKickMode.Bars, EliteDrumsLayoutKickMode.Combined, EliteDrumsLayoutKickMode.Split })
+            {
+                var layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Full.CopyWithNewName("kick dynamics");
+                if (mode == EliteDrumsLayoutKickMode.Combined)
+                    layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick);
+                if (mode == EliteDrumsLayoutKickMode.Split)
+                {
+                    layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
+                    layout.Slots[9] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
+                }
+                var (player, pool) = CreatePreparedPlayer(layout);
+                player.GetType().GetProperty("LeftyFlip").SetValue(player, lefty);
+                var colors = new ColorProfile("kick transition colors");
+                colors.EliteDrums.KickNote = System.Drawing.Color.Red;
+                colors.EliteDrums.DoubleKickNote = System.Drawing.Color.Blue;
+                colors.EliteDrums.KickStarpower = System.Drawing.Color.Lime;
+                colors.EliteDrums.DoubleKickStarpower = System.Drawing.Color.Magenta;
+                colors.EliteDrums.Miss = System.Drawing.Color.Gray;
+                Call(player, "RefreshColors", colors);
+                var info = Get(player, "CurrentGameModeInfo");
+                var resolved = (EliteDrumsResolvedLayout)info.GetType().GetField("EliteLayout").GetValue(info);
+                float expectedWidth = mode == EliteDrumsLayoutKickMode.Bars ? 2f : 2f / resolved.Lanes.Count;
+                Component previous = null;
+                foreach (string strength in new[] { "Ghost", "Normal", "Accent" })
+                foreach (var role in new[] { EliteDrumsColorRole.Kick, EliteDrumsColorRole.DoubleKick, EliteDrumsColorRole.KickFlam })
+                {
+                    Call(pool, "ReturnAllObjects");
+                    var descriptor = Production("YARG.Settings.Preview.EliteDrumsFakeNoteGenerator")
+                        .GetMethod("DescribeForKickLayout").Invoke(null,
+                            new object[] { role, Enum.Parse(noteType, strength), mode });
+                    Call(player, "SpotlightEliteRole", role, false, descriptor);
+                    Call(player, "Advance", .21d);
+                    var spawned = (IList)Get(pool, "AllSpawned");
+                    Assert.That(spawned.Count, Is.EqualTo(1), "One source kick must produce one physical assembly.");
+                    var note = (Component)spawned[0];
+                    if (previous != null) Assert.That(note, Is.SameAs(previous));
+                    previous = note;
+                    var data = Get(note, "NoteRef");
+                    foreach (int state in new[] { 0, 1, 2, 0 })
+                    {
+                        data.GetType().GetField("ForceStarPower").SetValue(data, (bool?)(state == 1));
+                        data.GetType().GetField("ForceMiss").SetValue(data, state == 2);
+                        Call(note, "OnSettingChanged");
+                        Assert.That(RenderedWidth(note), Is.EqualTo(expectedWidth).Within(.001f));
+                        var active = note.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                            .Single(group => group.gameObject.activeInHierarchy);
+                        var theme = active.GetComponentInChildren(Production("YARG.Themes.ThemeNote"));
+                        Assert.That(Get(theme, "NoteType"), Is.EqualTo(descriptor.GetType().GetProperty("ModelType").GetValue(descriptor)));
+                        if (role != EliteDrumsColorRole.KickFlam) continue;
+                        for (int side = 0; side < 2; side++)
+                        {
+                            int pedal = lefty && mode == EliteDrumsLayoutKickMode.Bars ? 1 - side : side;
+                            var expected = state == 2 ? colors.EliteDrums.Miss : state == 1
+                                ? pedal == 0 ? colors.EliteDrums.KickStarpower : colors.EliteDrums.DoubleKickStarpower
+                                : pedal == 0 ? colors.EliteDrums.KickNote : colors.EliteDrums.DoubleKickNote;
+                            foreach (var entry in (IEnumerable)Get(theme, side == 0 ? "ColoredMaterials" : "ColoredKick2Materials"))
+                            {
+                                var renderer = (Renderer)entry.GetType().GetField("Mesh").GetValue(entry);
+                                int index = (int)entry.GetType().GetField("MaterialIndex").GetValue(entry);
+                                float addition = (float)entry.GetType().GetField("EmissionAddition").GetValue(entry);
+                                var color = renderer.sharedMaterials[index].color;
+                                Assert.That(color.r, Is.EqualTo(expected.R / 255f + addition).Within(.001f));
+                                Assert.That(color.g, Is.EqualTo(expected.G / 255f + addition).Within(.001f));
+                                Assert.That(color.b, Is.EqualTo(expected.B / 255f + addition).Within(.001f));
+                                Assert.That(color.a, Is.EqualTo(strength == "Ghost" ? .38f : 1f).Within(.001f));
+                            }
+                        }
+                    }
+                }
+                Object.Destroy(player.gameObject);
+            }
+            yield return null;
+        }
+
         private static Dictionary<bool, float> ProductionGhostNormalRatios(Component player, Type noteType)
         {
             var prefab = (GameObject)player.GetType().GetField("_notePrefab", INSTANCE).GetValue(player);

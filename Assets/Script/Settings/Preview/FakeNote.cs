@@ -144,6 +144,10 @@ namespace YARG.Settings.Preview
             var pair = _noteGroups.Find(i => i.NoteType == type && !i.StarPower);
             if (pair.Group != null) return pair.Group;
 
+            if (EliteKickAppearance.OptionalTypes.Contains(type))
+                return FindNoteGroup(EliteKickAppearance.IsDedicated(type)
+                    ? ThemeNoteType.DedicatedLaneKick : ThemeNoteType.Kick, starPower);
+
             var ordinaryType = type switch
             {
                 ThemeNoteType.OpenHiHat => ThemeNoteType.Cymbal,
@@ -198,9 +202,10 @@ namespace YARG.Settings.Preview
             var useStarPower = NoteRef.ForceStarPower ?? FakeTrackPlayer.ForceStarPowerNotes;
             bool dedicatedEliteKick = NoteRef.EliteDescriptor is { Role: EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick } &&
                 info.EliteLayout is { KickMode: not EliteDrumsLayoutKickMode.Bars };
-            bool kickFlamAccent = NoteRef.EliteDescriptor is { DedicatedLaneSource: not null, ModelType: ThemeNoteType.Accent };
-            var selectedType = dedicatedEliteKick ? ThemeNoteType.DedicatedLaneKick
-                : kickFlamAccent ? ThemeNoteType.Accent : NoteRef.NoteType;
+            var selectedType = NoteRef.NoteType;
+            if (dedicatedEliteKick && !EliteKickAppearance.IsDedicated(selectedType))
+                selectedType = EliteKickAppearance.Select(selectedType == ThemeNoteType.KickAccent,
+                    selectedType == ThemeNoteType.KickGhost, false, true);
             if (NoteRef.EliteDescriptor != null) selectedType = EliteModelType(selectedType);
             var selectedGroup = FindNoteGroup(selectedType, useStarPower);
             if (selectedGroup != _currentNoteGroup)
@@ -276,6 +281,12 @@ namespace YARG.Settings.Preview
             }
 
             _currentNoteGroup.SetColorWithEmission(color, color);
+            if (NoteRef.EliteDescriptor is { Role: EliteDrumsColorRole.KickFlam } && _currentNoteGroup.HasKickFlamColors)
+            {
+                var (lower, upper) = EliteKickAppearance.FlamColors(colorProfile.EliteDrums,
+                    useStarPower, NoteRef.ForceMiss);
+                _currentNoteGroup.SetKickFlamColors(lower.ToUnityColor(), upper.ToUnityColor(), FakeTrackPlayer.LeftyFlip);
+            }
 
             // Six-fret note models share materials with the barre models, so
             // standard up/down notes need their secondary color set to the same
@@ -617,7 +628,7 @@ namespace YARG.Settings.Preview
             // wrapper, keeping all author-edited model transforms intact.
             foreach (var pair in fake._noteGroups)
             {
-                if (pair.NoteType is not (ThemeNoteType.Kick or ThemeNoteType.DedicatedLaneKick or
+                if (!EliteKickAppearance.IsKick(pair.NoteType) && pair.NoteType is not (
                     ThemeNoteType.HatStomp or ThemeNoteType.HatSplash or ThemeNoteType.Wildcard))
                     continue;
                 var renderers = pair.Group.GetComponentsInChildren<MeshRenderer>(true);

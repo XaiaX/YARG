@@ -87,13 +87,13 @@ namespace YARG.Tests.EditMode
             var split = Describe(EliteDrumsLayoutKickMode.Split);
             var combined = Describe(EliteDrumsLayoutKickMode.Combined);
             var bars = Describe(EliteDrumsLayoutKickMode.Bars);
-            Assert.That(Value(split, "ModelType").ToString(), Is.EqualTo("DedicatedLaneKick"));
+            Assert.That(Value(split, "ModelType").ToString(), Is.EqualTo("DedicatedLaneKickFlam"));
             Assert.That(Value(split, "DedicatedLaneSource"), Is.EqualTo("kick1"));
             Assert.That(Value(split, "IsBar"), Is.False);
-            Assert.That(Value(combined, "ModelType").ToString(), Is.EqualTo("Accent"));
+            Assert.That(Value(combined, "ModelType").ToString(), Is.EqualTo("DedicatedLaneKickFlam"));
             Assert.That(Value(combined, "DedicatedLaneSource"), Is.EqualTo("kick"));
             Assert.That(Value(combined, "IsBar"), Is.False);
-            Assert.That(Value(bars, "ModelType").ToString(), Is.EqualTo("Kick"));
+            Assert.That(Value(bars, "ModelType").ToString(), Is.EqualTo("KickFlam"));
             Assert.That(Value(bars, "IsBar"), Is.True);
             Assert.That(descriptorType.GetProperty("Width").GetValue(split), Is.EqualTo(1f));
         }

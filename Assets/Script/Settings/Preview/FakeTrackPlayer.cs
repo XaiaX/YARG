@@ -661,10 +661,8 @@ namespace YARG.Settings.Preview
         public void SpotlightEliteRole(EliteDrumsColorRole role, bool starPower,
             ElitePreviewDescriptor? descriptor = null)
         {
-            var appearance = role == EliteDrumsColorRole.KickFlam
-                ? EliteDrumsFakeNoteGenerator.DescribeForKickLayout(role, ThemeNoteType.Normal,
-                    (CurrentGameModeInfo.EliteLayout?.KickMode ?? EliteDrumsLayoutKickMode.Bars))
-                : descriptor ?? EliteDrumsFakeNoteGenerator.Describe(role);
+            var appearance = descriptor ?? EliteDrumsFakeNoteGenerator.DescribeForKickLayout(role,
+                ThemeNoteType.Normal, CurrentGameModeInfo.EliteLayout?.KickMode ?? EliteDrumsLayoutKickMode.Bars);
             if (AllowIncompleteEliteLayoutPreview
                 && !IsEliteNoteRepresented(EliteDrumsFakeNoteGenerator.CreateRoleNote(0d, appearance),
                     CurrentGameModeInfo.EliteLayout))
