@@ -114,7 +114,8 @@ inline float4 YargTransformWorldToHClip(float3 positionWS)
         {
             // sin(x)/x ≈ 1 - x²/6 + x⁴/120 for small x
             float d_over_R = d / R;
-            sinc_factor = 1.0 - (d_over_R * d_over_R) / 6.0;
+            // This approximates sin(d/R)/d, whose limit is 1/R, not 1.
+            sinc_factor = (1.0 - (d_over_R * d_over_R) / 6.0) / R;
         }
         else
         {

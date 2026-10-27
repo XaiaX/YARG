@@ -1,0 +1,16 @@
+#pragma kernel Probe
+float4x4 _ProbeIdentity;
+float3 _ProbeCameraPosition;
+#define unity_ObjectToWorld _ProbeIdentity
+#define UNITY_MATRIX_VP _ProbeIdentity
+#define UNITY_MATRIX_P _ProbeIdentity
+#define UNITY_MATRIX_V _ProbeIdentity
+#define _WorldSpaceCameraPos _ProbeCameraPosition
+#include "../../Art/Shaders/highways.hlsl"
+StructuredBuffer<float4> _Samples;
+RWStructuredBuffer<float4> _Results;
+[numthreads(1, 1, 1)]
+void Probe(uint3 id : SV_DispatchThreadID)
+{
+    _Results[id.x] = YargTransformWorldToHClip(_Samples[id.x].xyz);
+}
