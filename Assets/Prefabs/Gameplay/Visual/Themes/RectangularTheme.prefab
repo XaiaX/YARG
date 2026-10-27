@@ -17344,13 +17344,13 @@ MonoBehaviour:
     MaterialIndex: 1
     EmissionMultiplier: 1
     EmissionAddition: 0
+  - Mesh: {fileID: 5662127733755628147}
+    MaterialIndex: 0
+    EmissionMultiplier: 0
+    EmissionAddition: -0.7
   _coloredMaterialsNoStarPower: []
   _coloredMetalMaterials:
   - Mesh: {fileID: 9055625738357220171}
-    MaterialIndex: 0
-    EmissionMultiplier: 1
-    EmissionAddition: 0
-  - Mesh: {fileID: 5662127733755628147}
     MaterialIndex: 0
     EmissionMultiplier: 1
     EmissionAddition: 0
@@ -49536,15 +49536,15 @@ MonoBehaviour:
     EmissionAddition: 0
   - Mesh: {fileID: 3767212538858439505}
     MaterialIndex: 2
-    EmissionMultiplier: 0.35
-    EmissionAddition: 0
+    EmissionMultiplier: 0
+    EmissionAddition: -0.7
+  - Mesh: {fileID: 3767212538858439505}
+    MaterialIndex: 0
+    EmissionMultiplier: 0
+    EmissionAddition: -0.7
   _coloredMaterialsNoStarPower: []
   _coloredMetalMaterials:
   - Mesh: {fileID: 1893728632492284612}
-    MaterialIndex: 0
-    EmissionMultiplier: 1
-    EmissionAddition: 0
-  - Mesh: {fileID: 3767212538858439505}
     MaterialIndex: 0
     EmissionMultiplier: 1
     EmissionAddition: 0
@@ -70394,8 +70394,12 @@ MonoBehaviour:
     EmissionAddition: 0
   - Mesh: {fileID: 831708189897825673}
     MaterialIndex: 3
-    EmissionMultiplier: 0.35
-    EmissionAddition: 0
+    EmissionMultiplier: 0
+    EmissionAddition: -0.7
+  - Mesh: {fileID: 831708189897825673}
+    MaterialIndex: 0
+    EmissionMultiplier: 0
+    EmissionAddition: -0.7
   _coloredMaterialsNoStarPower: []
   _coloredMetalMaterials:
   - Mesh: {fileID: 8695608428383305983}

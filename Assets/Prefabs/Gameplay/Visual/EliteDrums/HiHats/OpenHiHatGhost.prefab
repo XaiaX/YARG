@@ -156,7 +156,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 4ba0ab55591e04c3888d5976c9cf56f3, type: 2}
+  - {fileID: 2100000, guid: 7afdc3da39771e54897b360aca206edd, type: 2}
   - {fileID: 2100000, guid: dac87e7c3e0ba1e4e8f87d835bc22ed8, type: 2}
   - {fileID: 2100000, guid: aaf19c3fa1d683d48bf89fbfc9c83345, type: 2}
   - {fileID: 2100000, guid: 7afdc3da39771e54897b360aca206edd, type: 2}
@@ -446,12 +446,12 @@ MonoBehaviour:
   _mode: 1
   _restPosition: {x: 0, y: 0, z: 0}
   _restRotation: {x: 0, y: 0, z: 0, w: 1}
-  _pivotLocal: {x: 0, y: 0.31131965, z: 0.03627187}
+  _pivotLocal: {x: 0, y: 0.28868505, z: 0.03627187}
   _swayDegrees: 2
   _fadeBeats: 2
-  _backPosition: {x: 0, y: -0.0010762215, z: 0.010886995}
+  _backPosition: {x: 0, y: -0.0010900199, z: 0.0100970585}
   _backRotation: {x: -0.017452406, y: 0, z: 0, w: 0.9998477}
-  _forwardPosition: {x: 0, y: 0.0014555156, z: -0.010842804}
+  _forwardPosition: {x: 0, y: 0.0014417171, z: -0.010052867}
   _forwardRotation: {x: 0.017452406, y: 0, z: 0, w: 0.9998477}
 --- !u!1 &6583684722245846065
 GameObject:
