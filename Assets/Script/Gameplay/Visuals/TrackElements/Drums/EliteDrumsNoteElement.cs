@@ -57,15 +57,78 @@ namespace YARG.Gameplay.Visuals
         private readonly Dictionary<NoteGroup, EliteDrumsRuntimeGeometry.ModelGeometry> _geometry = new();
         private bool _lastCollisionPartnerStar;
 
-        private EliteDrumsRuntimeGeometry.ModelGeometry Geometry(NoteGroup group)
+        private readonly Dictionary<EliteDrumsGeometryCache.PairKey, EliteDrumsRuntimeGeometry.PairPlacement>
+            _preparedPlacements = new();
+        private EliteDrumsNoteElement _geometryTemplate;
+
+        private NoteGroup[] GeometryGroups(int kind) => kind switch
         {
+            0 => NoteGroups, 1 => StarPowerNoteGroups, 2 => _splitGemGroups, _ => _splitStarGemGroups
+        };
+
+        private EliteDrumsRuntimeGeometry.ModelGeometry Geometry(int kind, int index)
+        {
+            var group = GeometryGroups(kind)[index];
             if (!_geometry.TryGetValue(group, out var geometry))
             {
-                geometry = new EliteDrumsRuntimeGeometry.ModelGeometry(group.transform);
+                // Resolve the corresponding authored source slot directly. No
+                // hierarchy traversal, mesh reads, or slot search on first spawn.
+                if (_geometryTemplate == null && ParentPool != null && ParentPool.Prefab != gameObject)
+                    _geometryTemplate = ParentPool.Prefab.GetComponent<EliteDrumsNoteElement>();
+                geometry = _geometryTemplate != null
+                    ? new EliteDrumsRuntimeGeometry.ModelGeometry(_geometryTemplate.Geometry(kind, index))
+                    : new EliteDrumsRuntimeGeometry.ModelGeometry(group.transform)
+                        { PreparedPlacements = _preparedPlacements };
                 _geometry.Add(group, geometry);
             }
             return geometry;
         }
+
+        internal void PrepareSongGeometry(EliteDrumsPlayer player, IEnumerable<EliteDrumNote> notes)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                foreach (var parent in notes)
+                foreach (var note in parent.AllNotes)
+                {
+                    if (note.IsInvisibleTerminator) continue;
+                    EliteDrumsRuntimeGeometry.GetRegion(player, note, false, out float center, out float width);
+                    if (IsSplitFlam(note, true))
+                    {
+                        int group = GetSplitGroup(note, player.Player.Profile.UseCymbalModels);
+                        for (int variant = 0; variant < 2; variant++)
+                            EliteDrumsRuntimeGeometry.FitPair(Geometry(2 + variant, group * 2), null,
+                                Geometry(2 + variant, group * 2 + 1), null,
+                                player.Layout.Lanes.Count, center, width, 0f, !note.IsFlatFlam,
+                                SettingsManager.Settings.EliteFlamLayout.Value, IsCymbalGroup(group),
+                                player.Player.Profile.LeftyFlip);
+                    }
+                    else if (EliteDrumsRuntimeGeometry.GetCollisionPartner(player, note) is { } partner)
+                    {
+                        int group = GetGemGroup(note, player.Player.Profile.UseCymbalModels);
+                        int otherGroup = GetGemGroup(partner, player.Player.Profile.UseCymbalModels);
+                        bool right = EliteDrumsPlayer.IsCymbal(note.Pad) != player.Player.Profile.LeftyFlip;
+                        // Either member can independently lose SP. Prepare all
+                        // four visible combinations, including overlap suppression.
+                        for (int own = 0; own < 2; own++)
+                        for (int other = 0; other < 2; other++)
+                            EliteDrumsRuntimeGeometry.FitPair(
+                                Geometry(right ? other : own, right ? otherGroup : group), null,
+                                Geometry(right ? own : other, right ? group : otherGroup), null,
+                                player.Layout.Lanes.Count, center, width, 0f, false);
+                    }
+                }
+            }
+            finally
+            {
+                EliteDrumsRuntimeGeometry.LastPreparationMilliseconds = clock.Elapsed.TotalMilliseconds;
+            }
+        }
+
+        private static bool IsCymbalGroup(int group) =>
+            group is CYMBAL or CYMBAL_ACCENT or CYMBAL_GHOST or OPEN_HI_HAT or OPEN_HI_HAT_ACCENT
+                or OPEN_HI_HAT_GHOST or CLOSED_HI_HAT or CLOSED_HI_HAT_ACCENT or CLOSED_HI_HAT_GHOST;
 
         public override void SetThemeModels(Dictionary<ThemeNoteType, GameObject> models,
             Dictionary<ThemeNoteType, GameObject> starpowerModels)
@@ -239,11 +302,11 @@ namespace YARG.Gameplay.Visuals
                 var splitGroups = variant == 0 ? _splitGemGroups : _splitStarGemGroups;
                 var l = splitGroups[baseIndex + SPLIT_LEFT];
                 var r = splitGroups[baseIndex + SPLIT_RIGHT];
-                EliteDrumsRuntimeGeometry.FitPair(Geometry(l), l.transform, Geometry(r), r.transform,
+                EliteDrumsRuntimeGeometry.FitPair(Geometry(2 + variant, baseIndex + SPLIT_LEFT), l.transform,
+                    Geometry(2 + variant, baseIndex + SPLIT_RIGHT), r.transform,
                     Player.Layout.Lanes.Count, laneCenter, regionWidth, transform.localPosition.x,
                     !NoteRef.IsFlatFlam, SettingsManager.Settings.EliteFlamLayout.Value,
-                    group is CYMBAL or CYMBAL_ACCENT or CYMBAL_GHOST or OPEN_HI_HAT or OPEN_HI_HAT_ACCENT
-                        or OPEN_HI_HAT_GHOST or CLOSED_HI_HAT or CLOSED_HI_HAT_ACCENT or CLOSED_HI_HAT_GHOST,
+                    IsCymbalGroup(group),
                     Player.Player.Profile.LeftyFlip);
             }
             left.SetActive(true);
@@ -303,13 +366,16 @@ namespace YARG.Gameplay.Visuals
 
         private void ResetGemGroups()
         {
-            for (int i = 0; i < COUNT; i++)
+            // Only pair fitting needs measured mesh geometry. Calling Geometry
+            // here builds every unused variant on a pooled note's first spawn,
+            // deferring a large mesh-read/allocation burst until gameplay.
+            // Restore previously fitted rotations before applying the serialized
+            // scale/position baselines; untouched groups already have their
+            // authored rotation.
+            foreach (var entry in _geometry)
             {
-                Geometry(NoteGroups[i]).Reset(NoteGroups[i].transform);
-                Geometry(StarPowerNoteGroups[i]).Reset(StarPowerNoteGroups[i].transform);
+                entry.Value.Reset(entry.Key.transform);
             }
-            foreach (var group in _splitGemGroups) if (group != null) Geometry(group).Reset(group.transform);
-            foreach (var group in _splitStarGemGroups) if (group != null) Geometry(group).Reset(group.transform);
             ResetSplitGemGroups();
             for (int i = 0; i < COUNT; i++)
             {
@@ -462,8 +528,8 @@ namespace YARG.Gameplay.Visuals
             for (int variant = 0; variant < 2; variant++)
             {
                 var own = (variant == 0 ? NoteGroups : StarPowerNoteGroups)[group];
-                EliteDrumsRuntimeGeometry.FitPair(Geometry(right ? other : own), right ? null : own.transform,
-                    Geometry(right ? own : other), right ? own.transform : null,
+                EliteDrumsRuntimeGeometry.FitPair(Geometry(right ? (partnerStar ? 1 : 0) : variant, right ? otherGroup : group), right ? null : own.transform,
+                    Geometry(right ? variant : (partnerStar ? 1 : 0), right ? group : otherGroup), right ? own.transform : null,
                     Player.Layout.Lanes.Count, center, width, transform.localPosition.x, false);
             }
         }
@@ -471,6 +537,7 @@ namespace YARG.Gameplay.Visuals
         protected override void UpdateElement()
         {
             base.UpdateElement();
+            UpdateColor();
             // The paired note is judged independently and can lose SP without this
             // note changing. Both envelopes must use the same currently visible models.
             if (!IsSplitFlam(NoteRef, true) &&
@@ -582,12 +649,26 @@ namespace YARG.Gameplay.Visuals
             return (body, original, colors.GetMetalColor(starPower));
         }
 
+        // Match regular drums' beat pulse without borrowing another mode's palette.
+        internal static System.Drawing.Color GetActivationColor(System.Drawing.Color color, bool activation,
+            float phase)
+        {
+            if (!activation) return color;
+            float intensity = Mathf.Pow(Mathf.Clamp01(phase) - 1f, 3f) + 1f;
+            return System.Drawing.Color.FromArgb(color.A, (int)(color.R * intensity),
+                (int)(color.G * intensity), (int)(color.B * intensity));
+        }
+
         private void UpdateColor()
         {
             if (NoteGroup == null || NoteRef.WasHit) return;
             bool splitFlam = IsSplitFlam(NoteRef, true);
             var (color, original, metal) = GetGemColors(Player.Player.ColorProfile.EliteDrums,
                 NoteRef, splitFlam, IsStarPowerVisible, NoteRef.WasMissed);
+            bool activation = NoteRef.IsStarPowerActivator && !NoteRef.WasMissed &&
+                Player.Engine.CanStarPowerActivate && !Player.Engine.BaseStats.IsStarPowerActive;
+            float phase = activation ? (float)GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage : 0f;
+            color = GetActivationColor(activation ? original : color, activation, phase);
             NoteGroup.SetColorWithEmission(color.ToUnityColor(), original.ToUnityColor());
             NoteGroup.SetMetalColor(metal.ToUnityColor());
             if (EliteDrumsPlayer.IsFootPad(NoteRef.Pad) && (NoteRef.IsFlam || NoteRef.IsFlatFlam)
@@ -595,6 +676,10 @@ namespace YARG.Gameplay.Visuals
             {
                 var (lower, upper) = EliteKickAppearance.FlamColors(Player.Player.ColorProfile.EliteDrums,
                     IsStarPowerVisible, NoteRef.WasMissed);
+                if (activation)
+                    (lower, upper) = EliteKickAppearance.FlamColors(Player.Player.ColorProfile.EliteDrums, false, false);
+                lower = GetActivationColor(lower, activation, phase);
+                upper = GetActivationColor(upper, activation, phase);
                 NoteGroup.SetKickFlamColors(lower.ToUnityColor(), upper.ToUnityColor(), LeftyFlip);
             }
             if (IsSplitFlam(NoteRef, true))

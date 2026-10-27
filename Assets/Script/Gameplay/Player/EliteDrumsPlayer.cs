@@ -116,6 +116,8 @@ namespace YARG.Gameplay.Player
         internal static System.Drawing.Color GetLaneColor(ColorProfile.EliteDrumsColors colors,
             EliteDrumNote note) => colors.GetNoteColor(EliteDrumsColorRoles.GetHandRole(note));
 
+        private GameObject _noteTemplate;
+
         protected override void SetupTheme()
         {
             // The stock five-lane visual is typed DrumNote/DrumsPlayer. Assemble the
@@ -127,7 +129,10 @@ namespace YARG.Gameplay.Player
             modelFreePrefab.AddComponent<EliteDrumsNoteElement>();
             var themed = ThemeManager.Instance.CreateNotePrefabFromTheme(Player.ThemePreset,
                 VisualStyle.EliteDrums, modelFreePrefab, "NativeElite");
-            NotePool.SetPrefabAndReset(themed);
+            // ThemeContainer's cached prefab can serve multiple players. Each
+            // player's preparation owns an isolated source and current-song cache.
+            _noteTemplate = Instantiate(themed, transform);
+            _noteTemplate.SetActive(false);
             Destroy(modelFreePrefab);
         }
 
@@ -220,7 +225,11 @@ namespace YARG.Gameplay.Player
             _kickFretFlash.Initialize(colors.GetParticleColor((int) ColorProfile.EliteDrumsFret.Kick).ToUnityColor());
             NoteTrack.SetDrumActivationFlags(Player.Profile.StarPowerActivationType);
             Notes = NoteTrack.Notes;
+            TrackEffect.ConfigureEliteDrumFills(Notes, _trackEffects,
+                note => UsesKickBars && IsFootPad(note.Pad) ? -1f : GetVisualPosition(note), LaneCount);
             BRELanes = new LaneElement[LaneCount];
+            _noteTemplate.GetComponent<EliteDrumsNoteElement>().PrepareSongGeometry(this, Notes);
+            NotePool.SetPrefabAndReset(_noteTemplate);
             base.FinishInitialization();
         }
 

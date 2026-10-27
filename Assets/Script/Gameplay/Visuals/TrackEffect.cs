@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Mixed (needs refactoring)
+using System;
 using System.Collections.Generic;
 using YARG.Core.Chart;
 using YARG.Core.Logging;
@@ -52,6 +53,38 @@ namespace YARG.Gameplay.Visuals
         // For drum fill lead-up positioning
         public float FillLanePosition   { get; set; } = 0f;
         public int TotalLanes { get; set; } = 1;
+
+        // Bind native Elite fills before slicing them into solo/unison overlays.
+        public static void ConfigureEliteDrumFills(List<EliteDrumNote> notes, List<TrackEffect> effects,
+            Func<EliteDrumNote, float> getPosition, int laneCount)
+        {
+            for (int i = effects.Count - 1; i >= 0; i--)
+            {
+                var effect = effects[i];
+                if (effect.EffectType != TrackEffectType.DrumFill) continue;
+                EliteDrumNote activator = null;
+                foreach (var chord in notes)
+                {
+                    if (chord.Time < effect.TimeEnd) continue;
+                    foreach (var note in chord.AllNotes)
+                    {
+                        if (!note.IsStarPowerActivator || note.IsInvisibleTerminator) continue;
+                        activator = note;
+                        break;
+                    }
+                    // Flags belong to the first boundary chord, never a later fill's target.
+                    break;
+                }
+                if (activator == null)
+                {
+                    effects.RemoveAt(i);
+                    continue;
+                }
+                effect.TimeEnd = activator.Time;
+                effect.FillLanePosition = getPosition(activator);
+                effect.TotalLanes = laneCount;
+            }
+        }
 
         public bool Equals(TrackEffect other) => other is not null && Time.Equals(other.Time) && TimeEnd.Equals(other.TimeEnd);
         public override bool Equals(object obj) => obj is TrackEffect && Equals((TrackEffect)obj);
@@ -153,8 +186,24 @@ namespace YARG.Gameplay.Visuals
                 }
             }
 
+            // Slicing creates new objects. Carry the original fill target into every
+            // resulting segment, including overlaps with solos and unison phrases.
+            foreach (var sliced in slicedEffects)
+            {
+                if (!HasDrumFill(sliced.EffectType)) continue;
+                foreach (var source in fullEffectsList)
+                {
+                    if (!HasDrumFill(source.EffectType) || !source.Overlaps(sliced)) continue;
+                    sliced.FillLanePosition = source.FillLanePosition;
+                    sliced.TotalLanes = source.TotalLanes;
+                    break;
+                }
+            }
             return slicedEffects;
         }
+
+        private static bool HasDrumFill(TrackEffectType type) =>
+            type is TrackEffectType.DrumFill or TrackEffectType.SoloAndDrumFill or TrackEffectType.DrumFillAndUnison;
 
         private static void HandleTransitions(TrackEffect current, TrackEffect next, float noteSpeed)
         {

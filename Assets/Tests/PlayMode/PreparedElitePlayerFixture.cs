@@ -25,13 +25,17 @@ namespace YARG.Tests.PlayMode
             return type;
         }
 
-        internal static SongChart CreateChart(params EliteDrumNote[] notes)
+        internal static SongChart CreateChart(params EliteDrumNote[] notes) =>
+            CreateChartWithPhrases(Array.Empty<Phrase>(), notes);
+
+        internal static SongChart CreateChartWithPhrases(IEnumerable<Phrase> phrases, params EliteDrumNote[] notes)
         {
             var chart = new SongChart(480);
             chart.SyncTrack.Tempos.Add(new TempoChange(120, 0, 0));
             chart.SyncTrack.TimeSignatures.Add(new TimeSignatureChange(4, 4, 0, 0, 0, 0, 16, 4));
             var track = new InstrumentDifficulty<EliteDrumNote>(Instrument.EliteDrums, Difficulty.Hard);
             track.Notes.AddRange(notes);
+            track.Phrases.AddRange(phrases);
             var sources = new AuthoredDrumSourceCollection();
             var ctor = typeof(AuthoredDrumSourceTier).GetConstructor(INSTANCE, null, new[]
             {

@@ -236,6 +236,454 @@ namespace YARG.Tests.PlayMode
             }
         }
 
+        [UnityTest]
+        public IEnumerator OrdinaryNotesDoNotMeasureUnusedModelGeometryOnFirstSpawn()
+        {
+            var notes = Enumerable.Range(0, 8)
+                .Select(i => Note(i % 2 == 0 ? EliteDrumPad.Snare : EliteDrumPad.HiHat,
+                    time: 8 + i * 0.25d, tick: (uint) (7680 + i * 240))).ToArray();
+            _fixture = new InitializedElitePlayerFixture();
+            yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(notes),
+                Profile(false), EliteDrumsLayoutPreset.Compact);
+            var player = _fixture.Player;
+            var elements = new List<Component>();
+            var geometryField = Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement")
+                .GetField("_geometry", PreparedElitePlayerFixture.INSTANCE);
+            var clock = new System.Diagnostics.Stopwatch();
+            var timings = new List<double>();
+            foreach (var note in GetPlayableNotes())
+            {
+                clock.Restart();
+                SpawnCoverageNote(player, note);
+                clock.Stop();
+                timings.Add(clock.Elapsed.TotalMilliseconds);
+                elements.Add(FindCoverageElement(player, note));
+            }
+            Assert.That(elements.Distinct().Count(), Is.EqualTo(notes.Length),
+                "Measure fresh pooled objects, rather than repeatedly reusing the same one.");
+            var counts = elements.Select(e => ((IDictionary) geometryField.GetValue(e)).Count).ToArray();
+            Debug.Log($"Elite first-use spawn ms=[{string.Join(", ", timings.Select(t => t.ToString("F3")))}] " +
+                $"measuredModels=[{string.Join(", ", counts)}]");
+            foreach (var element in elements) ReturnCoverageElement(element);
+            clock.Restart();
+            SpawnCoverageNote(player, GetPlayableNotes()[0]);
+            clock.Stop();
+            Debug.Log($"Elite reused spawn ms={clock.Elapsed.TotalMilliseconds:F3}");
+            // Timings are diagnostic only. This structural assertion detects the
+            // unnecessary mesh reads without a machine-dependent time threshold.
+            Assert.That(counts, Is.All.Zero,
+                "Ordinary notes need no mesh contact data; resetting must not measure unused theme variants.");
+        }
+
+        [UnityTest, Timeout(600000)]
+        public IEnumerator SongGeometryPreparationSurvivesIndependentPlayersAndFirstPairSpawns()
+        {
+            var geometry = Production("YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry");
+            var measured = geometry.GetField("ModelMeasurements", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            var fitted = geometry.GetField("PairComputations", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            Assert.That(measured, Is.Not.Null, "Session geometry must expose deterministic measurement diagnostics.");
+            Assert.That(fitted, Is.Not.Null, "Session pair placement must expose deterministic fit diagnostics.");
+            geometry.GetMethod("ClearSessionCache", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).Invoke(null, null);
+            int Read(FieldInfo field) => (int)field.GetValue(null);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var flam = Note(EliteDrumPad.RightCrash, time: 8, tick: 7680);
+                flam.IsFlam = true;
+                flam.ActivateFlag(NoteFlags.StarPower);
+                var snare = Note(EliteDrumPad.Snare, time: 9, tick: 8640);
+                snare.AddChildNote(Note(EliteDrumPad.RightCrash, time: 9, tick: 8640));
+                _fixture = new InitializedElitePlayerFixture();
+                var timer = System.Diagnostics.Stopwatch.StartNew();
+                yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(flam, snare),
+                    Profile(false), PairCoverageLayout(5));
+                timer.Stop();
+                int measurements = Read(measured), computations = Read(fitted);
+                Debug.Log($"Elite cache pass={pass} initMs={timer.Elapsed.TotalMilliseconds:F3} " +
+                    $"measurements={measurements} pairComputations={computations} cpu={SystemInfo.processorType}");
+                Assert.That(measurements, Is.GreaterThan(0));
+                Assert.That(computations, Is.GreaterThan(0));
+                foreach (var note in GetPlayableNotes().SelectMany(n => n.ChildNotes.Prepend(n)))
+                {
+                    SpawnCoverageNote(_fixture.Player, note);
+                    var element = FindCoverageElement(_fixture.Player, note);
+                    element.GetType().GetMethod("OnStarPowerUpdated", PreparedElitePlayerFixture.INSTANCE)
+                        .Invoke(element, null);
+                    ReturnCoverageElement(element);
+                }
+                Assert.That(Read(measured), Is.EqualTo(measurements), "First pair spawn must use prepared measurements.");
+                Assert.That(Read(fitted), Is.EqualTo(computations), "First pair spawn and SP changes must use prepared placement.");
+                if (pass == 0)
+                {
+                    _cachedMeasurements = measurements;
+                    _cachedComputations = computations;
+                }
+                else
+                {
+                    Assert.That(measurements, Is.EqualTo(_cachedMeasurements), "Independent matching profile/player reuses session geometry.");
+                    Assert.That(computations, Is.EqualTo(_cachedComputations), "Independent matching profile/player reuses placements.");
+                }
+                yield return _fixture.Dispose();
+                _fixture = null;
+            }
+        }
+
+        private int _cachedMeasurements, _cachedComputations;
+
+        [UnityTest, Timeout(600000)]
+        public IEnumerator GeometryPreparationBenchmarksColdWarmAndEveryPreparedPair()
+        {
+            var geometry = Production("YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry");
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+            int Count(string name) => (int)geometry.GetField(name, flags).GetValue(null);
+            double Time(string name) => (double)geometry.GetField(name, flags).GetValue(null);
+            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
+            var setting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
+            var value = setting.GetType().GetProperty("Value");
+            var original = value.GetValue(setting);
+            try
+            {
+                foreach (string layout in new[] { "V", "Bucket", "Parallel" })
+                foreach (string coverage in new[] { "ordinary", "mixed", "broad", "long" })
+                {
+                    value.SetValue(setting, Enum.Parse(value.PropertyType, layout));
+                    geometry.GetMethod("ClearSessionCache", flags).Invoke(null, null);
+                    int expectedModels = 0, expectedPairs = 0;
+                    Guid? previousProfile = null;
+                    for (int pass = 0; pass < 2; pass++)
+                    {
+                        var notes = CacheCoverageNotes(coverage);
+                        _fixture = new InitializedElitePlayerFixture();
+                        int fingerprintsBefore = Count("MeshFingerprints");
+                        double signatureBefore = Time("SignatureMilliseconds");
+                        double measurementBefore = Time("MeasurementMilliseconds"), pairBefore = Time("PairMilliseconds");
+                        var profile = Profile(false);
+                        Assert.That(profile.Id, Is.Not.EqualTo(previousProfile), "The warm load must use a different profile identity.");
+                        previousProfile = profile.Id;
+                        yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(notes),
+                            profile, PairCoverageLayout(5), noStarPowerOverlap: true);
+                        int models = Count("ModelMeasurements"), pairs = Count("PairComputations");
+                        Debug.Log($"Elite geometry benchmark layout={layout} coverage={coverage} pass={pass} " +
+                            $"notes={notes.Sum(n => n.ChildNotes.Count + 1)} playerInitMs={_fixture.PlayerInitializationMilliseconds:F3} " +
+                            $"prepareMs={Time("LastPreparationMilliseconds"):F3} signatureMs={Time("SignatureMilliseconds") - signatureBefore:F3} " +
+                            $"measurementMs={Time("MeasurementMilliseconds") - measurementBefore:F3} pairMs={Time("PairMilliseconds") - pairBefore:F3} " +
+                            $"models={models} pairs={pairs} meshFingerprints={Count("MeshFingerprints") - fingerprintsBefore} " +
+                            $"geometryBytes={Production("YARG.Gameplay.Visuals.EliteDrumsGeometryCache").GetProperty("RetainedGeometryBytes", flags).GetValue(null)} " +
+                            $"signatureBytes={Production("YARG.Gameplay.Visuals.EliteDrumsGeometryCache").GetProperty("SignatureKeyBytes", flags).GetValue(null)} " +
+                            $"cpu={SystemInfo.processorType}");
+                        if (pass == 0) { expectedModels = models; expectedPairs = pairs; }
+                        else
+                        {
+                            Assert.That(Count("MeshFingerprints"), Is.EqualTo(fingerprintsBefore),
+                                "Matching loaded meshes across destroyed players must not read/fingerprint their contents again.");
+                            Assert.That(models, Is.EqualTo(expectedModels), "A distinct matching profile/player must reuse measured content.");
+                            Assert.That(pairs, Is.EqualTo(expectedPairs), "A distinct matching profile/player must reuse prepared placements.");
+                        }
+                        var engine = (YARG.Core.Engine.Drums.Engines.EliteDrumsEngine)GetEngine(_fixture.Player);
+                        foreach (var parent in coverage == "long" ? GetPlayableNotes().Take(16) : GetPlayableNotes())
+                        foreach (var note in parent.ChildNotes.Prepend(parent))
+                        {
+                            SpawnCoverageNote(_fixture.Player, note);
+                            var element = FindCoverageElement(_fixture.Player, note);
+                            foreach (bool ownStar in new[] { false, true })
+                            foreach (bool partnerStar in new[] { false, true })
+                            foreach (bool active in new[] { false, true })
+                            {
+                                foreach (var member in parent.ChildNotes.Prepend(parent))
+                                {
+                                    bool star = ReferenceEquals(member, note) ? ownStar : partnerStar;
+                                    if (star) member.ActivateFlag(NoteFlags.StarPower); else member.ClearFlag(NoteFlags.StarPower);
+                                }
+                                engine.EngineStats.IsStarPowerActive = active;
+                                element.GetType().GetMethod("OnStarPowerUpdated").Invoke(element, null);
+                                element.GetType().GetMethod("UpdateElement", PreparedElitePlayerFixture.INSTANCE).Invoke(element, null);
+                            }
+                            engine.EngineStats.IsStarPowerActive = false;
+                            ReturnCoverageElement(element);
+                        }
+                        Assert.That(Count("ModelMeasurements"), Is.EqualTo(models), "No first spawn or SP transition may measure geometry after preparation.");
+                        Assert.That(Count("PairComputations"), Is.EqualTo(pairs), "No first spawn or independent SP/overlap transition may fit geometry after preparation.");
+                        yield return _fixture.Dispose();
+                        _fixture = null;
+                    }
+                }
+            }
+            finally { value.SetValue(setting, original); }
+        }
+
+        private static EliteDrumNote[] CacheCoverageNotes(string coverage)
+        {
+            var notes = new List<EliteDrumNote>();
+            EliteDrumNote Create(EliteDrumPad pad, DrumNoteType dynamics = DrumNoteType.Neutral,
+                EliteDrumsHatState hat = EliteDrumsHatState.Indifferent) => new EliteDrumNote(
+                    pad, dynamics, hat, EliteDrumsHatPedalType.Stomp, false, DrumNoteFlags.None,
+                    NoteFlags.StarPower, EliteDrumsChannelFlag.None,
+                    8d + notes.Count * 0.25d, (uint)(7680 + notes.Count * 240), false);
+            for (int i = 0; i < 8; i++) notes.Add(Create(i % 2 == 0 ? EliteDrumPad.Snare : EliteDrumPad.HiHat));
+            if (coverage == "ordinary") return notes.ToArray();
+            foreach (var pad in new[] { EliteDrumPad.Snare, EliteDrumPad.RightCrash })
+            foreach (bool flat in new[] { false, true })
+            {
+                var note = Create(pad);
+                note.IsFlam = !flat; note.IsFlatFlam = flat;
+                notes.Add(note);
+            }
+            var pair = Create(EliteDrumPad.Snare);
+            pair.AddChildNote(Create(EliteDrumPad.RightCrash, DrumNoteType.Accent));
+            notes.Add(pair);
+            if (coverage == "mixed") return notes.ToArray();
+            if (coverage == "long")
+            {
+                var sample = notes.ToArray();
+                while (notes.Count < 10000)
+                {
+                    var note = sample[notes.Count % sample.Length].Clone();
+                    foreach (var member in note.ChildNotes.Prepend(note))
+                    {
+                        member.Time = 8d + notes.Count * 0.25d;
+                        member.Tick = (uint)(7680 + notes.Count * 240);
+                    }
+                    notes.Add(note);
+                }
+                return notes.ToArray();
+            }
+            foreach (var pad in new[] { EliteDrumPad.Snare, EliteDrumPad.HiHat, EliteDrumPad.LeftCrash,
+                EliteDrumPad.Tom1, EliteDrumPad.Tom2, EliteDrumPad.Ride, EliteDrumPad.Tom3, EliteDrumPad.RightCrash })
+            foreach (var dynamics in new[] { DrumNoteType.Neutral, DrumNoteType.Accent, DrumNoteType.Ghost })
+            foreach (var hat in pad == EliteDrumPad.HiHat ? new[] { EliteDrumsHatState.Indifferent,
+                EliteDrumsHatState.Open, EliteDrumsHatState.Closed } : new[] { EliteDrumsHatState.Indifferent })
+            foreach (bool flat in new[] { false, true })
+            {
+                var note = Create(pad, dynamics, hat);
+                note.IsFlam = !flat; note.IsFlatFlam = flat;
+                notes.Add(note);
+            }
+            foreach (var pads in new[] { (EliteDrumPad.Snare, EliteDrumPad.RightCrash),
+                (EliteDrumPad.Tom1, EliteDrumPad.LeftCrash), (EliteDrumPad.Tom2, EliteDrumPad.Ride) })
+            foreach (var first in new[] { DrumNoteType.Neutral, DrumNoteType.Accent, DrumNoteType.Ghost })
+            foreach (var second in new[] { DrumNoteType.Neutral, DrumNoteType.Accent, DrumNoteType.Ghost })
+            {
+                var note = Create(pads.Item1, first);
+                note.AddChildNote(Create(pads.Item2, second));
+                notes.Add(note);
+            }
+            return notes.ToArray();
+        }
+
+        [UnityTest]
+        public IEnumerator PreparedTemplateSurvivesOtherPreparationAndSessionEviction()
+        {
+            var notes = CacheCoverageNotes("mixed");
+            _fixture = new InitializedElitePlayerFixture();
+            yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(notes),
+                Profile(false), PairCoverageLayout(5));
+            var player = _fixture.Player;
+            var pool = Production("YARG.Gameplay.Player.TrackPlayer").GetField("NotePool",
+                PreparedElitePlayerFixture.INSTANCE).GetValue(player);
+            var source = (GameObject)pool.GetType().GetProperty("Prefab").GetValue(pool);
+            Assert.That(source.transform.parent, Is.SameAs(player.transform),
+                "The player owns its preparation source independently of the shared ThemeContainer prefab.");
+            var elementType = Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement");
+            var first = source.GetComponent(elementType);
+            var placements = elementType.GetField("_preparedPlacements", PreparedElitePlayerFixture.INSTANCE);
+            var originalPlacements = (IDictionary)placements.GetValue(first);
+            int originalCount = originalPlacements.Count;
+            var other = UnityEngine.Object.Instantiate(source);
+            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
+            var setting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
+            var value = setting.GetType().GetProperty("Value");
+            var original = value.GetValue(setting);
+            try
+            {
+                value.SetValue(setting, Enum.Parse(value.PropertyType,
+                    original.ToString() == "Parallel" ? "Bucket" : "Parallel"));
+                var second = other.GetComponent(elementType);
+                elementType.GetMethod("PrepareSongGeometry", PreparedElitePlayerFixture.INSTANCE)
+                    .Invoke(second, new object[] { player, GetPlayableNotes() });
+                Assert.That(placements.GetValue(second), Is.Not.SameAs(originalPlacements));
+                Assert.That(originalPlacements.Count, Is.EqualTo(originalCount),
+                    "Preparing another source must not replace or mutate the first player's requirements.");
+                value.SetValue(setting, original);
+                var geometry = Production("YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry");
+                const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
+                geometry.GetMethod("ClearSessionCache", flags).Invoke(null, null);
+                foreach (var parent in GetPlayableNotes())
+                foreach (var note in parent.ChildNotes.Prepend(parent))
+                {
+                    SpawnCoverageNote(player, note);
+                    ReturnCoverageElement(FindCoverageElement(player, note));
+                }
+                Assert.That(geometry.GetField("ModelMeasurements", flags).GetValue(null), Is.EqualTo(0));
+                Assert.That(geometry.GetField("PairComputations", flags).GetValue(null), Is.EqualTo(0),
+                    "Live prepared sources must not depend on an entry remaining in the bounded session lookup.");
+            }
+            finally
+            {
+                value.SetValue(setting, original);
+                UnityEngine.Object.Destroy(other);
+            }
+        }
+
+        [UnityTest, Timeout(600000)]
+        public IEnumerator ParallelCymbalFixedScaleAppearance()
+        {
+            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
+            var setting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
+            var value = setting.GetType().GetProperty("Value");
+            var original = value.GetValue(setting);
+            var cases = new List<(int columns, bool lefty, EliteDrumPad pad, DrumNoteType dynamics, EliteDrumsHatState hat)>();
+            foreach (int columns in new[] { 5, 10 })
+            foreach (bool lefty in new[] { false, true })
+                cases.Add((columns, lefty, EliteDrumPad.RightCrash, DrumNoteType.Neutral, EliteDrumsHatState.Indifferent));
+            foreach (var dynamics in new[] { DrumNoteType.Ghost, DrumNoteType.Neutral, DrumNoteType.Accent })
+            foreach (var hat in new[] { EliteDrumsHatState.Indifferent, EliteDrumsHatState.Closed, EliteDrumsHatState.Open })
+                cases.Add((5, false, EliteDrumPad.HiHat, dynamics, hat));
+            string directory = Environment.GetEnvironmentVariable("YARG_PARALLEL_CAPTURE_DIRECTORY") ??
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "yarg-parallel-approximation");
+            System.IO.Directory.CreateDirectory(directory);
+            try
+            {
+                value.SetValue(setting, Enum.Parse(value.PropertyType, "Parallel"));
+                foreach (var item in cases)
+                {
+                    var source = new EliteDrumNote(item.pad, item.dynamics, item.hat, EliteDrumsHatPedalType.Stomp,
+                        true, DrumNoteFlags.None, NoteFlags.None, EliteDrumsChannelFlag.None, 8d, 7680, false);
+                    _fixture = new InitializedElitePlayerFixture();
+                    yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(source),
+                        Profile(item.lefty), PairCoverageLayout(item.columns));
+                    var note = GetPlayableNotes()[0];
+                    note.ClearFlag(NoteFlags.StarPower);
+                    SpawnCoverageNote(_fixture.Player, note);
+                    var element = FindCoverageElement(_fixture.Player, note);
+                    var visible = element.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                        .Where(g => g.gameObject.activeInHierarchy).OrderBy(g => g.name).ToArray();
+                    Assert.That(visible, Has.Length.EqualTo(2));
+                    // Freeze the exact baseline Y/Z, scale and rotation, including
+                    // authored hat quirks. Only X spacing may change in this task.
+                    var pose = visible.SelectMany(g => new[] { g.transform.localScale.x, g.transform.localScale.y,
+                        g.transform.localScale.z, g.transform.localRotation.x, g.transform.localRotation.y,
+                        g.transform.localRotation.z, g.transform.localRotation.w,
+                        g.transform.localPosition.y, g.transform.localPosition.z }).ToArray();
+                    string stem = $"N{item.columns}-lefty{item.lefty}-{item.pad}-{item.dynamics}-{item.hat}";
+                    var culture = System.Globalization.CultureInfo.InvariantCulture;
+                    string baselineDirectory = Environment.GetEnvironmentVariable("YARG_PARALLEL_BASELINE_DIRECTORY");
+                    if (!string.IsNullOrEmpty(baselineDirectory))
+                    {
+                        var baseline = System.IO.File.ReadAllLines(System.IO.Path.Combine(baselineDirectory, stem + ".pose"))
+                            .Select(line => float.Parse(line, culture)).ToArray();
+                        Assert.That(pose.Length, Is.EqualTo(baseline.Length));
+                        for (int i = 0; i < pose.Length; i++)
+                            Assert.That(pose[i], Is.EqualTo(baseline[i]).Within(0.000001f),
+                                $"Only X placement may differ from the exact-fit baseline: {stem}, coordinate={i}");
+                    }
+                    System.IO.File.WriteAllLines(System.IO.Path.Combine(directory, stem + ".pose"),
+                        pose.Select(v => v.ToString("R", culture)));
+                    var cameraObject = new GameObject("Fixed Parallel appearance camera");
+                    var camera = cameraObject.AddComponent<Camera>();
+                    var render = new RenderTexture(1280, 720, 24);
+                    var pixels = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+                    var prior = RenderTexture.active;
+                    try
+                    {
+                        // Constant scale and local offset, independent of pair bounds.
+                        // Follow the note pivot, retaining authored displacement.
+                        var highway = _fixture.Player.transform;
+                        var target = element.transform.position + highway.up * 0.02f;
+                        camera.transform.position = target + highway.TransformDirection(new Vector3(0f, 1.5f, -1.8f));
+                        camera.transform.LookAt(target, highway.up);
+                        camera.orthographic = true;
+                        camera.orthographicSize = 0.32f;
+                        camera.clearFlags = CameraClearFlags.SolidColor;
+                        camera.backgroundColor = Color.black;
+                        camera.targetTexture = render;
+                        camera.Render();
+                        RenderTexture.active = render;
+                        pixels.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+                        pixels.Apply();
+                        Assert.That(pixels.GetPixels32().Any(p => p.r > 8 || p.g > 8 || p.b > 8), Is.True);
+                        string path = System.IO.Path.Combine(directory,
+                            $"N{item.columns}-lefty{item.lefty}-{item.pad}-{item.dynamics}-{item.hat}.png");
+                        System.IO.File.WriteAllBytes(path, pixels.EncodeToPNG());
+                        Debug.Log($"Fixed Parallel capture: {path}");
+                    }
+                    finally
+                    {
+                        RenderTexture.active = prior;
+                        camera.targetTexture = null;
+                        UnityEngine.Object.DestroyImmediate(pixels);
+                        render.Release();
+                        UnityEngine.Object.DestroyImmediate(render);
+                        UnityEngine.Object.DestroyImmediate(cameraObject);
+                    }
+                    yield return _fixture.Dispose();
+                    _fixture = null;
+                }
+            }
+            finally { value.SetValue(setting, original); }
+        }
+
+        [UnityTest]
+        public IEnumerator ActivationTargetsAndPulsesFollowPreparedEliteNotes()
+        {
+            foreach (bool lefty in new[] { false, true })
+            foreach (var mode in new[] { StarPowerActivationType.RightmostNote, StarPowerActivationType.AllNotes })
+            {
+                var tom = Note(EliteDrumPad.Tom3, time: 2, tick: 1920);
+                tom.AddChildNote(Note(EliteDrumPad.LeftCrash, time: 2, tick: 1920));
+                var chart = PreparedElitePlayerFixture.CreateChartWithPhrases(
+                    new[] { new Phrase(PhraseType.DrumFill, 1, 0.9, 960, 864) },
+                    Note(EliteDrumPad.Snare, time: 1, tick: 960), tom);
+                var profile = Profile(lefty);
+                profile.StarPowerActivationType = mode;
+                _fixture = new InitializedElitePlayerFixture();
+                yield return _fixture.Initialize(chart, profile, EliteDrumsLayoutPreset.Full);
+                var player = _fixture.Player;
+                var chord = GetPlayableNotes().Single(note => note.Tick == 1920);
+                var activators = chord.ChildNotes.Prepend(chord).Where(note => note.IsStarPowerActivator).ToArray();
+                Assert.That(activators.Length, Is.EqualTo(mode == StarPowerActivationType.AllNotes ? 2 : 1));
+                var effects = (IEnumerable) player.GetType().BaseType
+                    .GetField("_trackEffects", PreparedElitePlayerFixture.INSTANCE).GetValue(player);
+                var fill = effects.Cast<object>().Single(effect =>
+                    effect.GetType().GetProperty("EffectType").GetValue(effect).ToString() == "DrumFill");
+                Assert.That(fill.GetType().GetProperty("TimeEnd").GetValue(fill), Is.EqualTo(2d));
+                if (mode == StarPowerActivationType.RightmostNote)
+                {
+                    Assert.That(activators[0].Pad, Is.EqualTo((int)EliteDrumPad.LeftCrash));
+                    var position = player.GetType().GetMethod("GetVisualPosition", new[] { typeof(EliteDrumNote) })
+                        .Invoke(player, new object[] { activators[0] });
+                    Assert.That(fill.GetType().GetProperty("FillLanePosition").GetValue(fill),
+                        Is.EqualTo(Convert.ToSingle(position)));
+                }
+                var engine = (YARG.Core.Engine.Drums.Engines.EliteDrumsEngine) GetEngine(player);
+                engine.BaseStats.StarPowerTickAmount = engine.TicksPerHalfSpBar;
+                var beat = _fixture.Manager.GetType().GetProperty("BeatEventHandler").GetValue(_fixture.Manager);
+                foreach (var note in activators)
+                {
+                    SpawnCoverageNote(player, note);
+                    var element = FindCoverageElement(player, note);
+                    var group = (Component)element.GetType().BaseType
+                        .GetField("NoteGroup", PreparedElitePlayerFixture.INSTANCE).GetValue(element);
+                    var cache = (Array) group.GetType().GetField("_coloredMaterialCache", PreparedElitePlayerFixture.INSTANCE)
+                        .GetValue(group);
+                    Assert.That(cache.Length, Is.GreaterThan(0));
+                    var info = cache.GetValue(0);
+                    var material = (Material)info.GetType().GetField("MaterialCache").GetValue(info);
+                    var update = element.GetType().GetMethod("UpdateElement", PreparedElitePlayerFixture.INSTANCE);
+                    beat.GetType().GetMethod("Reset").Invoke(beat, null);
+                    beat.GetType().GetMethod("Update").Invoke(beat, new object[] { 0d, 0d });
+                    update.Invoke(element, null);
+                    var startColor = material.color;
+                    beat.GetType().GetMethod("Update").Invoke(beat, new object[] { 0.25d, 0.25d });
+                    update.Invoke(element, null);
+                    Assert.That(Vector3.Distance(new Vector3(startColor.r, startColor.g, startColor.b),
+                        new Vector3(material.color.r, material.color.g, material.color.b)), Is.GreaterThan(0.1f),
+                        "Every eligible activation gem must visibly pulse on frame updates.");
+                    ReturnCoverageElement(element);
+                }
+                yield return _fixture.Dispose();
+                _fixture = null;
+            }
+        }
+
         [Test]
         public void ExplicitLaneWidthsRemainIndependentOfClassicScaleCache()
         {
@@ -753,7 +1201,7 @@ namespace YARG.Tests.PlayMode
             }
         }
 
-        [UnityTest]
+        [UnityTest, Timeout(600000)]
         public IEnumerator ElitePairActualPreviewParityVisibilityAndPooling()
         {
             var previewFixture = new ElitePreviewGeometryPlayModeTests();
@@ -1043,12 +1491,18 @@ namespace YARG.Tests.PlayMode
             if (layout == "Parallel")
             {
                 var geometryType = Production("YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry");
-                float priorDelta = (float)geometryType.GetMethod("GetLateralContact", BindingFlags.Static | BindingFlags.NonPublic)
+                float overlap = (float)geometryType.GetMethod("GetLateralContact", BindingFlags.Static | BindingFlags.NonPublic)
                     .Invoke(null, new object[] { surfaces[0], surfaces[1] });
-                float priorDistance = SurfaceDistance(surfaces[0], surfaces[1].Select(p => p + Vector3.right * priorDelta).ToArray());
-                Debug.Log($"Prior projected-hull contact: lateralDelta={priorDelta:R}, complete3DDistance={priorDistance:R}; {context}");
-                float outward = SurfaceDistance(surfaces[0], surfaces[1].Select(p => p + Vector3.right * 0.0001f).ToArray());
-                Assert.That(outward, Is.GreaterThan(0.00001f), "Outward lateral movement must open the first-contact seam: " + context);
+                float width = Mathf.Min(surfaces[0].Max(p => p.x) - surfaces[0].Min(p => p.x),
+                    surfaces[1].Max(p => p.x) - surfaces[1].Min(p => p.x));
+                float actual = groups[1].transform.localPosition.x - groups[0].transform.localPosition.x;
+                float outline = actual + overlap;
+                Assert.That(actual, Is.GreaterThan(0f), "Two recognizable lateral members remain: " + context);
+                Assert.That(overlap, Is.EqualTo(Mathf.Min(width * 0.04f, outline * 0.1f)).Within(0.00001f),
+                    "Parallel cymbal overlap follows the bounded appearance policy: " + context);
+                Assert.That(actual, Is.GreaterThanOrEqualTo(outline * 0.9f - 0.00001f),
+                    "Approximation must retain at least 90% of outline separation: " + context);
+                return;
             }
             else Assert.That(separation, Is.EqualTo(0f).Within(0.00001f), "Nonpenetrating base supports: " + context);
             float distance = SurfaceDistance(surfaces[0], surfaces[1]);
@@ -1078,7 +1532,11 @@ namespace YARG.Tests.PlayMode
             foreach (var filter in group.GetComponentsInChildren<MeshFilter>(true))
             {
                 var bounds = filter.sharedMesh.bounds;
-                var child = group.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                // Compose the independent local chain. World inverse products at
+                // distant note positions erase small authored contact dimensions.
+                var child = Matrix4x4.identity;
+                for (var part = filter.transform; part != group; part = part.parent)
+                    child = Matrix4x4.TRS(part.localPosition, part.localRotation, part.localScale) * child;
                 var matrix = (replace ? replacement : Matrix4x4.TRS(group.localPosition, group.localRotation, group.localScale)) * child;
                 for (int i = 0; i < 8; i++)
                     points.Add(matrix.MultiplyPoint3x4(bounds.center + Vector3.Scale(bounds.extents,
@@ -1100,7 +1558,9 @@ namespace YARG.Tests.PlayMode
                 else if (mesh.name.Contains("Cymbal") && mesh.subMeshCount > 2) indices = mesh.GetTriangles(2);
                 else continue;
                 var points = mesh.vertices;
-                var matrix = highway.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                var matrix = Matrix4x4.identity;
+                for (var part = filter.transform; part != highway; part = part.parent)
+                    matrix = Matrix4x4.TRS(part.localPosition, part.localRotation, part.localScale) * matrix;
                 foreach (int index in indices) result.Add(matrix.MultiplyPoint3x4(points[index]));
                 Debug.Log($"Flam base mesh {group.name}/{filter.name}, mesh={mesh.name}, triangles={indices.Length / 3}, transform={matrix}");
             }
@@ -1223,6 +1683,24 @@ namespace YARG.Tests.PlayMode
         private static void AssertGameplayPairPoolReset(Component player, Component element, EliteDrumNote source,
             string layout = "V", bool lefty = false)
         {
+            // Compare to the assembled pool template, independently of whether
+            // an ordinary model ever needed a measured geometry cache entry.
+            var pool = element.GetType().GetProperty("ParentPool").GetValue(element);
+            var prefab = (GameObject) pool.GetType().GetProperty("Prefab").GetValue(pool);
+            var template = prefab.GetComponent(element.GetType());
+            var authored = new Dictionary<Component, (Vector3 scale, Vector3 position, Quaternion rotation)>();
+            foreach (string fieldName in new[]
+                { "NoteGroups", "StarPowerNoteGroups", "_splitGemGroups", "_splitStarGemGroups" })
+            {
+                var field = element.GetType().GetField(fieldName, PreparedElitePlayerFixture.INSTANCE);
+                var instances = ((IEnumerable) field.GetValue(element)).Cast<Component>().ToArray();
+                var originals = ((IEnumerable) field.GetValue(template)).Cast<Component>().ToArray();
+                for (int i = 0; i < instances.Length; i++)
+                {
+                    var original = originals[i].transform;
+                    authored[instances[i]] = (original.localScale, original.localPosition, original.localRotation);
+                }
+            }
             foreach (string shape in new[] { "regular", "flat", "ordinary" })
             {
                 ReturnCoverageElement(element);
@@ -1235,16 +1713,12 @@ namespace YARG.Tests.PlayMode
                 var groups = reused.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
                     .Where(g => g.gameObject.activeInHierarchy).ToArray();
                 Assert.That(groups, Has.Length.EqualTo(shape == "ordinary" ? 1 : 2));
-                var cache = (IDictionary)reused.GetType().GetField("_geometry", PreparedElitePlayerFixture.INSTANCE).GetValue(reused);
                 var resolved = (EliteDrumsResolvedLayout)player.GetType().GetProperty("Layout").GetValue(player);
                 float factor = 5f / resolved.Lanes.Count * (shape == "ordinary" ? 1f : (resolved.Lanes.Count - 1f) / resolved.Lanes.Count);
                 var ordered = groups.OrderBy(g => ActiveMeshBounds(g, player.transform).min).ToArray();
                 for (int i = 0; i < ordered.Length; i++)
                 {
-                    var geometry = cache[ordered[i]];
-                    var authoredScale = (Vector3)geometry.GetType().GetField("Scale", PreparedElitePlayerFixture.INSTANCE).GetValue(geometry);
-                    var authoredRotation = (Quaternion)geometry.GetType().GetField("Rotation", PreparedElitePlayerFixture.INSTANCE).GetValue(geometry);
-                    var authoredPosition = (Vector3)geometry.GetType().GetField("Position", PreparedElitePlayerFixture.INSTANCE).GetValue(geometry);
+                    var (authoredScale, authoredPosition, authoredRotation) = authored[ordered[i]];
                     var scale = ordered[i].transform.localScale;
                     Assert.That(scale.x, Is.EqualTo(authoredScale.x * factor).Within(0.00001f));
                     Assert.That(scale.y, Is.EqualTo(authoredScale.y).Within(0.00001f));
@@ -1510,7 +1984,7 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator CombinedKickFlamSelectsLiveAccentGroup()
+        public IEnumerator CombinedKickFlamSelectsDedicatedFlamGroup()
         {
             var layout = EliteDrumsLayoutPreset.Full;
             layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick);
@@ -1527,9 +2001,14 @@ namespace YARG.Tests.PlayMode
                 .Single(e => ReferenceEquals(e.GetType().GetProperty("NoteRef").GetValue(e), note));
             var groups = (Array) elementType.GetField("NoteGroups", PreparedElitePlayerFixture.INSTANCE).GetValue(element);
             var selected = elementType.BaseType.GetField("NoteGroup", PreparedElitePlayerFixture.INSTANCE).GetValue(element);
-            int accent = (int) elementType.GetField("ACCENT", BindingFlags.NonPublic | BindingFlags.Static).GetRawConstantValue();
-            Assert.That(selected, Is.SameAs(groups.GetValue(accent)),
-                "The live combined kick flam must select Accent rather than the compact ordinary kick group.");
+            int variantsStart = (int) elementType.GetField("KICK_VARIANTS_START",
+                BindingFlags.NonPublic | BindingFlags.Static).GetRawConstantValue();
+            var types = ((IEnumerable) Production("YARG.Themes.EliteKickAppearance")
+                .GetField("OptionalTypes").GetValue(null)).Cast<object>().ToArray();
+            int flamIndex = Array.FindIndex(types, type => type.ToString() == "DedicatedLaneKickFlam");
+            Assert.That(flamIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(selected, Is.SameAs(groups.GetValue(variantsStart + flamIndex)),
+                "A neutral kick flam in a dedicated lane uses the stacked flam model, not a hand-accent gem.");
             Assert.That(((Component) selected).gameObject.activeInHierarchy, Is.True);
             yield return _fixture.Dispose();
             _fixture = null;

@@ -14,6 +14,229 @@ namespace YARG.Tests.EditMode
             .Select(a => a.GetType("YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry"))
             .First(t => t != null);
 
+        [Test]
+        public void SessionGeometryReusesContentAndInvalidatesMeshAndAuthoredTransforms()
+        {
+            Geometry.GetMethod("ClearSessionCache", STATIC).Invoke(null, null);
+            var firstRoot = new GameObject("First scene");
+            var secondRoot = new GameObject("Independent scene");
+            var first = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            first.transform.SetParent(firstRoot.transform, false);
+            var mesh = UnityEngine.Object.Instantiate(first.GetComponent<MeshFilter>().sharedMesh);
+            first.GetComponent<MeshFilter>().sharedMesh = mesh;
+            var second = UnityEngine.Object.Instantiate(first, secondRoot.transform);
+            try
+            {
+                var type = Geometry.GetNestedType("ModelGeometry", BindingFlags.NonPublic);
+                object Measure(Transform model) => Activator.CreateInstance(type, INSTANCE, null, new object[] { model }, null);
+                long Identity(object value) => (long)type.GetField("Identity", INSTANCE).GetValue(value);
+                int Count() => (int)Geometry.GetField("ModelMeasurements", STATIC).GetValue(null);
+                var baseline = Measure(first.transform);
+                secondRoot.transform.SetPositionAndRotation(new Vector3(123, 45, -67), Quaternion.Euler(21, 31, 41));
+                secondRoot.transform.localScale = new Vector3(2, 3, 4);
+                second.GetComponent<Renderer>().enabled = false;
+                Assert.That(Identity(Measure(second.transform)), Is.EqualTo(Identity(baseline)),
+                    "Scene position and rendering-only settings cannot invalidate authored geometry.");
+                Assert.That(Count(), Is.EqualTo(1));
+                var vertices = mesh.vertices;
+                vertices[0] += new Vector3(0.001f, 0, 0);
+                mesh.vertices = vertices;
+                Geometry.Assembly.GetType("YARG.Gameplay.Visuals.EliteDrumsGeometryCache")
+                    .GetMethod("InvalidateMeshFingerprint", STATIC).Invoke(null, new object[] { mesh });
+                Assert.That(Identity(Measure(second.transform)), Is.Not.EqualTo(Identity(baseline)),
+                    "In-place mesh edits must invalidate even without a changed asset ID or bounds.");
+                Assert.That(Count(), Is.EqualTo(2));
+                second.transform.localRotation = Quaternion.Euler(0, 17, 0);
+                Measure(second.transform);
+                Assert.That(Count(), Is.EqualTo(3));
+                var child = new GameObject("Base");
+                child.transform.SetParent(second.transform, false);
+                child.AddComponent<MeshFilter>().sharedMesh = mesh;
+                Measure(second.transform);
+                child.transform.localPosition = new Vector3(0.1f, 0.2f, 0.3f);
+                Measure(second.transform);
+                Assert.That(Count(), Is.EqualTo(5), "Child authored transforms participate in geometry identity.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(firstRoot);
+                UnityEngine.Object.DestroyImmediate(secondRoot);
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
+        [Test]
+        public void SessionPlacementKeysIncludeLayoutAndSessionRetentionIsBounded()
+        {
+            Geometry.GetMethod("ClearSessionCache", STATIC).Invoke(null, null);
+            var root = new GameObject("Cache limits and settings");
+            try
+            {
+                var type = Geometry.GetNestedType("ModelGeometry", BindingFlags.NonPublic);
+                object Measure() => Activator.CreateInstance(type, INSTANCE, null, new object[] { root.transform }, null);
+                var left = Measure();
+                var right = Measure();
+                var fit = Geometry.GetMethod("FitPair", STATIC);
+                object[] args = { left, null, right, null, 5, 0f, 0.4f, 0f, true, Layout("V"), false, false };
+                void Fit(int expected)
+                {
+                    fit.Invoke(null, args);
+                    Assert.That(Geometry.GetField("PairComputations", STATIC).GetValue(null), Is.EqualTo(expected));
+                }
+                Fit(1); Fit(1);
+                args[9] = Layout("Bucket"); Fit(2);
+                args[9] = Layout("Parallel"); Fit(3);
+                args[11] = true; Fit(4);
+                args[6] = 0.5f; Fit(5);
+                args[4] = 7; Fit(6);
+                args[5] = 0.3f; Fit(7);
+                var cache = Geometry.Assembly.GetType("YARG.Gameplay.Visuals.EliteDrumsGeometryCache");
+                int modelLimit = (int)cache.GetField("MODEL_CAPACITY", STATIC).GetRawConstantValue();
+                int pairLimit = (int)cache.GetField("PAIR_CAPACITY", STATIC).GetRawConstantValue();
+                for (int i = 0; i <= modelLimit; i++)
+                {
+                    root.transform.localPosition = new Vector3(i + 1, 0, 0);
+                    Measure();
+                }
+                for (int i = 0; i <= pairLimit; i++)
+                {
+                    args[6] = 0.1f + i * 0.0001f;
+                    fit.Invoke(null, args);
+                }
+                Assert.That(((System.Collections.IDictionary)cache.GetField("Models", STATIC).GetValue(null)).Count,
+                    Is.EqualTo(modelLimit));
+                Assert.That(((System.Collections.IDictionary)cache.GetField("Pairs", STATIC).GetValue(null)).Count,
+                    Is.EqualTo(pairLimit));
+                Assert.That((long)cache.GetProperty("RetainedGeometryBytes", STATIC).GetValue(null),
+                    Is.LessThanOrEqualTo((long)cache.GetField("MODEL_BYTE_CAPACITY", STATIC).GetRawConstantValue()));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void LoadedMeshFingerprintsReuseIdentityAndSupportExplicitInvalidation()
+        {
+            Geometry.GetMethod("ClearSessionCache", STATIC).Invoke(null, null);
+            var counter = Geometry.GetField("MeshFingerprints", STATIC);
+            Assert.That(counter, Is.Not.Null, "Loaded note meshes must be fingerprinted once across independent preparations.");
+            var cache = Geometry.Assembly.GetType("YARG.Gameplay.Visuals.EliteDrumsGeometryCache");
+            var invalidate = cache.GetMethod("InvalidateMeshFingerprint", STATIC);
+            Assert.That(invalidate, Is.Not.Null, "Mesh mutation requires an explicit invalidation seam.");
+            var root = new GameObject("Loaded mesh fingerprint lifetime");
+            var filter = root.AddComponent<MeshFilter>();
+            var mesh = new Mesh { name = "Loaded note mesh" };
+            mesh.vertices = new[] { Vector3.zero, Vector3.right, Vector3.up };
+            mesh.triangles = new[] { 0, 1, 2 };
+            filter.sharedMesh = mesh;
+            Mesh replacement = null;
+            try
+            {
+                var type = Geometry.GetNestedType("ModelGeometry", BindingFlags.NonPublic);
+                object Measure() => Activator.CreateInstance(type, INSTANCE, null, new object[] { root.transform }, null);
+                long Identity(object value) => (long)type.GetField("Identity", INSTANCE).GetValue(value);
+                var first = Measure();
+                Measure();
+                root.transform.localRotation = Quaternion.Euler(0, 11, 0);
+                Measure();
+                Assert.That(counter.GetValue(null), Is.EqualTo(1), "Transform validation must reuse the already loaded mesh digest.");
+                root.transform.localRotation = Quaternion.identity;
+                replacement = UnityEngine.Object.Instantiate(mesh);
+                replacement.name = mesh.name;
+                filter.sharedMesh = replacement;
+                Assert.That(Identity(Measure()), Is.EqualTo(Identity(first)), "Reloaded identical content can reuse measured data after its new mesh is fingerprinted.");
+                Assert.That(counter.GetValue(null), Is.EqualTo(2));
+                var vertices = replacement.vertices;
+                vertices[0] += Vector3.forward * 0.01f;
+                replacement.vertices = vertices;
+                invalidate.Invoke(null, new object[] { replacement });
+                Assert.That(Identity(Measure()), Is.Not.EqualTo(Identity(first)), "Explicit invalidation must notice edits even without a new mesh identity.");
+                Assert.That(counter.GetValue(null), Is.EqualTo(3));
+                Measure();
+                Assert.That(counter.GetValue(null), Is.EqualTo(3));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(mesh);
+                if (replacement != null) UnityEngine.Object.DestroyImmediate(replacement);
+            }
+        }
+
+        [Test]
+        public void MeshFingerprintCacheDoesNotKeepDestroyedUnityObjectsAlive()
+        {
+            Geometry.GetMethod("ClearSessionCache", STATIC).Invoke(null, null);
+            var weak = FingerprintThenDestroyMesh();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            Assert.That(weak.IsAlive, Is.False, "Session fingerprint reuse must not strongly retain destroyed Mesh wrappers.");
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static WeakReference FingerprintThenDestroyMesh()
+        {
+            var root = new GameObject("Weak loaded mesh fingerprint");
+            var mesh = new Mesh { name = "Transient loaded note mesh" };
+            root.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var type = Geometry.GetNestedType("ModelGeometry", BindingFlags.NonPublic);
+            Activator.CreateInstance(type, INSTANCE, null, new object[] { root.transform }, null);
+            var weak = new WeakReference(mesh);
+            UnityEngine.Object.DestroyImmediate(root);
+            UnityEngine.Object.DestroyImmediate(mesh);
+            return weak;
+        }
+
+        [Test]
+        public void ParallelCymbalUsesOutlineWithBoundedOverlapRegardlessOfTriangleDensity()
+        {
+            var root = new GameObject("Approximate Parallel cymbal contact");
+            var mesh = new Mesh { name = "Cymbal Base" };
+            mesh.vertices = new[] { new Vector3(-0.5f, 0, -0.2f), new Vector3(0.5f, 0, -0.2f),
+                new Vector3(-0.5f, 0, 0.2f), new Vector3(0.5f, 0, 0.2f) };
+            var left = new GameObject("Left").transform;
+            var right = new GameObject("Right").transform;
+            foreach (var model in new[] { left, right })
+            {
+                model.SetParent(root.transform, false);
+                model.gameObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+            }
+            try
+            {
+                float? previous = null;
+                foreach (int density in new[] { 1, 37 })
+                {
+                    mesh.triangles = Enumerable.Range(0, density).SelectMany(i =>
+                        i % 2 == 0 ? new[] { 0, 2, 1, 1, 2, 3 } : new[] { 0, 2, 3, 0, 3, 1 }).ToArray();
+                    mesh.RecalculateBounds();
+                    Geometry.GetMethod("ClearSessionCache", STATIC).Invoke(null, null);
+                    left.localPosition = right.localPosition = Vector3.zero;
+                    left.localScale = right.localScale = Vector3.one;
+                    left.localRotation = right.localRotation = Quaternion.identity;
+                    var type = Geometry.GetNestedType("ModelGeometry", BindingFlags.NonPublic);
+                    var l = Activator.CreateInstance(type, INSTANCE, null, new object[] { left }, null);
+                    var r = Activator.CreateInstance(type, INSTANCE, null, new object[] { right }, null);
+                    var points = (Vector3[])type.GetMethod("ParallelPoints", INSTANCE).Invoke(l,
+                        new object[] { 0.8f, 1f, 25f, true, Vector3.zero });
+                    float outline = (float)Geometry.GetMethod("GetLateralContact", STATIC).Invoke(null, new object[] { points, points });
+                    Geometry.GetMethod("FitPair", STATIC).Invoke(null, new object[] { l, left, r, right,
+                        5, 0f, 0.4f, 0f, true, Layout("Parallel"), true, false });
+                    float actual = right.localPosition.x - left.localPosition.x;
+                    float overlap = Mathf.Min((points.Max(p => p.x) - points.Min(p => p.x)) * 0.04f, outline * 0.1f);
+                    Assert.That(actual, Is.EqualTo(outline - overlap).Within(0.00001f),
+                        "Regular Parallel cymbals use a small bounded outline overlap, without exact triangle matching.");
+                    Assert.That(actual, Is.GreaterThanOrEqualTo(outline * 0.9f));
+                    if (previous.HasValue) Assert.That(actual, Is.EqualTo(previous.Value).Within(0.00001f));
+                    previous = actual;
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+
         [TestCase(1)]
         [TestCase(5)]
         [TestCase(7)]
@@ -334,6 +557,7 @@ namespace YARG.Tests.EditMode
         [Test]
         public void ParallelCacheKeyInvalidatesGeometryInputsAndReusesTranslatedPlacement()
         {
+            Geometry.GetMethod("ClearSessionCache", STATIC).Invoke(null, null);
             var root = new GameObject("Parallel cache key test");
             var left = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
             var right = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
@@ -345,24 +569,24 @@ namespace YARG.Tests.EditMode
                 var l = Activator.CreateInstance(type, INSTANCE, null, new object[] { left }, null);
                 var r = Activator.CreateInstance(type, INSTANCE, null, new object[] { right }, null);
                 var fit = Geometry.GetMethod("FitPair", STATIC);
-                var computations = type.GetField("ParallelLayoutComputations", INSTANCE);
+                var computations = Geometry.GetField("PairComputations", STATIC);
                 object[] args = { l, left, r, right, 5, 0.2f, 0.4f, 0.1f, true, Layout("Parallel"), false, false };
 
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(1), "Nonempty geometry is computed on the first fit.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(1), "Nonempty geometry is computed on the first fit.");
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(1), "An identical key reuses computed geometry.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(1), "An identical key reuses computed geometry.");
 
                 args[11] = true;
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(2), "Changing handedness angle invalidates the cache.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(2), "Changing handedness angle invalidates the cache.");
                 args[4] = 7;
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(3), "A changed pair geometry factor invalidates the cache.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(3), "A changed pair geometry factor invalidates the cache.");
                 args[4] = 5;
                 args[6] = 0.5f;
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(4), "A changed lane width invalidates the cache.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(4), "A changed lane width invalidates the cache.");
 
                 var replacement = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
                 replacement.SetParent(root.transform, false);
@@ -370,17 +594,17 @@ namespace YARG.Tests.EditMode
                 args[2] = replacementGeometry;
                 args[3] = replacement;
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(5), "Replacing the right partner invalidates the cache.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(4), "Replacing a binding with identical measured geometry reuses the session placement.");
 
                 args[10] = true;
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(6), "Changing the cymbal geometry flag invalidates the cache.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(5), "Changing the cymbal geometry flag invalidates the cache.");
 
                 Vector3 leftPosition = left.localPosition;
                 Vector3 rightPosition = replacement.localPosition;
                 args[5] = 0.45f;
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(6), "Lane center changes placement but not cached geometry.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(6), "Lane center changes the cached placement; immutable measurements remain reusable.");
                 Assert.That(left.localPosition.x - leftPosition.x, Is.EqualTo(replacement.localPosition.x - rightPosition.x).Within(0.00001f));
                 Assert.That(left.localPosition.z, Is.EqualTo(replacement.localPosition.z).Within(0.00001f), "Translated pair keeps equal depth.");
 
@@ -388,7 +612,7 @@ namespace YARG.Tests.EditMode
                 rightPosition = replacement.localPosition;
                 args[7] = 0.3f;
                 fit.Invoke(null, args);
-                Assert.That((int)computations.GetValue(l), Is.EqualTo(6), "Element center changes placement but not cached geometry.");
+                Assert.That((int)computations.GetValue(null), Is.EqualTo(6), "Element center changes placement but not cached geometry.");
                 Assert.That(left.localPosition.x - leftPosition.x, Is.EqualTo(-0.2f).Within(0.00001f));
                 Assert.That(replacement.localPosition.x - rightPosition.x, Is.EqualTo(-0.2f).Within(0.00001f));
                 Assert.That(left.localPosition.z, Is.EqualTo(replacement.localPosition.z).Within(0.00001f), "Translated pair keeps equal depth.");
@@ -399,6 +623,7 @@ namespace YARG.Tests.EditMode
         [Test]
         public void ParallelEmptyGeometryAndInvalidInputsAreSafe()
         {
+            Geometry.GetMethod("ClearSessionCache", STATIC).Invoke(null, null);
             var root = new GameObject("Empty Parallel geometry");
             var left = new GameObject("Left").transform;
             var right = new GameObject("Right").transform;
@@ -413,10 +638,10 @@ namespace YARG.Tests.EditMode
                 object[] args = { l, left, r, right, 5, 0f, 0.4f, 0f, true, Layout("Parallel"), true, false };
                 Assert.DoesNotThrow(() => fit.Invoke(null, args));
                 Assert.DoesNotThrow(() => fit.Invoke(null, args)); // Cached empty configuration.
-                Assert.That((int)type.GetField("ParallelLayoutComputations", INSTANCE).GetValue(l), Is.EqualTo(1));
+                Assert.That((int)Geometry.GetField("PairComputations", STATIC).GetValue(null), Is.EqualTo(1));
                 args[11] = true;
                 fit.Invoke(null, args);
-                Assert.That((int)type.GetField("ParallelLayoutComputations", INSTANCE).GetValue(l), Is.EqualTo(2), "Handed angle invalidates layout cache.");
+                Assert.That((int)Geometry.GetField("PairComputations", STATIC).GetValue(null), Is.EqualTo(2), "Handed angle invalidates layout cache.");
                 foreach (int index in new[] { 5, 6, 7 })
                 foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
                 {
@@ -432,28 +657,26 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void SurfaceLateralContactMatchesYZNotProjectedXZ()
+        public void OutlineLateralContactIgnoresSurfaceYDetails()
         {
-            // Both triangles occupy the same YZ triangle. Their X values vary
-            // with Y; maximum difference is at Y=0, independent of XZ hulls.
-            var a = new[] { new Vector3(2f, 0f, 0f), new Vector3(1f, 1f, 0f), new Vector3(2f, 0f, 1f) };
-            var b = new[] { new Vector3(0f, 0f, 0f), new Vector3(0.5f, 1f, 0f), new Vector3(0f, 0f, 1f) };
-            float separation = (float)Geometry.GetMethod("GetSurfaceLateralContact", STATIC).Invoke(null, new object[] { a, b });
-            Assert.That(separation, Is.EqualTo(2f).Within(0.00001f));
-            Assert.That(float.IsNaN((float)Geometry.GetMethod("GetSurfaceLateralContact", STATIC)
-                .Invoke(null, new object[] { a, b.Select(p => p + Vector3.up * 3f).ToArray() })), Is.True,
-                "Disjoint YZ projections cannot contact through X translation alone.");
+            var a = new[] { new Vector3(-1, 0, -1), new Vector3(1, 0, -1), new Vector3(1, 0, 1) };
+            var b = a.Select((p, i) => p + Vector3.up * (i * 0.7f)).ToArray();
+            var contact = Geometry.GetMethod("GetLateralContact", STATIC);
+            float flat = (float)contact.Invoke(null, new object[] { a, a });
+            float sloped = (float)contact.Invoke(null, new object[] { a, b });
+            Assert.That(sloped, Is.EqualTo(flat), "Parallel appearance fits the outline, not exact triangle intersections.");
         }
 
-        [Test]
-        public void SurfaceLateralContactIncludesCollinearYZEndpoints()
+        [TestCase(1f, 1f, 1f, 0.96f)]
+        [TestCase(0.01f, 2f, 3f, 0.009f)]
+        [TestCase(1f, 0f, 1f, 1f)]
+        [TestCase(0f, 1f, 1f, 0f)]
+        public void ParallelCymbalOverlapIsBounded(float outline, float leftWidth, float rightWidth, float expected)
         {
-            var left = new[] { new Vector3(3f, 0f, 0f), new Vector3(3f, 0f, 1f), new Vector3(3f, 0f, 2f) };
-            var right = new[] { new Vector3(0f, 0f, -1f), new Vector3(1f, 0f, 1f), new Vector3(2f, 0f, 3f) };
-            float contact = (float)Geometry.GetMethod("GetSurfaceLateralContact", STATIC)
-                .Invoke(null, new object[] { left, right });
-            Assert.That(contact, Is.EqualTo(2.5f).Within(0.00001f),
-                "Projected collinear intervals overlap at a left endpoint inside a right edge.");
+            float actual = (float)Geometry.GetMethod("GetParallelCymbalSeparation", STATIC)
+                .Invoke(null, new object[] { outline, leftWidth, rightWidth });
+            Assert.That(actual, Is.EqualTo(expected).Within(0.000001f));
+            Assert.That(actual, Is.GreaterThanOrEqualTo(outline * 0.9f));
         }
 
         [Test]

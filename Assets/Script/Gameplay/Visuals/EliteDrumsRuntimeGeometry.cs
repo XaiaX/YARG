@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using UnityEngine;
 using YARG.Core.Chart;
 using YARG.Core.Game;
@@ -12,6 +13,62 @@ namespace YARG.Gameplay.Visuals
     internal static class EliteDrumsRuntimeGeometry
     {
         internal const float FLAM_ANGLE = 25f;
+        internal static int ModelMeasurements, PairComputations, MeshFingerprints;
+        internal static double MeasurementMilliseconds, PairMilliseconds, SignatureMilliseconds;
+        internal static double LastPreparationMilliseconds;
+
+        internal static void ClearSessionCache()
+        {
+            EliteDrumsGeometryCache.Clear();
+            ModelMeasurements = PairComputations = MeshFingerprints = 0;
+            MeasurementMilliseconds = PairMilliseconds = SignatureMilliseconds = 0d;
+        }
+
+        // A managed value target lets the existing fitting math produce a complete
+        // pair without temporary GameObjects or retaining either live transform.
+        internal sealed class ModelPose
+        {
+            internal Vector3 localPosition, localScale;
+            internal Quaternion localRotation;
+            internal ModelPose(ModelGeometry geometry)
+            {
+                localPosition = geometry.Position;
+                localScale = geometry.Scale;
+                localRotation = geometry.Rotation;
+            }
+            internal void Apply(Transform model)
+            {
+                if (model == null) return;
+                model.localPosition = localPosition;
+                model.localScale = localScale;
+                model.localRotation = localRotation;
+            }
+        }
+
+        internal sealed class PairPlacement
+        {
+            internal readonly Pose Left, Right;
+            internal PairPlacement(ModelPose left, ModelPose right) { Left = new Pose(left); Right = new Pose(right); }
+        }
+
+        internal readonly struct Pose
+        {
+            private readonly Vector3 _position, _scale;
+            private readonly Quaternion _rotation;
+            internal Pose(ModelPose builder)
+            {
+                _position = builder.localPosition;
+                _scale = builder.localScale;
+                _rotation = builder.localRotation;
+            }
+            internal void Apply(Transform model, float elementCenter)
+            {
+                if (model == null) return;
+                model.localPosition = _position - new Vector3(elementCenter, 0f, 0f);
+                model.localScale = _scale;
+                model.localRotation = _rotation;
+            }
+        }
 
         internal static float GetPairWidthFactor(int columns) => columns > 1 ? (columns - 1f) / columns : 0.5f;
 
@@ -40,22 +97,30 @@ namespace YARG.Gameplay.Visuals
         // child highlights and caps are preserved without world AABB projection.
         internal sealed class ModelGeometry
         {
+            internal readonly long Identity;
+            internal Dictionary<EliteDrumsGeometryCache.PairKey, PairPlacement> PreparedPlacements;
             internal readonly Vector3 Scale;
             internal readonly Vector3 Position;
             internal readonly Quaternion Rotation;
             private readonly Vector3[] _corners;
             private readonly Vector3[] _basePlane;
-            private readonly Vector3[] _baseTriangles;
-            internal ModelGeometry CachedPartner;
-            internal float CachedFactor, CachedOrdinaryFactor, CachedAngle, CachedSeparation;
-            internal bool CachedCymbal;
-            internal int ParallelLayoutComputations;
-            internal Vector3 CachedLeftPosition, CachedRightPosition;
-            internal float CachedMin, CachedMax;
-            internal float CachedOutlineContact, CachedSurfaceContact, CachedContactRoundoff;
+            internal long ArrayBytes => 12L * (_corners.Length + _basePlane.Length);
+            internal ModelGeometry(Transform model) : this(EliteDrumsGeometryCache.GetModel(model)) { }
 
-            internal ModelGeometry(Transform model)
+            internal ModelGeometry(ModelGeometry source)
             {
+                Identity = source.Identity;
+                Scale = source.Scale;
+                Position = source.Position;
+                Rotation = source.Rotation;
+                _corners = source._corners;
+                _basePlane = source._basePlane;
+                PreparedPlacements = source.PreparedPlacements;
+            }
+
+            internal ModelGeometry(Transform model, long identity)
+            {
+                Identity = identity;
                 Scale = model.localScale;
                 Position = model.localPosition;
                 Rotation = model.localRotation;
@@ -65,7 +130,7 @@ namespace YARG.Gameplay.Visuals
                 {
                     if (filter.sharedMesh == null) continue;
                     var bounds = filter.sharedMesh.bounds;
-                    var matrix = model.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                    var matrix = EliteDrumsGeometryCache.RelativeMatrix(model, filter.transform);
                     for (int i = 0; i < 8; i++)
                     {
                         var p = bounds.center + Vector3.Scale(bounds.extents, new Vector3(
@@ -78,19 +143,17 @@ namespace YARG.Gameplay.Visuals
                 // The base child itself is tilted in the assembled model. Slicing
                 // assembled Y selects only an edge, not the base contact surface.
                 var vertices = new List<Vector3>();
-                var triangles = new List<Vector3>();
                 foreach (var filter in filters)
                 {
                     var mesh = filter.sharedMesh;
                     if (mesh == null || !mesh.isReadable) continue;
                     if (filter.transform.name == "Upper Cymbal" ||
                         filter.transform.parent != null && filter.transform.parent.name == "Upper Cymbal") continue;
-                    var matrix = model.worldToLocalMatrix * filter.transform.localToWorldMatrix;
+                    var matrix = EliteDrumsGeometryCache.RelativeMatrix(model, filter.transform);
                     var points = mesh.vertices;
                     if (mesh.name == "Cymbal Base" || filter.transform.name == "Base")
                     {
                         foreach (var point in points) vertices.Add(matrix.MultiplyPoint3x4(point));
-                        foreach (int index in mesh.triangles) triangles.Add(matrix.MultiplyPoint3x4(points[index]));
                     }
                     else if (mesh.name.Contains("Cymbal") && mesh.subMeshCount > 2)
                     {
@@ -100,12 +163,10 @@ namespace YARG.Gameplay.Visuals
                         {
                             var point = matrix.MultiplyPoint3x4(points[index]);
                             vertices.Add(point);
-                            triangles.Add(point);
                         }
                     }
                 }
                 _basePlane = new HashSet<Vector3>(vertices).ToArray();
-                _baseTriangles = triangles.ToArray();
             }
 
             internal Vector3[] ParallelPoints(float factor, float ordinaryFactor, float angle, bool contact,
@@ -128,11 +189,11 @@ namespace YARG.Gameplay.Visuals
                     .Select(matrix.MultiplyPoint3x4).ToArray();
             }
 
-            internal Vector3[] ParallelTriangles(float factor, float angle, Vector3 position)
+            internal void ResetPose(ModelPose model)
             {
-                var matrix = Matrix4x4.TRS(position, Quaternion.AngleAxis(angle, Vector3.up) * Rotation,
-                    new Vector3(Scale.x * factor, Scale.y, Scale.z));
-                return _baseTriangles.Select(matrix.MultiplyPoint3x4).ToArray();
+                model.localPosition = Position;
+                model.localScale = Scale;
+                model.localRotation = Rotation;
             }
 
             internal void Reset(Transform model)
@@ -206,6 +267,13 @@ namespace YARG.Gameplay.Visuals
 
             internal void Apply(Transform model, float factor, float angle, float origin, bool alternateLayout = false)
             {
+                var pose = new ModelPose(this);
+                ApplyPose(pose, factor, angle, origin, alternateLayout);
+                pose.Apply(model);
+            }
+
+            internal void ApplyPose(ModelPose model, float factor, float angle, float origin, bool alternateLayout = false)
+            {
                 // Forward-axis tilt lowers the inner edges into a shallow bowl.
                 var rotation = Quaternion.AngleAxis(alternateLayout ? -angle : angle,
                     alternateLayout ? Vector3.forward : Vector3.up);
@@ -255,133 +323,42 @@ namespace YARG.Gameplay.Visuals
             return contact;
         }
 
-        internal static float GetSurfaceLateralContact(Vector3[] left, Vector3[] right)
+        internal static float GetParallelCymbalSeparation(float outline, float leftWidth, float rightWidth)
         {
-            double best = double.NegativeInfinity;
-            double Cross(double ay, double az, double by, double bz) => ay * bz - az * by;
-            void Vertex(Vector3 p, Vector3 a, Vector3 b, Vector3 c, bool reverse)
-            {
-                double denominator = Cross(b.y - a.y, b.z - a.z, c.y - a.y, c.z - a.z);
-                if (System.Math.Abs(denominator) < 1e-16) return;
-                double u = Cross(p.y - a.y, p.z - a.z, c.y - a.y, c.z - a.z) / denominator;
-                double v = Cross(b.y - a.y, b.z - a.z, p.y - a.y, p.z - a.z) / denominator;
-                if (u < -1e-7 || v < -1e-7 || u + v > 1.0000001) return;
-                double x = a.x + u * (b.x - a.x) + v * (c.x - a.x);
-                best = System.Math.Max(best, reverse ? x - p.x : p.x - x);
-            }
-            void Endpoint(Vector3 p, Vector3 a, Vector3 b, bool reverse)
-            {
-                double dy = (double)b.y - a.y, dz = (double)b.z - a.z;
-                double length = dy * dy + dz * dz;
-                double py = (double)p.y - a.y, pz = (double)p.z - a.z;
-                if (length < 1e-24)
-                {
-                    if (py * py + pz * pz > 1e-16) return;
-                    double x = reverse ? System.Math.Max(a.x, b.x) - p.x : p.x - System.Math.Min(a.x, b.x);
-                    best = System.Math.Max(best, x);
-                    return;
-                }
-                double t = (py * dy + pz * dz) / length;
-                if (t < -1e-7 || t > 1.0000001) return;
-                double ey = py - t * dy, ez = pz - t * dz;
-                if (ey * ey + ez * ez > 1e-16) return;
-                t = System.Math.Max(0d, System.Math.Min(1d, t));
-                double xAtPoint = a.x + t * ((double)b.x - a.x);
-                best = System.Math.Max(best, reverse ? xAtPoint - p.x : p.x - xAtPoint);
-            }
-            void Edge(Vector3 a, Vector3 b, Vector3 c, Vector3 d)
-            {
-                // Endpoints of collinear projected overlap are vertices of the
-                // feasible contact interval too. Include point-projected edges.
-                Endpoint(a, c, d, false);
-                Endpoint(b, c, d, false);
-                Endpoint(c, a, b, true);
-                Endpoint(d, a, b, true);
-                double denominator = Cross(b.y - a.y, b.z - a.z, d.y - c.y, d.z - c.z);
-                if (System.Math.Abs(denominator) < 1e-16) return;
-                double t = Cross(c.y - a.y, c.z - a.z, d.y - c.y, d.z - c.z) / denominator;
-                double u = Cross(c.y - a.y, c.z - a.z, b.y - a.y, b.z - a.z) / denominator;
-                if (t < -1e-7 || t > 1.0000001 || u < -1e-7 || u > 1.0000001) return;
-                best = System.Math.Max(best, a.x + t * (b.x - a.x) - c.x - u * (d.x - c.x));
-            }
-            foreach (var a in left)
-            foreach (var b in right)
-                if (System.Math.Abs((double)a.y - b.y) < 1e-8 && System.Math.Abs((double)a.z - b.z) < 1e-8)
-                    best = System.Math.Max(best, (double)a.x - b.x);
-            for (int i = 0; i + 2 < left.Length; i += 3)
-            for (int j = 0; j + 2 < right.Length; j += 3)
-            {
-                for (int k = 0; k < 3; k++)
-                {
-                    Vertex(left[i + k], right[j], right[j + 1], right[j + 2], false);
-                    Vertex(right[j + k], left[i], left[i + 1], left[i + 2], true);
-                    for (int m = 0; m < 3; m++) Edge(left[i + k], left[i + (k + 1) % 3], right[j + m], right[j + (m + 1) % 3]);
-                }
-            }
-            return double.IsNegativeInfinity(best) ? float.NaN : Mathf.Max(0f, (float)best);
+            // Deliberate visual overlap rather than triangle-surface matching.
+            // Preserve at least 90% of the outline separation for thin/custom rims.
+            const float BASE_WIDTH_OVERLAP = 0.04f;
+            const float MAX_SEPARATION_OVERLAP = 0.1f;
+            float overlap = Mathf.Min(Mathf.Min(leftWidth, rightWidth) * BASE_WIDTH_OVERLAP,
+                outline * MAX_SEPARATION_OVERLAP);
+            return Mathf.Max(0f, outline - Mathf.Max(0f, overlap));
         }
 
-        private static void FitParallel(ModelGeometry left, Transform leftModel, ModelGeometry right, Transform rightModel,
+        private static void FitParallel(ModelGeometry left, ModelPose leftModel, ModelGeometry right, ModelPose rightModel,
             int columns, float laneCenter, float laneWidth, float elementCenter, float factor, float angle, bool cymbal)
         {
             float ordinaryFactor = GetAuthoredLaneScale(laneWidth, TrackPlayer.TRACK_WIDTH / 5f);
-            if (left.CachedPartner != right || left.CachedFactor != factor || left.CachedOrdinaryFactor != ordinaryFactor ||
-                left.CachedAngle != angle || left.CachedCymbal != cymbal)
+            var lc = left.ParallelPoints(factor, ordinaryFactor, angle, cymbal, out var leftPosition);
+            var rc = right.ParallelPoints(factor, ordinaryFactor, angle, cymbal, out var rightPosition);
+            float contact = GetLateralContact(lc, rc);
+            if (cymbal)
             {
-                left.ParallelLayoutComputations++;
-                var lc = left.ParallelPoints(factor, ordinaryFactor, angle, cymbal, out var leftPosition);
-                var rc = right.ParallelPoints(factor, ordinaryFactor, angle, cymbal, out var rightPosition);
-                float contact = GetLateralContact(lc, rc);
-                left.CachedOutlineContact = contact;
-                left.CachedSurfaceContact = float.NaN;
-                left.CachedContactRoundoff = 0f;
-                if (cymbal)
-                {
-                    var lt = left.ParallelTriangles(factor, angle, leftPosition);
-                    var rt = right.ParallelTriangles(factor, angle, rightPosition);
-                    float surfaceContact = GetSurfaceLateralContact(lt, rt);
-                    float coordinateScale = 0f;
-                    void IncludeScale(Vector3 p) => coordinateScale = Mathf.Max(coordinateScale,
-                        Mathf.Max(Mathf.Abs(p.x), Mathf.Max(Mathf.Abs(p.y), Mathf.Abs(p.z))));
-                    foreach (var p in lt) IncludeScale(p);
-                    foreach (var p in rt) IncludeScale(p);
-                    // Capturing child coordinates, transforming them and subtracting
-                    // interpolated X values involves several float dot products.
-                    // Budget 32 single-precision rounding units at their coordinate
-                    // scale; float.Epsilon is the subnormal minimum, not precision.
-                    // Identical thin surfaces can otherwise produce a tiny positive
-                    // candidate that is numerical zero, collapsing both members.
-                    // Keep the complete outline fit, never an epsilon-sized spacing.
-                    const float FLOAT_ROUNDING_UNIT = 1f / 16777216f;
-                    const float ROUNDING_BUDGET = 32f * FLOAT_ROUNDING_UNIT / (1f - 32f * FLOAT_ROUNDING_UNIT);
-                    float roundoff = coordinateScale * ROUNDING_BUDGET;
-                    left.CachedSurfaceContact = surfaceContact;
-                    left.CachedContactRoundoff = roundoff;
-                    if (float.IsFinite(surfaceContact) && (surfaceContact > roundoff || contact <= 0f)) contact = surfaceContact;
-                }
-                var l = left.ParallelPoints(factor, ordinaryFactor, angle, false, out _);
-                var r = right.ParallelPoints(factor, ordinaryFactor, angle, false, out _);
-                left.CachedMin = Mathf.Min(l.Length == 0 ? 0f : l.Min(p => p.x), (r.Length == 0 ? 0f : r.Min(p => p.x)) + contact);
-                left.CachedMax = Mathf.Max(l.Length == 0 ? 0f : l.Max(p => p.x), (r.Length == 0 ? 0f : r.Max(p => p.x)) + contact);
-                left.CachedLeftPosition = leftPosition;
-                left.CachedRightPosition = rightPosition;
-                left.CachedSeparation = contact;
-                left.CachedPartner = right;
-                left.CachedFactor = factor;
-                left.CachedOrdinaryFactor = ordinaryFactor;
-                left.CachedAngle = angle;
-                left.CachedCymbal = cymbal;
+                float leftWidth = lc.Length == 0 ? 0f : lc.Max(p => p.x) - lc.Min(p => p.x);
+                float rightWidth = rc.Length == 0 ? 0f : rc.Max(p => p.x) - rc.Min(p => p.x);
+                contact = GetParallelCymbalSeparation(contact, leftWidth, rightWidth);
             }
-            var lp = left.CachedLeftPosition;
-            var rp = left.CachedRightPosition;
-            float separation = left.CachedSeparation;
-            float min = left.CachedMin;
-            float max = left.CachedMax;
+            var l = left.ParallelPoints(factor, ordinaryFactor, angle, false, out _);
+            var r = right.ParallelPoints(factor, ordinaryFactor, angle, false, out _);
+            float min = Mathf.Min(l.Length == 0 ? 0f : l.Min(p => p.x), (r.Length == 0 ? 0f : r.Min(p => p.x)) + contact);
+            float max = Mathf.Max(l.Length == 0 ? 0f : l.Max(p => p.x), (r.Length == 0 ? 0f : r.Max(p => p.x)) + contact);
+            var lp = leftPosition;
+            var rp = rightPosition;
+            float separation = contact;
             float halfPair = (max - min) * 0.5f;
             float outer = (TrackPlayer.TRACK_WIDTH - laneWidth) * 0.5f;
             float midpoint = columns > 1 && outer > 0f ? laneCenter / outer * (TrackPlayer.TRACK_WIDTH * 0.5f - halfPair) : 0f;
             float origin = midpoint - (min + max) * 0.5f - elementCenter;
-            void Apply(ModelGeometry geometry, Transform model, Vector3 position, float x)
+            void Apply(ModelGeometry geometry, ModelPose model, Vector3 position, float x)
             {
                 if (model == null) return;
                 model.localScale = new Vector3(geometry.Scale.x * factor, geometry.Scale.y, geometry.Scale.z);
@@ -404,6 +381,42 @@ namespace YARG.Gameplay.Visuals
                 if (rightModel != null) right.Reset(rightModel);
                 return;
             }
+            // Store highway-local poses, with the lane center in the key. The
+            // note element offset is applied afterward; world positions are absent.
+            var key = new EliteDrumsGeometryCache.PairKey(left.Identity, right.Identity, columns,
+                laneCenter, laneWidth, regularFlam, layout, cymbalModel, lefty);
+            PairPlacement placement;
+            if (left.PreparedPlacements == null || !left.PreparedPlacements.TryGetValue(key, out placement))
+            {
+                if (!EliteDrumsGeometryCache.TryGetPair(key, out placement))
+                {
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    var l = new ModelPose(left);
+                    var r = new ModelPose(right);
+                    FitPairUncached(left, l, right, r, columns, laneCenter, laneWidth, 0f,
+                        regularFlam, layout, cymbalModel, lefty);
+                    placement = new PairPlacement(l, r);
+                    PairComputations++;
+                    PairMilliseconds += clock.Elapsed.TotalMilliseconds;
+                    EliteDrumsGeometryCache.AddPair(key, placement);
+                }
+                left.PreparedPlacements?.TryAdd(key, placement);
+            }
+            placement.Left.Apply(leftModel, elementCenter);
+            placement.Right.Apply(rightModel, elementCenter);
+        }
+
+        private static void FitPairUncached(ModelGeometry left, ModelPose leftModel, ModelGeometry right,
+            ModelPose rightModel, int columns, float laneCenter, float laneWidth, float elementCenter,
+            bool regularFlam, EliteFlamLayout layout, bool cymbalModel, bool lefty)
+        {
+            if (!float.IsFinite(laneCenter) || !float.IsFinite(laneWidth) || laneWidth <= 0f ||
+                !float.IsFinite(elementCenter))
+            {
+                if (leftModel != null) left.ResetPose(leftModel);
+                if (rightModel != null) right.ResetPose(rightModel);
+                return;
+            }
             float factor = GetAuthoredLaneScale(laneWidth, TrackPlayer.TRACK_WIDTH / 5f) * GetPairWidthFactor(columns);
             bool bucket = regularFlam && layout == EliteFlamLayout.Bucket;
             bool parallel = regularFlam && layout == EliteFlamLayout.Parallel;
@@ -423,8 +436,8 @@ namespace YARG.Gameplay.Visuals
                 right.Extents(factor, rightAngle, out float rMin, out float rMax);
                 GetPairPlacement(lMin, lMax, rMin, rMax, laneCenter, laneWidth,
                     TrackPlayer.TRACK_WIDTH, columns, out float lx, out float rx);
-                if (leftModel != null) left.Apply(leftModel, factor, leftAngle, lx - elementCenter, bucket);
-                if (rightModel != null) right.Apply(rightModel, factor, rightAngle, rx - elementCenter, bucket);
+                if (leftModel != null) left.ApplyPose(leftModel, factor, leftAngle, lx - elementCenter, bucket);
+                if (rightModel != null) right.ApplyPose(rightModel, factor, rightAngle, rx - elementCenter, bucket);
                 return;
             }
 
@@ -448,12 +461,12 @@ namespace YARG.Gameplay.Visuals
             float longitudinalCenter = 0f;
             if (leftModel != null)
             {
-                left.Apply(leftModel, factor, leftAngle, origin, bucket);
+                left.ApplyPose(leftModel, factor, leftAngle, origin, bucket);
                 leftModel.localPosition += new Vector3(0f, -separation.y * 0.5f, longitudinalCenter - separation.z * 0.5f);
             }
             if (rightModel != null)
             {
-                right.Apply(rightModel, factor, rightAngle, origin + separation.x, bucket);
+                right.ApplyPose(rightModel, factor, rightAngle, origin + separation.x, bucket);
                 rightModel.localPosition += new Vector3(0f, separation.y * 0.5f, longitudinalCenter + separation.z * 0.5f);
             }
         }

@@ -22,6 +22,7 @@ namespace YARG.Tests.PlayMode
         private object _session;
         private EngineManager _engines;
         private int _highwayCount;
+        internal double PlayerInitializationMilliseconds { get; private set; }
         internal Component Player { get; private set; }
         internal Component Manager { get; private set; }
         internal SongChart Chart { get; private set; }
@@ -33,13 +34,20 @@ namespace YARG.Tests.PlayMode
         private GameObject Own(GameObject value) { _objects.Add(value); return value; }
 
         internal IEnumerator Initialize(SongChart chart, YargProfile profile, EliteDrumsLayoutPreset layout,
-            bool legacyTheme = false, bool noFail = false)
+            bool legacyTheme = false, bool noFail = false, bool noStarPowerOverlap = false)
         {
             _highwayCount = (int) Type("YARG.Gameplay.Player.TrackPlayer").GetField("HighwayCount").GetValue(null);
             Chart = chart;
             Assert.That(EliteDrumsLayoutValidator.Validate(layout).IsRuntimeSupported, Is.True,
                 "The fixture must test its requested layout rather than the runtime fallback.");
             _session = PreparedElitePlayerFixture.PrepareSession(profile, chart, Instrument.EliteDrums);
+            if (noStarPowerOverlap)
+            {
+                var property = _session.GetType().GetProperty("EnginePreset");
+                var preset = (EnginePreset)((EnginePreset)property.GetValue(_session)).CopyWithNewName("Cache overlap coverage");
+                preset.Drums.NoStarPowerOverlap = true;
+                property.SetValue(_session, preset);
+            }
             _session.GetType().GetProperty("EliteDrumsLayout").SetValue(_session, layout);
             profile.ReplayEliteDrumsLayout = layout.Copy();
             _engines = new EngineManager();
@@ -86,11 +94,13 @@ namespace YARG.Tests.PlayMode
             Player = player;
             chart.SyncTrack.GenerateBeatlines(10d, true);
             playerObject.SetActive(true);
+            var initializationClock = System.Diagnostics.Stopwatch.StartNew();
             player.GetType().GetMethod("Initialize", FLAGS, null, new[]
             {
                 typeof(int), Type("YARG.Player.YargPlayer"), typeof(SongChart),
                 Type("YARG.Gameplay.HUD.TrackView"), typeof(StemMixer), typeof(int?)
             }, null).Invoke(player, new object[] { 0, _session, chart, view, null, null });
+            PlayerInitializationMilliseconds = initializationClock.Elapsed.TotalMilliseconds;
             if (noFail)
             {
                 _engines.InitializeHappiness(true);
