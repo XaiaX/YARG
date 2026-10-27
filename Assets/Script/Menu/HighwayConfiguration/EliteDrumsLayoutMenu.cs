@@ -1047,9 +1047,13 @@ namespace YARG.Menu.HighwayConfiguration
                     _profileSelectedLayoutId = committed.Id;
                 }
             }
+            // Saving establishes a new edit baseline; Back owns leaving the editor.
             _original = committed.Copy();
+            _draft = committed.Copy();
             IsDirty = false;
-            Close();
+            _newCopy = false;
+            Render();
+            UpdateManagementActions();
         }
 
         public void RequestClose()

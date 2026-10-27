@@ -467,13 +467,14 @@ namespace YARG.Tests.PlayMode
             TraverseNavigation(menu, ((Button)Field(menu, "_save")).GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable")));
             Call(Field(menu, "_navigation"), "ConfirmSelection");
             Assert.That(saves, Is.EqualTo(1));
-            Assert.That(closes, Is.EqualTo(1));
+            Assert.That(closes, Is.Zero, "Save must not invoke the exit callback.");
             Assert.That(saved.Id, Is.EqualTo(source.Id));
             Assert.That(saved, Is.Not.SameAs(source));
-            Assert.That(_root.activeSelf, Is.False);
-            Call(menu, "Initialize", saved, save, close);
+            Assert.That(_root.activeSelf, Is.True, "Save must leave the editor open.");
+            Assert.That(menuType.GetProperty("IsDirty").GetValue(menu), Is.False);
+            Assert.That(menuType.GetProperty("Draft").GetValue(menu), Is.Not.Null);
             Call(menu, "Back");
-            Assert.That(closes, Is.EqualTo(2));
+            Assert.That(closes, Is.EqualTo(1));
             Assert.That(saves, Is.EqualTo(1));
             Assert.That(_dialogManager.GetType().GetProperty("IsDialogShowing").GetValue(_dialogManager), Is.False);
             Call(menu, "Initialize", saved, save, close);
@@ -486,7 +487,7 @@ namespace YARG.Tests.PlayMode
             yield return null;
             Assert.That(_dialogManager.GetType().GetProperty("IsDialogShowing").GetValue(_dialogManager), Is.True);
             Assert.That(_dialogRoot.GetComponentInChildren(Production("YARG.Menu.Dialogs.MessageDialog"), true), Is.Not.Null);
-            Assert.That(closes, Is.EqualTo(2), "Dirty Back must not close before confirmation.");
+            Assert.That(closes, Is.EqualTo(1), "Dirty Back must not close before confirmation.");
             Assert.That(saves, Is.EqualTo(1), "Dirty Back must not implicitly save.");
             Call(menu, "Back");
             Assert.That(_dialogManager.GetType().GetProperty("IsDialogShowing").GetValue(_dialogManager), Is.False);

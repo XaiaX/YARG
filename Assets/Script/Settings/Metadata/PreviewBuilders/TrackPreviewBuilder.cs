@@ -72,7 +72,12 @@ namespace YARG.Settings.Metadata
                 if (_currentTrackPreview != null)
                 {
                     _currentTrackPreview.ForceStarPowerNotes = value;
-                    _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
+                    // The world exists before Start assigns its color profile. Keep
+                    // the option pending during same-frame preset refreshes.
+                    if (_currentTrackPreview.ColorProfile != null)
+                    {
+                        _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
+                    }
                 }
             }
         }
@@ -89,7 +94,10 @@ namespace YARG.Settings.Metadata
                 if (_currentTrackPreview != null)
                 {
                     _currentTrackPreview.LeftyFlip = value;
-                    _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
+                    if (_currentTrackPreview.ColorProfile != null)
+                    {
+                        _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
+                    }
                 }
             }
         }

@@ -324,6 +324,20 @@ namespace YARG.Tests.PlayMode
             Assert.That(_boundaryCommitCalls, Is.EqualTo(1));
             Assert.That(_boundaryLayoutWrites, Is.Zero,
                 "Saving an already assigned layout must not redundantly write its profile ID.");
+            Assert.That(_root.activeSelf, Is.True, "A successful save must keep the profile editor open.");
+            Assert.That(menu.GetType().GetProperty("IsDirty").GetValue(menu), Is.False);
+            Call(menu, "ShiftLeft");
+            Assert.That(menu.GetType().GetProperty("IsDirty").GetValue(menu), Is.True,
+                "Further changes compare against the newly saved layout.");
+            Call(menu, "ShiftRight");
+            Assert.That(menu.GetType().GetProperty("IsDirty").GetValue(menu), Is.False,
+                "Returning to the saved layout must clear the unsaved-change state.");
+            ((Button)Field(menu, "_save")).onClick.Invoke();
+            Assert.That(_boundaryCommitCalls, Is.EqualTo(2), "Save remains usable without reopening the editor.");
+            Assert.That(_boundaryProfileLayoutId, Is.EqualTo(stored.Id));
+            Assert.That(_root.activeSelf, Is.True);
+            Call(menu, "Back");
+            Assert.That(_root.activeSelf, Is.False, "Back is the separate exit action.");
 #else
             Assert.Ignore("Requires production prefabs from the Editor asset database.");
             yield break;
