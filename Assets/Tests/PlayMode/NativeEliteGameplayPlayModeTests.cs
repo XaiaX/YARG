@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Reflection;
@@ -37,6 +38,7 @@ namespace YARG.Tests.PlayMode
         private Type _typedTrackPlayerType;
         private SongChart _chart;
         private EliteDrumNote _note;
+        private EliteLayoutRuntimePlayModeTests _settingsFixture;
 
         private static Type ProductionType(string name)
         {
@@ -146,6 +148,7 @@ namespace YARG.Tests.PlayMode
             if (_managerObject != null) UnityEngine.Object.Destroy(_managerObject);
             yield return null;
             if (_session != null) _session.GetType().GetMethod("Dispose").Invoke(_session, null);
+            if (_settingsFixture != null) yield return _settingsFixture.TearDown();
         }
 
         [UnityTest]
@@ -182,6 +185,42 @@ namespace YARG.Tests.PlayMode
             var manager = (EngineManager) _manager.GetType().GetProperty("EngineManager").GetValue(_manager);
             Assert.That(manager.Engines, Has.Count.EqualTo(1));
             Assert.That(manager.Engines[0].Instrument, Is.EqualTo(Instrument.EliteDrums));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator HiHatClosureToggleIsFrozenForLiveAndRecordedForReplay()
+        {
+            _settingsFixture = new EliteLayoutRuntimePlayModeTests();
+            yield return _settingsFixture.SetUpSettingsAndAudio();
+            var settings = ProductionType("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
+            var property = settings.GetType().GetProperty("EliteHiHatClosureForgiveness");
+            Assert.That(property, Is.Not.Null, "Experimental closure forgiveness toggle");
+            var toggle = property.GetValue(settings);
+            var value = toggle.GetType().GetProperty("Value");
+            object original = value.GetValue(toggle);
+            try
+            {
+                value.SetValue(toggle, false);
+                var off = CreateRegisteredEngine();
+                Assert.That(((DrumsEngineParameters)off.BaseParameters).HiHatClosureSuppression, Is.False);
+                value.SetValue(toggle, true);
+                Assert.That(((DrumsEngineParameters)off.BaseParameters).HiHatClosureSuppression, Is.False, "Current session stays frozen");
+                var on = CreateRegisteredEngine();
+                Assert.That(((DrumsEngineParameters)on.BaseParameters).HiHatClosureSuppression, Is.True);
+                Assert.That(((DrumsEngineParameters)on.BaseParameters).HiHatClosureWindow, Is.EqualTo(.03));
+
+                _session.GetType().GetProperty("IsReplay").GetSetMethod(true).Invoke(_session, new object[] { true });
+                var parameterOverride = _session.GetType().GetProperty("EngineParameterOverride");
+                parameterOverride.SetValue(_session, ((DrumsEngineParameters)off.BaseParameters));
+                Assert.That(((DrumsEngineParameters)CreateRegisteredEngine().BaseParameters).HiHatClosureSuppression, Is.False,
+                    "Enabled live setting must not change an old/off replay");
+                value.SetValue(toggle, false);
+                parameterOverride.SetValue(_session, ((DrumsEngineParameters)on.BaseParameters));
+                Assert.That(((DrumsEngineParameters)CreateRegisteredEngine().BaseParameters).HiHatClosureSuppression, Is.True,
+                    "Disabled live setting must not change an enabled replay");
+            }
+            finally { value.SetValue(toggle, original); }
             yield return null;
         }
 

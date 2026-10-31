@@ -1,3 +1,4 @@
+// pattern: Mixed (needs refactoring)
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -294,6 +295,7 @@ namespace YARG.Settings
                 new HeaderMetadata("EliteDrums"),
                 nameof(Settings.EnableEliteDrumsDowncharts),
                 nameof(Settings.EliteFlamLayout),
+                nameof(Settings.EliteHiHatClosureForgiveness),
                 nameof(Settings.RawMidiLogging),
                 new HeaderMetadata("Accessibility"),
                 nameof(Settings.DisablePartyVocalsCountIns),

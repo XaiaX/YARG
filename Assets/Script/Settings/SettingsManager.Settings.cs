@@ -1,3 +1,4 @@
+// pattern: Mixed (needs refactoring)
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -797,6 +798,7 @@ namespace YARG.Settings
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
+            public ToggleSetting EliteHiHatClosureForgiveness { get; } = new(false);
             public DropdownSetting<EliteFlamLayout> EliteFlamLayout { get; } = new(global::YARG.Settings.EliteFlamLayout.V)
             {
                 global::YARG.Settings.EliteFlamLayout.V,

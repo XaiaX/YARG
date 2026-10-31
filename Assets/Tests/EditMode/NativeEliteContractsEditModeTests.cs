@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Linq;
 using NUnit.Framework;
@@ -267,6 +268,32 @@ namespace YARG.Tests.EditMode
                     _audioHandler.GetMethod("Close").Invoke(null, null);
                 }
             }
+        }
+
+        [Test]
+        public void HiHatClosureSettingDefaultsOffAndPersistsWithoutEnablingLogging()
+        {
+            using var audio = new SettingsCompatibilityAudioScope();
+            var manager = Type.GetType("YARG.Settings.SettingsManager, Assembly-CSharp", true);
+            var container = manager.GetNestedType("SettingContainer");
+            var jsonSettings = manager.GetField("JsonSettings", System.Reflection.BindingFlags.Static |
+                System.Reflection.BindingFlags.NonPublic).GetValue(null);
+            var json = Type.GetType("Newtonsoft.Json.JsonConvert, Newtonsoft.Json", true);
+            var deserialize = json.GetMethod("DeserializeObject", new[] { typeof(string), typeof(Type), jsonSettings.GetType() });
+            var serialize = json.GetMethod("SerializeObject", new[] { typeof(object), jsonSettings.GetType() });
+            object Read(string text) => deserialize.Invoke(null, new object[] { text, container, jsonSettings });
+            bool Value(object settings, string name)
+            {
+                var toggle = container.GetProperty(name).GetValue(settings);
+                return (bool)toggle.GetType().GetProperty("Value").GetValue(toggle);
+            }
+            var defaults = Read("{}");
+            Assert.That(Value(defaults, "EliteHiHatClosureForgiveness"), Is.False);
+            var enabled = Read("{\"EliteHiHatClosureForgiveness\":true,\"RawMidiLogging\":false}");
+            var saved = (string)serialize.Invoke(null, new[] { enabled, jsonSettings });
+            var restored = Read(saved);
+            Assert.That(Value(restored, "EliteHiHatClosureForgiveness"), Is.True);
+            Assert.That(Value(restored, "RawMidiLogging"), Is.False);
         }
 
         [Test]

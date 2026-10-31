@@ -2132,6 +2132,10 @@
 				"Name": "Log Raw MIDI During Gameplay",
 				"Description": "Records MIDI note-on, note-off, and control-change messages while a song is playing. Saves local CSV files in the midi-logs folder under YARG's data directory; no data is uploaded. Turn off after diagnosing your controller."
 			},
+			"EliteHiHatClosureForgiveness": {
+				"Name": "Hi-Hat Closure Forgiveness",
+				"Description": "Pairs Stomp and Closed Hi-Hat inputs within 30 ms to forgive extra hits caused by closing a physical hi-hat stand. Adds 30 ms of judging feedback delay. Applies to new native Elite gameplay sessions."
+			},
 			"UseCumulativeSongUpdates": {
 				"Description": "Experimental: apply numbered songs_updates folders in order. After changing this setting, re-scan your song library (or restart) for it to take effect.",
 				"Name": "Cumulative Song Updates"

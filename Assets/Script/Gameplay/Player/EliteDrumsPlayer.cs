@@ -17,6 +17,7 @@ using YARG.Gameplay.Visuals;
 using YARG.Helpers;
 using YARG.Helpers.Extensions;
 using YARG.Player;
+using YARG.Settings;
 using YARG.Themes;
 using static YARG.Core.Chart.EliteDrumNote;
 
@@ -151,7 +152,8 @@ namespace YARG.Gameplay.Player
         {
             EngineParams = Player.IsReplay ? (DrumsEngineParameters) Player.EngineParameterOverride :
                 Player.EnginePreset.Drums.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds,
-                    DrumsEngineParameters.DrumMode.ProFourLane);
+                    DrumsEngineParameters.DrumMode.ProFourLane,
+                    SettingsManager.Settings?.EliteHiHatClosureForgiveness.Value ?? false);
             if (EngineContainer != null)
             {
                 if (Engine != null) Engine.OnFlamFollowUp -= OnFlamFollowUp;
@@ -503,10 +505,11 @@ namespace YARG.Gameplay.Player
             _pendingOverhitAction = noteWasHit ? null : action;
             if (noteWasHit || wasOverhitInLane || _pendingOverhitAction is null) return;
 
-            // Native Elite does not penalize pedal motion, or inputs before/after
-            // the chart and during countdown/coda. Give those inputs hit feedback
-            // rather than waiting for an overhit that will never be raised.
-            if (action is EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash ||
+            // Ordinary pedal motion is harmless; the experimental paired open-hat
+            // fault explicitly follows the overhit path. Boundary/countdown/coda
+            // exemptions still receive hit feedback.
+            if (((action is EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash) &&
+                 !Engine.IsHiHatClosurePedalOverhit) ||
                 Engine.NoteIndex == 0 || Engine.NoteIndex >= Notes.Count ||
                 Engine.IsWaitCountdownActive || Engine.IsCodaActive)
             {
