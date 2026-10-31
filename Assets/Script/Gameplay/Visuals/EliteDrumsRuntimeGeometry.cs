@@ -139,6 +139,18 @@ namespace YARG.Gameplay.Visuals
                         corners.Add(matrix.MultiplyPoint3x4(p));
                     }
                 }
+                foreach (var spin in model.GetComponentsInChildren<CymbalSpinAnimation>(true))
+                {
+                    var bounds = spin.SweptLocalBounds;
+                    var matrix = EliteDrumsGeometryCache.RelativeMatrix(model, spin.transform);
+                    for (int i = 0; i < 8; i++)
+                    {
+                        var point = bounds.center + Vector3.Scale(bounds.extents, new Vector3(
+                            (i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f,
+                            (i & 4) == 0 ? -1f : 1f));
+                        corners.Add(matrix.MultiplyPoint3x4(point));
+                    }
+                }
                 _corners = corners.ToArray();
                 // The base child itself is tilted in the assembled model. Slicing
                 // assembled Y selects only an edge, not the base contact surface.
@@ -147,6 +159,9 @@ namespace YARG.Gameplay.Visuals
                 {
                     var mesh = filter.sharedMesh;
                     if (mesh == null || !mesh.isReadable) continue;
+                    // Animated tops may export a third dark submesh; it is not
+                    // the stationary base used to place cymbal flam contacts.
+                    if (filter.GetComponentInParent<CymbalSpinAnimation>(true) != null) continue;
                     if (filter.transform.name == "Upper Cymbal" ||
                         filter.transform.parent != null && filter.transform.parent.name == "Upper Cymbal") continue;
                     var matrix = EliteDrumsGeometryCache.RelativeMatrix(model, filter.transform);

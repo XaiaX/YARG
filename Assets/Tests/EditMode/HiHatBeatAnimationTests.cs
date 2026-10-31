@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -189,7 +190,7 @@ namespace YARG.Tests.EditMode
                 Assert.That(serialized.FindProperty("_mode").enumValueIndex, Is.EqualTo(1));
                 Assert.That(serialized.FindProperty("_fadeBeats").floatValue, Is.EqualTo(2f));
                 var pivot = serialized.FindProperty("_pivotLocal").vector3Value;
-                var top = animation.transform.Find("Top").GetComponent<MeshFilter>();
+                var top = animation.GetComponentsInChildren<MeshFilter>(true).Single(filter => filter.name == "Top");
                 foreach (var vertex in top.sharedMesh.vertices)
                     Assert.That(animation.transform.InverseTransformPoint(top.transform.TransformPoint(vertex)).y,
                         Is.LessThanOrEqualTo(pivot.y + 0.00001f));

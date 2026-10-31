@@ -116,7 +116,7 @@ namespace YARG.Gameplay.Visuals
             var matrix = Matrix4x4.identity;
             while (child != root)
             {
-                matrix = Matrix4x4.TRS(child.localPosition, child.localRotation, child.localScale) * matrix;
+                matrix = Matrix4x4.TRS(child.localPosition, CymbalSpinAnimation.RestRotationOf(child), child.localScale) * matrix;
                 child = child.parent;
             }
             return matrix;
@@ -185,6 +185,23 @@ namespace YARG.Gameplay.Visuals
                 for (int i = 0; i < 16; i++) writer.Write(matrix[i]);
                 writer.Write(filter.sharedMesh != null);
                 if (filter.sharedMesh != null) writer.Write(MeshSignature(filter.sharedMesh));
+            }
+            var spins = model.GetComponentsInChildren<CymbalSpinAnimation>(true);
+            writer.Write(spins.Length);
+            foreach (var spin in spins)
+            {
+                var matrix = RelativeMatrix(model, spin.transform);
+                for (int i = 0; i < 16; i++) writer.Write(matrix[i]);
+                Write(writer, spin.SweptLocalBounds.center);
+                Write(writer, spin.SweptLocalBounds.extents);
+                writer.Write(spin.Rotor != null);
+                if (spin.Rotor != null)
+                {
+                    // The deformation cancels at rest, so filter matrices alone
+                    // cannot identify a changed circular rotation frame.
+                    matrix = RelativeMatrix(model, spin.Rotor);
+                    for (int i = 0; i < 16; i++) writer.Write(matrix[i]);
+                }
             }
             return Fingerprint(stream);
         }

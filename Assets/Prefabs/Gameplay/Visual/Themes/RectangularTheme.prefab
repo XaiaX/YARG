@@ -56,11 +56,15 @@ MonoBehaviour:
   _coloredMetalMaterials:
   - Mesh: {fileID: 932599492491442662}
     MaterialIndex: 0
-    EmissionMultiplier: 1
+    EmissionMultiplier: 0
     EmissionAddition: 0
   - Mesh: {fileID: 8545054154861553305}
-    MaterialIndex: 1
-    EmissionMultiplier: 1
+    MaterialIndex: 0
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+  - Mesh: {fileID: 8545054154861553305}
+    MaterialIndex: 3
+    EmissionMultiplier: 0
     EmissionAddition: 0
   _coloredSecondaryMaterials: []
   _pedalStrikeAligned: 0
@@ -11616,6 +11620,10 @@ MonoBehaviour:
   - Mesh: {fileID: 4461413484907551038}
     MaterialIndex: 0
     EmissionMultiplier: 1
+    EmissionAddition: 0
+  - Mesh: {fileID: 4461413484907551038}
+    MaterialIndex: 2
+    EmissionMultiplier: 0
     EmissionAddition: 0
   _coloredSecondaryMaterials: []
   _pedalStrikeAligned: 0
@@ -33112,6 +33120,10 @@ MonoBehaviour:
     MaterialIndex: 1
     EmissionMultiplier: 1
     EmissionAddition: 0
+  - Mesh: {fileID: 5599110296251317104}
+    MaterialIndex: 3
+    EmissionMultiplier: 0
+    EmissionAddition: 0
   _coloredSecondaryMaterials: []
   _pedalStrikeAligned: 0
   _coloredKick2Materials: []
@@ -33488,13 +33500,13 @@ MonoBehaviour:
     MaterialIndex: 1
     EmissionMultiplier: 1
     EmissionAddition: 0
-  _coloredMaterialsNoStarPower: []
-  _coloredMetalMaterials:
-  - Mesh: {fileID: 8032810714314612871}
+  - Mesh: {fileID: 8323030332255067376}
     MaterialIndex: 0
     EmissionMultiplier: 1
     EmissionAddition: 0
-  - Mesh: {fileID: 8323030332255067376}
+  _coloredMaterialsNoStarPower: []
+  _coloredMetalMaterials:
+  - Mesh: {fileID: 8032810714314612871}
     MaterialIndex: 0
     EmissionMultiplier: 1
     EmissionAddition: 0
@@ -33529,7 +33541,7 @@ Transform:
   m_GameObject: {fileID: 5212614444439693529}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.5, y: 0, z: 0.5}
+  m_LocalPosition: {x: -0.5, y: 0.0073480885, z: 0.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -33559,11 +33571,23 @@ MonoBehaviour:
   _coloredMetalMaterials:
   - Mesh: {fileID: 6757499963354385489}
     MaterialIndex: 0
-    EmissionMultiplier: 1
+    EmissionMultiplier: 0
     EmissionAddition: 0
   - Mesh: {fileID: 6633345091791720366}
     MaterialIndex: 0
-    EmissionMultiplier: 1
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+  - Mesh: {fileID: 6633345091791720366}
+    MaterialIndex: 1
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+  - Mesh: {fileID: 6633345091791720366}
+    MaterialIndex: 3
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+  - Mesh: {fileID: 6633345091791720366}
+    MaterialIndex: 4
+    EmissionMultiplier: 0
     EmissionAddition: 0
   _coloredSecondaryMaterials: []
   _pedalStrikeAligned: 0
@@ -70275,7 +70299,7 @@ Transform:
   m_GameObject: {fileID: 8542679362110114805}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -1.5, y: 0, z: 0.5}
+  m_LocalPosition: {x: -1.5, y: 0.0073480885, z: 0.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -70317,11 +70341,23 @@ MonoBehaviour:
   _coloredMetalMaterials:
   - Mesh: {fileID: 811718996745546292}
     MaterialIndex: 1
-    EmissionMultiplier: 1
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+  - Mesh: {fileID: 4133140409935253921}
+    MaterialIndex: 0
+    EmissionMultiplier: 0
     EmissionAddition: 0
   - Mesh: {fileID: 4133140409935253921}
     MaterialIndex: 1
-    EmissionMultiplier: 1
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+  - Mesh: {fileID: 4133140409935253921}
+    MaterialIndex: 3
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+  - Mesh: {fileID: 4133140409935253921}
+    MaterialIndex: 4
+    EmissionMultiplier: 0
     EmissionAddition: 0
   _coloredSecondaryMaterials: []
   _pedalStrikeAligned: 0
@@ -80031,6 +80067,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6085966843922225262}
     m_Modifications:
+    - target: {fileID: 1755943064368870745, guid: fb1bc0f9f083a49228a1ded75c41eac9, type: 3}
+      propertyPath: _pivotLocal.x
+      value: -0.000000003612947
+      objectReference: {fileID: 0}
+    - target: {fileID: 1755943064368870745, guid: fb1bc0f9f083a49228a1ded75c41eac9, type: 3}
+      propertyPath: _pivotLocal.z
+      value: 0.041327298
+      objectReference: {fileID: 0}
     - target: {fileID: 2253040209923326532, guid: fb1bc0f9f083a49228a1ded75c41eac9, type: 3}
       propertyPath: m_Name
       value: OpenHiHatAccent
@@ -81347,7 +81391,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 456950011383139862, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.012651911
+      value: 0.02
       objectReference: {fileID: 0}
     - target: {fileID: 456950011383139862, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
       propertyPath: m_LocalPosition.z
@@ -81384,6 +81428,46 @@ PrefabInstance:
     - target: {fileID: 2996690971758434956, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
       propertyPath: m_Name
       value: ClosedHiHatAccent
+      objectReference: {fileID: 0}
+    - target: {fileID: 4807256562331111190, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: _sweptBounds.m_Center.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4807256562331111190, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: _sweptBounds.m_Center.y
+      value: 0.108762026
+      objectReference: {fileID: 0}
+    - target: {fileID: 4807256562331111190, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: _sweptBounds.m_Center.z
+      value: 0.002687052
+      objectReference: {fileID: 0}
+    - target: {fileID: 4807256562331111190, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: _sweptBounds.m_Extent.x
+      value: 0.19399862
+      objectReference: {fileID: 0}
+    - target: {fileID: 4807256562331111190, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: _sweptBounds.m_Extent.y
+      value: 0.054115996
+      objectReference: {fileID: 0}
+    - target: {fileID: 4807256562331111190, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: _sweptBounds.m_Extent.z
+      value: 0.08875258
+      objectReference: {fileID: 0}
+    - target: {fileID: 6846279632835579362, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -1.9411756e-23
+      objectReference: {fileID: 0}
+    - target: {fileID: 6846279632835579362, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.0000000037252903
+      objectReference: {fileID: 0}
+    - target: {fileID: 6846279632835579362, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 2.220446e-16
+      objectReference: {fileID: 0}
+    - target: {fileID: 6846279632835579362, guid: 592ed56c4237a4102afda987262e00cb, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
