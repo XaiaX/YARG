@@ -81,7 +81,9 @@ namespace YARG.Gameplay.Visuals
                     continue;
                 }
                 effect.TimeEnd = activator.Time;
-                effect.FillLanePosition = getPosition(activator);
+                // Any pad can hit a wildcard: use the centered, full-width lead-up, as in classic drums.
+                effect.FillLanePosition = activator.Pad == (int) EliteDrumNote.EliteDrumPad.Wildcard
+                    ? -1f : getPosition(activator);
                 effect.TotalLanes = laneCount;
             }
         }

@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -1799,7 +1800,7 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator DedicatedHiHatHoldSpawnsOneBoundedStripAndAssistedPedalSkipsTerminatorGem()
+        public IEnumerator PedalDurationDoesNotSpawnLaneAndAssistedPedalSkipsTerminatorGem()
         {
             var pedal = new EliteDrumNote(EliteDrumPad.HatPedal, DrumNoteType.Neutral,
                 EliteDrumsHatState.Indifferent, EliteDrumsHatPedalType.Stomp, false,
@@ -1821,56 +1822,23 @@ namespace YARG.Tests.PlayMode
             player.GetType().GetMethod("OnNoteSpawned", PreparedElitePlayerFixture.INSTANCE)
                 .Invoke(player, new object[] { pedal });
             var strips = player.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.LaneElement"), true)
-                .Where(e => e.gameObject.activeInHierarchy &&
-                    Math.Abs((double) e.GetType().GetProperty("ElementTime").GetValue(e) - pedal.Time) < 0.001d &&
-                    Math.Abs((double) e.GetType().GetField("EndTime").GetValue(e) - pedal.SourceDefinition.EndTime) < 0.001d)
-                .ToArray();
-            Assert.That(strips, Has.Length.EqualTo(1), "Only the authored pedal hold strip should match this time range.");
-            var stripRenderers = strips[0].GetComponentsInChildren<Renderer>();
-            Assert.That(stripRenderers, Is.Not.Empty);
-            int laneCount = (int) player.GetType().GetProperty("LaneCount").GetValue(player);
-            Assert.That(laneCount, Is.EqualTo(9), "This scenario requires Full with one explicit kick lane.");
-            float minHighwayX = float.PositiveInfinity;
-            float maxHighwayX = float.NegativeInfinity;
-            var meshDiagnostics = new List<string>();
-            foreach (var renderer in stripRenderers)
+                .Where(e => e.gameObject.activeInHierarchy).ToArray();
+            Assert.That(strips, Is.Empty, "Pedal-down duration must not create a track marker.");
+            foreach (var gem in new[] { pedal,
+                new EliteDrumNote(EliteDrumPad.HiHat, DrumNoteType.Neutral,
+                    EliteDrumsHatState.Closed, EliteDrumsHatPedalType.Stomp, false,
+                    DrumNoteFlags.None, NoteFlags.None, EliteDrumsChannelFlag.None, 1.5d, 720, false),
+                new EliteDrumNote(EliteDrumPad.HiHat, DrumNoteType.Neutral,
+                    EliteDrumsHatState.Open, EliteDrumsHatPedalType.Stomp, false,
+                    DrumNoteFlags.None, NoteFlags.None, EliteDrumsChannelFlag.None, 2.5d, 1200, false) })
             {
-                Assert.That(renderer, Is.InstanceOf<SkinnedMeshRenderer>(),
-                    "The lane prefab's render geometry is expected to be skinned.");
-                var skinnedRenderer = (SkinnedMeshRenderer) renderer;
-                var bakedMesh = new Mesh();
-                try
-                {
-                    skinnedRenderer.BakeMesh(bakedMesh, true);
-                    var highwayFromRenderer = player.transform.worldToLocalMatrix *
-                        renderer.transform.localToWorldMatrix;
-                    foreach (var vertex in bakedMesh.vertices)
-                    {
-                        float highwayX = highwayFromRenderer.MultiplyPoint3x4(vertex).x;
-                        minHighwayX = Mathf.Min(minHighwayX, highwayX);
-                        maxHighwayX = Mathf.Max(maxHighwayX, highwayX);
-                    }
-                    var meshTransform = (Transform) strips[0].GetType()
-                        .GetField("_meshTransform", PreparedElitePlayerFixture.INSTANCE).GetValue(strips[0]);
-                    var cachedScale = strips[0].GetType()
-                        .GetField("_scale", PreparedElitePlayerFixture.INSTANCE).GetValue(strips[0]);
-                    meshDiagnostics.Add($"renderer={renderer.name} mesh={bakedMesh.name} sharedMesh={skinnedRenderer.sharedMesh.name} " +
-                        $"vertices={bakedMesh.vertexCount} sharedBounds={skinnedRenderer.sharedMesh.bounds.size} " +
-                        $"localBounds={renderer.localBounds.size} bakedBounds={bakedMesh.bounds.size} " +
-                        $"transformScale={meshTransform.localScale} cachedLaneScale={cachedScale} " +
-                        $"rendererLocalScale={renderer.transform.localScale} rendererLossyScale={renderer.transform.lossyScale} " +
-                        "bones=[" + string.Join("; ", skinnedRenderer.bones.Select(bone =>
-                            $"{bone.name}:local={bone.localScale}:lossy={bone.lossyScale}")) + "]");
-                }
-                finally
-                {
-                    UnityEngine.Object.DestroyImmediate(bakedMesh);
-                }
+                player.GetType().GetMethod("SpawnNote", PreparedElitePlayerFixture.INSTANCE)
+                    .Invoke(player, new object[] { gem });
+                var visible = player.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement"), true)
+                    .Single(e => ReferenceEquals(e.GetType().GetProperty("NoteRef").GetValue(e), gem));
+                Assert.That(visible.gameObject.activeInHierarchy, Is.True,
+                    "Removing the duration marker must retain the individual stomp, closed and open gems.");
             }
-            float measuredWidth = maxHighwayX - minHighwayX;
-            Assert.That(measuredWidth, Is.LessThanOrEqualTo(2f / laneCount + 0.001f),
-                $"The baked skinned vertices must fit one highway-local lane. measuredWidth={measuredWidth:F6}; " +
-                $"laneCount={laneCount}; " + string.Join("; ", meshDiagnostics));
             Production("YARG.Gameplay.Player.BasePlayer").GetMethod("UpdateInputs", PreparedElitePlayerFixture.INSTANCE)
                 .Invoke(player, new object[] { 1d });
             var prepared = (InstrumentDifficulty<EliteDrumNote>) _fixture.Session.GetType()

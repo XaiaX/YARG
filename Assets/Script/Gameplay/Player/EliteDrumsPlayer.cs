@@ -314,21 +314,7 @@ namespace YARG.Gameplay.Player
         protected override void OnNoteSpawned(EliteDrumNote parentNote)
         {
             base.OnNoteSpawned(parentNote);
-            foreach (var member in parentNote.AllNotes)
-            {
-                if (UsesHistoricalPedalBars || member.Pad != (int) EliteDrumPad.HatPedal || member.IsInvisibleTerminator ||
-                    member.SourceDefinition == null || member.SourceDefinition.EndTime <= member.SourceDefinition.StartTime) continue;
-                if (!LanePool.CanSpawnAmount(1)) BeforeNativeLaneAllocation(1);
-                var pedalLane = TakeNativeLane();
-                if (pedalLane == null) continue;
-                int position = GetVisualPosition(member);
-                pedalLane.SetTimeRange(member.Time, member.Time +
-                    member.SourceDefinition.EndTime - member.SourceDefinition.StartTime);
-                pedalLane.SetIndexRange(position, position);
-                pedalLane.SetAppearance(Instrument.FiveLaneDrums, position, position, LaneCount,
-                    GetLaneColor(Player.ColorProfile.EliteDrums, member).ToUnityColor(), GetLaneScale());
-                pedalLane.EnableFromPool();
-            }
+            // Pedal-down duration describes hat state, not a rendered roll lane.
             if (!Engine.BaseParameters.EnableLanes)
             {
                 return;

@@ -47,6 +47,29 @@ namespace YARG.Tests.EditMode
             Assert.That(Get(fill, "TotalLanes"), Is.EqualTo(5));
         }
 
+        [Test]
+        public void WildcardActivationUsesCenteredFullWidthLeadUp()
+        {
+            var note = new EliteDrumNote(
+                EliteDrumNote.EliteDrumPad.Wildcard, DrumNoteType.Neutral,
+                EliteDrumNote.EliteDrumsHatState.Indifferent, EliteDrumNote.EliteDrumsHatPedalType.Stomp,
+                false, DrumNoteFlags.StarPowerActivator, NoteFlags.None,
+                EliteDrumNote.EliteDrumsChannelFlag.None, 2.25, 2160, false);
+            var fill = NewEffect(1, 2, "DrumFill");
+            var effects = Effects(fill);
+            Effect.GetMethod("ConfigureEliteDrumFills").Invoke(null, new object[]
+            {
+                new List<EliteDrumNote> { note }, effects,
+                new Func<EliteDrumNote, float>(_ => 0f), 5
+            });
+
+            Assert.That(effects.Count, Is.EqualTo(1));
+            Assert.That(Get(fill, "TimeEnd"), Is.EqualTo(2.25));
+            Assert.That(Get(fill, "FillLanePosition"), Is.EqualTo(-1f),
+                "Wildcard accepts any pad, so its lead-up must span the highway, as in classic drums.");
+            Assert.That(Get(fill, "TotalLanes"), Is.EqualTo(5));
+        }
+
         [TestCase("Solo")]
         [TestCase("Unison")]
         public void FillTargetSurvivesOverlappingEffects(string otherKind)
