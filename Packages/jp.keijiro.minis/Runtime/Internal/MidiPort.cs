@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Threading;
 using Minis.Native;
@@ -25,9 +26,12 @@ namespace Minis
     internal unsafe sealed class MidiPort : IDisposable
     {
         private readonly MidiBackend _backend;
+        private readonly RawMidiDelivery _detailedDelivery;
 
         private RtMidiInHandle _portHandle;
         public readonly string name;
+        private static long _nextSourceId;
+        public readonly long sourceId = Interlocked.Increment(ref _nextSourceId);
 
         private MidiChannel _allChannels;
         private readonly MidiChannel[] _channels = new MidiChannel[16];
@@ -38,6 +42,7 @@ namespace Minis
         public MidiPort(MidiBackend backend, uint portNumber)
         {
             _backend = backend;
+            _detailedDelivery = new RawMidiDelivery(sourceId);
 
             _portHandle = rtmidi_in_create_default();
             if (_portHandle == null || _portHandle.IsInvalid)
@@ -114,13 +119,27 @@ namespace Minis
 
                 // Keep the raw hook selective and allocation-free when no consumer is attached.
                 // RtMidi's timestamp is a per-port delta since its previous message.
+                RawMidiMessage? detailed = null;
+                if (RawMidiEvents.HasDetailedSubscribers && size >= 2 &&
+                    RawMidiMessage.TryCreate(sourceId, name, timestamp, rawStatus, message[1],
+                        size >= 3 ? message[2] : (byte)0, (int)size, out var packet))
+                    detailed = packet;
                 if ((status == MidiStatus.NoteOn || status == MidiStatus.NoteOff || status == MidiStatus.ControlChange) &&
                     size >= 3 && RawMidiEvents.HasSubscribers)
                 {
-                    RawMidiEvents.Publish(name, timestamp, rawStatus, message[1], message[2]);
+                    // Preserve the existing logger's read-thread timing and raw bytes.
+                    RawMidiEvents.PublishLegacy(name, timestamp, rawStatus, message[1], message[2]);
                 }
 
                 HandleStatus(status, arg, message + 1, size - 1);
+                if (detailed.HasValue)
+                {
+                    // Even pressure-only channels need a ready source identity. Use the
+                    // captured packet, not a second subscriber check racing screen closure.
+                    // This creates no pressure control event for gameplay.
+                    GetChannelDevice(arg);
+                    _detailedDelivery.Enqueue(detailed.Value);
+                }
             }
         }
 
@@ -194,5 +213,7 @@ namespace Minis
 
             return _channels[channel];
         }
+
+        internal void OnChannelReady(int channel) => _detailedDelivery.ChannelReady(channel);
     }
 }

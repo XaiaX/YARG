@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -31,6 +32,21 @@ namespace Minis
         //
         // The first channel returns 0.
         public int channel { get; private set; }
+
+        // Runtime-only source identity. Deliberately excluded from description/capabilities
+        // so the existing serialized binding hash stays stable across reconnections.
+        public long SourcePortId { get; internal set; }
+        public string SourcePortName { get; internal set; } = string.Empty;
+        /// <summary>Fired on the main thread after backend source identity is ready.
+        /// InputSystem's ordinary Added notification occurs before this assignment.</summary>
+        public static event Action<MidiDevice> SourceReady;
+
+        internal void SetSource(long portId, string portName)
+        {
+            SourcePortId = portId;
+            SourcePortName = portName;
+            SourceReady?.Invoke(this);
+        }
 
         // Get an input control object bound for a specific note.
         public MidiNoteControl GetNote(int noteNumber)

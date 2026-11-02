@@ -66,6 +66,7 @@ namespace YARG.Helpers.Extensions
                 },
                 GameMode.EliteDrums => new()
                 {
+                    (ProfileSettingStrings.MIDI_TEST, null),
                     (ProfileSettingStrings.CONFIGURE_FOUR_LANE_DRUMS_HIGHWAY, null),
                     (ProfileSettingStrings.CONFIGURE_PRO_DRUMS_HIGHWAY, null),
                     (ProfileSettingStrings.CONFIGURE_FIVE_LANE_DRUMS_HIGHWAY, "5-LANE DRUMS HIGHWAY"),
@@ -77,6 +78,7 @@ namespace YARG.Helpers.Extensions
                 },
                 GameMode.FourLaneDrums => new()
                 {
+                    (ProfileSettingStrings.MIDI_TEST, null),
                     (ProfileSettingStrings.CONFIGURE_FOUR_LANE_DRUMS_HIGHWAY, null),
                     (ProfileSettingStrings.CONFIGURE_PRO_DRUMS_HIGHWAY, null),
                     (ProfileSettingStrings.LEFTY_FLIP, null),
@@ -84,6 +86,7 @@ namespace YARG.Helpers.Extensions
                 },
                 GameMode.FiveLaneDrums => new()
                 {
+                    (ProfileSettingStrings.MIDI_TEST, null),
                     (ProfileSettingStrings.CONFIGURE_FIVE_LANE_DRUMS_HIGHWAY, "HIGHWAY"),
                     (ProfileSettingStrings.LEFTY_FLIP, null),
                     (ProfileSettingStrings.USE_CYMBAL_MODELS, "USE CYMBAL MODELS"),

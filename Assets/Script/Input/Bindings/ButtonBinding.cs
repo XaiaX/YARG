@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Minis;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
@@ -190,6 +192,43 @@ namespace YARG.Input
 
     public class ButtonBinding : ControlBinding<float, SingleButtonBinding>
     {
+        private int _midiSuspensions;
+
+        /// <summary>Temporarily ignores MIDI controls without changing mappings or disabling
+        /// keyboard/gamepad controls on the same menu action. Scopes may be nested.</summary>
+        public IDisposable SuspendMidiInput()
+        {
+            _midiSuspensions++;
+            RefreshMidiSuspensionState();
+            return new MidiInputSuspension(this);
+        }
+
+        private bool IsMidiSuspended(SingleButtonBinding binding) =>
+            _midiSuspensions > 0 && binding.Control.device is MidiDevice;
+
+        private void RefreshMidiSuspensionState()
+        {
+            _debounceTimer.Stop();
+            bool state = _bindings.Any(binding => !IsMidiSuspended(binding) && binding.IsPressed);
+            if (state == State) return;
+            State = state;
+            FireInputEvent(InputManager.CurrentInputTime, state);
+        }
+
+        private sealed class MidiInputSuspension : IDisposable
+        {
+            private ButtonBinding _owner;
+            public MidiInputSuspension(ButtonBinding owner) => _owner = owner;
+            public void Dispose()
+            {
+                var owner = _owner;
+                _owner = null;
+                if (owner == null) return;
+                owner._midiSuspensions--;
+                owner.RefreshMidiSuspensionState();
+            }
+        }
+
         protected const long DEBOUNCE_DEFAULT = 5;
 
         protected DebounceTimer<bool> _debounceTimer = new()
@@ -246,10 +285,10 @@ namespace YARG.Input
 
         protected override void OnStateChanged(SingleButtonBinding binding, double time)
         {
-            bool state = binding.IsPressed;
+            bool state = !IsMidiSuspended(binding) && binding.IsPressed;
             foreach (var other in _bindings)
             {
-                if (other == binding)
+                if (other == binding || IsMidiSuspended(other))
                     continue;
 
                 other.UpdateDebounce(time);
@@ -288,7 +327,7 @@ namespace YARG.Input
             foreach (var binding in _bindings)
             {
                 binding.UpdateDebounce(updateTime);
-                collectiveState |= binding.IsPressed;
+                if (!IsMidiSuspended(binding)) collectiveState |= binding.IsPressed;
             }
 
             // Ignore presses/releases within the debounce threshold

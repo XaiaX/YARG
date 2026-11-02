@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Layouts;
@@ -49,6 +50,11 @@ namespace Minis
         public void OnAdded(InputDevice device)
         {
             _device = device;
+            if (device is MidiDevice midi)
+            {
+                midi.SetSource(_port.sourceId, _port.name);
+                _port.OnChannelReady(channelNumber);
+            }
         }
 
         public void OnRemoved()

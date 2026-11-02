@@ -93,6 +93,8 @@ namespace YARG.Menu.ProfileList
         private TMP_Dropdown _eliteLayoutDropdown;
         [SerializeField]
         private Button _eliteLayoutConfigureButton;
+
+        [SerializeField] private Button _midiTestButton;
         [SerializeField]
         private TMP_Dropdown _cameraPresetDropdown;
         [SerializeField]
@@ -134,6 +136,7 @@ namespace YARG.Menu.ProfileList
         private void Awake()
         {
             _eliteLayoutConfigureButton?.onClick.AddListener(OpenEliteDrumsLayoutConfigurationMenu);
+            _midiTestButton?.onClick.AddListener(OpenMidiTestMenu);
 
             // Setup dropdown items
             _gameModeDropdown.options.Clear();
@@ -377,6 +380,17 @@ namespace YARG.Menu.ProfileList
         public void SetSaveProfilesAction(System.Action saveProfilesAction)
         {
             _saveProfilesAction = saveProfilesAction ?? (() => PlayerContainer.SaveProfiles());
+        }
+
+        public void OpenMidiTestMenu()
+        {
+            if (_profile == null || _profile.GameMode is not
+                (GameMode.EliteDrums or GameMode.FourLaneDrums or GameMode.FiveLaneDrums)) return;
+            var canvas = GetComponentInParent<Canvas>();
+            var menu = canvas != null
+                ? MenuManager.Instance.ShowMenu(MenuManager.Menu.MidiTest, canvas.rootCanvas.transform)
+                : MenuManager.Instance.ShowMenu(MenuManager.Menu.MidiTest);
+            menu.GetComponent<YARG.Menu.MidiTest.MidiTestMenu>().Initialize(_profile);
         }
 
         public void OpenEliteDrumsLayoutConfigurationMenu()

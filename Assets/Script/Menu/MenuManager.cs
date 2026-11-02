@@ -20,6 +20,7 @@ namespace YARG.Menu
             Content,
             MaestroSetup,
             EliteDrumsLayout,
+            MidiTest,
         }
 
         /// <summary>
@@ -81,6 +82,7 @@ namespace YARG.Menu
         internal static string GetResourceName(Menu menu) => menu switch
         {
             Menu.EliteDrumsLayout => "EliteDrumsLayoutMenu",
+            Menu.MidiTest => "MidiTestMenu",
             _ => menu.ToString()
         };
 
