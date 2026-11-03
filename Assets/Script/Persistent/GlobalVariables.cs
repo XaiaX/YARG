@@ -110,6 +110,8 @@ namespace YARG
         private void Start()
         {
             SettingsManager.LoadSettings();
+            ProfileFlamLayoutMigration.Apply(PlayerContainer.Profiles,
+                SettingsManager.Settings.EliteFlamLayout.Value, () => PlayerContainer.SaveProfiles(false));
             InputManager.Initialize();
 
             LoadScene(SceneIndex.Menu);

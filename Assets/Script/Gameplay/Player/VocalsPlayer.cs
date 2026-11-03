@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -128,6 +129,8 @@ namespace YARG.Gameplay.Player
 
             // Needle materials have names starting from 1.
             var needleIndex = (vocalIndex % NEEDLES_COUNT) + 1;
+            if (!player.IsReplay && !player.Profile.IsBot && player.Bindings.Microphone != null)
+                needleIndex = player.Bindings.GetMicrophoneNeedleIdForDevice(player.Bindings.Microphone, needleIndex);
             var materialPath = $"VocalNeedle/{needleIndex}";
             _needleRenderer.material = Addressables.LoadAssetAsync<Material>(materialPath).WaitForCompletion();
 

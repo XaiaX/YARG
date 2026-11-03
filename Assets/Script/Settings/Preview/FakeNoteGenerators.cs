@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using YARG.Core;
 using YARG.Core.Game;
 using YARG.Core.Chart;
 using YARG.Core.Engine.Keys;
@@ -49,10 +50,12 @@ namespace YARG.Settings.Preview
     {
         private int _index;
         private EliteDrumsColorRole? _lastPedalCompanion;
+        private EliteDrumsColorRole? _lastCymbalCompanion;
         private const int ROLE_COUNT = (int) EliteDrumsColorRole.Wildcard + 1;
         private const int FLAM_COUNT = 16;
         private const int PEDAL_COMBINATION_COUNT = 4;
-        private const int CYCLE_LENGTH = ROLE_COUNT * 3 + FLAM_COUNT + PEDAL_COMBINATION_COUNT;
+        private const int CYMBAL_PAIR_COUNT = 3;
+        private const int CYCLE_LENGTH = ROLE_COUNT * 3 + FLAM_COUNT + PEDAL_COMBINATION_COUNT + CYMBAL_PAIR_COUNT;
         private readonly EliteDrumsLayoutKickMode _kickMode;
         public const int NOTE_COUNT = CYCLE_LENGTH * 2;
         public bool HasNext => true;
@@ -149,6 +152,13 @@ namespace YARG.Settings.Preview
         {
             int index = _index++ % CYCLE_LENGTH;
             _lastPedalCompanion = null;
+            _lastCymbalCompanion = null;
+            if (index >= CYCLE_LENGTH - CYMBAL_PAIR_COUNT)
+            {
+                int pair = index - (CYCLE_LENGTH - CYMBAL_PAIR_COUNT);
+                _lastCymbalCompanion = pair == 0 ? EliteDrumsColorRole.Ride : EliteDrumsColorRole.RightCrash;
+                return CreateRoleNote(time, Describe(pair == 2 ? EliteDrumsColorRole.Ride : EliteDrumsColorRole.LeftCrash));
+            }
             if (index >= ROLE_COUNT * 3 + FLAM_COUNT)
             {
                 int pedalCombination = index - ROLE_COUNT * 3 - FLAM_COUNT;
@@ -212,6 +222,7 @@ namespace YARG.Settings.Preview
             IFakeNoteRandom random)
         {
             _lastPedalCompanion = null;
+            _lastCymbalCompanion = null;
             var role = spotlight.CenterNote ? EliteDrumsColorRole.Kick :
                 (EliteDrumsColorRole)Math.Clamp(spotlight.Fret - 1, 0, (int)EliteDrumsColorRole.Wildcard);
             if (role == EliteDrumsColorRole.HandFlam) role = EliteDrumsColorRole.Snare;
@@ -222,6 +233,7 @@ namespace YARG.Settings.Preview
             IFakeNoteRandom random)
         {
             _lastPedalCompanion = null;
+            _lastCymbalCompanion = null;
             return CreateRoleNote(time, Describe(EliteDrumsColorRole.Snare, noteType));
         }
 
@@ -230,7 +242,11 @@ namespace YARG.Settings.Preview
         {
             if (baseNote.EliteDescriptor is not { } descriptor) yield break;
             if (baseNote.EliteHandFlam) yield break;
-            if (descriptor.Role is EliteDrumsColorRole.Tom1 or EliteDrumsColorRole.Tom2 or EliteDrumsColorRole.Tom3)
+            if (_lastCymbalCompanion is { } cymbalRole)
+            {
+                yield return CreateRoleNote(time, Describe(cymbalRole));
+            }
+            else if (descriptor.Role is EliteDrumsColorRole.Tom1 or EliteDrumsColorRole.Tom2 or EliteDrumsColorRole.Tom3)
             {
                 var role = descriptor.Role switch
                 {
@@ -247,6 +263,56 @@ namespace YARG.Settings.Preview
             {
                 yield return CreateRoleNote(time, DescribeForKickLayout(pedalRole,
                     ThemeNoteType.Normal, _kickMode));
+            }
+        }
+
+        /// <summary>Adapts synthetic cymbal notes through gameplay's shared playable projection.</summary>
+        public static void ProjectCymbalNotes(IReadOnlyList<FakeNoteData> notes, EliteDrumsLayoutPreset layout)
+        {
+            if (layout?.Merges == null || layout.Merges.Length == 0) return;
+            var difficulty = new InstrumentDifficulty<EliteDrumNote>(Instrument.EliteDrums, Difficulty.Expert);
+            var sources = new Dictionary<int, FakeNoteData>();
+            EliteDrumNote parent = null;
+            foreach (var data in notes)
+            {
+                if (data.EliteDescriptor is not { } descriptor) continue;
+                var pad = descriptor.Role switch
+                {
+                    EliteDrumsColorRole.LeftCrash => EliteDrumNote.EliteDrumPad.LeftCrash,
+                    EliteDrumsColorRole.Ride => EliteDrumNote.EliteDrumPad.Ride,
+                    EliteDrumsColorRole.RightCrash => EliteDrumNote.EliteDrumPad.RightCrash,
+                    _ => (EliteDrumNote.EliteDrumPad)(-1)
+                };
+                if ((int)pad < 0) continue;
+                var note = new EliteDrumNote(pad, DrumNoteType.Neutral,
+                    EliteDrumNote.EliteDrumsHatState.Indifferent, EliteDrumNote.EliteDrumsHatPedalType.Stomp,
+                    false, DrumNoteFlags.None, NoteFlags.None, EliteDrumNote.EliteDrumsChannelFlag.None,
+                    data.Time, 0, false);
+                sources.Add((int)pad, data);
+                if (parent == null) { parent = note; difficulty.Notes.Add(note); }
+                else parent.AddChildNote(note);
+            }
+            if (parent == null) return;
+            EliteDrumsCymbalProjection.Apply(difficulty, layout);
+            foreach (var chord in difficulty.Notes)
+            foreach (var playable in chord.AllNotes)
+            {
+                var data = sources[playable.OriginalPad];
+                data.ElitePlayableNote = playable;
+                var role = (EliteDrumNote.EliteDrumPad)playable.Pad switch
+                {
+                    EliteDrumNote.EliteDrumPad.HiHat => EliteDrumsColorRole.HatIndifferent,
+                    EliteDrumNote.EliteDrumPad.LeftCrash => EliteDrumsColorRole.LeftCrash,
+                    EliteDrumNote.EliteDrumPad.Ride => EliteDrumsColorRole.Ride,
+                    _ => EliteDrumsColorRole.RightCrash
+                };
+                var strength = data.NoteType is ThemeNoteType.CymbalAccent ? ThemeNoteType.Accent
+                    : data.NoteType is ThemeNoteType.CymbalGhost ? ThemeNoteType.Ghost : ThemeNoteType.Normal;
+                var target = Describe(role, strength);
+                data.EliteDescriptor = target;
+                data.Fret = target.Fret;
+                data.CenterNote = target.IsBar;
+                data.NoteType = target.ModelType;
             }
         }
     }
@@ -390,13 +456,7 @@ namespace YARG.Settings.Preview
         {
             if (spotlight.CenterNote)
             {
-                return new FakeNoteData
-                {
-                    Time = time,
-                    Fret = 0,
-                    CenterNote = true,
-                    NoteType = ThemeNoteType.Kick
-                };
+                return CreateKickNote(time, CreateKickNoteType(random));
             }
 
             return new FakeNoteData
@@ -411,8 +471,16 @@ namespace YARG.Settings.Preview
         public FakeNoteData CreateTypeSpotlightNote(double time, ThemeNoteType noteType,
             IFakeNoteRandom random)
         {
+            if (EliteKickAppearance.IsKick(noteType))
+            {
+                bool flam = noteType is ThemeNoteType.KickFlam or ThemeNoteType.KickFlamGhost or ThemeNoteType.KickFlamAccent
+                    or ThemeNoteType.DedicatedLaneKickFlam or ThemeNoteType.DedicatedLaneKickFlamGhost or ThemeNoteType.DedicatedLaneKickFlamAccent;
+                return CreateKickNote(time, EliteKickAppearance.Select(false, false, flam, EliteKickAppearance.IsDedicated(noteType)));
+            }
             int fret = random.Range(1, _fiveLane ? 6 : 5);
             var note = CreateNoteForFret(time, fret, random);
+            note.ClassicHandFlam = false;
+            note.ClassicFlatFlam = false;
             note.NoteType = noteType switch
             {
                 ThemeNoteType.Ghost when note.NoteType is ThemeNoteType.Cymbal
@@ -439,12 +507,12 @@ namespace YARG.Settings.Preview
                 yield break;
             }
 
-            if (random.Range(0, 3) == 0)
+            if (!baseNote.ClassicHandFlam && random.Range(0, 3) == 0)
             {
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
                     var extra = CreateNote(time, random);
-                    if (!extra.CenterNote && extra.Fret != baseNote.Fret)
+                    if (!extra.CenterNote && !extra.ClassicHandFlam && extra.Fret != baseNote.Fret)
                     {
                         yield return CopyOverrides(baseNote, extra);
                         break;
@@ -454,13 +522,7 @@ namespace YARG.Settings.Preview
 
             if (random.Range(0, 3) == 0)
             {
-                yield return CopyOverrides(baseNote, new FakeNoteData
-                {
-                    Time = time,
-                    Fret = 0,
-                    CenterNote = true,
-                    NoteType = ThemeNoteType.Kick
-                });
+                yield return CopyOverrides(baseNote, CreateKickNote(time, CreateKickNoteType(random)));
             }
         }
 
@@ -468,23 +530,31 @@ namespace YARG.Settings.Preview
         {
             if (fret == 0)
             {
-                return new FakeNoteData
-                {
-                    Time = time,
-                    Fret = 0,
-                    CenterNote = true,
-                    NoteType = ThemeNoteType.Kick
-                };
+                return CreateKickNote(time, CreateKickNoteType(random));
             }
 
             bool cymbal = _fiveLane ? fret is 2 or 4 : fret != 1 && random.Range(0, 100) < 75;
-            return new FakeNoteData
+            var note = new FakeNoteData
             {
                 Time = time,
                 Fret = fret,
                 CenterNote = false,
                 NoteType = CreateDrumNoteType(cymbal, random)
             };
+            int articulation = random.Range(0, 100);
+            note.ClassicHandFlam = articulation < 12;
+            note.ClassicFlatFlam = articulation >= 8 && articulation < 12;
+            return note;
+        }
+
+        private static FakeNoteData CreateKickNote(double time, ThemeNoteType type) => new()
+        {
+            Time = time, Fret = 0, CenterNote = true, NoteType = type
+        };
+
+        private static ThemeNoteType CreateKickNoteType(IFakeNoteRandom random)
+        {
+            return random.Range(0, 100) < 85 ? ThemeNoteType.Kick : ThemeNoteType.KickFlam;
         }
 
         private static ThemeNoteType CreateDrumNoteType(bool cymbal, IFakeNoteRandom random)

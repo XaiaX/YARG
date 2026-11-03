@@ -48,6 +48,7 @@ namespace YARG.Menu.Maestro
         public bool LeftyFlip { get; internal set; }
         public bool AutoHiHatPedal { get; internal set; }
         public bool NoHiHatPedal { get; internal set; }
+        public bool KeepOriginalCymbalColors { get; internal set; }
         public bool RangeEnabled { get; internal set; }
         public OpenLaneDisplayType OpenLaneDisplayType { get; internal set; }
         public float NoteSpeed { get; internal set; }
@@ -107,6 +108,7 @@ namespace YARG.Menu.Maestro
             LeftyFlip = player.Profile.LeftyFlip;
             AutoHiHatPedal = player.Profile.AutoHiHatPedal;
             NoHiHatPedal = player.Profile.NoHiHatPedal;
+            KeepOriginalCymbalColors = player.Profile.KeepOriginalCymbalColors;
             RangeEnabled = player.Profile.RangeEnabled;
             OpenLaneDisplayType = player.Profile.OpenLaneDisplayType;
             NoteSpeed = player.Profile.NoteSpeed;
@@ -601,6 +603,12 @@ namespace YARG.Menu.Maestro
                 player.NoHiHatPedal = enabled;
         }
 
+        public void StageKeepOriginalCymbalColors(Guid profileId, bool enabled)
+        {
+            if (_players.TryGetValue(profileId, out var player) && player.GameMode == GameMode.EliteDrums)
+                player.KeepOriginalCymbalColors = enabled;
+        }
+
         public void StageRangeEnabled(Guid profileId, bool enabled)
         {
             if (_players.TryGetValue(profileId, out var player) &&
@@ -655,6 +663,7 @@ namespace YARG.Menu.Maestro
             public readonly bool LeftyFlip;
             public readonly bool AutoHiHatPedal;
             public readonly bool NoHiHatPedal;
+            public readonly bool KeepOriginalCymbalColors;
             public readonly bool RangeEnabled;
             public readonly OpenLaneDisplayType OpenLaneDisplayType;
             public readonly bool SittingOut;
@@ -679,6 +688,7 @@ namespace YARG.Menu.Maestro
                 LeftyFlip = profile.LeftyFlip;
                 AutoHiHatPedal = profile.AutoHiHatPedal;
                 NoHiHatPedal = profile.NoHiHatPedal;
+                KeepOriginalCymbalColors = profile.KeepOriginalCymbalColors;
                 RangeEnabled = profile.RangeEnabled;
                 OpenLaneDisplayType = profile.OpenLaneDisplayType;
                 SittingOut = player.SittingOut;
@@ -700,6 +710,7 @@ namespace YARG.Menu.Maestro
                 Profile.LeftyFlip = LeftyFlip;
                 Profile.AutoHiHatPedal = AutoHiHatPedal;
                 Profile.NoHiHatPedal = NoHiHatPedal;
+                Profile.KeepOriginalCymbalColors = KeepOriginalCymbalColors;
                 Profile.RangeEnabled = RangeEnabled;
                 Profile.OpenLaneDisplayType = OpenLaneDisplayType;
                 Profile.EliteDrumsDownchartTarget = EliteDrumsDownchartTarget;
@@ -773,6 +784,7 @@ namespace YARG.Menu.Maestro
                     profile.LeftyFlip = staged.LeftyFlip;
                     profile.AutoHiHatPedal = staged.AutoHiHatPedal;
                     profile.NoHiHatPedal = staged.NoHiHatPedal;
+                    profile.KeepOriginalCymbalColors = staged.KeepOriginalCymbalColors;
                     profile.RangeEnabled = staged.RangeEnabled;
                     profile.OpenLaneDisplayType = staged.OpenLaneDisplayType;
                     if (staged.GameMode is not GameMode.Vocals and not GameMode.PartyVocals)

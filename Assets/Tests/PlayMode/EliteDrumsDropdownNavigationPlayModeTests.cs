@@ -155,7 +155,11 @@ namespace YARG.Tests.PlayMode
                 Press("Green");
                 Assert.That(type.GetProperty("value").GetValue(dropdown), Is.EqualTo(chosen),
                     "Confirm must commit the visibly highlighted option, not the stale cursor.");
-                yield return new WaitForSecondsRealtime(0.2f);
+                // TMP fades then destroys the list asynchronously. The watcher pops
+                // its scheme on destruction, which can occur after a fixed delay's frame.
+                float closeDeadline = Time.realtimeSinceStartup + 2f;
+                while (stack.Count != baseline && Time.realtimeSinceStartup < closeDeadline)
+                    yield return null;
                 Assert.That(stack.Count, Is.EqualTo(baseline), "Closing the list must remove its scheme.");
 
                 open.Invoke(null, new object[] { dropdown });
@@ -163,7 +167,9 @@ namespace YARG.Tests.PlayMode
                 scheme = stack.Cast<object>().First();
                 Press("Down");
                 Press("Red");
-                yield return new WaitForSecondsRealtime(0.2f);
+                closeDeadline = Time.realtimeSinceStartup + 2f;
+                while (stack.Count != baseline && Time.realtimeSinceStartup < closeDeadline)
+                    yield return null;
                 Assert.That(type.GetProperty("value").GetValue(dropdown), Is.EqualTo(chosen));
                 Assert.That(stack.Count, Is.EqualTo(baseline));
             }

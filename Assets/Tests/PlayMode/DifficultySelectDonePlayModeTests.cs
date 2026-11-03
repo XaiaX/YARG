@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -354,6 +355,11 @@ namespace YARG.Tests.PlayMode
             foreach (var player in _players) player.Dispose();
             _players.Clear();
             yield return null;
+            if (_participationTheme != null)
+            {
+                yield return _participationTheme.TearDown();
+                _participationTheme = null;
+            }
         }
 
         private T Own<T>(T value) where T : UnityEngine.Object { _owned.Add(value); return value; }

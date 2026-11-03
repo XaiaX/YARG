@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Engine;
 using YARG.Core.Logging;
@@ -36,13 +37,6 @@ using Object = UnityEngine.Object;
 
 namespace YARG.Settings
 {
-    public enum EliteFlamLayout
-    {
-        V,
-        Bucket,
-        Parallel
-    }
-
     public enum SongLengthLabelMode
     {
         RangeLabels,
@@ -799,11 +793,12 @@ namespace YARG.Settings
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
             public ToggleSetting EliteHiHatClosureForgiveness { get; } = new(false);
-            public DropdownSetting<EliteFlamLayout> EliteFlamLayout { get; } = new(global::YARG.Settings.EliteFlamLayout.V)
+            // Compatibility input for the one-time profile migration; no longer a global control.
+            public DropdownSetting<DrumFlamLayout> EliteFlamLayout { get; } = new(DrumFlamLayout.V)
             {
-                global::YARG.Settings.EliteFlamLayout.V,
-                global::YARG.Settings.EliteFlamLayout.Bucket,
-                global::YARG.Settings.EliteFlamLayout.Parallel
+                DrumFlamLayout.V,
+                DrumFlamLayout.Bucket,
+                DrumFlamLayout.Parallel
             };
             public ToggleSetting RawMidiLogging { get; } = new(false);
             // Fires both on real user changes and once during settings load

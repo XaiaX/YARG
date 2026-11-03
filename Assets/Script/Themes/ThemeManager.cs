@@ -79,9 +79,13 @@ namespace YARG.Themes
 
             // Resolve optional Elite slots before default models are filled, so
             // older/custom themes retain their own cymbal appearance.
-            (regular, starPower) = style == VisualStyle.EliteDrums
-                ? ThemeNoteModelFallbacks.ResolveEliteModels(regular, starPower)
-                : ThemeNoteModelFallbacks.ResolveHiHatModels(regular, starPower);
+            (regular, starPower) = style switch
+            {
+                VisualStyle.EliteDrums => ThemeNoteModelFallbacks.ResolveEliteModels(regular, starPower),
+                VisualStyle.FourLaneDrums or VisualStyle.FiveLaneDrums =>
+                    ThemeNoteModelFallbacks.ResolveClassicDrumModels(regular, starPower),
+                _ => ThemeNoteModelFallbacks.ResolveHiHatModels(regular, starPower)
+            };
 
             // Fill in defaults for missing models
             var defaultComp = _defaultTheme.GetThemeComponent();

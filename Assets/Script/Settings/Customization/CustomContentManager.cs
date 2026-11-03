@@ -46,6 +46,9 @@ namespace YARG.Settings.Customization
             };
         }
 
+        public static bool HasMergedEliteCymbals(Guid layoutId) =>
+            EliteDrumsCymbalPairs.TryGet(EliteDrumsLayouts.GetUsablePresetById(layoutId), out _);
+
         public static void Initialize()
         {
             foreach (var content in CustomContentContainers)

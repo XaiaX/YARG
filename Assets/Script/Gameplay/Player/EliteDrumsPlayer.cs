@@ -118,6 +118,20 @@ namespace YARG.Gameplay.Player
             EliteDrumNote note) => colors.GetNoteColor(EliteDrumsColorRoles.GetHandRole(note));
 
         private GameObject _noteTemplate;
+        private EliteDrumsLayoutPreset _cymbalLayout;
+        private IReadOnlyList<EliteDrumsPlayableLaneSegment> _playableLaneSegments =
+            Array.Empty<EliteDrumsPlayableLaneSegment>();
+        private int? _mergedAction;
+        private int? _mergedKeeperAction;
+
+        public static byte ResolveCymbalMergePolicy(bool isReplay, BaseEngineParameters recorded) =>
+            isReplay ? (recorded as DrumsEngineParameters)?.EliteCymbalMergePolicy
+                ?? EliteDrumsCymbalProjection.LEGACY_POLICY : EliteDrumsCymbalProjection.CURRENT_POLICY;
+
+        protected override bool HasPhysicalInputAliases => _mergedAction.HasValue;
+
+        protected override int? GetPhysicalInputAliasGroup(int action) =>
+            action == _mergedAction || action == _mergedKeeperAction ? _mergedKeeperAction : null;
 
         protected override void SetupTheme()
         {
@@ -140,7 +154,8 @@ namespace YARG.Gameplay.Player
         protected override InstrumentDifficulty<EliteDrumNote> GetNotes(SongChart chart)
         {
             if (Player.ResolvedDrumPlayback != null) return Player.PlayableEliteDrumDifficulty;
-            var difficulty = DrumDifficultySelector.SelectNativeEliteTrack(chart, Player.Profile).Clone()
+            var difficulty = DrumDifficultySelector.SelectNativeEliteTrack(chart, Player.Profile,
+                DrumsPlayer.ResolveClassicArticulationRuleset(Player.IsReplay, Player.EngineParameterOverride)).Clone()
                 .GetDifficulty(Player.Profile.CurrentDifficulty);
             // Direct/native sessions also own a clone: normalize before rendering and
             // engine maxima consume it, without changing the cached authored chart.
@@ -161,8 +176,25 @@ namespace YARG.Gameplay.Player
                 EngineContainer = null;
             }
 
+            _cymbalLayout ??= Player.EliteDrumsLayout?.Copy();
+            _mergedAction = _mergedKeeperAction = null;
+            foreach (var action in new[] { EliteDrumsAction.EliteLeftCrash, EliteDrumsAction.EliteRide,
+                EliteDrumsAction.EliteRightCrash })
+            {
+                var canonical = EliteDrumsCymbalProjection.NormalizeAction(action, _cymbalLayout,
+                    EngineParams.EliteCymbalMergePolicy);
+                if (canonical == action) continue;
+                _mergedAction = (int)action;
+                _mergedKeeperAction = (int)canonical;
+            }
+            // The engine's idempotent projection runs after profile modifiers, including
+            // direct/practice sessions, and before scores and visual geometry are built.
             var engine = new EliteDrumsEngine(NoteTrack, SyncTrack, EngineParams,
-                Player.Profile.IsBot, true, Player.Profile.EffectiveAutoHiHatPedal);
+                Player.Profile.IsBot, true, Player.Profile.EffectiveAutoHiHatPedal, cymbalLayout: _cymbalLayout);
+            _playableLaneSegments = EngineParams.EliteCymbalMergePolicy >= EliteDrumsCymbalProjection.CURRENT_POLICY &&
+                EliteDrumsCymbalPairs.TryGet(_cymbalLayout, out _)
+                ? EliteDrumsPlayableLaneSegments.ResolvePhysical(NoteTrack)
+                : EliteDrumsPlayableLaneSegments.Resolve(NoteTrack);
             EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack, Chart, Player.RockMeterPreset);
             HitWindow = EngineParams.HitWindow;
             engine.OnNoteHit += OnNoteHit;
@@ -187,7 +219,7 @@ namespace YARG.Gameplay.Player
 
         protected override void FinishInitialization()
         {
-            Layout = EliteDrumsLayoutResolver.TryResolve(Player.EliteDrumsLayout, out var selectedLayout)
+            Layout = EliteDrumsLayoutResolver.TryResolve(_cymbalLayout, out var selectedLayout)
                 ? selectedLayout : EliteDrumsLayoutResolver.Resolve(EliteDrumsLayoutPreset.Compact);
             var compact = EliteDrumsLayoutResolver.Resolve(EliteDrumsLayoutPreset.Compact);
             UsesHistoricalPedalBars = Layout.Lanes.Count == compact.Lanes.Count &&
@@ -322,40 +354,23 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            // Native authored roll phrases are independent of the generic note lane flags.
-            // Only render records that resolve to playable members in this exact chart,
-            // matching the typed engine's fail-closed source membership.
-            var surviving = new Dictionary<EliteDrumSourceDefinition, EliteDrumNote>();
-            foreach (var parent in NoteTrack.Notes)
+            // The engine and renderer share projected membership, so a strip never
+            // promises cadence credit on a different physical cymbal.
+            foreach (var segment in _playableLaneSegments)
             {
-                foreach (var member in parent.AllNotes)
-                {
-                    if (!member.IsInvisibleTerminator && member.SourceDefinition != null)
-                        surviving.TryAdd(member.SourceDefinition, member);
-                }
-            }
-            foreach (var record in NoteTrack.EliteDrumNativeAuthoredLaneRecords)
-            {
-                if (!IsNativeAuthoredLaneStart(record, parentNote) ||
-                    GetNativeAuthoredLaneTimeRange(record, surviving) is not { } timeRange)
-                {
-                    continue;
-                }
-
-                int pad = (int) record.AuthoredPad;
+                int pad = segment.Pad;
+                if (pad == (int)EliteDrumPad.HatPedal || segment.EndTime <= segment.StartTime ||
+                    !ReferenceEquals(segment.Members[0].ParentOrSelf, parentNote)) continue;
                 foreach (int receptor in GetNativeAuthoredLaneReceptors(pad, Layout.KickMode))
                 {
                     if (!LanePool.CanSpawnAmount(1)) BeforeNativeLaneAllocation(1);
                     var lane = TakeNativeLane();
                     if (lane == null) continue;
-
                     var position = _ordering.TryGetValue(receptor, out var info) ? info.Position : LaneCount / 2;
-                    // Kick bars use the same full-width strip as classic drums. Dedicated
-                    // and split kicks follow their configured receptor columns instead.
-                    lane.SetTimeRange(timeRange.Start, timeRange.End);
+                    lane.SetTimeRange(segment.StartTime, segment.EndTime);
                     lane.SetIndexRange(position, position);
                     lane.SetAppearance(Instrument.FiveLaneDrums, position, position, LaneCount,
-                        GetLaneColor(Player.ColorProfile.EliteDrums, surviving[record.MemberSources[0]]).ToUnityColor(),
+                        GetLaneColor(Player.ColorProfile.EliteDrums, segment.Members[0]).ToUnityColor(),
                         GetLaneScale());
                     lane.ToggleFullWidth(IsFootPad(pad) && UsesKickBars);
                     lane.EnableFromPool();
@@ -418,6 +433,11 @@ namespace YARG.Gameplay.Player
                 _pendingWildcardHit = true;
                 return;
             }
+            AnimateHitFeedback(note);
+        }
+
+        private void AnimateHitFeedback(EliteDrumNote note)
+        {
             var colors = Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors();
             var effectRole = IsFootPad(note.Pad) && (note.IsFlam || note.IsFlatFlam)
                 ? EliteDrumsColorRole.KickFlam
@@ -450,10 +470,7 @@ namespace YARG.Gameplay.Player
             // The source note already completed its lifecycle. Only the physical follow-up
             // gets feedback here; do not hit its pooled gem or repeat SP/solo callbacks.
             _pendingOverhitAction = null;
-            var colors = Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors();
-            var effect = colors.GetInputEffectColor(EliteDrumsColorRoles.GetHandRole(note));
-            _fretArray.PlayHitAnimation(note.Pad, effect,
-                IsCymbal(note.Pad) && Player.Profile.UseCymbalModels);
+            AnimateHitFeedback(note);
         }
 
         protected override void GameplayDestroy()

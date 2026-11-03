@@ -1,6 +1,8 @@
+// pattern: Imperative Shell
 #nullable enable
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using ManagedBass;
 using UnityEngine;
@@ -33,6 +35,8 @@ namespace YARG.Audio.BASS
         private const float SILENCE_FLOOR_DB  = -160f;
         private const float CALIBRATION_GAIN  = 180f;
         private const float UNAVAILABLE_VALUE = -1f;
+        internal const float PREVIEW_SILENCE_DBFS = -160f;
+        internal static readonly float CALIBRATION_GAIN_DB = 20f * Mathf.Log10(CALIBRATION_GAIN);
 
         private const int AMPLITUDE_STRIDE   = 4;
         private const int IDLE_SLEEP_MS      = 1;
@@ -41,6 +45,8 @@ namespace YARG.Audio.BASS
         private readonly float[]                         _frameBuffer;
         private readonly Func<double>                    _getInputTime;
         private readonly Func<bool>                      _isOutputRecording;
+        private readonly Func<bool>                      _isLevelPreview;
+        private readonly Func<float>                     _getSensitivityOffset;
         private readonly ConcurrentQueue<MicOutputFrame> _outputFrames = new();
         private readonly PitchTracker                    _pitchTracker;
 
@@ -48,7 +54,7 @@ namespace YARG.Audio.BASS
 
         private readonly IBassMicSampleSource _source;
         private readonly Thread               _worker;
-        private          bool                 _failureLogged;
+        private volatile bool                 _failureLogged;
         private          int                  _frameSamples;
         private          float?               _lastAmplitude;
 
@@ -56,12 +62,42 @@ namespace YARG.Audio.BASS
         private bool   _paused;
 
         private volatile bool _stopRequested;
+        private volatile bool _workerExited;
+        private LevelReading? _previewReading;
+        private bool _wasOutputRecording;
+        public bool HasFailed => _failureLogged;
 
-        public BassMicAnalyzer(IBassMicSampleSource source, Func<bool> isOutputRecording, Func<double> getInputTime)
+        private sealed class LevelReading
+        {
+            public readonly float Decibels;
+            public readonly long Timestamp;
+            public LevelReading(float decibels)
+            {
+                Decibels = decibels;
+                Timestamp = Stopwatch.GetTimestamp();
+            }
+        }
+
+        public float PreviewLevelDbfs
+        {
+            get
+            {
+                var reading = Volatile.Read(ref _previewReading);
+                if (!_isLevelPreview() || _stopRequested || _workerExited || reading == null ||
+                    (Stopwatch.GetTimestamp() - reading.Timestamp) / (double)Stopwatch.Frequency > 0.25)
+                    return PREVIEW_SILENCE_DBFS;
+                return reading.Decibels;
+            }
+        }
+
+        public BassMicAnalyzer(IBassMicSampleSource source, Func<bool> isOutputRecording, Func<double> getInputTime,
+            Func<bool>? isLevelPreview = null, Func<float>? getSensitivityOffset = null)
         {
             _source = source;
             _isOutputRecording = isOutputRecording;
             _getInputTime = getInputTime;
+            _isLevelPreview = isLevelPreview ?? (() => false);
+            _getSensitivityOffset = getSensitivityOffset ?? (() => 0f);
 
             int samplesPerFrame = checked(source.SampleRate * MicDevice.RECORD_PERIOD_MS / 1000);
             _readBuffer = new float[samplesPerFrame];
@@ -117,7 +153,7 @@ namespace YARG.Audio.BASS
             {
                 while (!_stopRequested && _source.IsValid)
                 {
-                    if (!_isOutputRecording())
+                    if (!_isOutputRecording() && !_isLevelPreview())
                     {
                         PauseAnalysis();
                         Thread.Sleep(IDLE_SLEEP_MS);
@@ -132,7 +168,12 @@ namespace YARG.Audio.BASS
             }
             catch (Exception exception)
             {
+                _failureLogged = true;
                 YargLogger.LogException(exception, "Microphone analysis worker failed");
+            }
+            finally
+            {
+                _workerExited = true;
             }
         }
 
@@ -225,6 +266,22 @@ namespace YARG.Audio.BASS
         {
             float amplitude = MeasureAmplitude(samples);
 
+            if (_isLevelPreview())
+            {
+                float decibels = Math.Max(PREVIEW_SILENCE_DBFS, amplitude - CALIBRATION_GAIN_DB);
+                Volatile.Write(ref _previewReading, new LevelReading(decibels));
+            }
+
+            bool recording = _isOutputRecording();
+            if (_wasOutputRecording != recording)
+            {
+                _lastAmplitude = null;
+                _lastPitch = null;
+                _pitchTracker.Reset();
+                _wasOutputRecording = recording;
+            }
+            if (!recording) return;
+
             if (_lastAmplitude is { } previousAmplitude && amplitude - previousAmplitude >= HIT_THRESHOLD_DB)
             {
                 double midpoint = frameEndTime - MicDevice.RECORD_PERIOD_MS / 2000.0;
@@ -233,7 +290,7 @@ namespace YARG.Audio.BASS
 
             _lastAmplitude = amplitude;
 
-            if (amplitude < SettingsManager.Settings.MicrophoneSensitivity.Value)
+            if (amplitude < SettingsManager.Settings.MicrophoneSensitivity.Value + _getSensitivityOffset())
             {
                 _lastPitch = null;
                 return;
@@ -271,6 +328,8 @@ namespace YARG.Audio.BASS
 
         private void ClearState()
         {
+            Volatile.Write(ref _previewReading, null);
+            _wasOutputRecording = false;
             _lastPitch = null;
             _lastAmplitude = null;
             _frameSamples = 0;

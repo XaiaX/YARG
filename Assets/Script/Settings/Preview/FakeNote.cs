@@ -129,9 +129,13 @@ namespace YARG.Settings.Preview
             if (NoteRef != null) gameObject.SetActive(true);
         }
 
-        private ThemeNoteType EliteModelType(ThemeNoteType type) => !FakeTrackPlayer.UseCymbalModels &&
-            type is ThemeNoteType.Cymbal or ThemeNoteType.OpenHiHat or ThemeNoteType.ClosedHiHat
-                ? ThemeNoteType.Normal : type;
+        private ThemeNoteType EliteModelType(ThemeNoteType type) => FakeTrackPlayer.UseCymbalModels ? type : type switch
+        {
+            ThemeNoteType.Cymbal or ThemeNoteType.OpenHiHat or ThemeNoteType.ClosedHiHat => ThemeNoteType.Normal,
+            ThemeNoteType.CymbalAccent or ThemeNoteType.OpenHiHatAccent or ThemeNoteType.ClosedHiHatAccent => ThemeNoteType.Accent,
+            ThemeNoteType.CymbalGhost or ThemeNoteType.OpenHiHatGhost or ThemeNoteType.ClosedHiHatGhost => ThemeNoteType.Ghost,
+            _ => type
+        };
 
         private NoteGroup FindNoteGroup(ThemeNoteType type, bool starPower)
         {
@@ -207,6 +211,17 @@ namespace YARG.Settings.Preview
                 selectedType = EliteKickAppearance.Select(selectedType == ThemeNoteType.KickAccent,
                     selectedType == ThemeNoteType.KickGhost, false, true);
             if (NoteRef.EliteDescriptor != null) selectedType = EliteModelType(selectedType);
+            if (FakeTrackPlayer.SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums &&
+                !FakeTrackPlayer.UseCymbalModels)
+            {
+                selectedType = selectedType switch
+                {
+                    ThemeNoteType.Cymbal => ThemeNoteType.Normal,
+                    ThemeNoteType.CymbalGhost => ThemeNoteType.Ghost,
+                    ThemeNoteType.CymbalAccent => ThemeNoteType.Accent,
+                    _ => selectedType
+                };
+            }
             var selectedGroup = FindNoteGroup(selectedType, useStarPower);
             if (selectedGroup != _currentNoteGroup)
             {
@@ -281,6 +296,15 @@ namespace YARG.Settings.Preview
             }
 
             _currentNoteGroup.SetColorWithEmission(color, color);
+            if (NoteRef.EliteDescriptor == null && NoteRef.CenterNote &&
+                FakeTrackPlayer.SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums &&
+                (selectedType is ThemeNoteType.KickFlam or ThemeNoteType.DedicatedLaneKickFlam) && _currentNoteGroup.HasKickFlamColors)
+            {
+                var secondary = FakeTrackPlayer.SelectedGameMode == GameMode.FourLaneDrums
+                    ? useStarPower ? colorProfile.FourLaneDrums.DoubleKickStarpower : colorProfile.FourLaneDrums.DoubleKickNote
+                    : useStarPower ? colorProfile.FiveLaneDrums.DoubleKickStarpower : colorProfile.FiveLaneDrums.DoubleKickNote;
+                _currentNoteGroup.SetKickFlamColors(color, NoteRef.ForceMiss ? color : secondary.ToUnityColor(), FakeTrackPlayer.LeftyFlip);
+            }
             if (NoteRef.EliteDescriptor is { Role: EliteDrumsColorRole.KickFlam } && _currentNoteGroup.HasKickFlamColors)
             {
                 var (lower, upper) = EliteKickAppearance.FlamColors(colorProfile.EliteDrums,
@@ -369,6 +393,45 @@ namespace YARG.Settings.Preview
                 width = 1f;
             }
             transform.localScale = new Vector3(width, highwayPreset.NoteHeight, 1f);
+            if (NoteRef.ClassicHandFlam && !NoteRef.CenterNote && info.LaneCount > 0 &&
+                FakeTrackPlayer.SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)
+            {
+                var ownGeometry = Geometry(_currentNoteGroup);
+                if (!_flamCompanions.TryGetValue(_currentNoteGroup, out var companion))
+                {
+                    ownGeometry.Reset(_currentNoteGroup.transform);
+                    companion = Instantiate(_currentNoteGroup, transform);
+                    _flamCompanions.Add(_currentNoteGroup, companion);
+                    Geometry(companion);
+                }
+                float center = transform.localPosition.x;
+                bool cymbal = selectedType is ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent or ThemeNoteType.CymbalGhost;
+                EliteDrumsRuntimeGeometry.FitPairWithAuthoredWidth(ownGeometry, _currentNoteGroup.transform,
+                    Geometry(companion), companion.transform, info.LaneCount, center,
+                    TrackPlayer.TRACK_WIDTH / info.LaneCount, center, !NoteRef.ClassicFlatFlam,
+                    FakeTrackPlayer.FlamLayout, cymbal, FakeTrackPlayer.LeftyFlip,
+                    TrackPlayer.TRACK_WIDTH / (FakeTrackPlayer.SelectedGameMode == GameMode.FiveLaneDrums ? 5f : 4f));
+                companion.SetActive(true);
+                companion.Initialize();
+                if (stripEmission >= 0f) companion.OverrideZeroEmission(stripEmission);
+                companion.SetColorWithEmission(color, color);
+                companion.SetMetalColor(metalColor);
+            }
+            if (NoteRef.EliteDescriptor == null && NoteRef.CenterNote && selectedType == ThemeNoteType.KickFlam &&
+                info.LaneCount > 0 && FakeTrackPlayer.SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)
+            {
+                var split = _currentNoteGroup.GetComponentInChildren<ClassicKickFlamVisual>(true);
+                if (split != null)
+                {
+                    var endpoints = ClassicKickFlamLayout.GetInnerColumns(info.LaneCount,
+                        NoteRef.ClassicFirstHandColumn, NoteRef.ClassicSecondHandColumn,
+                        FakeTrackPlayer.SelectedGameMode == GameMode.FiveLaneDrums, FakeTrackPlayer.LeftyFlip);
+                    float pitch = TrackPlayer.TRACK_WIDTH / info.LaneCount;
+                    split.Configure(transform.parent, TrackPlayer.TRACK_WIDTH,
+                        endpoints.Left * pitch - TrackPlayer.TRACK_WIDTH * .5f,
+                        endpoints.Right * pitch - TrackPlayer.TRACK_WIDTH * .5f);
+                }
+            }
             if (NoteRef.EliteDescriptor is { } elite)
             {
                 var authoredScale = _authoredGroupScales[_currentNoteGroup];
@@ -487,7 +550,7 @@ namespace YARG.Settings.Preview
                         }
                         EliteDrumsRuntimeGeometry.FitPair(ownGeometry, _currentNoteGroup.transform,
                             Geometry(companion), companion.transform, info.LaneCount, center, laneWidth,
-                            center, !NoteRef.EliteFlatFlam, SettingsManager.Settings.EliteFlamLayout.Value,
+                            center, !NoteRef.EliteFlatFlam, FakeTrackPlayer.FlamLayout,
                             _noteGroups.Exists(pair => pair.Group == _currentNoteGroup && pair.NoteType is
                                 ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent or ThemeNoteType.CymbalGhost
                                 or ThemeNoteType.OpenHiHat or ThemeNoteType.OpenHiHatAccent or ThemeNoteType.OpenHiHatGhost
@@ -616,6 +679,8 @@ namespace YARG.Settings.Preview
             var stars = component.GetNoteModelsForVisualStyle(style, true);
             if (style == VisualStyle.EliteDrums)
                 (regular, stars) = ThemeNoteModelFallbacks.ResolveEliteModels(regular, stars);
+            else if (style is VisualStyle.FourLaneDrums or VisualStyle.FiveLaneDrums)
+                (regular, stars) = ThemeNoteModelFallbacks.ResolveClassicDrumModels(regular, stars);
             var prefab = CreateFakeNoteFromModels(regular, stars);
             if (style == VisualStyle.EliteDrums)
                 NormalizeElitePreviewBars(prefab.GetComponent<FakeNote>());

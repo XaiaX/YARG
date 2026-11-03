@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using YARG.Core.Input;
@@ -63,6 +65,38 @@ namespace YARG.Input
         /// </summary>
         public bool Enabled { get; protected set; } = false;
 
+        // A token follows a real control event through deferred button debouncing.
+        // Sharing the token across bindings lets gameplay coalesce aliases without
+        // confusing two controls, or two events with equal timestamps.
+        internal sealed class PhysicalInputOrigin
+        {
+            private static long _nextSequence;
+            internal readonly int EventId;
+            internal readonly long Sequence;
+            internal PhysicalInputOrigin(int eventId)
+            {
+                EventId = eventId;
+                Sequence = Interlocked.Increment(ref _nextSequence);
+            }
+        }
+
+        private sealed class OriginSlot
+        {
+            public OriginSlot() { }
+            internal PhysicalInputOrigin Latest;
+        }
+
+        private static readonly ConditionalWeakTable<InputControl, OriginSlot> _physicalOrigins = new();
+        internal PhysicalInputOrigin PhysicalOrigin { get; private set; }
+
+        protected void SetPhysicalOrigin(InputControl control, int eventId)
+        {
+            var slot = _physicalOrigins.GetOrCreateValue(control);
+            if (slot.Latest == null || slot.Latest.EventId != eventId)
+                slot.Latest = new PhysicalInputOrigin(eventId);
+            PhysicalOrigin = slot.Latest;
+        }
+
         protected double _lastEventTime;
 
         public ControlBinding(string name, int action)
@@ -111,6 +145,7 @@ namespace YARG.Input
         public virtual void Disable()
         {
             Enabled = false;
+            PhysicalOrigin = null;
         }
 
         public virtual void UpdateForFrame(double updateTime)
@@ -153,9 +188,12 @@ namespace YARG.Input
             FireInputEvent(ref input);
         }
 
+        internal virtual PhysicalInputOrigin GetInputPhysicalOrigin() => PhysicalOrigin;
+
         protected void FireInputEvent(ref GameInput input)
         {
             if (!Enabled) return;
+            PhysicalOrigin = GetInputPhysicalOrigin();
 
             try
             {
@@ -176,6 +214,12 @@ namespace YARG.Input
         public TState               State   { get; protected set; }
 
         public event Action<TState> StateChanged;
+
+        internal ControlBinding.PhysicalInputOrigin PendingPhysicalOrigin { get; private set; }
+        internal virtual void CapturePhysicalOrigin(ControlBinding.PhysicalInputOrigin origin) =>
+            PendingPhysicalOrigin = origin;
+        internal ControlBinding.PhysicalInputOrigin StatePhysicalOrigin { get; private set; }
+        private TState _lastNotifiedState;
 
         public SingleBinding(InputControl<TState> control)
         {
@@ -199,8 +243,14 @@ namespace YARG.Input
             InvokeStateChanged(State);
         }
 
+        protected virtual bool HasPhysicalStateChanged(TState previous, TState next) =>
+            !EqualityComparer<TState>.Default.Equals(previous, next);
+
         protected void InvokeStateChanged(TState state)
         {
+            if (HasPhysicalStateChanged(_lastNotifiedState, state))
+                StatePhysicalOrigin = PendingPhysicalOrigin;
+            _lastNotifiedState = state;
             StateChanged?.Invoke(state);
         }
 
@@ -532,6 +582,8 @@ namespace YARG.Input
                 return;
             }
 
+            SetPhysicalOrigin(control, eventPtr.id);
+            binding.CapturePhysicalOrigin(PhysicalOrigin);
             double inputTime = InputManager.ClampInputTime(time);
             binding.UpdateState(inputTime);
             OnStateChanged(binding, inputTime);

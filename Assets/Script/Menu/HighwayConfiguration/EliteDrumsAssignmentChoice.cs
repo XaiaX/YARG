@@ -1,4 +1,6 @@
+// pattern: Functional Core
 using System;
+using System.Linq;
 using YARG.Core.Game;
 
 namespace YARG.Menu.HighwayConfiguration
@@ -22,12 +24,20 @@ namespace YARG.Menu.HighwayConfiguration
                 throw new ArgumentOutOfRangeException(nameof(column));
             if (!IsAssignment(choiceId)) return EliteDrumsAssignmentChoiceState.Command;
 
-            if (OccupiesRow(draft.Slots[column], drum, choiceId))
+            bool orderedPair = EliteDrumsCymbalPairs.TryGetChoice(choiceId, out var pair);
+            bool current = orderedPair
+                ? !drum && draft.Slots[column].Cymbal == pair.EffectiveId &&
+                    EliteDrumsCymbalPairs.TryGet(draft, out var assignedPair) && assignedPair.ChoiceId == choiceId
+                : OccupiesRow(draft.Slots[column], drum, choiceId);
+            if (current)
                 return EliteDrumsAssignmentChoiceState.Current;
 
+            var sources = orderedPair ? pair.Sources : choiceId.Split('+');
             foreach (var slot in draft.Slots)
             {
-                if (OccupiesRow(slot, true, choiceId) || OccupiesRow(slot, false, choiceId))
+                if (OccupiesRow(slot, true, choiceId) || OccupiesRow(slot, false, choiceId) ||
+                    new[] { slot.Drum, slot.Cymbal }.Where(id => id != null)
+                        .SelectMany(id => id.Split('+')).Intersect(sources).Any())
                     return EliteDrumsAssignmentChoiceState.AssignedElsewhere;
             }
             return EliteDrumsAssignmentChoiceState.Unassigned;
@@ -47,7 +57,8 @@ namespace YARG.Menu.HighwayConfiguration
             };
         }
 
-        private static bool IsAssignment(string id) => id is
+        private static bool IsAssignment(string id) => EliteDrumsCymbalPairs.TryGetChoice(id, out _) ||
+            EliteDrumsCymbalPairs.TryGet(id, out _) || id is
             "snare" or "tom1" or "tom2" or "tom3" or "left-crash" or "ride" or "right-crash" or
             "hi-hat" or "kick" or "kick1" or "kick2";
 

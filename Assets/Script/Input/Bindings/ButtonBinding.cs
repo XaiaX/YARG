@@ -35,6 +35,7 @@ namespace YARG.Input
 
         private float _invertSign = INVERT_DEFAULT ? -1 : 1;
         private float _pressPoint;
+        private bool _lastRawPressed;
 
         public bool Inverted
         {
@@ -142,6 +143,17 @@ namespace YARG.Input
 
             return serialized;
         }
+
+        internal override void CapturePhysicalOrigin(ControlBinding.PhysicalInputOrigin origin)
+        {
+            bool pressed = CalculateState(Control.value) >= PressPoint;
+            if (pressed != _lastRawPressed) base.CapturePhysicalOrigin(origin);
+            _lastRawPressed = pressed;
+        }
+
+        // Analog velocity changes while held are not new physical button edges.
+        protected override bool HasPhysicalStateChanged(float previous, float next) =>
+            (previous >= PressPoint) != (next >= PressPoint);
 
         public override void UpdateState(double time)
         {
@@ -313,6 +325,18 @@ namespace YARG.Input
             // Only start collective debounce on button press
             if (State && !_debounceTimer.IsRunning)
                 _debounceTimer.Start(time);
+        }
+
+        internal override PhysicalInputOrigin GetInputPhysicalOrigin()
+        {
+            PhysicalInputOrigin latest = null;
+            foreach (var binding in _bindings)
+            {
+                if (State && !binding.IsPressed) continue;
+                var origin = binding.StatePhysicalOrigin;
+                if (origin != null && (latest == null || origin.Sequence > latest.Sequence)) latest = origin;
+            }
+            return latest;
         }
 
         public override void UpdateForFrame(double updateTime)

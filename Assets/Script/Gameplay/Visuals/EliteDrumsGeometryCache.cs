@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Runtime.CompilerServices;
 using UnityEngine;
+using YARG.Core;
 using YARG.Settings;
 using ModelGeometry = YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry.ModelGeometry;
 using PairPlacement = YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry.PairPlacement;
@@ -53,10 +54,10 @@ namespace YARG.Gameplay.Visuals
 
         internal readonly struct PairKey : IEquatable<PairKey>
         {
-            private readonly (long, long, int, float, float, bool, EliteFlamLayout, bool, bool) _value;
+            private readonly (long, long, int, float, float, bool, DrumFlamLayout, bool, bool, float) _value;
             internal PairKey(long left, long right, int columns, float center, float width,
-                bool regular, EliteFlamLayout layout, bool cymbal, bool lefty) =>
-                _value = (left, right, columns, center, width, regular, layout, cymbal, lefty);
+                bool regular, DrumFlamLayout layout, bool cymbal, bool lefty, float authoredLaneWidth) =>
+                _value = (left, right, columns, center, width, regular, layout, cymbal, lefty, authoredLaneWidth);
             public bool Equals(PairKey other) => _value.Equals(other._value);
             public override bool Equals(object other) => other is PairKey key && Equals(key);
             public override int GetHashCode() => _value.GetHashCode();

@@ -25,6 +25,7 @@ using static YARG.Core.Game.ColorProfile;
 
 namespace YARG.Gameplay.Player
 {
+    // pattern: Imperative Shell
     public class DrumsPlayer : TrackPlayer<DrumsEngine, DrumNote>
     {
         private const float DRUM_PAD_FLASH_HOLD_DURATION = 0.2f;
@@ -206,14 +207,24 @@ namespace YARG.Gameplay.Player
             // track because modifiers and activation flags are applied to the gameplay copy.
             var instrumentDifficulty = Player.ResolvedDrumPlayback != null
                 ? Player.PlayableDrumDifficulty
-                : DrumDifficultySelector.SelectTrack(chart, Player.Profile).Clone()
-                    .GetDifficulty(Player.Profile.CurrentDifficulty);
+                : DrumPlaybackPreparer.PrepareClassicRuleset(chart,
+                    DrumDifficultySelector.SelectTrack(chart, Player.Profile)
+                        .GetDifficulty(Player.Profile.CurrentDifficulty),
+                    ResolveClassicArticulationRuleset(Player.IsReplay, Player.EngineParameterOverride));
             DrumsEngine.TraceEliteLane($"selected target={Player.Profile.EliteDrumsDownchartTarget?.ToString() ?? "<null>"} " +
                 $"instrument={Player.Profile.CurrentInstrument} chartInstrument={instrumentDifficulty.Instrument} " +
                 $"difficulty={Player.Profile.CurrentDifficulty} replay={Player.IsReplay} " +
                 $"eliteTargetActive={EliteDrumsDownchartRules.IsDownchartTargetActive(Player.Profile)} " +
                 $"v1Gate={ShouldUseEliteFillRulesetV1(Player.Profile, instrumentDifficulty, Player.IsReplay)}");
             return instrumentDifficulty;
+        }
+
+        /// <summary>Live play uses current articulations; replay preparation honors its recorded rules.</summary>
+        public static byte ResolveClassicArticulationRuleset(bool isReplay, BaseEngineParameters recorded)
+        {
+            return !isReplay ? DrumsEngineParameters.CURRENT_CLASSIC_ARTICULATIONS
+                : (recorded as DrumsEngineParameters)?.ClassicArticulationRuleset
+                    ?? DrumsEngineParameters.LEGACY_CLASSIC_ARTICULATIONS;
         }
 
         /// <summary>
@@ -269,6 +280,7 @@ namespace YARG.Gameplay.Player
 
             if (EngineContainer != null)
             {
+                if (Engine != null) Engine.OnFlamFollowUp -= OnFlamFollowUp;
                 GameManager.EngineManager.Unregister(EngineContainer);
                 EngineContainer = null;
             }
@@ -303,6 +315,7 @@ namespace YARG.Gameplay.Player
             engine.OnCountdownChange += OnCountdownChange;
 
             engine.OnPadHit += OnPadHit;
+            engine.OnFlamFollowUp += OnFlamFollowUp;
 
             EngineContainer.OnHappinessNearFail += OnHappinessNearFail;
             EngineContainer.OnHappinessOverFail += OnHappinessOverFail;
@@ -1042,6 +1055,20 @@ namespace YARG.Gameplay.Player
             _fretArray.SetBreMode(false);
         }
 
+
+        private void OnFlamFollowUp(DrumNote note, DrumsAction action, float velocity, bool awardedExtraUnit)
+        {
+            // The source note has already returned to its pool. Only repeat physical
+            // feedback; its lifecycle and primary dynamics judgment must run once.
+            OnPadHit(action, true, false, false, DrumNoteType.Neutral, velocity);
+            AnimateFret(note.Pad, Fret.AnimType.CorrectNormal);
+        }
+
+        protected override void GameplayDestroy()
+        {
+            if (Engine != null) Engine.OnFlamFollowUp -= OnFlamFollowUp;
+            base.GameplayDestroy();
+        }
 
         private void OnPadHit(DrumsAction action, bool wasNoteHit, bool wasNoteHitCorrectly, bool wasOverhitInLane, DrumNoteType type, float velocity)
         {

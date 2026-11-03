@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -388,13 +389,93 @@ namespace YARG.Tests.PlayMode
             return null;
         }
 
-        internal (Component player, Component pool) CreatePreparedPlayer(EliteDrumsLayoutPreset layout)
+        [UnityTest]
+        public IEnumerator ClassicFlamPreviewRendersTwoGemsAndResetsCompanions()
+        {
+            foreach (var mode in new[] { GameMode.FourLaneDrums, GameMode.FiveLaneDrums })
+            {
+                var (player, pool) = CreatePreparedPlayer(null, mode);
+                Call(player, "SpotlightNoteType", Enum.Parse(Production("YARG.Themes.ThemeNoteType"), "Normal"), false);
+                Call(player, "Advance", .21d);
+                var note = (Component)((IList)Get(pool, "AllSpawned"))[0];
+                var data = Get(note, "NoteRef");
+                var flag = data.GetType().GetField("ClassicHandFlam");
+                Assert.That(flag, Is.Not.Null, "Classic previews carry hand flams independently of Elite layout.");
+                foreach (bool flat in new[] { false, true })
+                foreach (bool star in new[] { false, true, false })
+                {
+                    flag.SetValue(data, true);
+                    data.GetType().GetField("ClassicFlatFlam").SetValue(data, flat);
+                    data.GetType().GetField("ForceStarPower").SetValue(data, star);
+                    Call(note, "OnSettingChanged");
+                    Assert.That(note.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                        .Count(group => group.gameObject.activeInHierarchy), Is.EqualTo(2));
+                }
+                flag.SetValue(data, false);
+                Call(note, "OnSettingChanged");
+                Assert.That(note.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                    .Count(group => group.gameObject.activeInHierarchy), Is.EqualTo(1));
+                Object.Destroy(player.gameObject);
+            }
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator IndependentPreviewPlayersUseTheirExplicitFlamLayouts()
+        {
+            foreach (var mode in new[] { GameMode.FourLaneDrums, GameMode.FiveLaneDrums, GameMode.EliteDrums })
+            {
+                var first = CreatePreparedPlayer(mode == GameMode.EliteDrums ? EliteDrumsLayoutPreset.Full : null, mode);
+                var second = CreatePreparedPlayer(mode == GameMode.EliteDrums ? EliteDrumsLayoutPreset.Full : null, mode);
+                var layout = first.player.GetType().GetProperty("FlamLayout");
+                Assert.That(layout, Is.Not.Null, "Previews must receive an explicit profile layout instead of reading global settings.");
+                layout.SetValue(first.player, Enum.Parse(layout.PropertyType, "V"));
+                var builderType = Production("YARG.Settings.Metadata.TrackPreviewBuilder");
+                var builder = Activator.CreateInstance(builderType, new object[] { false, false, false, null });
+                builderType.GetField("_currentTrackPreview", INSTANCE).SetValue(builder, second.player);
+                var builderLayout = builderType.GetProperty("FlamLayout");
+                Assert.That(builderLayout, Is.Not.Null, "The profile preview builder must pass its layout to the live player.");
+                Assert.That(builderLayout.GetValue(builder).ToString(), Is.EqualTo("V"), "Generic previews start with V.");
+                builderLayout.SetValue(builder, Enum.Parse(builderLayout.PropertyType, "Parallel"));
+                Assert.That(layout.GetValue(second.player).ToString(), Is.EqualTo("Parallel"));
+                Component Flam((Component player, Component pool) owner)
+                {
+                    Call(owner.player, "SpotlightNoteType", Enum.Parse(Production("YARG.Themes.ThemeNoteType"), "Normal"), false);
+                    Call(owner.player, "Advance", .21d);
+                    var note = (Component)((IList)Get(owner.pool, "AllSpawned"))[0];
+                    var data = Get(note, "NoteRef");
+                    data.GetType().GetField(mode == GameMode.EliteDrums ? "EliteHandFlam" : "ClassicHandFlam").SetValue(data, true);
+                    Call(note, "OnSettingChanged");
+                    return note;
+                }
+                var firstNote = Flam(first);
+                var secondNote = Flam(second);
+                Transform[] Gems(Component note) => note.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
+                    .Where(group => group.gameObject.activeInHierarchy).Select(group => group.transform).ToArray();
+                var firstGems = Gems(firstNote);
+                var secondGems = Gems(secondNote);
+                Assert.That(firstGems, Has.Length.EqualTo(2));
+                Assert.That(secondGems, Has.Length.EqualTo(2));
+                Assert.That(Quaternion.Angle(firstGems[0].localRotation, firstGems[1].localRotation), Is.GreaterThan(1f));
+                Assert.That(Quaternion.Angle(secondGems[0].localRotation, secondGems[1].localRotation), Is.LessThan(.001f), mode.ToString());
+                layout.SetValue(first.player, Enum.Parse(layout.PropertyType, "Bucket"));
+                Call(firstNote, "OnSettingChanged");
+                Assert.That(Quaternion.Angle(Gems(secondNote)[0].localRotation, Gems(secondNote)[1].localRotation), Is.LessThan(.001f));
+                Call(first.pool, "ReturnAllObjects");
+                Call(second.pool, "ReturnAllObjects");
+            }
+            yield return null;
+        }
+
+        internal (Component player, Component pool) CreatePreparedPlayer(EliteDrumsLayoutPreset layout,
+            GameMode mode = GameMode.EliteDrums, bool allowIncomplete = false)
         {
             var root = Own(new GameObject("Production fake preview player"));
             root.SetActive(false);
             var player = root.AddComponent(Production("YARG.Settings.Preview.FakeTrackPlayer"));
-            player.GetType().GetProperty("SelectedGameMode", INSTANCE).SetValue(player, GameMode.EliteDrums);
+            player.GetType().GetProperty("SelectedGameMode", INSTANCE).SetValue(player, mode);
             player.GetType().GetProperty("EliteLayoutOverride", INSTANCE).SetValue(player, layout);
+            player.GetType().GetProperty("AllowIncompleteEliteLayoutPreview", INSTANCE).SetValue(player, allowIncomplete);
 
             var poolObject = new GameObject("Production fake preview note pool");
             poolObject.transform.SetParent(root.transform, false);

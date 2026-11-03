@@ -12,24 +12,26 @@ namespace YARG.Gameplay.Visuals
 {
     public sealed class FourLaneDrumsNoteElement : DrumsNoteElement
     {
+        // pattern: Imperative Shell
         protected override void InitializeElement()
         {
             base.InitializeElement();
 
-            var noteGroups = IsStarPowerVisible ? StarPowerNoteGroups : NoteGroups;
+            int groupIndex;
+            bool isCymbal = false;
 
             if (NoteRef.Pad != 0 && NoteRef.Pad != (int) FourLaneDrumPad.Wildcard)
             {
                 // Deal with non-kick/wildcard notes
                 var position = Player.GetHighwayOrderingInfo(NoteRef.Pad).Position;
 
-                bool isCymbal = NoteRef.Pad >= (int) FourLaneDrumPad.YellowCymbal;
+                isCymbal = NoteRef.Pad >= (int) FourLaneDrumPad.YellowCymbal;
 
                 // Set the position
                 transform.localPosition = new Vector3(GetElementX(position, Player.LaneCount), 0f, 0f);
 
                 // Get which note model to use
-                NoteGroup = noteGroups[GetNoteGroup(isCymbal)];
+                groupIndex = GetNoteGroup(isCymbal);
             }
             else if (NoteRef.Pad == 0 && Player.NumberOfDedicatedKickLanes > 0)
             {
@@ -48,33 +50,17 @@ namespace YARG.Gameplay.Visuals
                 var position = Player.GetHighwayOrderingInfo(highwayIndex).Position;
                 transform.localPosition = new Vector3(GetElementX(position, Player.LaneCount), 0f, 0f);
 
-                NoteGroup = noteGroups[(int) NoteType.DedicatedLaneKick];
+                groupIndex = GetKickGroup(NoteRef, true);
             }
             else
             {
                 // Deal with wildcard and regular kick notes
-                var groupIndex = NoteRef.Pad == 0 ? (int)NoteType.Kick : (int)NoteType.Wildcard;
+                groupIndex = NoteRef.Pad == 0 ? GetKickGroup(NoteRef, false) : (int)NoteType.Wildcard;
                 transform.localPosition = Vector3.zero;
-                NoteGroup = noteGroups[groupIndex];
             }
 
             // Show and set material properties
-            NoteGroup.SetActive(true);
-            NoteGroup.Initialize();
-
-            // Override the ghost note's center strip emission from the color
-            // profile. Ghost and cymbal-ghost notes have a dark strip material
-            // with EmissionMultiplier 0 in the prefab; the user can boost it.
-            // Only apply when > 0 to preserve the original darkened appearance
-            // at the default value (cymbal ghosts use EmissionAddition: -0.7).
-            if (NoteRef.IsGhost)
-            {
-                float emission = Player.Player.ColorProfile.FourLaneDrums.GhostStripEmission / 100f;
-                if (emission >= 0f)
-                {
-                    NoteGroup.OverrideZeroEmission(emission);
-                }
-            }
+            InitializeNoteGroup(groupIndex, isCymbal);
 
             // Set note color
             UpdateColor();
@@ -102,37 +88,28 @@ namespace YARG.Gameplay.Visuals
                 colorIndex = Player.GetHighwayOrderingInfo(NoteRef.Pad).ColorIndex;
             }
 
-            // Get colors
             var colorNoStarPower = colors.GetNoteColor(colorIndex);
-            var color = colorNoStarPower;
-
-            if (NoteRef.WasMissed)
+            Color DisplayColor(int index)
             {
-                color = colors.Miss;
+                if (NoteRef.WasMissed) return colors.Miss;
+                if (NoteRef.IsStarPowerActivator && Player.Engine.CanStarPowerActivate && !Player.Engine.BaseStats.IsStarPowerActive)
+                {
+                    float pulse = (float)GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage;
+                    var fullColor = colors.GetActivationNoteColor(index);
+                    return Color.FromArgb(fullColor.A, GetColorFromPulse(fullColor.R, pulse),
+                        GetColorFromPulse(fullColor.G, pulse), GetColorFromPulse(fullColor.B, pulse));
+                }
+                return IsStarPowerVisible ? colors.GetNoteStarPowerColor(index) : colors.GetNoteColor(index);
             }
-            else if (NoteRef.IsStarPowerActivator && Player.Engine.CanStarPowerActivate && !Player.Engine.BaseStats.IsStarPowerActive)
-            {
-                float pulse = (float) GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage;
-                var fullColor = colors.GetActivationNoteColor(colorIndex);
-                color = Color.FromArgb(
-                    fullColor.A,
-                    GetColorFromPulse(fullColor.R, pulse),
-                    GetColorFromPulse(fullColor.G, pulse),
-                    GetColorFromPulse(fullColor.B, pulse)
-                );
-            }
-            else if (IsStarPowerVisible)
-            {
-                color = colors.GetNoteStarPowerColor(colorIndex);
-            }
+            var color = DisplayColor(colorIndex);
 
             // Set the note color if not hidden
             if (!NoteRef.WasHit)
             {
-                NoteGroup.SetColorWithEmission(color.ToUnityColor(), colorNoStarPower.ToUnityColor());
-
-                // Set the metal color
-                NoteGroup.SetMetalColor(colors.GetMetalColor(IsStarPowerVisible).ToUnityColor());
+                UnityEngine.Color? secondary = NoteRef.IsKickFlam
+                    ? DisplayColor((int)FourLaneDrumsFret.DoubleKick).ToUnityColor() : null;
+                SetNoteColors(color.ToUnityColor(), colorNoStarPower.ToUnityColor(),
+                    colors.GetMetalColor(IsStarPowerVisible).ToUnityColor(), secondary);
             }
         }
     }

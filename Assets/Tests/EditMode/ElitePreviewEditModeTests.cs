@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -134,8 +135,8 @@ namespace YARG.Tests.EditMode
             var models = new HashSet<string>();
             var flamRoles = new HashSet<EliteDrumsColorRole>();
             var firstCycle = new List<EliteDrumsColorRole>();
-            Assert.That(type.GetField("NOTE_COUNT").GetRawConstantValue(), Is.EqualTo(142));
-            for (int i = 0; i < 142; i++)
+            Assert.That(type.GetField("NOTE_COUNT").GetRawConstantValue(), Is.EqualTo(148));
+            for (int i = 0; i < 148; i++)
             {
                 var note = create.Invoke(generator, new object[] { i * 0.2d, null });
                 Assert.That(note, Is.Not.Null);
@@ -145,8 +146,8 @@ namespace YARG.Tests.EditMode
                 models.Add(note.GetType().GetField("NoteType").GetValue(note).ToString());
                 if ((bool) note.GetType().GetField("EliteHandFlam").GetValue(note))
                     flamRoles.Add(role);
-                if (i < 71) firstCycle.Add(role);
-                else Assert.That(role, Is.EqualTo(firstCycle[i - 71]), $"Repeated sample {i}");
+                if (i < 74) firstCycle.Add(role);
+                else Assert.That(role, Is.EqualTo(firstCycle[i - 74]), $"Repeated sample {i}");
             }
             Assert.That(flamRoles, Is.SupersetOf(new[] { EliteDrumsColorRole.Snare,
                 EliteDrumsColorRole.Tom1, EliteDrumsColorRole.Tom2, EliteDrumsColorRole.Tom3 }));

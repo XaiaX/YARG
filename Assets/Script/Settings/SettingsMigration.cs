@@ -1,5 +1,6 @@
 using System;
 using Newtonsoft.Json.Linq;
+using YARG.Core;
 using YARG.Core.Logging;
 
 namespace YARG.Settings
@@ -66,7 +67,7 @@ namespace YARG.Settings
                 alternate.Type == JTokenType.Boolean)
             {
                 settings[nameof(SettingsManager.SettingContainer.EliteFlamLayout)] =
-                    (int) (alternate.Value<bool>() ? EliteFlamLayout.Bucket : EliteFlamLayout.V);
+                    (int) (alternate.Value<bool>() ? DrumFlamLayout.Bucket : DrumFlamLayout.V);
             }
             settings.Remove("AlternateEliteFlamLayout");
             SetCurrentSchemaVersion(settings);

@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.IO;
@@ -88,8 +89,10 @@ namespace YARG.Tests.PlayMode
             menu.GetType().GetMethod("InitializeForProfileWithCommit").Invoke(menu, new object[]
             {
                 initial, ColorProfile.Default, false, commit, (Action)(() => { }), isCurrent,
-                acceptLayout, acceptColor, acceptLeftyFlip
+                acceptLayout, acceptColor, acceptLeftyFlip, YARG.Core.DrumFlamLayout.Parallel, false
             });
+            Assert.That(menu.GetType().GetField("_flamLayout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu).ToString(), Is.EqualTo("Parallel"),
+                "Profile-bound layout editing keeps the caller's flam appearance.");
         }
 
         private Component MountBoundaryMenu()

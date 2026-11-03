@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -83,6 +84,50 @@ namespace YARG.Tests.EditMode
             var usable = GetPresets("UsablePresets");
             Assert.That(usable.Count, Is.EqualTo(3));
             Assert.That(InvokeStatic("IsUsable", loaded[0]), Is.True);
+        }
+
+        [TestCase("left-crash+right-crash")]
+        [TestCase("left-crash+ride")]
+        [TestCase("ride+right-crash")]
+        public void SupportedCymbalPairSavesExportsAndImportsWithoutProfileBindings(string id)
+        {
+            var preset = EliteDrumsLayoutEditor.Place(SupportedPreset("Shared pair"), 8, id);
+            Invoke("AddPreset", preset);
+            Assert.That(InvokeStatic("IsUsable", preset), Is.True);
+            string export = Path.Combine(_root, "shared-pair.json");
+            Invoke("ExportPreset", preset, export);
+            string json = File.ReadAllText(export);
+            Assert.That(json, Does.Contain(id).And.Not.Contain("Binding").And.Not.Contain("Device")
+                .And.Not.Contain("KeepOriginalCymbalColors"));
+            var imported = (EliteDrumsLayoutPreset)Invoke("ImportPreset", export);
+            Assert.That(imported, Is.Not.Null);
+            Assert.That(imported.Id, Is.Not.EqualTo(preset.Id), "Importing an existing ID creates a separate layout.");
+            Assert.That(imported.Slots[8].Cymbal, Is.EqualTo(id));
+            Assert.That(imported.Merges[0].EffectiveId, Is.EqualTo(id));
+            Assert.That(InvokeStatic("IsUsable", imported), Is.True);
+            AssertSlotsEqual(preset, imported);
+        }
+
+        [TestCase("left-crash>right-crash")]
+        [TestCase("left-crash>ride")]
+        [TestCase("ride>left-crash")]
+        [TestCase("ride>right-crash")]
+        [TestCase("right-crash>left-crash")]
+        [TestCase("right-crash>ride")]
+        public void OrderedCymbalPrimarySurvivesSharedLayoutExportAndImport(string choiceId)
+        {
+            var preset = EliteDrumsLayoutEditor.Place(SupportedPreset("Ordered shared pair"), 8, choiceId);
+            Invoke("AddPreset", preset);
+            string path = Path.Combine(_root, "ordered-pair.json");
+            Invoke("ExportPreset", preset, path);
+            Assert.That(File.ReadAllText(path), Does.Contain("\"PrimarySource\"")
+                .And.Not.Contain("Binding").And.Not.Contain("Device").And.Not.Contain("KeepOriginalCymbalColors"));
+            var imported = (EliteDrumsLayoutPreset)Invoke("ImportPreset", path);
+            Assert.That(EliteDrumsCymbalPairs.TryGet(imported, out var pair), Is.True);
+            Assert.That(pair.ChoiceId, Is.EqualTo(choiceId));
+            Assert.That(imported.Merges[0].PrimarySource, Is.EqualTo(choiceId.Split('>')[0]));
+            Assert.That(imported.SchemaVersion, Is.EqualTo(EliteDrumsLayoutPreset.CURRENT_SCHEMA_VERSION));
+            Assert.That(InvokeStatic("IsUsable", imported), Is.True);
         }
 
         [Test]

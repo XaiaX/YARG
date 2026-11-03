@@ -15,6 +15,7 @@ using YARG.Core.Extensions;
 using YARG.Helpers.Extensions;
 using YARG.Localization;
 using YARG.Menu.Navigation;
+using YARG.Settings.Customization;
 
 namespace YARG.Menu.Maestro
 {
@@ -128,6 +129,9 @@ namespace YARG.Menu.Maestro
                         activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "AutoHiHatPedal"));
                     if (player.NoHiHatPedal)
                         activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "NoHiHatPedal"));
+                    if (player.KeepOriginalCymbalColors &&
+                        CustomContentManager.HasMergedEliteCymbals(player.Player.Profile.EliteDrumsLayout))
+                        activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "KeepOriginalCymbalColors"));
                 }
 
                 if (player.GameMode == GameMode.ProKeys)

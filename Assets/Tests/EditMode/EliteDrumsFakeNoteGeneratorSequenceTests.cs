@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -10,7 +11,7 @@ namespace YARG.Tests.EditMode
     public sealed class EliteDrumsFakeNoteGeneratorSequenceTests
     {
         private const BindingFlags STATIC = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-        private const int CYCLE_LENGTH = 71;
+        private const int CYCLE_LENGTH = 74;
 
         private static Type Production(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name)).First(type => type != null);
@@ -84,7 +85,7 @@ namespace YARG.Tests.EditMode
         [TestCase("Bars")]
         [TestCase("Combined")]
         [TestCase("Split")]
-        // Retain this historical test identity while the complete cycle grows to 71 samples.
+        // Retain this historical test identity while the complete cycle grows to 74 samples.
         public void TwoCompleteCyclesPreserveOriginalRolesDynamicsAndWrapAfter63Samples(string mode)
         {
             var (type, generator, create, chord) = NewGenerator(mode);
@@ -145,6 +146,12 @@ namespace YARG.Tests.EditMode
                         "Every role must show a regular hand flam followed by a flat hand flam.");
                     Assert.That(companions, Is.Empty, "One source descriptor owns two physical gems without a delayed source.");
                 }
+                else if (index >= 71)
+                {
+                    Assert.That(Role(note), Is.EqualTo(index == 73 ? "Ride" : "LeftCrash"));
+                    Assert.That(companions, Has.Length.EqualTo(1));
+                    Assert.That(Role(companions[0]), Is.EqualTo(index == 71 ? "Ride" : "RightCrash"));
+                }
                 string signature = Signature(note) + "/" + Read(note, "EliteHandFlam") + "/" +
                     Read(note, "EliteFlatFlam") + ":" + string.Join(",", companions.Select(Signature));
                 if (i < CYCLE_LENGTH) signatures.Add(signature);
@@ -172,7 +179,7 @@ namespace YARG.Tests.EditMode
                 Assert.That(Property(descriptor, "Width"), Is.EqualTo(1f), $"Standalone {Role(note)} at {index}");
                 Assert.That(Property(descriptor, "Offset"), Is.EqualTo(0f));
             }
-            for (int index = 67; index < CYCLE_LENGTH; index++)
+            for (int index = 67; index < 71; index++)
             {
                 var (note, companions) = samples[index];
                 Assert.That(companions, Has.Length.EqualTo(1));

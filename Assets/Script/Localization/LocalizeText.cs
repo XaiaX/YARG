@@ -19,5 +19,11 @@ namespace YARG.Localization
         {
             GetComponent<TextMeshProUGUI>().text = Localize.Key(_localizationKey);
         }
+
+        public void SetLocalizationKey(string localizationKey)
+        {
+            _localizationKey = localizationKey;
+            UpdateText();
+        }
     }
 }

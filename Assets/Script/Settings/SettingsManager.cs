@@ -294,7 +294,6 @@ namespace YARG.Settings
                 nameof(Settings.ReverbImplementation),
                 new HeaderMetadata("EliteDrums"),
                 nameof(Settings.EnableEliteDrumsDowncharts),
-                nameof(Settings.EliteFlamLayout),
                 nameof(Settings.EliteHiHatClosureForgiveness),
                 nameof(Settings.RawMidiLogging),
                 new HeaderMetadata("Accessibility"),

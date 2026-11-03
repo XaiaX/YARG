@@ -277,6 +277,8 @@ namespace YARG.Settings.Preview
 
         public bool ForceStarPowerNotes { get; set; }
         public bool LeftyFlip { get; set; }
+        public DrumFlamLayout FlamLayout { get; set; } = DrumFlamLayout.V;
+        public bool KeepOriginalCymbalColors { get; set; }
         public bool UseCymbalModels { get; set; } = true;
         // Simultaneous resolved drum/cymbal collision pairs are always separated.
 
@@ -320,7 +322,8 @@ namespace YARG.Settings.Preview
         public CameraPreset CameraPreset { get; private set; }
         public ColorProfile ColorProfile { get; private set; }
         public EliteDrumsLayoutPreset EliteLayoutOverride { get; set; }
-        /// <summary>Allows structurally valid, merge-free incomplete layouts for editor previews only.</summary>
+        private EliteDrumsLayoutPreset _eliteProjectionLayout;
+        /// <summary>Allows structurally valid incomplete layouts for editor previews only.</summary>
         public bool AllowIncompleteEliteLayoutPreview { get; set; }
         public ColorProfile ColorProfileOverride { get; set; }
         public HighwayPreset HighwayPreset { get; private set; }
@@ -365,7 +368,8 @@ namespace YARG.Settings.Preview
             if (SelectedGameMode == GameMode.EliteDrums)
             {
                 var elite = CurrentGameModeInfo;
-                var layoutPreset = EliteLayoutOverride ?? EliteDrumsLayoutPreset.Compact;
+                var layoutPreset = (EliteLayoutOverride ?? EliteDrumsLayoutPreset.Compact).Copy();
+                _eliteProjectionLayout = layoutPreset;
                 if (AllowIncompleteEliteLayoutPreview)
                 {
                     elite.EliteLayout = EliteDrumsLayoutResolver.TryPreviewResolve(layoutPreset, out var previewLayout)
@@ -378,6 +382,10 @@ namespace YARG.Settings.Preview
                 }
                 elite.Generator = new EliteDrumsFakeNoteGenerator(
                     elite.EliteLayout?.KickMode ?? EliteDrumsLayoutKickMode.Bars);
+                elite.NoteColorProvider = (colors, note) => colors.EliteDrums.GetNoteColor(
+                    GetEliteColorRole(note)).ToUnityColor();
+                elite.NoteStarPowerColorProvider = (colors, note) => colors.EliteDrums.GetNoteStarPowerColor(
+                    GetEliteColorRole(note)).ToUnityColor();
                 elite.LaneCount = elite.EliteLayout?.Lanes.Count ?? 0;
                 elite.HighwayOrdering = elite.EliteLayout?.Lanes.ToDictionary(lane => lane.Index + 1, lane => lane.Index)
                     ?? new Dictionary<int, int>();
@@ -794,6 +802,10 @@ namespace YARG.Settings.Preview
             _ => null
         };
 
+        private EliteDrumsColorRole GetEliteColorRole(FakeNoteData note) => note.ElitePlayableNote == null
+            ? note.EliteDescriptor.Value.Role
+            : EliteDrumsColorRoles.GetRole(note.ElitePlayableNote, true, KeepOriginalCymbalColors);
+
         private static bool IsCymbalModel(ThemeNoteType type) => type is ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent
             or ThemeNoteType.CymbalGhost or ThemeNoteType.OpenHiHat or ThemeNoteType.OpenHiHatAccent
             or ThemeNoteType.OpenHiHatGhost or ThemeNoteType.ClosedHiHat or ThemeNoteType.ClosedHiHatAccent
@@ -859,6 +871,23 @@ namespace YARG.Settings.Preview
             var data = notes.Select(note => note.NoteRef).ToArray();
             RefreshEliteOffsetPairFlags(data, true, CurrentGameModeInfo.EliteLayout);
             foreach (var note in notes) note.OnSettingChanged();
+        }
+
+        internal static void MarkClassicKickFlamColumns(IReadOnlyList<FakeNoteData> chord)
+        {
+            int first = -1, second = -1;
+            foreach (var note in chord)
+            {
+                if (note.CenterNote) continue;
+                if (first < 0) first = note.Fret - 1;
+                else { second = note.Fret - 1; break; }
+            }
+            foreach (var note in chord)
+            {
+                if (!note.CenterNote) continue;
+                note.ClassicFirstHandColumn = first;
+                note.ClassicSecondHandColumn = second;
+            }
         }
 
         private void ApplyLeftyToFret(FakeNoteData note)
@@ -982,7 +1011,15 @@ namespace YARG.Settings.Preview
                 }
                 ApplyLeftyToFret(note);
                 notesToSpawn.Add(note);
+                if (SelectedGameMode == GameMode.EliteDrums)
+                {
+                    EliteDrumsFakeNoteGenerator.ProjectCymbalNotes(notesToSpawn,
+                        _eliteProjectionLayout);
+                    notesToSpawn.RemoveAll(candidate => !IsEliteNoteRepresented(candidate, CurrentGameModeInfo.EliteLayout));
+                }
                 MarkEliteOffsetPairs(notesToSpawn, CurrentGameModeInfo.EliteLayout);
+                if (SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)
+                    MarkClassicKickFlamColumns(notesToSpawn);
                 foreach (var noteToSpawn in notesToSpawn) SpawnNote(noteToSpawn);
             }
 

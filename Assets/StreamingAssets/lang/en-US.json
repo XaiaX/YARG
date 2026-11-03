@@ -1,4 +1,4 @@
-{
+﻿{
 	"Language": {
 		"Name": "English",
 		"Region": "United States",
@@ -119,6 +119,11 @@
 			"Playcount": "Play Count",
 			"Random": "Random"
 		},
+		"DrumFlamLayout": {
+			"V": "V",
+			"Bucket": "Bucket",
+			"Parallel": "Parallel"
+		},
 		"StarPowerActivationType": {
 			"Freestyle": "Freestyle",
 			"RightmostLane": "Rightmost Lane",
@@ -204,8 +209,9 @@
 			"Enabled": "Enabled",
 			"Disabled": "Disabled",
 			"ControllersLocked": "CONTROLLERS (LOCKED)",
-			"ControllersUnlocked": "CONTROLLERS (UNLOCKED)"
-		},
+			"ControllersUnlocked": "CONTROLLERS (UNLOCKED)",
+            "Configure": "CONFIGURE"
+        },
 		"Credits": {
 			"Description": "Contributed To: {0}\n\n{1}",
 			"Repos": {
@@ -327,6 +333,7 @@
 			"Adjustments": "Adjustments",
 			"Modifiers": "Modifiers",
 			"Accessibility": "Accessibility",
+			"KeepOriginalCymbalColors": "Unmerge Cymbal Colors",
 			"LeftyFlip": "Lefty Flip",
 			"AutoHiHatPedal": "Auto Hi-Hat Pedal",
 			"NoHiHatPedal": "No Hi-Hat Pedal",
@@ -629,8 +636,27 @@
 			"UnloadedDeleteTitle": "Delete Profile?",
 			"UnloadedDelete": "Deleting it is permanent.",
 			"BotDelete": "Deleting this bot is permanent.",
-			"ConfigureEliteDrumsLayout": "ELITE DRUMS HIGHWAY"
-		},
+			"ConfigureEliteDrumsLayout": "ELITE DRUMS HIGHWAY",
+			"FlamLayout": "FLAM LAYOUT",
+            "Microphones": "MICROPHONES",
+            "MicrophoneConfiguration": "MICROPHONE CONFIGURATION",
+            "MicrophoneConnected": "Connected",
+            "MicrophoneMissing": "Not connected",
+            "AddMicrophone": "Add Microphone",
+            "RemoveMicrophone": "Remove Microphone",
+            "NoAvailableMicrophones": "No microphones available. Connect a microphone and try again.",
+            "MicrophoneError": "Microphone Error",
+            "MicrophoneOpenFailed": "The microphone could not be opened. Check its connection and try again.",
+            "AutomaticNeedle": "Auto",
+            "InputDecibels": "PITCH DETECTION THRESHOLD: {0} dBFS",
+            "MicrophoneDevice": "Device {0}",
+            "MicrophoneDeviceUnknown": "Device unavailable",
+            "MicrophoneSetup": "Microphones and Needles",
+            "MicrophoneSlot": "{0}. {1}",
+            "NoMicrophones": "Add a microphone to this profile first",
+            "SensitivityHelp": "Use lower values to detect quieter singing. Added to global offset: {0} dB",
+            "SensitivityOffset": "PITCH SENSITIVITY OFFSET (dB)"
+        },
 		"ScoreScreen": {
 			"BandScoreNotSaved": "Score not saved",
 			"InconsistentReplay": "Inconsistent Replay",
@@ -758,6 +784,24 @@
 			"Name": "Elite Drums Layout",
 			"Title": "Elite Drums Highway",
 			"AssignmentTitle": "Assign A Piece",
+			"AssignmentMarkerLegend": "*...* Assigned here\n\n[...] Unassigned\n\nUnmarked entries are assigned elsewhere",
+			"Help": {
+				"Place": "Place {0} in this cell.",
+				"Move": "Moves {0} from column {1}.",
+				"Displaced": "Unassigns {0}. Place these sources again before saving.",
+				"hi-hat": "Place the exclusive Hi-Hat column here, replacing both rows.",
+				"kick": "Place all kicks here in one exclusive column, replacing both rows.",
+				"kick1": "Place Kick 1 here in an exclusive column, replacing both rows. The other kick column becomes Kick 2.",
+				"kick2": "Place Kick 2 here in an exclusive column, replacing both rows. The other kick column becomes Kick 1.",
+				"clear": "Clear this assignment. The other ordinary row stays assigned.",
+				"cancel": "Close this picker without changing the layout.",
+				"left-crash>right-crash": "Left Crash is primary; Right Crash is secondary. Either cymbal alone appears here. When both occur, Left Crash stays here and Right Crash becomes Ride.",
+				"left-crash>ride": "Left Crash is primary; Ride is secondary. Either cymbal alone appears here. When both occur, Left Crash stays here and Ride becomes Right Crash.",
+				"ride>left-crash": "Ride is primary; Left Crash is secondary. Either cymbal alone appears here. When both occur, Ride stays here and Left Crash becomes an indifferent Hi-Hat.",
+				"ride>right-crash": "Ride is primary; Right Crash is secondary. Either cymbal alone appears here. When both occur, Ride stays here and Right Crash becomes Left Crash.",
+				"right-crash>left-crash": "Right Crash is primary; Left Crash is secondary. Either cymbal alone appears here. When both occur, Right Crash stays here and Left Crash becomes an indifferent Hi-Hat.",
+				"right-crash>ride": "Right Crash is primary; Ride is secondary. Either cymbal alone appears here. When both occur, Right Crash stays here and Ride becomes Left Crash."
+			},
 			"Layout": "Layout",
 			"Rename": "Rename",
 			"Copy": "Copy",
@@ -769,7 +813,7 @@
 			"Cymbals": "Cymbals",
 			"Drums": "Drums",
 			"Fallback": "The selected Elite drums layout is missing or unsupported. Using Compact; your saved selection has been retained.",
-			"ColorsSeparate": "Layout changes positioning only. Note and fret colors are configured separately in Color Profiles.",
+			"ColorsSeparate": "Choose where kit pieces appear. Note and fret colors are configured separately in Color Profiles.",
 			"CopyToEdit": "Built-in layouts are read-only. Press Copy to create an editable layout.",
 			"ShiftLeft": "Shift Left",
 			"ShiftRight": "Shift Right",
@@ -790,6 +834,12 @@
 			"Unsupported": "This imported layout contains merged sources unsupported by the current runtime. Export or delete it from preset management.",
 			"Colors": "Colors",
 			"Cell": {
+				"left-crash>right-crash": "Left Crash\n(Right Crash)",
+				"left-crash>ride": "Left Crash\n(Ride)",
+				"ride>left-crash": "Ride\n(Left Crash)",
+				"ride>right-crash": "Ride\n(Right Crash)",
+				"right-crash>left-crash": "Right Crash\n(Left Crash)",
+				"right-crash>ride": "Right Crash\n(Ride)",
 				"left-crash": "Left\nCrash",
 				"right-crash": "Right\nCrash",
 				"tom1": "High\nTom",
@@ -801,6 +851,12 @@
 			},
 			"Item": {
 				"snare": "Snare",
+				"left-crash>right-crash": "Left (+ Right Crash)",
+				"left-crash>ride": "Left Crash (+ Ride)",
+				"ride>left-crash": "Ride (+ Left Crash)",
+				"ride>right-crash": "Ride (+ Right Crash)",
+				"right-crash>left-crash": "Right (+ Left Crash)",
+				"right-crash>ride": "Right Crash (+ Ride)",
 				"tom1": "High Tom",
 				"tom2": "Mid Tom",
 				"tom3": "Floor Tom",

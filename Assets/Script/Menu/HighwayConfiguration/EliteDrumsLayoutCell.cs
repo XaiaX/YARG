@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,6 +15,7 @@ namespace YARG.Menu.HighwayConfiguration
         [SerializeField] private Image _fill;
         [SerializeField] private Image _fretPill;
         [SerializeField] private GameObject _focusVisual;
+        [SerializeField] private Image _secondaryFill;
         private EliteDrumsLayoutMenu _menu;
         private bool _selected;
         private Vector2 _authoredOffsetMin;
@@ -23,6 +25,8 @@ namespace YARG.Menu.HighwayConfiguration
         private Vector2 _authoredPillAnchorMin;
         private Vector2 _authoredPillAnchorMax;
         private bool _authoredGeometryCaptured;
+        private float _authoredLabelFontSize;
+        private Vector4 _authoredLabelMargin;
 
         protected override void Awake()
         {
@@ -34,6 +38,8 @@ namespace YARG.Menu.HighwayConfiguration
         {
             if (_authoredGeometryCaptured) return;
             var rect = (RectTransform)transform;
+            _authoredLabelFontSize = _label != null ? _label.fontSize : 19f;
+            _authoredLabelMargin = _label != null ? _label.margin : Vector4.zero;
             _authoredOffsetMin = rect.offsetMin;
             _authoredOffsetMax = rect.offsetMax;
             _authoredAnchorMin = rect.anchorMin;
@@ -127,7 +133,8 @@ namespace YARG.Menu.HighwayConfiguration
                 _menu.OpenCell(Column, Drum);
         }
 
-        public void Render(EliteDrumsLayoutSlot slot, ColorProfile previewColor, bool readOnly, bool runtimeSupported)
+        public void Render(EliteDrumsLayoutSlot slot, ColorProfile previewColor, bool readOnly, bool runtimeSupported,
+            EliteDrumsCymbalPair assignedPair = null, bool keepOriginalCymbalColors = false)
         {
             string id = slot.Kind switch
             {
@@ -138,25 +145,44 @@ namespace YARG.Menu.HighwayConfiguration
                 _ => (Drum ? slot.Drum : slot.Cymbal) ?? "empty"
             };
             bool assigned = id != "empty" && id != "not-applicable";
-            _label.text = FormatLabel(id, EliteDrumsLayoutMenu.Label(
-                slot.Kind == EliteDrumsLayoutSlotKind.HiHat && Drum ? "hi-hat-pedal" : id));
+            bool combined = EliteDrumsCymbalPairs.TryGet(id, out var pair);
+            if (combined && assignedPair?.EffectiveId == id) pair = assignedPair;
+            _label.text = combined ? YARG.Localization.Localize.Key("Menu.EliteLayout.Cell." + pair.ChoiceId) :
+                FormatLabel(id, EliteDrumsLayoutMenu.Label(
+                    slot.Kind == EliteDrumsLayoutSlotKind.HiHat && Drum ? "hi-hat-pedal" : id));
+            _label.rectTransform.offsetMin = new Vector2(4f, 4f);
+            _label.enableAutoSizing = combined;
+            _label.margin = combined ? new Vector4(2f, 0f, 2f, 0f) : _authoredLabelMargin;
+            _label.fontSizeMax = _authoredLabelFontSize;
+            _label.fontSizeMin = 14f;
+            if (!combined) _label.fontSize = _authoredLabelFontSize;
             _button.interactable = !readOnly && id != "not-applicable";
             var colors = previewColor?.EliteDrums;
-            var noteColor = NoteColor(colors, slot, id);
+            var noteColor = NoteColor(colors, slot, combined ? pair.PrimarySource : id);
             _outline.effectColor = noteColor.HasValue ? ToUnityColor(noteColor.Value) : new Color(0.32f, 0.36f, 0.4f);
             if (_fill != null)
             {
-                var dark = new Color(0.055f, 0.07f, 0.09f, 1f);
-                var fill = runtimeSupported && assigned && noteColor.HasValue
-                    ? Color.Lerp(dark, ToUnityColor(noteColor.Value), 0.25f)
-                    : dark;
-                fill.a = 1f;
-                _fill.color = fill;
+                _fill.color = FillColor(noteColor);
+            }
+            if (_secondaryFill != null)
+            {
+                _secondaryFill.gameObject.SetActive(combined && keepOriginalCymbalColors);
+                if (combined)
+                    _secondaryFill.color = FillColor(NoteColor(colors, slot, pair.SecondarySource));
             }
             if (_fretPill != null)
                 _fretPill.color = colors == null ? new Color(0.32f, 0.36f, 0.4f) : ToUnityColor(colors.GetSlotFretColor(Column));
             if (_focusVisual != null)
                 _focusVisual.SetActive(_selected);
+
+            Color FillColor(System.Drawing.Color? color)
+            {
+                var dark = new Color(0.055f, 0.07f, 0.09f, 1f);
+                var fill = runtimeSupported && assigned && color.HasValue
+                    ? Color.Lerp(dark, ToUnityColor(color.Value), 0.25f) : dark;
+                fill.a = 1f;
+                return fill;
+            }
         }
 
         private static string FormatLabel(string id, string value) => id switch

@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -8,6 +9,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Game;
+using YARG.Input.Bindings;
+using YARG.Menu.Navigation;
 using YARG.Helpers.Extensions;
 using YARG.Localization;
 using YARG.Menu.Data;
@@ -42,6 +45,13 @@ namespace YARG.Menu.ProfileList
         {
             StarPowerActivationType.RightmostNote,
             StarPowerActivationType.AllNotes,
+        };
+
+        private static readonly DrumFlamLayout[] _flamLayouts =
+        {
+            DrumFlamLayout.V,
+            DrumFlamLayout.Bucket,
+            DrumFlamLayout.Parallel,
         };
 
         private static readonly OpenLaneDisplayType[] _openLaneDisplayTypes =
@@ -84,6 +94,8 @@ namespace YARG.Menu.ProfileList
         [SerializeField]
         private TMP_Dropdown _starPowerActivationTypeDropdown;
         [SerializeField]
+        private TMP_Dropdown _flamLayoutDropdown;
+        [SerializeField]
         private TMP_Dropdown _engineDropdown;
         [SerializeField]
         private TMP_Dropdown _themeDropdown;
@@ -118,6 +130,13 @@ namespace YARG.Menu.ProfileList
         [SerializeField]
         private Sprite _profileBotSprite;
 
+        private RectTransform _microphoneSetupRow;
+        private Button _microphoneSetupButton;
+        private RuntimeNavigatable _microphoneSetupNavigation;
+        private MicrophoneSetup _microphoneSetup;
+        internal ProfileView MicrophoneSetupOwner => _microphoneSetupNavigation != null &&
+            _microphoneSetupNavigation.NavigationGroup?.SelectedBehaviour == _microphoneSetupNavigation ? _profileView : null;
+
         private ProfileView _profileView;
         private YargProfile _profile;
         private System.Action _saveProfilesAction = () => PlayerContainer.SaveProfiles();
@@ -137,6 +156,7 @@ namespace YARG.Menu.ProfileList
         {
             _eliteLayoutConfigureButton?.onClick.AddListener(OpenEliteDrumsLayoutConfigurationMenu);
             _midiTestButton?.onClick.AddListener(OpenMidiTestMenu);
+            EnsureMicrophoneSetupEntry();
 
             // Setup dropdown items
             _gameModeDropdown.options.Clear();
@@ -235,6 +255,8 @@ namespace YARG.Menu.ProfileList
 
         public void UpdateSidebar(YargProfile profile, ProfileView profileView)
         {
+            _microphoneSetup?.Close();
+            EnsureMicrophoneSetupEntry();
             _profile = profile;
             if (_eliteLayoutDropdown != null)
             {
@@ -248,6 +270,7 @@ namespace YARG.Menu.ProfileList
             if (!PlayerContainer.IsProfileTaken(_profile))
             {
                 HideContents();
+                UpdateMicrophoneSetupEntry(false);
                 return;
             }
 
@@ -268,6 +291,7 @@ namespace YARG.Menu.ProfileList
             _rangeDisabledToggle.isOn = profile.RangeEnabled;
             _openLaneDisplayTypeDropdown.value = _openLaneDisplayTypesByIndex.IndexOf(profile.OpenLaneDisplayType);
             _useCymbalModelsToggle.isOn = profile.UseCymbalModels;
+            RefreshFlamLayoutDropdown();
 
             // Update preset dropdowns
             _engineDropdown.SetValueWithoutNotify(
@@ -308,6 +332,77 @@ namespace YARG.Menu.ProfileList
             }
 
             EnableSettingsForGameMode();
+            UpdateMicrophoneSetupEntry(true);
+        }
+
+        private void EnsureMicrophoneSetupEntry()
+        {
+            if (_microphoneSetupRow != null || _midiTestButton == null) return;
+            _microphoneSetup = GetComponent<MicrophoneSetup>() ?? gameObject.AddComponent<MicrophoneSetup>();
+            var row = Instantiate(_midiTestButton.transform.parent.gameObject, _sidebarContent.transform);
+            row.name = "Microphone Setup";
+            _microphoneSetupRow = (RectTransform) row.transform;
+            var label = row.transform.Find("Option Name").GetComponent<TextMeshProUGUI>();
+            SetConfigurationLabel(label, "Menu.ProfileList.MicrophoneConfiguration");
+            _microphoneSetupButton = row.GetComponentInChildren<Button>(true);
+            _microphoneSetupButton.onClick = new Button.ButtonClickedEvent();
+            _microphoneSetupButton.onClick.AddListener(OpenMicrophoneSetup);
+            // This authored button's caption is a sibling of its hit target.
+            var text = row.transform.Find("Configure").GetComponent<TextMeshProUGUI>();
+            SetConfigurationLabel(text, "Menu.Common.Configure");
+            _microphoneSetupNavigation = row.AddComponent<RuntimeNavigatable>();
+            _microphoneSetupNavigation.ConfirmCallback = OpenMicrophoneSetup;
+            var normalColor = label.color;
+            _microphoneSetupNavigation.SelectionVisual = selected => label.color = selected
+                ? RuntimeNavigatable.SelectedTextColor : normalColor;
+            row.SetActive(false);
+        }
+
+        private static void SetConfigurationLabel(TextMeshProUGUI label, string key)
+        {
+            // The MIDI row's localization component may not have received Awake
+            // yet. Change its key as well as its text before activating the clone.
+            var localization = label.GetComponent<LocalizeText>();
+            if (localization != null) localization.SetLocalizationKey(key);
+            else label.text = Localize.Key(key);
+        }
+
+        private void UpdateMicrophoneSetupEntry(bool joined)
+        {
+            if (_microphoneSetupRow == null) return;
+            bool visible = joined && MicrophoneSetup.CanConfigure(_profile);
+            _microphoneSetupRow.SetParent(_sidebarContent.transform, false);
+            _microphoneSetupRow.SetSiblingIndex(1);
+            _microphoneSetupRow.sizeDelta = new Vector2(0f, 94f);
+            _microphoneSetupButton.interactable = visible;
+            _microphoneSetupRow.gameObject.SetActive(visible);
+            var group = visible && _profileView != null ? _profileView.NavigationGroup : null;
+            if (_microphoneSetupNavigation.NavigationGroup != group)
+            {
+                bool focused = MicrophoneSetupOwner != null;
+                _microphoneSetupNavigation.NavigationGroup?.RemoveNavigatable(_microphoneSetupNavigation);
+                group?.AddNavigatable(_microphoneSetupNavigation);
+                if (focused && group == null) _profileView?.NavigationGroup?.Select(_profileView);
+            }
+        }
+
+        public void FocusMicrophoneSetup()
+        {
+            if (_microphoneSetupRow != null && _microphoneSetupRow.gameObject.activeInHierarchy)
+                _profileView?.NavigationGroup?.Select(_microphoneSetupNavigation, SelectionOrigin.Navigation);
+        }
+
+        public void ReturnFromMicrophoneSetup()
+        {
+            var owner = MicrophoneSetupOwner;
+            owner?.NavigationGroup?.Select(owner, SelectionOrigin.Navigation);
+        }
+
+        public void OpenMicrophoneSetup()
+        {
+            if (!MicrophoneSetup.CanConfigure(_profile) || !PlayerContainer.IsProfileTaken(_profile)) return;
+            _profileView?.NavigationGroup?.Select(_profileView);
+            _microphoneSetup.Show(BindingsContainer.GetBindingsForProfile(_profile), _profileView, _saveProfilesAction);
         }
 
         private void EnableSettingsForGameMode()
@@ -348,10 +443,19 @@ namespace YARG.Menu.ProfileList
                     }
                 }
             }
+
+            if (_midiTestButton != null)
+            {
+                bool visible = CanUseMidiTest();
+                _midiTestButton.interactable = visible;
+                _midiTestButton.transform.parent.gameObject.SetActive(visible);
+            }
         }
 
         public void HideContents()
         {
+            _microphoneSetup?.Close();
+            if (_microphoneSetupRow != null) _microphoneSetupRow.gameObject.SetActive(false);
             _contents.SetActive(false);
         }
 
@@ -384,14 +488,17 @@ namespace YARG.Menu.ProfileList
 
         public void OpenMidiTestMenu()
         {
-            if (_profile == null || _profile.GameMode is not
-                (GameMode.EliteDrums or GameMode.FourLaneDrums or GameMode.FiveLaneDrums)) return;
+            if (!CanUseMidiTest()) return;
             var canvas = GetComponentInParent<Canvas>();
             var menu = canvas != null
                 ? MenuManager.Instance.ShowMenu(MenuManager.Menu.MidiTest, canvas.rootCanvas.transform)
                 : MenuManager.Instance.ShowMenu(MenuManager.Menu.MidiTest);
             menu.GetComponent<YARG.Menu.MidiTest.MidiTestMenu>().Initialize(_profile);
         }
+
+        private bool CanUseMidiTest() => _profile != null && !_profile.IsBot &&
+            (_profile.GameMode is GameMode.EliteDrums or GameMode.FourLaneDrums or GameMode.FiveLaneDrums) &&
+            PlayerContainer.IsProfileTaken(_profile);
 
         public void OpenEliteDrumsLayoutConfigurationMenu()
         {
@@ -465,7 +572,7 @@ namespace YARG.Menu.ProfileList
 
                     RefreshEliteLayoutDropdown();
                     return true;
-                }, SaveColorProfile, SaveLeftyFlip);
+                }, SaveColorProfile, SaveLeftyFlip, profile.FlamLayout, profile.KeepOriginalCymbalColors);
         }
 
         private void RefreshEliteLayoutDropdown()
@@ -585,6 +692,27 @@ namespace YARG.Menu.ProfileList
         public void ChangeStarPowerActivationType()
         {
             _profile.StarPowerActivationType = _starPowerActivationTypesByIndex[_starPowerActivationTypeDropdown.value];
+        }
+
+        private void RefreshFlamLayoutDropdown()
+        {
+            if (_profile == null || _flamLayoutDropdown == null) return;
+            _flamLayoutDropdown.ClearOptions();
+            _flamLayoutDropdown.AddOptions(_flamLayouts
+                .Select(layout => Localize.Key("Enum.DrumFlamLayout", layout)).ToList());
+            // Selecting a profile must not run the previous dropdown callback or
+            // mark its stored preference as edited merely by displaying it.
+            _flamLayoutDropdown.SetValueWithoutNotify(Math.Max(0,
+                Array.IndexOf(_flamLayouts, _profile.FlamLayout)));
+        }
+
+        public void ChangeFlamLayout()
+        {
+            if (_profile == null || _flamLayoutDropdown == null || _profile.GameMode is not
+                (GameMode.EliteDrums or GameMode.FourLaneDrums or GameMode.FiveLaneDrums)) return;
+            int index = _flamLayoutDropdown.value;
+            if ((uint)index >= _flamLayouts.Length) return;
+            _profile.FlamLayout = _flamLayouts[index];
         }
 
         public void ChangeTheme()

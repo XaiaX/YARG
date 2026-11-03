@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,6 +7,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using YARG.Core;
 using YARG.Core.Game;
 using YARG.Core.Input;
 using YARG.Helpers;
@@ -67,6 +69,8 @@ namespace YARG.Menu.HighwayConfiguration
         private ColorProfile[] _previewColors;
         private ColorProfile _previewColorProfile;
         private TrackPreviewBuilder _previewBuilder;
+        private bool _keepOriginalCymbalColors;
+        private static readonly Color COMBINED_CYMBAL_ACTION_COLOR = new Color32(0xC5, 0xAA, 0xF4, 0xFF);
         [SerializeField] private TMP_Dropdown _previewOptions;
         [SerializeField] private Toggle _leftyFlipToggle;
         private YARG.Settings.Types.DropdownSetting<string> _previewOptionSetting;
@@ -74,6 +78,7 @@ namespace YARG.Menu.HighwayConfiguration
         private bool _forceStarPower;
         private bool _forceGroove;
         private bool _leftyFlip;
+        private DrumFlamLayout _flamLayout = DrumFlamLayout.V;
         private static int _nextPreviewWorldId;
         private int _previewWorldId;
 
@@ -473,7 +478,7 @@ namespace YARG.Menu.HighwayConfiguration
                 bool eligible = IsUsableStoredLayout(preset);
                 _lastEditorLayoutId = preset.Id;
                 _pendingManagedSelection = null;
-                if (!validation.IsStructurallyValid || preset.Merges.Length != 0)
+                if (!validation.IsStructurallyValid || !EliteDrumsCymbalPairs.HasOnlySupportedMerges(preset))
                 {
                     _original = preset.Copy();
                     _draft = null;
@@ -717,6 +722,8 @@ namespace YARG.Menu.HighwayConfiguration
             _acceptProfileLayout = null;
             _acceptProfileColor = null;
             _acceptProfileLeftyFlip = null;
+            _flamLayout = DrumFlamLayout.V;
+            _keepOriginalCymbalColors = false;
             _lastAcceptedProfileLayout = null;
             _commitDraft = null;
         }
@@ -724,23 +731,25 @@ namespace YARG.Menu.HighwayConfiguration
         public void InitializeForProfile(EliteDrumsLayoutPreset layout, ColorProfile previewColor, bool leftyFlip,
             Action<EliteDrumsLayoutPreset> save, Action closed, Func<bool> isProfileCurrent,
             Func<EliteDrumsLayoutPreset, bool> acceptLayout, Func<ColorProfile, bool> acceptColor,
-            Func<bool, bool> acceptLeftyFlip) =>
+            Func<bool, bool> acceptLeftyFlip, DrumFlamLayout flamLayout = DrumFlamLayout.V, bool keepOriginalCymbalColors = false) =>
             InitializeForProfileCore(layout, previewColor, leftyFlip, save, null, closed, isProfileCurrent,
-                acceptLayout, acceptColor, acceptLeftyFlip);
+                acceptLayout, acceptColor, acceptLeftyFlip, flamLayout, keepOriginalCymbalColors);
 
         public void InitializeForProfileWithCommit(EliteDrumsLayoutPreset layout, ColorProfile previewColor,
             bool leftyFlip, Func<EliteDrumsLayoutPreset, EliteDrumsLayoutPreset> commit, Action closed,
             Func<bool> isProfileCurrent, Func<EliteDrumsLayoutPreset, bool> acceptLayout,
-            Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip) =>
+            Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip,
+            DrumFlamLayout flamLayout = DrumFlamLayout.V, bool keepOriginalCymbalColors = false) =>
             InitializeForProfileCore(layout, previewColor, leftyFlip, null,
                 commit ?? throw new ArgumentNullException(nameof(commit)), closed, isProfileCurrent,
-                acceptLayout, acceptColor, acceptLeftyFlip);
+                acceptLayout, acceptColor, acceptLeftyFlip, flamLayout, keepOriginalCymbalColors);
 
         private void InitializeForProfileCore(EliteDrumsLayoutPreset layout, ColorProfile previewColor,
             bool leftyFlip, Action<EliteDrumsLayoutPreset> save,
             Func<EliteDrumsLayoutPreset, EliteDrumsLayoutPreset> commit, Action closed,
             Func<bool> isProfileCurrent, Func<EliteDrumsLayoutPreset, bool> acceptLayout,
-            Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip)
+            Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip, DrumFlamLayout flamLayout,
+            bool keepOriginalCymbalColors)
         {
             var current = isProfileCurrent ?? throw new ArgumentNullException(nameof(isProfileCurrent));
             var layoutAccepted = acceptLayout ?? throw new ArgumentNullException(nameof(acceptLayout));
@@ -753,7 +762,7 @@ namespace YARG.Menu.HighwayConfiguration
             if (_initialized && IsDirty)
             {
                 RequestDiscard(() => InitializeForProfileCore(layout, previewColor, leftyFlip, save, commit,
-                    closed, current, layoutAccepted, colorAccepted, leftyAccepted));
+                    closed, current, layoutAccepted, colorAccepted, leftyAccepted, flamLayout, keepOriginalCymbalColors));
                 return;
             }
 
@@ -768,6 +777,8 @@ namespace YARG.Menu.HighwayConfiguration
             _profileColorId = previewColor?.Id;
             _previewColorProfile = previewColor;
             _leftyFlip = leftyFlip;
+            _flamLayout = flamLayout;
+            _keepOriginalCymbalColors = keepOriginalCymbalColors;
             _commitDraft = commit;
             InitializeCore(layout, save, closed);
             _lastAcceptedProfileLayout = layout.Copy();
@@ -850,14 +861,17 @@ namespace YARG.Menu.HighwayConfiguration
         public void OpenCell(int column, bool drum)
         {
             if (!BackgroundInputAllowed || _draft == null || _original.DefaultPreset ||
-                !EliteDrumsLayoutValidator.Validate(_draft).IsStructurallyValid || _draft.Merges.Length != 0) return;
+                !EliteDrumsLayoutValidator.Validate(_draft).IsStructurallyValid || !EliteDrumsCymbalPairs.HasOnlySupportedMerges(_draft)) return;
             _column = column;
             _drum = drum;
             _returnFocus = _navigation.SelectedIndex;
-            _choiceIds = (drum ? new[] { "snare", "tom1", "tom2", "tom3", "hi-hat" } :
-                new[] { "left-crash", "ride", "right-crash", "hi-hat" })
-                .Concat(EliteDrumsLayoutEditor.GetKickChoices(_draft, column)
-                    .Select(kind => kind.ToString().ToLowerInvariant()))
+            var assignments = drum
+                ? new[] { "snare", "tom1", "tom2", "tom3", "hi-hat" }
+                    .Concat(EliteDrumsLayoutEditor.GetKickChoices(_draft, column)
+                        .Select(kind => kind.ToString().ToLowerInvariant()))
+                : new[] { "left-crash", "ride", "right-crash", "hi-hat" }
+                    .Concat(EliteDrumsCymbalPairs.All.Select(pair => pair.ChoiceId));
+            _choiceIds = assignments
                 .Concat(new[] { "clear", "cancel" }).ToArray();
             bool canClear = RowHasAssignment(column, drum);
             for (int i = 0; i < _choices.Length; i++)
@@ -870,7 +884,15 @@ namespace YARG.Menu.HighwayConfiguration
                     ? EliteDrumsAssignmentChoice.FormatLabel(_draft, column, drum, _choiceIds[i],
                         PopupLabel(_choiceIds[i] == "hi-hat" && drum ? "hi-hat-pedal" : _choiceIds[i]))
                     : string.Empty;
-                _choices[i].GetComponent<AssignmentPopupRow>()?.ResetSelection();
+                _choiceLabels[i].fontStyle = FontStyles.Normal;
+                _choiceLabels[i].richText = false;
+                var popupRow = _choices[i].GetComponent<AssignmentPopupRow>();
+                if (popupRow != null)
+                {
+                    popupRow.ResetSelection();
+                    int choice = i;
+                    popupRow.Focused = visible ? () => UpdateAssignmentHelp(_choiceIds[choice]) : null;
+                }
                 _choices[i].interactable = !visible || _choiceIds[i] != "clear" || canClear;
             }
             _backgroundWasInteractable = _backgroundInputGroup.interactable;
@@ -885,12 +907,14 @@ namespace YARG.Menu.HighwayConfiguration
             {
                 for (int i = 0; i < _choiceIds.Length; i++)
                 {
-                    var color = _choiceIds[i] == "cancel" ? MenuData.Colors.NavigationYellow :
+                    bool combined = EliteDrumsCymbalPairs.TryGetChoice(_choiceIds[i], out _);
+                    var color = combined ? COMBINED_CYMBAL_ACTION_COLOR :
+                        _choiceIds[i] == "cancel" ? MenuData.Colors.NavigationYellow :
                         _choiceIds[i] == "clear"
                             ? canClear ? MenuData.Colors.BrightButton : Color.gray
                             : MenuData.Colors.ConfirmButton;
                     var row = _choices[i].GetComponent<AssignmentPopupRow>();
-                    if (row != null) row.SetActionStyle(_choiceIds[i] is "cancel" or "clear", color);
+                    if (row != null) row.SetActionStyle(combined || _choiceIds[i] is "cancel" or "clear", color);
                     else StyleManagementButton(_choices[i], color);
                 }
             }
@@ -904,6 +928,42 @@ namespace YARG.Menu.HighwayConfiguration
             }
             _popupNavigation.PushNavGroupToStack();
             _popupNavigation.SelectFirst();
+        }
+
+        private void UpdateAssignmentHelp(string id)
+        {
+            bool combined = EliteDrumsCymbalPairs.TryGetChoice(id, out var pair);
+            string description = combined
+                ? Localize.Key("Menu.EliteLayout.Help." + id)
+                : id is "clear" or "cancel" or "hi-hat" or "kick" or "kick1" or "kick2"
+                    ? Localize.Key("Menu.EliteLayout.Help." + id)
+                    : string.Format(Localize.Key("Menu.EliteLayout.Help.Place"), Label(id).Replace("\n", " "));
+            if (id != "cancel" && id != "clear")
+            {
+                foreach (string source in combined ? pair.Sources : id.Split('+'))
+                {
+                    int previous = Array.FindIndex(_draft.Slots, slot => new[] { slot.Drum, slot.Cymbal }
+                        .Where(assigned => assigned != null).Any(assigned => assigned.Split('+').Contains(source)));
+                    if (previous >= 0 && previous != _column)
+                        description += "\n\n" + string.Format(Localize.Key("Menu.EliteLayout.Help.Move"),
+                            Label(source).Replace("\n", " "), previous + 1);
+                }
+            }
+            if (id != "cancel")
+            {
+                var changed = id switch
+                {
+                    "clear" => EliteDrumsLayoutEditor.ClearRow(_draft, _column, _drum),
+                    "kick" => EliteDrumsLayoutEditor.PlaceKick(_draft, _column, EliteDrumsLayoutSlotKind.Kick),
+                    "kick1" => EliteDrumsLayoutEditor.PlaceKick(_draft, _column, EliteDrumsLayoutSlotKind.Kick1),
+                    "kick2" => EliteDrumsLayoutEditor.PlaceKick(_draft, _column, EliteDrumsLayoutSlotKind.Kick2),
+                    _ => EliteDrumsLayoutEditor.Place(_draft, _column, id)
+                };
+                var displaced = EliteDrumsLayoutEditor.GetDisplaced(_draft, changed).Select(source => Label(source).Replace("\n", " ")).ToArray();
+                if (displaced.Length > 0)
+                    description += "\n\n" + string.Format(Localize.Key("Menu.EliteLayout.Help.Displaced"), string.Join(", ", displaced));
+            }
+            _popupLayout?.SetHelp(description, Localize.Key("Menu.EliteLayout.AssignmentMarkerLegend"));
         }
 
         private bool RowHasAssignment(int column, bool drum)
@@ -935,7 +995,7 @@ namespace YARG.Menu.HighwayConfiguration
         }
 
         private bool CanTransformLayout => _draft != null && _original != null && !_original.DefaultPreset &&
-            _draft.Merges.Length == 0 && EliteDrumsLayoutValidator.Validate(_draft).IsStructurallyValid;
+            EliteDrumsCymbalPairs.HasOnlySupportedMerges(_draft) && EliteDrumsLayoutValidator.Validate(_draft).IsStructurallyValid;
 
         private bool HasAssignedColumns => _draft.Slots.Any(slot => slot.Kind != EliteDrumsLayoutSlotKind.Empty);
         private bool CanShiftTowardLowerColumn => CanTransformLayout && HasAssignedColumns &&
@@ -1216,12 +1276,13 @@ namespace YARG.Menu.HighwayConfiguration
         {
             if (_draft == null) return;
             bool runtimeSupported = EliteDrumsLayoutValidator.Validate(_draft).IsRuntimeSupported;
+            EliteDrumsCymbalPairs.TryGet(_draft, out var pair);
             foreach (var cell in _cells)
             {
                 cell.gameObject.SetActive(true);
                 cell.SetLeftyFlip(_leftyFlip);
                 cell.Render(_draft.Slots[cell.Column], _previewColorProfile, _original?.DefaultPreset == true,
-                    runtimeSupported);
+                    runtimeSupported, pair, _keepOriginalCymbalColors);
             }
         }
 
@@ -1315,7 +1376,7 @@ namespace YARG.Menu.HighwayConfiguration
             ClearPreview();
             if (_previewWorld == null || _previewImage == null || _draft == null) return;
             var validation = EliteDrumsLayoutValidator.Validate(_draft);
-            if (!validation.IsStructurallyValid || _draft.Merges.Length != 0) return;
+            if (!validation.IsStructurallyValid || !EliteDrumsCymbalPairs.HasOnlySupportedMerges(_draft)) return;
             _previewWorldId = _previewWorldId == 0 ? ++_nextPreviewWorldId : _previewWorldId;
             // Rendered geometry must not inherit CanvasScaler changes after camera registration.
             _previewWorld.SetParent(null, false);
@@ -1341,10 +1402,12 @@ namespace YARG.Menu.HighwayConfiguration
                 EliteLayoutOverride = _draft.Copy(),
                 AllowIncompleteEliteLayoutPreview = true,
                 ColorProfileOverride = _previewColorProfile,
+                KeepOriginalCymbalColors = _keepOriginalCymbalColors,
                 ForceStarPowerNotes = _forceStarPowerNotes,
                 ForceStarPower = _forceStarPower,
                 ForceGroove = _forceGroove,
-                LeftyFlip = _leftyFlip
+                LeftyFlip = _leftyFlip,
+                FlamLayout = _flamLayout
             };
             _ = _previewBuilder.BuildPreviewWorld(_previewWorld);
             var texture = EnsurePreviewTexture();

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿// pattern: Imperative Shell
+using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
@@ -58,6 +59,8 @@ namespace YARG.Menu.ProfileList
             _ = Navigator.Instance.PushScheme(new NavigationScheme(new()
             {
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back", () => MenuManager.Instance.PopMenu(), hide: true),
+                new NavigationScheme.Entry(MenuAction.Right, "Menu.Common.Right", () => _profileSidebar.FocusMicrophoneSetup(), hide: true),
+                new NavigationScheme.Entry(MenuAction.Left, "Menu.Common.Left", () => _profileSidebar.ReturnFromMicrophoneSetup(), hide: true),
             }, true));
 
             PlayerContainer.PlayerAdded += OnPlayerAdded;
@@ -226,7 +229,7 @@ namespace YARG.Menu.ProfileList
                 return profileView.Profile;
             }
 
-            return null;
+            return _profileSidebar.MicrophoneSetupOwner?.Profile;
         }
 
         public void SetSelectedProfile(YargProfile profile)

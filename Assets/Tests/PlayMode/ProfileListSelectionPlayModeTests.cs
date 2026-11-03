@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -16,7 +17,7 @@ using UnityEditor;
 
 namespace YARG.Tests.PlayMode
 {
-    public sealed class ProfileListSelectionPlayModeTests
+    public sealed partial class ProfileListSelectionPlayModeTests
     {
         private const BindingFlags PRIVATE_INSTANCE = BindingFlags.Instance | BindingFlags.NonPublic;
         private const BindingFlags PRIVATE_STATIC = BindingFlags.Static | BindingFlags.NonPublic;

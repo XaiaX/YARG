@@ -102,6 +102,38 @@ namespace YARG.Settings.Metadata
             }
         }
 
+        private DrumFlamLayout _flamLayout = DrumFlamLayout.V;
+        public DrumFlamLayout FlamLayout
+        {
+            get => _flamLayout;
+            set
+            {
+                _flamLayout = value;
+                if (_currentTrackPreview != null)
+                {
+                    _currentTrackPreview.FlamLayout = value;
+                    if (_currentTrackPreview.ColorProfile != null)
+                        _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
+                }
+            }
+        }
+
+        private bool _keepOriginalCymbalColors;
+        public bool KeepOriginalCymbalColors
+        {
+            get => _keepOriginalCymbalColors;
+            set
+            {
+                _keepOriginalCymbalColors = value;
+                if (_currentTrackPreview != null)
+                {
+                    _currentTrackPreview.KeepOriginalCymbalColors = value;
+                    if (_currentTrackPreview.ColorProfile != null)
+                        _currentTrackPreview.RefreshColors(_currentTrackPreview.ColorProfile);
+                }
+            }
+        }
+
         /// <summary>
         /// Forwards a lane spotlight request to the live preview (see
         /// <see cref="Preview.FakeTrackPlayer.SpotlightLane"/>). No-op when no
@@ -200,6 +232,8 @@ namespace YARG.Settings.Metadata
             trackPreview.ForceStarPower = ForceStarPower;
             trackPreview.ForceStarPowerNotes = ForceStarPowerNotes;
             trackPreview.LeftyFlip = LeftyFlip;
+            trackPreview.FlamLayout = FlamLayout;
+            trackPreview.KeepOriginalCymbalColors = KeepOriginalCymbalColors;
 
             // If null, just use the default value and skip setting it
             if (StartingGameMode is not null)

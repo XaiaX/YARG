@@ -2,7 +2,8 @@
     "name": "YARG.PlayModeTests",
     "rootNamespace": "YARG.Tests.PlayMode",
     "references": [
-        "YARG.Core.Package"
+        "YARG.Core.Package",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

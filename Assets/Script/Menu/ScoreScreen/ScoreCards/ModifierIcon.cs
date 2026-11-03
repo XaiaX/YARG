@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿// pattern: Imperative Shell
+using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 using YARG.Core;
@@ -19,13 +20,17 @@ namespace YARG.Menu.ScoreScreen
 
         public void InitializeForModifier(Modifier modifier)
         {
-            // UnpitchedHarm2/3 have no dedicated sprite in the atlas, so map them
-            // to the existing UnpitchedOnly icon to avoid a missing-asset crash.
-            var id = modifier is Modifier.UnpitchedHarm2 or Modifier.UnpitchedHarm3
-                ? nameof(Modifier.UnpitchedOnly)
-                : modifier.ToString();
-            InitializeCustom(id);
+            InitializeCustom(GetSpriteId(modifier));
         }
+
+        // Reuse authored sprites for the vocal variants and the retired kick-only
+        // modifier retained by historical replays.
+        internal static string GetSpriteId(Modifier modifier) => modifier switch
+        {
+            Modifier.UnpitchedHarm2 or Modifier.UnpitchedHarm3 => nameof(Modifier.UnpitchedOnly),
+            Modifier.NoKickDynamics => nameof(Modifier.NoKicks),
+            _ => modifier.ToString(),
+        };
 
         public void InitializeCustom(string id)
         {

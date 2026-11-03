@@ -1,3 +1,4 @@
+// pattern: Functional Core
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -74,6 +75,7 @@ namespace YARG.Helpers.Extensions
                     (ProfileSettingStrings.ELITE_DRUMS_LAYOUT_SELECT, null),
                     (ProfileSettingStrings.LEFTY_FLIP, null),
                     (ProfileSettingStrings.DRUM_STAR_POWER_ACTIVATION_TYPE, null),
+                    (ProfileSettingStrings.DRUM_FLAM_LAYOUT, null),
                     (ProfileSettingStrings.USE_CYMBAL_MODELS, "USE CYMBAL MODELS IN 5-LANE"),
                 },
                 GameMode.FourLaneDrums => new()
@@ -83,6 +85,7 @@ namespace YARG.Helpers.Extensions
                     (ProfileSettingStrings.CONFIGURE_PRO_DRUMS_HIGHWAY, null),
                     (ProfileSettingStrings.LEFTY_FLIP, null),
                     (ProfileSettingStrings.DRUM_STAR_POWER_ACTIVATION_TYPE, null),
+                    (ProfileSettingStrings.DRUM_FLAM_LAYOUT, null),
                 },
                 GameMode.FiveLaneDrums => new()
                 {
@@ -91,6 +94,7 @@ namespace YARG.Helpers.Extensions
                     (ProfileSettingStrings.LEFTY_FLIP, null),
                     (ProfileSettingStrings.USE_CYMBAL_MODELS, "USE CYMBAL MODELS"),
                     (ProfileSettingStrings.DRUM_STAR_POWER_ACTIVATION_TYPE, null),
+                    (ProfileSettingStrings.DRUM_FLAM_LAYOUT, null),
                 },
                 GameMode.SixFretGuitar => new()
                 {

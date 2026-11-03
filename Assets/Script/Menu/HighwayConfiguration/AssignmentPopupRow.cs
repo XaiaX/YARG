@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using TMPro;
 using UnityEngine;
@@ -46,7 +47,7 @@ namespace YARG.Menu.HighwayConfiguration
             return this;
         }
 
-        /// <summary>Actions use the same cyan fill and dark selected text as difficulty-select Done.</summary>
+        /// <summary>Actions use a colored fill and dark selected text like difficulty-select Done.</summary>
         public void SetActionStyle(bool actionStyle, Color actionColor)
         {
             _actionStyle = actionStyle;
@@ -55,6 +56,8 @@ namespace YARG.Menu.HighwayConfiguration
         }
 
         private Color _actionColor = ACTION_COLOR;
+
+        public Action Focused;
 
         public void ResetSelection()
         {
@@ -72,7 +75,11 @@ namespace YARG.Menu.HighwayConfiguration
             _label.color = _actionStyle
                 ? (selected ? ACTION_SELECTED_TEXT : _actionColor)
                 : _ordinaryTextColor;
-            if (selected) RevealRow();
+            if (selected)
+            {
+                RevealRow();
+                Focused?.Invoke();
+            }
         }
 
         public void RevealRow()

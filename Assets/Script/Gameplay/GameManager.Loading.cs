@@ -8,6 +8,7 @@ using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
 using YARG.Core.Engine;
+using YARG.Core.Engine.Drums;
 using YARG.Core.Game;
 using YARG.Core.Logging;
 using YARG.Core.Replays;
@@ -27,6 +28,7 @@ using YARG.Song;
 
 namespace YARG.Gameplay
 {
+    // pattern: Imperative Shell
     public partial class GameManager
     {
         private enum LoadFailureState
@@ -615,8 +617,14 @@ namespace YARG.Gameplay
                             profile.EliteDrumsDownchartTarget = null;
                             // Snapshot the deterministic drum adjustments. Both comparison variants operate
                             // only on their own notes; no profile/player callback is invoked twice.
+                            byte classicArticulations = DrumsPlayer.ResolveClassicArticulationRuleset(
+                                player.IsReplay, player.EngineParameterOverride);
                             bool noKicks = profile.IsModifierActive(Modifier.NoKicks);
                             bool noDynamics = profile.IsModifierActive(Modifier.NoDynamics);
+                            // This retired preference matters only when reconstructing V1 replays.
+                            // Current classic output always uses neutral kicks.
+                            bool noKickDynamics = classicArticulations == DrumsEngineParameters.CLASSIC_ARTICULATIONS_V1
+                                && profile.IsModifierActive(Modifier.NoKickDynamics);
                             bool noHiHat = profile.IsModifierActive(Modifier.NoHiHat);
                             bool noHiHatPedal = profile.NoHiHatPedal;
                             var playable = DrumPlaybackPreparer.PrepareForScore(Chart, resolved,
@@ -624,13 +632,17 @@ namespace YARG.Gameplay
                                 {
                                     if (noKicks) notes.RemoveKickDrumNotes();
                                     if (noDynamics) notes.RemoveDynamics();
+                                    else if (noKickDynamics) notes.RemoveKickDynamics();
                                 },
                                 notes =>
                                 {
                                     if (noKicks) notes.RemoveEliteKickDrumNotes();
                                     if (noHiHat || noHiHatPedal) notes.RemoveEliteHiHatNotes(noHiHat, noHiHatPedal);
                                     if (noDynamics) notes.RemoveEliteDynamics();
-                                });
+                                }, classicArticulations,
+                                eliteCymbalLayout: player.EliteDrumsLayout,
+                                eliteCymbalMergePolicy: EliteDrumsPlayer.ResolveCymbalMergePolicy(
+                                    player.IsReplay, player.EngineParameterOverride));
                             var outputFailure = ValidateSelectedDrumOutput(playable, profile.Name);
                             if (outputFailure != null)
                             {

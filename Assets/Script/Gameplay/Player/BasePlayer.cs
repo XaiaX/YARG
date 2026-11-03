@@ -277,9 +277,16 @@ namespace YARG.Gameplay.Player
             BaseEngine.Update(time);
         }
 
+        protected virtual bool HasPhysicalInputAliases => false;
+        protected virtual int? GetPhysicalInputAliasGroup(int action) => null;
+
         private void SubscribeToInputEvents()
         {
-            Player.Bindings.SubscribeToGameplayInputs(Player.Profile.GameMode, OnGameInput);
+            if (HasPhysicalInputAliases)
+                Player.Bindings.SubscribeToGameplayInputsWithPhysicalAliases(Player.Profile.GameMode,
+                    OnGameInput, GetPhysicalInputAliasGroup);
+            else
+                Player.Bindings.SubscribeToGameplayInputs(Player.Profile.GameMode, OnGameInput);
 
             Player.Bindings.DeviceAdded += OnDeviceAdded;
             Player.Bindings.DeviceRemoved += OnDeviceRemoved;

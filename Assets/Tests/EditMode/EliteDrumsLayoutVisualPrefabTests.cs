@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.IO;
 using System.Linq;
@@ -612,6 +613,33 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void CymbalCellsUseClippedHalfHeightSecondaryRegionsWithoutSwatches()
+        {
+            var cellType = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType("YARG.Menu.HighwayConfiguration.EliteDrumsLayoutCell"))
+                .First(type => type != null);
+            foreach (var cell in _prefab.GetComponentsInChildren(cellType, true).Where(cell => cell.name.EndsWith("Cymbal")))
+            {
+                var data = new SerializedObject(cell);
+                var fill = (Image)data.FindProperty("_fill").objectReferenceValue;
+                var secondary = (Image)data.FindProperty("_secondaryFill").objectReferenceValue;
+                Assert.That(secondary, Is.Not.Null);
+                Assert.That(secondary.raycastTarget, Is.False);
+                Assert.That(secondary.sprite, Is.EqualTo(fill.sprite));
+                var region = secondary.transform.parent.GetComponent<RectTransform>();
+                Assert.That(region.GetComponent<RectMask2D>(), Is.Not.Null);
+                Assert.That(region.anchorMin, Is.EqualTo(Vector2.zero));
+                Assert.That(region.anchorMax, Is.EqualTo(new Vector2(1f, 0.5f)));
+                Assert.That(region.parent, Is.SameAs(fill.transform));
+                Assert.That(secondary.rectTransform.anchorMin, Is.EqualTo(Vector2.zero));
+                Assert.That(secondary.rectTransform.anchorMax, Is.EqualTo(new Vector2(1f, 2f)),
+                    "The full rounded cell image is clipped halfway down, keeping matching corner radii.");
+                Assert.That(cell.transform.Find("Source Swatch 1"), Is.Null);
+                Assert.That(cell.transform.Find("Source Swatch 2"), Is.Null);
+            }
+        }
+
+        [Test]
         public void EveryCellBindsInheritedSelectionVisualToItsFocusVisual()
         {
             var cellType = AppDomain.CurrentDomain.GetAssemblies()
@@ -716,7 +744,8 @@ namespace YARG.Tests.EditMode
 
             var authoredSelection = authoredItem.transform.Find("Selected Background").GetComponent<Image>();
             var choices = scroll.content.GetComponentsInChildren<Button>(true);
-            Assert.That(choices, Has.Length.EqualTo(10));
+            Assert.That(choices.Length, Is.EqualTo(12),
+                "The cymbal picker has four individuals, six ordered pairs, Clear and Cancel.");
             foreach (var button in choices)
             {
                 var row = button.transform.parent;

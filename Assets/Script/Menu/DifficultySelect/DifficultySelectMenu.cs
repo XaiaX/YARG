@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Mixed (needs refactoring)
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -20,6 +21,7 @@ using YARG.Localization;
 using YARG.Menu.Data;
 using YARG.Menu.Navigation;
 using YARG.Settings;
+using YARG.Settings.Customization;
 using YARG.Menu.Maestro;
 using YARG.Integration.Maestro;
 using YARG.Menu.Persistent;
@@ -517,6 +519,9 @@ namespace YARG.Menu.DifficultySelect
                 // Ready button
                 CreateItem(LocalizeHeader("Ready"), _lastMenuState == State.Main, _difficultyGreenPrefab, () =>
                 {
+                    // Ready is an explicit join; merely focusing a Maestro player is not.
+                    player.SittingOut = false;
+
                     // If the player just selected vocal modifiers, don't show them again
                     if (player.Profile.GameMode == GameMode.Vocals &&
                         _vocalModifierSelectIndex == -1)
@@ -1044,6 +1049,9 @@ namespace YARG.Menu.DifficultySelect
                     on => profile.AutoHiHatPedal = on);
                 AddProfileToggle(LocalizeHeader("NoHiHatPedal"), profile.NoHiHatPedal,
                     on => profile.NoHiHatPedal = on);
+                AddProfileToggle(LocalizeHeader("KeepOriginalCymbalColors"), profile.KeepOriginalCymbalColors,
+                    on => profile.KeepOriginalCymbalColors = on)
+                    .SetInteractable(CustomContentManager.HasMergedEliteCymbals(profile.EliteDrumsLayout));
             }
 
             if (SupportsRangeShifts(profile.GameMode))
@@ -1246,6 +1254,9 @@ namespace YARG.Menu.DifficultySelect
                     text += LocalizeHeader("AutoHiHatPedal") + "\n";
                 if (profile.NoHiHatPedal)
                     text += LocalizeHeader("NoHiHatPedal") + "\n";
+                if (profile.KeepOriginalCymbalColors &&
+                    CustomContentManager.HasMergedEliteCymbals(profile.EliteDrumsLayout))
+                    text += LocalizeHeader("KeepOriginalCymbalColors") + "\n";
             }
 
             foreach (var modifier in _possibleModifiers)
@@ -1456,7 +1467,10 @@ namespace YARG.Menu.DifficultySelect
 
             RecomputeSelectionAvailability();
             LoadSelectedDrumSourcesForLabels();
-            CurrentPlayer.SittingOut = false;
+            // Maestro restores the saved participation decision before focusing a player.
+            // Ordinary Difficulty Select retains its existing fresh-player reset.
+            if (SettingsManager.Settings?.MaestroEnable.Value != true)
+                CurrentPlayer.SittingOut = false;
             UpdatePossibleDifficulties();
             UpdateForPlayer();
         }

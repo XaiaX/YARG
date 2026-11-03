@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -119,7 +120,7 @@ namespace YARG.Tests.PlayMode
         }
 #endif
 
-        private void Initialize(bool lefty)
+        private void Initialize(bool lefty, bool keepOriginalCymbalColors = false)
         {
             // A valid, editable copy; all callbacks are in memory and no profile singleton is touched.
             var preset = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Assignment popup test");
@@ -128,7 +129,7 @@ namespace YARG.Tests.PlayMode
                 (Func<bool>)(() => _profileCurrent),
                 (Func<EliteDrumsLayoutPreset, bool>)(_ => { _writes++; return true; }),
                 (Func<ColorProfile, bool>)(_ => { _writes++; return true; }),
-                (Func<bool, bool>)(_ => { _writes++; return true; }));
+                (Func<bool, bool>)(_ => { _writes++; return true; }), YARG.Core.DrumFlamLayout.V, keepOriginalCymbalColors);
         }
 
         private Component Cell(int column, bool drum) => _root
@@ -211,6 +212,160 @@ namespace YARG.Tests.PlayMode
             Assert.That(CurrentGroup, Is.SameAs(Grid));
             Assert.That(Property(Grid, "SelectedBehaviour"), Is.SameAs(cell), "Restore the exact saved row and column.");
             Assert.That(_root.GetComponent<CanvasGroup>().interactable, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator CymbalPairPickerOffersSixOrderedActionPairsAndPreservesDrumRow()
+        {
+            Click(CellButton(Cell(2, false)));
+            yield return null;
+            var ids = (string[])Field(_menu, "_choiceIds");
+            Assert.That(ids, Is.EqualTo(new[] { "left-crash", "ride", "right-crash", "hi-hat",
+                "left-crash>right-crash", "left-crash>ride", "ride>left-crash", "ride>right-crash",
+                "right-crash>left-crash", "right-crash>ride", "clear", "cancel" }));
+            Assert.That(((Button[])Field(_menu, "_choices")).Length, Is.EqualTo(12));
+            foreach (string id in ids.Where(id => id.Contains(">")))
+            {
+                int index = Array.IndexOf(ids, id);
+                var label = ((Component[])Field(_menu, "_choiceLabels"))[index];
+                int style = Convert.ToInt32(Property(label, "fontStyle"));
+                Assert.That(style & 2, Is.Zero, "Combined choices keep the normal TMP font style.");
+                var row = Choice(id).GetComponent(Production("YARG.Menu.HighwayConfiguration.AssignmentPopupRow"));
+                Assert.That((bool)Field(row, "_actionStyle"), Is.True,
+                    "Combined choices use the same selected-fill action treatment as Clear and Cancel.");
+                var color = (Color)Field(row, "_actionColor");
+                Assert.That(color.r, Is.GreaterThan(color.g));
+                Assert.That(color.b, Is.GreaterThan(color.g), "The action palette is lilac/violet.");
+                Assert.That((string)Property(label, "text"), Does.Not.Contain("<i>"),
+                    "Assignment markers must stay literal and styling must not alter the caption.");
+            }
+            AssertPopupCaption("left-crash>right-crash", "Left (+ Right Crash)");
+            AssertPopupCaption("right-crash>left-crash", "Right (+ Left Crash)");
+            yield return ClickChoice("left-crash>ride");
+            Assert.That(Draft.Slots[2].Cymbal, Is.EqualTo("left-crash+ride"));
+            Assert.That(Draft.Slots[2].Drum, Is.EqualTo("tom1"));
+            Assert.That(EliteDrumsLayoutValidator.Validate(Draft).IsRuntimeSupported, Is.True);
+            Assert.That((bool)Property(_menu, "CanSave"), Is.True);
+            yield return null; // Popup dismissal intentionally gates background input for its own frame.
+            Call(_menu, "Save");
+            Assert.That(_writes, Is.GreaterThan(0), "A complete combined assignment passes the native save boundary.");
+            var cell = Cell(2, false);
+            var text = (string)Property(Field(cell, "_label"), "text");
+            Assert.That(text, Is.EqualTo("Left Crash\n(Ride)"));
+            Assert.That(cell.transform.Find("Source Swatch 1"), Is.Null);
+            Assert.That(cell.transform.Find("Source Swatch 2"), Is.Null);
+            yield return null;
+            Click(CellButton(cell));
+            yield return ClickChoice("ride");
+            Assert.That(Draft.Slots[2].Drum, Is.EqualTo("tom1"));
+            Assert.That(Draft.Slots[2].Cymbal, Is.EqualTo("ride"));
+            Assert.That(EliteDrumsLayoutEditor.GetUnassigned(Draft), Does.Contain("left-crash"));
+            yield return null;
+            Click(CellButton(Cell(2, true)));
+            Assert.That((string[])Field(_menu, "_choiceIds"), Does.Contain("kick"),
+                "Removing kick choices from cymbals must preserve the drum picker.");
+            yield return ClickChoice("cancel");
+        }
+
+        [UnityTest]
+        public IEnumerator OrderedCymbalCellsUsePrimaryOrTwoSourceColorsWithoutChangingFretPills()
+        {
+            foreach (bool keepOriginal in new[] { false, true })
+            foreach (string id in new[] { "left-crash>right-crash", "left-crash>ride", "ride>left-crash",
+                         "ride>right-crash", "right-crash>left-crash", "right-crash>ride" })
+            {
+                Call(_menu, "Close");
+                Initialize(false, keepOriginal);
+                yield return null;
+                string[] sources = id.Split('>');
+                int column = sources.Contains("left-crash") ? 2 : 3;
+                Click(CellButton(Cell(column, false)));
+                yield return ClickChoice(id);
+                yield return null;
+                var cell = Cell(column, false);
+                Assert.That(Draft.Merges.Single().PrimarySource, Is.EqualTo(sources[0]));
+                string Caption(string source) => source == "left-crash" ? "Left Crash" :
+                    source == "right-crash" ? "Right Crash" : "Ride";
+                Assert.That((string)Property(Field(cell, "_label"), "text"),
+                    Is.EqualTo(Caption(sources[0]) + "\n(" + Caption(sources[1]) + ")"));
+                Color SourceFill(string source)
+                {
+                    var role = source == "left-crash" ? EliteDrumsColorRole.LeftCrash :
+                        source == "right-crash" ? EliteDrumsColorRole.RightCrash : EliteDrumsColorRole.Ride;
+                    var color = ColorProfile.Default.EliteDrums.GetNoteColor(role);
+                    return Color.Lerp(new Color(0.055f, 0.07f, 0.09f, 1f),
+                        new Color32(color.R, color.G, color.B, color.A), 0.25f);
+                }
+                Assert.That(((Image)Field(cell, "_fill")).color, Is.EqualTo(SourceFill(sources[0])));
+                var secondary = (Image)Field(cell, "_secondaryFill");
+                Assert.That(secondary.gameObject.activeInHierarchy, Is.EqualTo(keepOriginal));
+                if (keepOriginal)
+                {
+                    Assert.That(secondary.color, Is.EqualTo(SourceFill(sources[1])));
+                    var region = (RectTransform)secondary.transform.parent;
+                    Assert.That(region.anchorMin.y, Is.Zero);
+                    Assert.That(region.anchorMax.y, Is.EqualTo(0.5f),
+                        "The color boundary lies halfway between the two centered labels.");
+                }
+                var pill = _root.transform.Find("Saved Slot Fret " + (column + 1)).GetComponent<Image>();
+                var fret = ColorProfile.Default.EliteDrums.GetSlotFretColor(column);
+                Assert.That(pill.color, Is.EqualTo((Color)new Color32(fret.R, fret.G, fret.B, fret.A)));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator MovingEitherOrderedCymbalSourceLeavesItsPartnerAndDrumRowAssigned()
+        {
+            foreach (string id in new[] { "left-crash>right-crash", "left-crash>ride", "ride>left-crash",
+                         "ride>right-crash", "right-crash>left-crash", "right-crash>ride" })
+            foreach (int movedIndex in new[] { 0, 1 })
+            {
+                Call(_menu, "Close");
+                Initialize(false);
+                yield return null;
+                Click(CellButton(Cell(2, false)));
+                yield return ClickChoice(id);
+                yield return null;
+                string[] sources = id.Split('>');
+                Click(CellButton(Cell(8, false)));
+                yield return ClickChoice(sources[movedIndex]);
+                Assert.That(Draft.Slots[8].Cymbal, Is.EqualTo(sources[movedIndex]));
+                Assert.That(Draft.Slots[2].Cymbal, Is.EqualTo(sources[1 - movedIndex]));
+                Assert.That(Draft.Slots[2].Drum, Is.EqualTo("tom1"));
+                Assert.That(Draft.Merges, Is.Empty);
+                Assert.That(EliteDrumsLayoutEditor.GetUnassigned(Draft), Does.Not.Contain(sources[1 - movedIndex]));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CymbalPairPopupKeepsWideChoicesContextLegendAndFocusHelp()
+        {
+            Click(CellButton(Cell(2, false)));
+            yield return null;
+            var viewport = (RectTransform)PopupPanel.Find("Assignment Choices Viewport");
+            Assert.That(viewport.rect.width, Is.GreaterThanOrEqualTo(500f));
+            var context = PopupPanel.Find("Assignment Context");
+            Assert.That(context, Is.Not.Null);
+            var body = (RectTransform)PopupPanel.Find("Dark List Surface");
+            Assert.That(body.rect.width, Is.EqualTo(PopupPanel.rect.width).Within(0.1f),
+                "The modal background must cover the gutter as well as both columns.");
+            var description = context.Find("Assignment Description").GetComponent(Production("TMPro.TMP_Text"));
+            var legend = context.Find("Assignment Marker Legend").GetComponent(Production("TMPro.TMP_Text"));
+            Assert.That((string)Property(legend, "text"), Is.EqualTo(
+                "*...* Assigned here\n\n[...] Unassigned\n\nUnmarked entries are assigned elsewhere"));
+            var choice = Choice("left-crash>ride");
+            Select(choice.GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable")), "Navigation");
+            yield return null;
+            string selectedHelp = (string)Property(description, "text");
+            Assert.That(selectedHelp, Does.Contain("Left Crash stays here").And.Contain("Ride becomes Right Crash"));
+            choice = Choice("ride>left-crash");
+            var pointer = new PointerEventData(_events) { position = Center(choice), delta = Vector2.one };
+            ExecuteEvents.ExecuteHierarchy(choice.gameObject, pointer, ExecuteEvents.pointerEnterHandler);
+            ExecuteEvents.ExecuteHierarchy(choice.gameObject, pointer, ExecuteEvents.pointerMoveHandler);
+            yield return null;
+            Assert.That((string)Property(description, "text"), Does.Contain("Ride stays here").And.Contain("Left Crash becomes an indifferent Hi-Hat"));
+            Assert.That((string)Property(legend, "text"), Does.Contain("Unassigned"));
+            yield return ClickChoice("cancel");
         }
 
         [UnityTest]
@@ -462,17 +617,22 @@ namespace YARG.Tests.PlayMode
             var panelCenter = canvas.InverseTransformPoint(panel.TransformPoint(panel.rect.center));
             Assert.That(Vector2.Distance(panelCenter, canvas.rect.center), Is.LessThan(0.5f),
                 "Card must remain centered in the full canvas, not positioned beside the originating cell.");
-            float captionWidth = Mathf.Max(PreferredCaptionWidth(PopupTitle), labels.Max(PreferredCaptionWidth));
-            Assert.That(panel.rect.width, Is.EqualTo(Mathf.Min(captionWidth + 96f, canvas.rect.width - 48f)).Within(1f),
-                "Visible marked captions and title determine width, with 48 units per side.");
+            float choicesWidth = Mathf.Max(500f, labels.Max(PreferredCaptionWidth) + 96f);
+            float desiredWidth = Mathf.Max(PreferredCaptionWidth(PopupTitle) + 96f, choicesWidth + 444f);
+            Assert.That(panel.rect.width, Is.EqualTo(Mathf.Min(desiredWidth, canvas.rect.width - 48f)).Within(1f),
+                "A difficulty-sized choices column and adjacent context panel determine the card width.");
             var scroll = panel.GetComponent<ScrollRect>();
             Assert.That(scroll.horizontal, Is.False);
             Assert.That(scroll.vertical, Is.EqualTo(constrained));
             Assert.That(scroll.viewport.offsetMin.y, Is.EqualTo(15f).Within(0.5f));
             Assert.That(scroll.viewport.offsetMax.y, Is.EqualTo(-80f).Within(0.5f));
+            float rowsHeight = 0f;
             foreach (var label in labels)
             {
-                Assert.That(((RectTransform)label.transform.parent).rect.height, Is.EqualTo(64f).Within(0.5f));
+                float rowHeight = ((RectTransform)label.transform.parent).rect.height;
+                Assert.That(rowHeight, Is.GreaterThanOrEqualTo(63.5f));
+                if (!constrained) Assert.That(rowHeight, Is.EqualTo(64f).Within(0.5f));
+                rowsHeight += rowHeight;
                 var rect = (RectTransform)label.transform;
                 Assert.That(rect.offsetMin.x, Is.EqualTo(48f).Within(0.5f));
                 Assert.That(rect.offsetMax.x, Is.EqualTo(-48f).Within(0.5f));
@@ -480,9 +640,9 @@ namespace YARG.Tests.PlayMode
                 Call(label, "ForceMeshUpdate", false, false);
                 Assert.That((bool)Property(label, "isTextTruncated"), Is.False);
             }
-            float desiredHeight = 80f + labels.Length * 64f + 15f;
+            float desiredHeight = 80f + rowsHeight + 15f;
             Assert.That(panel.rect.height, Is.EqualTo(Mathf.Min(desiredHeight, canvas.rect.height - 48f)).Within(1f));
-            Assert.That(scroll.content.rect.height, Is.EqualTo(labels.Length * 64f).Within(1f));
+            Assert.That(scroll.content.rect.height, Is.EqualTo(rowsHeight).Within(1f));
             Assert.That(scroll.viewport.rect.height, Is.EqualTo(panel.rect.height - 95f).Within(1f));
             if (constrained)
                 Assert.That(scroll.content.rect.height, Is.GreaterThan(scroll.viewport.rect.height));
@@ -600,7 +760,7 @@ namespace YARG.Tests.PlayMode
                 float rowsHeight = 0f;
                 foreach (var label in VisiblePopupLabels)
                 {
-                    float expected = Mathf.Max(64f, Preferred(label, PopupPanel.rect.width - 96f).y + 16f);
+                    float expected = Mathf.Max(64f, Preferred(label, scroll.viewport.rect.width - 96f).y + 16f);
                     var row = label.transform.parent.GetComponent<LayoutElement>();
                     Assert.That(row.preferredHeight, Is.EqualTo(expected).Within(0.01f));
                     Assert.That(row.minHeight, Is.EqualTo(expected).Within(0.01f));
@@ -1290,6 +1450,101 @@ namespace YARG.Tests.PlayMode
                     Assert.That(Property(Grid, "SelectedBehaviour"), Is.SameAs(toggleNav));
                     CaptureState(height, lefty, "toggle-on-focused-separator");
                 }
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CymbalPairCellLabelsKeepBothNamesAtReferenceResolutions()
+        {
+            foreach (int height in new[] { 720, 1080 })
+            foreach (bool keepOriginal in new[] { false, true })
+            foreach (string id in new[] { "left-crash>right-crash", "left-crash>ride", "ride>left-crash",
+                         "ride>right-crash", "right-crash>left-crash", "right-crash>ride" })
+            {
+                ConfigureCapture(height);
+                Call(_menu, "Close");
+                Initialize(false, keepOriginal);
+                yield return null;
+                int column = id.Contains("left-crash") ? 2 : 3;
+                Click(CellButton(Cell(column, false)));
+                yield return ClickChoice(id);
+                yield return null;
+                var label = (Component)Field(Cell(column, false), "_label");
+                Call(label, "ForceMeshUpdate", false, false);
+                Assert.That((string)Property(label, "text"), Does.Not.Contain("(+ "),
+                    "Only picker captions use plus; the cell has a parenthesized secondary name.");
+                Assert.That((bool)Property(label, "isTextTruncated"), Is.False,
+                    "Both source names must be visible, not merely present before ellipsis.");
+                var bounds = (Bounds)Property(label, "textBounds");
+                var rect = (RectTransform)label.transform;
+                Assert.That(bounds.size.x, Is.LessThanOrEqualTo(rect.rect.width + 1f));
+                Assert.That(bounds.size.y, Is.LessThanOrEqualTo(rect.rect.height + 1f));
+                CaptureState(height, false, "combined-cell-" + id.Replace('>', '-') +
+                    (keepOriginal ? "-unmerged-colors" : "-primary-color"));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator CymbalPairsRenderedAtReferenceResolutions()
+        {
+            foreach (int height in new[] { 720, 1080 })
+            {
+                ConfigureCapture(height);
+                Call(_menu, "Close");
+                Initialize(false);
+                yield return null;
+                Click(CellButton(Cell(8, false)));
+                yield return null;
+                foreach (string id in new[] { "left-crash>right-crash", "left-crash>ride", "ride>left-crash",
+                         "ride>right-crash", "right-crash>left-crash", "right-crash>ride" })
+                {
+                    Select(Choice(id).GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable")), "Navigation");
+                    yield return null;
+                    CaptureState(height, false, "pair-help-" + id.Replace('>', '-'));
+                }
+                yield return ClickChoice("cancel");
+                yield return null;
+                Click(CellButton(Cell(3, false)));
+                yield return null;
+                Select(Choice("right-crash>left-crash").GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable")), "Navigation");
+                yield return null;
+                CaptureState(height, false, "pair-displacement-help");
+                yield return ClickChoice("cancel");
+                yield return null;
+                Click(CellButton(Cell(2, false)));
+                yield return ClickChoice("ride>left-crash");
+                yield return null;
+                var combinedLabel = (Component)Field(Cell(2, false), "_label");
+                Call(combinedLabel, "ForceMeshUpdate", false, false);
+                var bounds = (Bounds)Property(combinedLabel, "textBounds");
+                var labelRect = (RectTransform)combinedLabel.transform;
+                Assert.That(bounds.size.x, Is.LessThanOrEqualTo(labelRect.rect.width + 1f));
+                Assert.That(bounds.size.y, Is.LessThanOrEqualTo(labelRect.rect.height + 1f));
+                CaptureState(height, false, "combined-cell");
+                Click(CellButton(Cell(2, false)));
+                yield return null;
+                AssertPopupCaption("ride>left-crash", "* Ride (+ Left Crash) *");
+                Select(Choice("ride>left-crash").GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable")), "Navigation");
+                yield return null;
+                CaptureState(height, false, "pair-current-markers");
+                yield return ClickChoice("clear");
+                yield return null;
+                Click(CellButton(Cell(2, false)));
+                yield return null;
+                AssertPopupCaption("ride>left-crash", "[ Ride (+ Left Crash) ]");
+                Select(Choice("ride>left-crash").GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable")), "Navigation");
+                yield return null;
+                CaptureState(height, false, "pair-unassigned-markers");
+                yield return ClickChoice("left-crash");
+                yield return null;
+                Click(CellButton(Cell(8, false)));
+                yield return null;
+                AssertPopupCaption("ride>left-crash", "Ride (+ Left Crash)");
+                Select(Choice("ride>left-crash").GetComponent(Production("YARG.Menu.Navigation.RuntimeNavigatable")), "Navigation");
+                yield return null;
+                CaptureState(height, false, "pair-partial-markers");
+                yield return ClickChoice("cancel");
+                yield return null;
             }
         }
 

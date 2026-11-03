@@ -23,6 +23,7 @@ using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Player;
 using YARG.Settings;
+using YARG.Settings.Customization;
 using YARG.Song;
 
 namespace YARG.Menu.Maestro
@@ -110,6 +111,7 @@ namespace YARG.Menu.Maestro
         [SerializeField] private NavigatableUnityButton _playButton;
 
         private readonly Dictionary<Guid, MaestroPlayerRow> _rows = new();
+        private readonly Dictionary<Modifier, ModifierItem> _modifierDialogItems = new();
         private Guid _selectedProfileId;
         private IDisposable _controllerLock;
         private NavigationScheme _scheme;
@@ -1297,6 +1299,7 @@ namespace YARG.Menu.Maestro
             var dialog = DialogManager.Instance.ShowList($"{dialogTitle} — {player.Name}");
             dialog.ClearButtons();
             dialog.ClearList();
+            _modifierDialogItems.Clear();
 
             if (accessibility)
             {
@@ -1395,12 +1398,23 @@ namespace YARG.Menu.Maestro
         private void AddModifierToggle(ListDialog dialog, MaestroStagedPlayer player,
             Modifier modifier)
         {
-            AddAdjustmentToggle(dialog, modifier.ToLocalizedName(),
+            var item = AddAdjustmentToggle(dialog, modifier.ToLocalizedName(),
                 (player.Modifiers & modifier) != 0, enabled =>
             {
-                Session.StageModifier(_selectedProfileId, modifier, enabled);
+                Session.StageModifier(player.ProfileId, modifier, enabled);
+                RefreshModifierDialog(player);
                 RefreshView();
             });
+            _modifierDialogItems[modifier] = item;
+        }
+
+        private void RefreshModifierDialog(MaestroStagedPlayer player)
+        {
+            foreach (var pair in _modifierDialogItems)
+            {
+                if (pair.Value == null) continue;
+                pair.Value.Active = (player.Modifiers & pair.Key) != 0;
+            }
         }
 
         private void AddAccessibilityOptions(ListDialog dialog, MaestroStagedPlayer player,
@@ -1441,6 +1455,12 @@ namespace YARG.Menu.Maestro
                     Session.StageNoHiHatPedal(_selectedProfileId, enabled);
                     RefreshView();
                 });
+                AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "KeepOriginalCymbalColors"),
+                    player.KeepOriginalCymbalColors, enabled =>
+                {
+                    Session.StageKeepOriginalCymbalColors(_selectedProfileId, enabled);
+                    RefreshView();
+                }).SetInteractable(CustomContentManager.HasMergedEliteCymbals(player.Player.Profile.EliteDrumsLayout));
             }
 
             if (MaestroSelectionRules.SupportsRangeShifts(player.GameMode))

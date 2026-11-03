@@ -1,5 +1,7 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -134,6 +136,119 @@ namespace YARG.Tests.PlayMode
 
     public sealed class EliteFlamFollowUpFeedbackPlayModeTests : EliteFlamRuntimeTestBase
     {
+        [UnityTest]
+        public IEnumerator KickBarFlamFollowUpRestartsFootFeedbackWithoutRepeatingNoteLifecycle()
+        {
+            yield return ExerciseKickFollowUp(EliteDrumsLayoutPreset.Full, Array.Empty<int>());
+        }
+
+        [UnityTest]
+        public IEnumerator CombinedKickFlamFollowUpRestartsFootFeedbackWithoutRepeatingNoteLifecycle()
+        {
+            var layout = EliteDrumsLayoutPreset.Full;
+            layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick);
+            yield return ExerciseKickFollowUp(layout, new[] { (int) EliteDrumPad.Kick });
+        }
+
+        [UnityTest]
+        public IEnumerator SplitKickFlamFollowUpRestartsBothFootReceptorsWithoutRepeatingNoteLifecycle()
+        {
+            var layout = EliteDrumsLayoutPreset.Full;
+            layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
+            layout.Slots[9] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
+            yield return ExerciseKickFollowUp(layout, new[] { (int) EliteDrumPad.Kick, 100 });
+        }
+
+        private IEnumerator ExerciseKickFollowUp(EliteDrumsLayoutPreset layout, int[] kickPads)
+        {
+            var kick = Note(EliteDrumPad.Kick, 2, flam: true);
+            kick.Dynamics = DrumNoteType.Accent;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(PreparedElitePlayerFixture.CreateChart(
+                Note(EliteDrumPad.Snare, 1), kick, Note(EliteDrumPad.Tom1, 4)),
+                Profile(), layout, noFail: true);
+            var player = Fixture.Player;
+            var engine = Engine(player);
+            var colors = new ColorProfile("Kick flam follow-up effects");
+            colors.EliteDrums.KickInputEffect = System.Drawing.Color.Magenta;
+            colors.EliteDrums.KickFlamInputEffect = System.Drawing.Color.Cyan;
+            colors.EliteDrums.SnareInputEffect = System.Drawing.Color.Yellow;
+            Fixture.Session.GetType().GetProperty("ColorProfile").SetValue(Fixture.Session, colors);
+            var array = player.GetComponentInChildren(Production("YARG.Gameplay.Visuals.FretArray"), true);
+            var animations = new List<int>();
+            Action<int> observer = pad => animations.Add(pad);
+            array.GetType().GetEvent("OnColoredHitAnimation", INSTANCE)
+                .GetAddMethod(true).Invoke(array, new object[] { observer });
+            int followUps = 0;
+            var callback = (Action<EliteDrumNote, EliteDrumsAction, float, bool>) ((note, action, velocity, bonus) =>
+            {
+                Assert.That(note, Is.SameAs(Playable.Notes[1]));
+                Assert.That(action, Is.EqualTo(EliteDrumsAction.Kick));
+                Assert.That(velocity, Is.EqualTo(0.8f).Within(0.001f));
+                Assert.That(bonus, Is.True);
+                followUps++;
+            });
+            var callbackField = engine.GetType().GetField("OnFlamFollowUp");
+            callbackField.SetValue(engine, Delegate.Combine((Delegate) callbackField.GetValue(engine), callback));
+
+            Press(player, EliteDrumsAction.EliteSnare, 1);
+            Assert.That(animations, Is.EqualTo(new[] { (int) EliteDrumPad.Snare }));
+            var snare = Receptor(player, EliteDrumPad.Snare);
+            var tom = Receptor(player, EliteDrumPad.Tom1);
+            Press(player, EliteDrumsAction.Kick, 2);
+            Assert.That(Playable.Notes[1].WasHit, Is.True);
+            Assert.That(Stat(engine, "NotesHit"), Is.EqualTo(2));
+            var noteScore = Convert.ToInt32(Stat(engine, "NoteScore"));
+            var lifecycleFields = new[] { "NotesHit", "Combo", "DynamicsBonus", "AccentsHit", "GhostsHit", "StarPowerPhrasesHit" };
+            var lifecycle = lifecycleFields.ToDictionary(name => name, name => Stat(engine, name));
+            StopEffect(snare);
+            StopEffect(tom);
+            var frets = (IDictionary) array.GetType().GetField("_frets", INSTANCE).GetValue(array);
+            foreach (int pad in kickPads)
+            {
+                var receptor = (Component) frets[pad];
+                AssertEffect(receptor, System.Drawing.Color.Cyan);
+                StopEffect(receptor);
+            }
+            Component flash = null;
+            FieldInfo sprite = null;
+            if (kickPads.Length == 0)
+            {
+                flash = (Component) player.GetType().GetField("_kickFretFlash", INSTANCE).GetValue(player);
+                sprite = flash.GetType().GetField("_currentSprite", INSTANCE);
+                Assert.That(sprite.GetValue(flash), Is.EqualTo(0), "The primary kick starts the foot flash.");
+                float deadline = Time.realtimeSinceStartup + 2f;
+                while ((int) sprite.GetValue(flash) == 0 && Time.realtimeSinceStartup < deadline)
+                    yield return null;
+                Assert.That((int) sprite.GetValue(flash), Is.GreaterThan(0),
+                    "Observe actual animation progress before checking the follow-up restarts it.");
+            }
+            animations.Clear();
+
+            Press(player, EliteDrumsAction.Kick, 2.02);
+
+            Assert.That(followUps, Is.EqualTo(1));
+            Assert.That(Convert.ToInt32(Stat(engine, "NoteScore")), Is.EqualTo(noteScore + 50));
+            foreach (var field in lifecycleFields)
+                Assert.That(Stat(engine, field), Is.EqualTo(lifecycle[field]), field + " must not repeat on a follow-up.");
+            Assert.That(Playable.Notes[2].WasHit, Is.False);
+            Assert.That(animations, Is.EqualTo(kickPads), "Only the configured foot receptors animate once each.");
+            Assert.That(Effect(snare).GetComponentsInChildren<ParticleSystem>(true).Any(p => p.isPlaying), Is.False);
+            Assert.That(Effect(tom).GetComponentsInChildren<ParticleSystem>(true).Any(p => p.isPlaying), Is.False);
+            foreach (int pad in kickPads)
+                AssertEffect((Component) frets[pad], System.Drawing.Color.Cyan);
+            if (flash != null)
+            {
+                Assert.That(sprite.GetValue(flash), Is.EqualTo(0), "The follow-up restarts the foot flash.");
+                var material = (Material) flash.GetType().GetField("_flashMaterial", INSTANCE).GetValue(flash);
+                Assert.That(material.color.r, Is.EqualTo(0f).Within(0.005f));
+                Assert.That(material.color.g, Is.EqualTo(1f).Within(0.005f));
+                Assert.That(material.color.b, Is.EqualTo(1f).Within(0.005f));
+            }
+            yield return Fixture.Dispose();
+            Fixture = null;
+        }
+
         [UnityTest]
         public IEnumerator FlatAndRegularFollowUpsRestartOnlyTheirReceptorWithoutRepeatingNoteLifecycle()
         {

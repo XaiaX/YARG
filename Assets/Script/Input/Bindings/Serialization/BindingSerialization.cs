@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
@@ -38,6 +39,7 @@ namespace YARG.Input.Serialization
     {
         public List<SerializedInputDevice> Devices = new();
         public List<SerializedMic> Microphones = new();
+        public List<MicrophoneBindingSettings> MicrophoneSettings = new();
 
         // Legacy single microphone, only filled when loading v0-v2 files
         public SerializedMic? Microphone;
@@ -132,13 +134,42 @@ namespace YARG.Input.Serialization
         {
             try
             {
-                var serialized = SerializeBindingsV3(bindings);
+                var serialized = new SerializedBindingsV4(bindings);
                 string bindingsJson = JsonConvert.SerializeObject(serialized, Formatting.Indented);
+                PreserveLegacyBindings(bindingsPath);
                 File.WriteAllText(bindingsPath, bindingsJson);
             }
             catch (Exception ex)
             {
                 YargLogger.LogException(ex, "Error while saving bindings!");
+            }
+        }
+
+        private static void PreserveLegacyBindings(string bindingsPath)
+        {
+            if (bindingsPath.EndsWith(".bak", StringComparison.OrdinalIgnoreCase) || !File.Exists(bindingsPath)) return;
+            JObject original;
+            try
+            {
+                original = JObject.Parse(File.ReadAllText(bindingsPath));
+            }
+            catch (JsonException)
+            {
+                // A valid backup may be restoring a malformed main file.
+                return;
+            }
+            var token = original["Version"];
+            int version = token == null ? 0 : token.Type == JTokenType.Integer ? (int)token : -1;
+            if (version < 0 || version > 3) return;
+            string backup = bindingsPath + $".pre-microphone-setup-v{version}.bak";
+            if (File.Exists(backup)) return;
+            try
+            {
+                File.Copy(bindingsPath, backup, overwrite: false);
+            }
+            catch (IOException) when (File.Exists(backup))
+            {
+                // Another writer already preserved the original; never replace that checkpoint.
             }
         }
 
@@ -165,6 +196,7 @@ namespace YARG.Input.Serialization
                     1 => DeserializeBindingsV1(jObject),
                     2 => DeserializeBindingsV2(jObject),
                     3 => DeserializeBindingsV3(jObject),
+                    4 => jObject.ToObject<SerializedBindingsV4>()?.Deserialize(),
                     _ => throw new NotImplementedException($"Unhandled bindings version {version}!")
                 };
 

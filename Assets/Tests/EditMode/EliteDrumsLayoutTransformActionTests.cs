@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -82,6 +83,23 @@ namespace YARG.Tests.EditMode
             preset.Slots[7] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
             preset.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
             return preset;
+        }
+
+        [Test]
+        public void SupportedCymbalPairShiftAndReverseKeepSourcesTogetherAndPreserveOriginal()
+        {
+            var original = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Pair transform");
+            original = EliteDrumsLayoutEditor.Place(original, 8, "left-crash+ride");
+            var before = Slots(original);
+            Initialize(original);
+            Action("ShiftRight");
+            Assert.That(Draft.Slots[9].Cymbal, Is.EqualTo("left-crash+ride"));
+            Assert.That(Draft.Slots[3].Drum, Is.EqualTo("tom1"));
+            Assert.That(Draft.Merges[0].EffectiveId, Is.EqualTo("left-crash+ride"));
+            Action("ReverseLayout");
+            Assert.That(Draft.Slots[0].Cymbal, Is.EqualTo("left-crash+ride"));
+            Assert.That(EliteDrumsLayoutValidator.Validate(Draft).IsRuntimeSupported, Is.True);
+            Assert.That(Slots(original), Is.EqualTo(before));
         }
 
         [Test]

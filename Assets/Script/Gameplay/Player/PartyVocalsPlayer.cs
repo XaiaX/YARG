@@ -1,3 +1,4 @@
+﻿// pattern: Imperative Shell
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -156,6 +157,8 @@ namespace YARG.Gameplay.Player
                 // Needle clone.
                 // AC27.2: one-shot sync load per slot at Initialize; handle released in FinishDestruction.
                 int micNeedleIndex = (i % NEEDLES_COUNT) + 1;
+                if (!player.IsReplay && !player.Profile.IsBot && i < effectiveMics.Count)
+                    micNeedleIndex = player.Bindings.GetMicrophoneNeedleIdForDevice(effectiveMics[i]);
                 var materialHandle = Addressables.LoadAssetAsync<Material>($"VocalNeedle/{micNeedleIndex}");
                 var baseMaterial = materialHandle.WaitForCompletion();
                 var materialInstance = new Material(baseMaterial);

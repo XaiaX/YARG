@@ -1,9 +1,12 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using YARG.Audio;
+using YARG.Audio.BASS;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Extensions;
@@ -20,7 +23,10 @@ namespace YARG.Input
 
         private const int MICROPHONE_CAP = 7;
         public int MicrophoneCap => Profile.GameMode == GameMode.PartyVocals ? MICROPHONE_CAP : 1;
-        private readonly List<SerializedMic> _unresolvedMics = new();
+        private static readonly ConditionalWeakTable<MicDevice, ProfileBindings> _microphoneOwners = new();
+        private static readonly object _microphoneOwnerLock = new();
+        private readonly List<MicrophoneBinding> _microphoneBindings = new();
+        public IReadOnlyList<MicrophoneBinding> MicrophoneBindings => _microphoneBindings.AsReadOnly();
         private readonly List<MicDevice> _microphones = new();
 
         /// <summary>
@@ -40,6 +46,43 @@ namespace YARG.Input
 
         private readonly Dictionary<GameMode, BindingCollection> _bindsByGameMode = new();
         public readonly BindingCollection MenuBindings;
+
+        private readonly List<PhysicalAliasSubscription> _physicalAliasSubscriptions = new();
+
+        private sealed class PhysicalAliasSubscription : IDisposable
+        {
+            internal readonly GameMode Mode;
+            internal readonly GameInputProcessed Callback;
+            private readonly List<(ControlBinding Binding, GameInputProcessed Handler)> _handlers = new();
+            private readonly ConditionalWeakTable<ControlBinding.PhysicalInputOrigin, HashSet<int>> _seen = new();
+
+            internal PhysicalAliasSubscription(GameMode mode, BindingCollection bindings,
+                GameInputProcessed callback, Func<int, int?> aliasGroup)
+            {
+                Mode = mode;
+                Callback = callback;
+                foreach (var binding in bindings)
+                {
+                    void Handle(ref YARG.Core.Input.GameInput input)
+                    {
+                        int? group = aliasGroup(input.Action);
+                        var origin = binding.PhysicalOrigin;
+                        if (group.HasValue && origin != null && !_seen.GetOrCreateValue(origin).Add(group.Value))
+                            return;
+                        callback(ref input);
+                    }
+                    GameInputProcessed handler = Handle;
+                    binding.InputProcessed += handler;
+                    _handlers.Add((binding, handler));
+                }
+            }
+
+            public void Dispose()
+            {
+                foreach (var (binding, handler) in _handlers) binding.InputProcessed -= handler;
+                _handlers.Clear();
+            }
+        }
 
         public bool HasDeviceAssigned => _devices.Count > 0;
         public bool Empty => !HasDeviceAssigned && _microphones.Count == 0;
@@ -113,18 +156,20 @@ namespace YARG.Input
 
             if (bindings.Microphones.Count > 0)
             {
-                foreach (var mic in bindings.Microphones)
+                for (int i = 0; i < bindings.Microphones.Count; i++)
                 {
+                    var mic = bindings.Microphones[i];
                     if (mic is not null)
                     {
-                        _unresolvedMics.Add(mic);
+                        _microphoneBindings.Add(new MicrophoneBinding(mic,
+                            i < bindings.MicrophoneSettings.Count ? bindings.MicrophoneSettings[i] : null));
                     }
                 }
             }
             else if (bindings.Microphone is not null)
             {
                 // Legacy files (v0-v2) only had a single microphone
-                _unresolvedMics.Add(bindings.Microphone);
+                _microphoneBindings.Add(new MicrophoneBinding(bindings.Microphone));
             }
 
             if (bindings.ModeMappings is not null)
@@ -158,14 +203,10 @@ namespace YARG.Input
                 serialized.Devices.Add(device);
             }
 
-            foreach (var mic in _microphones)
+            foreach (var binding in _microphoneBindings)
             {
-                serialized.Microphones.Add(mic.Serialize());
-            }
-
-            foreach (var mic in _unresolvedMics)
-            {
-                serialized.Microphones.Add(mic);
+                serialized.Microphones.Add(binding.Identity);
+                serialized.MicrophoneSettings.Add(binding.Settings());
             }
 
             foreach (var (mode, bindings) in _bindsByGameMode)
@@ -199,47 +240,67 @@ namespace YARG.Input
             ResolveMicrophones();
         }
 
-        public void ResolveMicrophones()
+        public bool ResolveMicrophones()
         {
-            foreach (var mic in _unresolvedMics.ToArray())
+            if (_microphoneBindings.Count == 0) return false;
+            Func<MicDevice, bool> isConnected = device => device is not BassMicDevice bass || bass.IsConnected;
+            bool disconnected = DisconnectUnavailableMicrophones(isConnected);
+            var available = GlobalAudioHandler.GetAllInputDevices();
+            var saved = _microphoneBindings.Select(binding => binding.Identity).ToArray();
+            return ResolveMicrophones(mic =>
             {
-                MicDevice device = null;
-                if (!string.IsNullOrEmpty(mic.StableId))
+                var candidate = MicrophoneSetupValues.SelectInput(mic, saved, available);
+                if (!candidate.HasValue) return null;
+                var device = GlobalAudioHandler.CreateInputDevice(candidate.Value);
+                if (device != null) available.Remove(candidate.Value);
+                return device;
+            }, isConnected) || disconnected;
+        }
+
+        internal bool ResolveMicrophones(Func<SerializedMic, MicDevice> resolve, Func<MicDevice, bool> isConnected)
+        {
+            if (resolve == null) throw new ArgumentNullException(nameof(resolve));
+            if (isConnected == null) throw new ArgumentNullException(nameof(isConnected));
+            bool changed = DisconnectUnavailableMicrophones(isConnected);
+            foreach (var binding in _microphoneBindings)
+            {
+                if (binding.Device != null || _microphones.Count >= MicrophoneCap) continue;
+                var device = resolve(binding.Identity);
+                if (device == null) continue;
+                if (AttachMicrophone(binding, device))
                 {
-                    foreach (var info in GlobalAudioHandler.GetAllInputDevices())
-                    {
-                        if (info.Channel == mic.Channel &&
-                            MicDevice.ComputeStableId(info.DeviceId, info.Name) == mic.StableId)
-                        {
-                            device = GlobalAudioHandler.CreateInputDevice(info);
-                            break;
-                        }
-                    }
+                    changed = true;
+                    RefreshMicrophoneView();
                 }
-                device ??= GlobalAudioHandler.GetInputDevice(mic.BaseName, mic.Channel);
-                if (device != null)
+                else
                 {
-                    if (AddMicrophone(device))
+                    lock (_microphoneOwnerLock)
                     {
-                        _unresolvedMics.Remove(mic);
-                    }
-                    else
-                    {
-                        device.Dispose();
+                        if (!_microphoneOwners.TryGetValue(device, out _)) device.Dispose();
                     }
                 }
             }
+            RefreshMicrophoneView();
+            return changed;
+        }
+
+        private bool DisconnectUnavailableMicrophones(Func<MicDevice, bool> isConnected)
+        {
+            bool changed = false;
+            foreach (var binding in _microphoneBindings)
+            {
+                if (binding.Device == null || isConnected(binding.Device)) continue;
+                ReleaseMicrophone(binding);
+                changed = true;
+            }
+            if (changed) RefreshMicrophoneView();
+            return changed;
         }
 
         public void ReleaseMicrophones()
         {
-            foreach (var mic in _microphones)
-            {
-                _unresolvedMics.Add(mic.Serialize());
-                mic.Dispose();
-            }
-
-            _microphones.Clear();
+            foreach (var binding in _microphoneBindings) ReleaseMicrophone(binding);
+            RefreshMicrophoneView();
         }
 
         public void EnableInputs()
@@ -267,8 +328,28 @@ namespace YARG.Input
             _bindsByGameMode[mode].InputProcessed += onInputProcessed;
         }
 
+        /// <summary>Filters only aliases emitted by the same physical control event,
+        /// before the gameplay callback records replay inputs. Raw diagnostics stay untouched.</summary>
+        public void SubscribeToGameplayInputsWithPhysicalAliases(GameMode mode,
+            GameInputProcessed onInputProcessed, Func<int, int?> aliasGroup)
+        {
+            if (onInputProcessed == null) throw new ArgumentNullException(nameof(onInputProcessed));
+            if (aliasGroup == null) throw new ArgumentNullException(nameof(aliasGroup));
+            _physicalAliasSubscriptions.Add(new PhysicalAliasSubscription(mode, _bindsByGameMode[mode],
+                onInputProcessed, aliasGroup));
+        }
+
         public void UnsubscribeFromGameplayInputs(GameMode mode, GameInputProcessed onInputProcessed)
         {
+            // Match ordinary event semantics: remove the last matching subscription.
+            for (int i = _physicalAliasSubscriptions.Count - 1; i >= 0; i--)
+            {
+                var subscription = _physicalAliasSubscriptions[i];
+                if (subscription.Mode != mode || subscription.Callback != onInputProcessed) continue;
+                subscription.Dispose();
+                _physicalAliasSubscriptions.RemoveAt(i);
+                return;
+            }
             _bindsByGameMode[mode].InputProcessed -= onInputProcessed;
         }
 
@@ -465,35 +546,128 @@ namespace YARG.Input
 
         public bool AddMicrophone(MicDevice microphone)
         {
+            if (microphone == null) return false;
             var serialized = microphone.Serialize();
             if (_microphones.Count >= MicrophoneCap || _microphones.Any(m =>
                 m.StableId == microphone.StableId && m.Serialize().Channel == serialized.Channel)) return false;
-            _microphones.Add(microphone);
-            _unresolvedMics.RemoveAll(m => m.Channel == serialized.Channel &&
-                (!string.IsNullOrEmpty(m.StableId) ? m.StableId == microphone.StableId : m.BaseName == serialized.BaseName));
+            var binding = _microphoneBindings.FirstOrDefault(row => row.Device == null &&
+                row.Identity.Channel == serialized.Channel && row.Identity.StableId == serialized.StableId &&
+                !string.IsNullOrEmpty(serialized.StableId));
+            binding ??= _microphoneBindings.FirstOrDefault(row => row.Device == null &&
+                row.Identity.Channel == serialized.Channel && string.IsNullOrEmpty(row.Identity.StableId) &&
+                row.Identity.BaseName == serialized.BaseName);
+            bool newBinding = binding == null;
+            if (newBinding && _microphoneBindings.Count >= MicrophoneCap) return false;
+            binding ??= new MicrophoneBinding(serialized);
+            if (!AttachMicrophone(binding, microphone)) return false;
+            if (newBinding) _microphoneBindings.Add(binding);
+            RefreshMicrophoneView();
             return true;
         }
 
         public bool RemoveMicrophone(MicDevice microphone)
         {
-            if (!_microphones.Remove(microphone)) return false;
-            microphone.Dispose();
+            int index = _microphoneBindings.FindIndex(binding => ReferenceEquals(binding.Device, microphone));
+            if (index < 0) return false;
+            RemoveMicrophoneAt(index);
             return true;
+        }
+
+        public void RemoveMicrophoneAt(int index)
+        {
+            if (index < 0 || index >= _microphoneBindings.Count) return;
+            ReleaseMicrophone(_microphoneBindings[index]);
+            _microphoneBindings.RemoveAt(index);
+            RefreshMicrophoneView();
+        }
+
+        public void MoveMicrophone(int from, int to)
+        {
+            if (from < 0 || to < 0 || from >= _microphoneBindings.Count || to >= _microphoneBindings.Count) return;
+            var binding = _microphoneBindings[from];
+            _microphoneBindings.RemoveAt(from);
+            _microphoneBindings.Insert(to, binding);
+            RefreshMicrophoneView();
+        }
+
+        public int GetMicrophoneNeedleId(int index)
+        {
+            if (index < 0 || index >= _microphoneBindings.Count) return 1;
+            return MicrophoneSetupValues.ResolveNeedles(_microphoneBindings.Select(b => b.NeedleId).ToArray())[index];
+        }
+
+        public int GetMicrophoneNeedleIdForDevice(MicDevice device, int? automaticFallback = null)
+        {
+            int index = _microphoneBindings.FindIndex(binding => ReferenceEquals(binding.Device, device));
+            if (index < 0) return automaticFallback ?? 1;
+            if (_microphoneBindings[index].NeedleId == 0 && automaticFallback.HasValue) return automaticFallback.Value;
+            return GetMicrophoneNeedleId(index);
+        }
+
+        public void SetMicrophoneNeedle(int index, int needleId)
+        {
+            if (index < 0 || index >= _microphoneBindings.Count) return;
+            _microphoneBindings[index].NeedleId = MicrophoneSetupValues.NormalizeNeedle(needleId);
+        }
+
+        public void SetMicrophoneSensitivity(int index, float offset)
+        {
+            if (index < 0 || index >= _microphoneBindings.Count) return;
+            var binding = _microphoneBindings[index];
+            binding.SensitivityOffsetDb = MicrophoneSetupValues.NormalizeSensitivity(offset);
+            lock (_microphoneOwnerLock)
+            {
+                if (binding.Device is BassMicDevice device && _microphoneOwners.TryGetValue(device, out var owner) && ReferenceEquals(owner, this))
+                    device.SensitivityOffsetDb = binding.SensitivityOffsetDb;
+            }
+        }
+
+        private bool AttachMicrophone(MicrophoneBinding binding, MicDevice device)
+        {
+            lock (_microphoneOwnerLock)
+            {
+                if (_microphoneOwners.TryGetValue(device, out _)) return false;
+                if (_microphones.Any(existing => existing.StableId == device.StableId && existing.Serialize().Channel == device.Serialize().Channel)) return false;
+                _microphoneOwners.Add(device, this);
+                binding.Device = device;
+                binding.Identity = device.Serialize();
+                if (device is BassMicDevice bass) bass.SensitivityOffsetDb = binding.SensitivityOffsetDb;
+            }
+            return true;
+        }
+
+        private void ReleaseMicrophone(MicrophoneBinding binding)
+        {
+            var device = binding.Device;
+            binding.Device = null;
+            if (device == null) return;
+            lock (_microphoneOwnerLock)
+            {
+                if (_microphoneOwners.TryGetValue(device, out var owner) && ReferenceEquals(owner, this))
+                {
+                    _microphoneOwners.Remove(device);
+                    device.Dispose();
+                }
+            }
+        }
+
+        private void RefreshMicrophoneView()
+        {
+            _microphones.Clear();
+            foreach (var binding in _microphoneBindings)
+                if (binding.Device != null) _microphones.Add(binding.Device);
         }
 
         public void RemoveAllMicrophones()
         {
-            foreach (var mic in _microphones)
-            {
-                mic.Dispose();
-            }
-
-            _microphones.Clear();
-            _unresolvedMics.Clear();
+            ReleaseMicrophones();
+            _microphoneBindings.Clear();
         }
 
         public void Dispose()
         {
+            foreach (var subscription in _physicalAliasSubscriptions) subscription.Dispose();
+            _physicalAliasSubscriptions.Clear();
             foreach (var device in InputSystem.devices)
             {
                 OnDeviceRemoved(device);

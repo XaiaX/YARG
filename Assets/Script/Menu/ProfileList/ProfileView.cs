@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -50,6 +51,9 @@ namespace YARG.Menu.ProfileList
         private Sprite _profileGenericSprite;
         [SerializeField]
         private Sprite _profileBotSprite;
+
+        public Button MicrophoneMoveUpTemplate => _moveUpButton;
+        public Button MicrophoneMoveDownTemplate => _moveDownButton;
 
         public YargProfile Profile { get; private set; }
 

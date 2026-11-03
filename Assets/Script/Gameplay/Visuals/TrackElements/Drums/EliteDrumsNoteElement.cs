@@ -101,7 +101,7 @@ namespace YARG.Gameplay.Visuals
                             EliteDrumsRuntimeGeometry.FitPair(Geometry(2 + variant, group * 2), null,
                                 Geometry(2 + variant, group * 2 + 1), null,
                                 player.Layout.Lanes.Count, center, width, 0f, !note.IsFlatFlam,
-                                SettingsManager.Settings.EliteFlamLayout.Value, IsCymbalGroup(group),
+                                player.Player.Profile.FlamLayout, IsCymbalGroup(group),
                                 player.Player.Profile.LeftyFlip);
                     }
                     else if (EliteDrumsRuntimeGeometry.GetCollisionPartner(player, note) is { } partner)
@@ -305,7 +305,7 @@ namespace YARG.Gameplay.Visuals
                 EliteDrumsRuntimeGeometry.FitPair(Geometry(2 + variant, baseIndex + SPLIT_LEFT), l.transform,
                     Geometry(2 + variant, baseIndex + SPLIT_RIGHT), r.transform,
                     Player.Layout.Lanes.Count, laneCenter, regionWidth, transform.localPosition.x,
-                    !NoteRef.IsFlatFlam, SettingsManager.Settings.EliteFlamLayout.Value,
+                    !NoteRef.IsFlatFlam, Player.Player.Profile.FlamLayout,
                     IsCymbalGroup(group),
                     Player.Player.Profile.LeftyFlip);
             }
@@ -334,6 +334,8 @@ namespace YARG.Gameplay.Visuals
 
         internal static int GetSplitGroup(EliteDrumNote note, bool useCymbalModels)
         {
+            if (!useCymbalModels)
+                return note.IsAccent ? ACCENT : note.IsGhost ? GHOST : NORMAL;
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HiHat && (note.IsOpen || note.IsClosed))
             {
                 if (note.IsAccent) return note.IsOpen ? OPEN_HI_HAT_ACCENT : CLOSED_HI_HAT_ACCENT;
@@ -637,13 +639,18 @@ namespace YARG.Gameplay.Visuals
 
         internal static (System.Drawing.Color Body, System.Drawing.Color Emission, System.Drawing.Color Metal)
             GetGemColors(ColorProfile.EliteDrumsColors colors, EliteDrumNote note, bool splitEliteFlamGems,
-                bool starPower, bool missed)
+                bool starPower, bool missed) => GetGemColorsWithCymbalPreference(colors, note,
+                    splitEliteFlamGems, starPower, missed, false);
+
+        internal static (System.Drawing.Color Body, System.Drawing.Color Emission, System.Drawing.Color Metal)
+            GetGemColorsWithCymbalPreference(ColorProfile.EliteDrumsColors colors, EliteDrumNote note,
+                bool splitEliteFlamGems, bool starPower, bool missed, bool keepOriginalCymbalColors)
         {
             // Core owns note identity, including future playable roles such as wildcard.
             // Mirrored placement and shared tom/cymbal positions never select colors.
             var role = EliteDrumsPlayer.IsFootPad(note.Pad) && (note.IsFlam || note.IsFlatFlam)
                 ? EliteDrumsColorRole.KickFlam
-                : EliteDrumsColorRoles.GetRole(note, IsSplitFlam(note, splitEliteFlamGems));
+                : EliteDrumsColorRoles.GetRole(note, IsSplitFlam(note, splitEliteFlamGems), keepOriginalCymbalColors);
             var original = colors.GetNoteColor(role);
             var body = missed ? colors.Miss : starPower ? colors.GetNoteStarPowerColor(role) : original;
             return (body, original, colors.GetMetalColor(starPower));
@@ -663,8 +670,9 @@ namespace YARG.Gameplay.Visuals
         {
             if (NoteGroup == null || NoteRef.WasHit) return;
             bool splitFlam = IsSplitFlam(NoteRef, true);
-            var (color, original, metal) = GetGemColors(Player.Player.ColorProfile.EliteDrums,
-                NoteRef, splitFlam, IsStarPowerVisible, NoteRef.WasMissed);
+            var (color, original, metal) = GetGemColorsWithCymbalPreference(Player.Player.ColorProfile.EliteDrums,
+                NoteRef, splitFlam, IsStarPowerVisible, NoteRef.WasMissed,
+                Player.Player.Profile.KeepOriginalCymbalColors);
             bool activation = NoteRef.IsStarPowerActivator && !NoteRef.WasMissed &&
                 Player.Engine.CanStarPowerActivate && !Player.Engine.BaseStats.IsStarPowerActive;
             float phase = activation ? (float)GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage : 0f;

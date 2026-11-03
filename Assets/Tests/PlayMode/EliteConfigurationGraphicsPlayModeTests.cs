@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -566,7 +567,7 @@ namespace YARG.Tests.PlayMode
                 initializeForProfile.Invoke(_menu, new object[] { layout, previewColors, false,
                     (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), (Func<bool>)(() => true),
                     (Func<EliteDrumsLayoutPreset, bool>)(_ => true), (Func<ColorProfile, bool>)(_ => true),
-                    (Func<bool, bool>)(value => { preferenceCallbacks++; return true; }) });
+                    (Func<bool, bool>)(value => { preferenceCallbacks++; return true; }), YARG.Core.DrumFlamLayout.V, false });
             }
             else
                 Call(_menu, "Initialize", layout, (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), previewColors);

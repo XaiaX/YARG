@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Linq;
 using System.Reflection;
@@ -270,7 +271,7 @@ namespace YARG.Tests.EditMode
         }
 
         private static object Layout(string name) => Enum.Parse(AppDomain.CurrentDomain.GetAssemblies()
-            .Select(a => a.GetType("YARG.Settings.EliteFlamLayout")).First(t => t != null), name);
+            .Select(a => a.GetType("YARG.Core.DrumFlamLayout")).First(t => t != null), name);
 
         [TestCase(true)]
         [TestCase(false)]

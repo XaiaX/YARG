@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Linq;
@@ -237,7 +238,7 @@ namespace YARG.Tests.PlayMode
             initializeForProfile.Invoke(configuration, new object[] { preset, previewColors, false,
                 (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), (Func<bool>)(() => true),
                 (Func<EliteDrumsLayoutPreset, bool>)(_ => true), (Func<YARG.Core.Game.ColorProfile, bool>)(_ => true),
-                (Func<bool, bool>)(value => { leftyCallbacks++; return true; }) });
+                (Func<bool, bool>)(value => { leftyCallbacks++; return true; }), YARG.Core.DrumFlamLayout.V, false });
             yield return null;
 
             var leftyToggle = (Toggle)menuType.GetField("_leftyFlipToggle", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(configuration);
@@ -274,7 +275,7 @@ namespace YARG.Tests.PlayMode
                 initializeForProfile.Invoke(configuration, new object[] { preset, previewColors, true,
                     (Action<EliteDrumsLayoutPreset>)(_ => { }), (Action)(() => { }), (Func<bool>)(() => true),
                     (Func<EliteDrumsLayoutPreset, bool>)(_ => true), (Func<YARG.Core.Game.ColorProfile, bool>)(_ => true),
-                    (Func<bool, bool>)(value => { leftyCallbacks++; return true; }) });
+                    (Func<bool, bool>)(value => { leftyCallbacks++; return true; }), YARG.Core.DrumFlamLayout.V, false });
                 yield return null;
             }
             Assert.That(leftyCallbacks, Is.EqualTo(1), "Repeated profile-editor openings must not synthesize preference callbacks.");

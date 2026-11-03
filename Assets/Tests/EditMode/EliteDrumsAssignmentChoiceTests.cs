@@ -1,3 +1,4 @@
+// pattern: Functional Core
 using System;
 using System.Linq;
 using System.Reflection;
@@ -8,6 +9,46 @@ namespace YARG.Tests.EditMode
 {
     public sealed class EliteDrumsAssignmentChoiceTests
     {
+        [TestCase("left-crash>right-crash")]
+        [TestCase("left-crash>ride")]
+        [TestCase("ride>left-crash")]
+        [TestCase("ride>right-crash")]
+        [TestCase("right-crash>left-crash")]
+        [TestCase("right-crash>ride")]
+        public void OrderedPairMarkersRecognizePartialSourcesAndOnlyTheCurrentOrientation(string choice)
+        {
+            var draft = new EliteDrumsLayoutPreset();
+            const string caption = "ORDERED CYMBALS";
+            Assert.That(Label(draft, 0, false, choice, caption), Is.EqualTo("[ ORDERED CYMBALS ]"));
+            string[] sources = choice.Split('>');
+            draft = EliteDrumsLayoutEditor.Place(draft, 3, sources[0]);
+            Assert.That(Label(draft, 0, false, choice, caption), Is.EqualTo(caption));
+            draft = EliteDrumsLayoutEditor.Place(draft, 3, choice);
+            Assert.That(Label(draft, 3, false, choice, caption), Is.EqualTo("* ORDERED CYMBALS *"));
+            Assert.That(Label(draft, 3, false, sources[1] + ">" + sources[0], caption), Is.EqualTo(caption),
+                "The reverse primary uses the same cell but is a different assignment.");
+            Assert.That(Label(draft, 0, false, choice, caption), Is.EqualTo(caption));
+            Assert.That(Label(draft, 3, false, sources[0], "SINGLE"), Is.EqualTo("SINGLE"));
+        }
+
+        [TestCase("left-crash+right-crash")]
+        [TestCase("left-crash+ride")]
+        [TestCase("ride+right-crash")]
+        public void CombinedMarkersRequireBothUnassignedOrTheExactCurrentPair(string id)
+        {
+            var draft = new EliteDrumsLayoutPreset();
+            const string caption = "COMBINED CYMBALS";
+            Assert.That(Label(draft, 0, false, id, caption), Is.EqualTo("[ COMBINED CYMBALS ]"));
+            string[] sources = id.Split('+');
+            draft.Slots[3] = EliteDrumsLayoutSlot.Ordinary(null, sources[0]);
+            Assert.That(Label(draft, 0, false, id, caption), Is.EqualTo(caption));
+            draft.Slots[3] = EliteDrumsLayoutSlot.Ordinary(null, id);
+            Assert.That(Label(draft, 3, false, id, caption), Is.EqualTo("* COMBINED CYMBALS *"));
+            Assert.That(Label(draft, 0, false, id, caption), Is.EqualTo(caption));
+            Assert.That(Label(draft, 3, false, sources[0], "SINGLE"), Is.EqualTo("SINGLE"),
+                "A pair does not claim an individual choice is the cell's exact assignment.");
+        }
+
         private static Type Helper => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType("YARG.Menu.HighwayConfiguration.EliteDrumsAssignmentChoice"))
             .First(type => type != null);

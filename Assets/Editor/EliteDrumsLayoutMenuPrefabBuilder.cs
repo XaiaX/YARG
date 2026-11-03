@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System.IO;
 using TMPro;
 using UnityEditor;
@@ -200,6 +201,21 @@ namespace YARG.Editor
                         fill.type = Image.Type.Sliced;
                         fill.color = background.color;
                         fill.raycastTarget = false;
+                        Image secondaryFill = null;
+                        if (row == 0)
+                        {
+                            var region = AnchoredRect("Secondary Color Region", fill.transform,
+                                Vector2.zero, new Vector2(1f, 0.5f), Vector2.zero, Vector2.zero);
+                            region.AddComponent<RectMask2D>();
+                            var secondary = AnchoredRect("Secondary Color Fill", region.transform,
+                                Vector2.zero, new Vector2(1f, 2f), Vector2.zero, Vector2.zero);
+                            secondaryFill = secondary.AddComponent<Image>();
+                            secondaryFill.sprite = fill.sprite;
+                            secondaryFill.type = fill.type;
+                            secondaryFill.color = fill.color;
+                            secondaryFill.raycastTarget = false;
+                            secondary.SetActive(false);
+                        }
                         var label = Text("Label", cellObject.transform, "Empty", Vector2.zero,
                             new Vector2(96, 62), 19, true);
                         Stretch(label.rectTransform, 4);
@@ -250,6 +266,7 @@ namespace YARG.Editor
                         Set(cell, "_button", button);
                         Set(cell, "_outline", outline);
                         Set(cell, "_fill", fill);
+                        if (secondaryFill != null) Set(cell, "_secondaryFill", secondaryFill);
                         if (pill != null) Set(cell, "_fretPill", pill.GetComponent<Image>());
                         Set(cell, "_focusVisual", buttonOutline);
                         Set(cell, "_selectedVisual", buttonOutline);
@@ -397,7 +414,35 @@ namespace YARG.Editor
                 var coloredRowPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
                     "Assets/Prefabs/Menu/DifficultySelect/DifficultyItemColored.prefab");
                 var coloredSelection = coloredRowPrefab.transform.Find("Selected Background").GetComponent<Image>();
-                var choices = new Button[10];
+                var contextObject = AnchoredRect("Assignment Context", popupPanel.transform,
+                    Vector2.zero, Vector2.one, new Vector2(524f, 15f), new Vector2(0f, -80f));
+                var contextBackground = contextObject.AddComponent<Image>();
+                contextBackground.color = new Color(0.035f, 0.045f, 0.065f, 1f);
+                contextBackground.raycastTarget = false;
+                var description = Text("Assignment Description", contextObject.transform, "", Vector2.zero,
+                    Vector2.zero, 26);
+                Stretch(description.rectTransform);
+                description.rectTransform.offsetMin = new Vector2(24f, 220f);
+                description.rectTransform.offsetMax = new Vector2(-24f, -24f);
+                description.alignment = TextAlignmentOptions.TopLeft;
+                description.textWrappingMode = TextWrappingModes.Normal;
+                description.overflowMode = TextOverflowModes.Overflow;
+                description.enableAutoSizing = true;
+                description.fontSizeMin = 22f;
+                description.fontSizeMax = 26f;
+                var markerLegend = Text("Assignment Marker Legend", contextObject.transform,
+                    YARG.Localization.Localize.Key("Menu.EliteLayout.AssignmentMarkerLegend"),
+                    Vector2.zero, Vector2.zero, 22);
+                markerLegend.rectTransform.anchorMin = Vector2.zero;
+                markerLegend.rectTransform.anchorMax = new Vector2(1f, 0f);
+                markerLegend.rectTransform.pivot = new Vector2(0.5f, 0f);
+                markerLegend.rectTransform.offsetMin = new Vector2(24f, 20f);
+                markerLegend.rectTransform.offsetMax = new Vector2(-24f, 204f);
+                markerLegend.alignment = TextAlignmentOptions.TopLeft;
+                markerLegend.textWrappingMode = TextWrappingModes.Normal;
+                markerLegend.overflowMode = TextOverflowModes.Overflow;
+                markerLegend.enableAutoSizing = false;
+                var choices = new Button[12];
                 var choiceLabels = new TMP_Text[choices.Length];
                 for (int i = 0; i < choices.Length; i++)
                 {
@@ -443,7 +488,8 @@ namespace YARG.Editor
 
                 var popupLayout = popup.AddComponent<AssignmentPopupLayout>();
                 popupLayout.Configure(popupPanel.GetComponent<RectTransform>(), root.GetComponent<RectTransform>(),
-                    popupTitle, choiceLabels, scroll, listSurface.rectTransform, headerBacking);
+                    popupTitle, choiceLabels, scroll, listSurface.rectTransform, headerBacking,
+                    contextObject.GetComponent<RectTransform>(), description, markerLegend);
                 Set(menu, "_popupLayout", popupLayout);
                 Set(menu, "_navigation", navigation);
                 SetArray(menu, "_cells", cells);

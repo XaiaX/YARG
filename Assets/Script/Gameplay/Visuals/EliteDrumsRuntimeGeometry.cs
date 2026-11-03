@@ -1,5 +1,6 @@
 // pattern: Imperative Shell
 using UnityEngine;
+using YARG.Core;
 using YARG.Core.Chart;
 using YARG.Core.Game;
 using YARG.Gameplay.Player;
@@ -350,9 +351,10 @@ namespace YARG.Gameplay.Visuals
         }
 
         private static void FitParallel(ModelGeometry left, ModelPose leftModel, ModelGeometry right, ModelPose rightModel,
-            int columns, float laneCenter, float laneWidth, float elementCenter, float factor, float angle, bool cymbal)
+            int columns, float laneCenter, float laneWidth, float elementCenter, float factor, float angle, bool cymbal,
+            float authoredLaneWidth)
         {
-            float ordinaryFactor = GetAuthoredLaneScale(laneWidth, TrackPlayer.TRACK_WIDTH / 5f);
+            float ordinaryFactor = GetAuthoredLaneScale(laneWidth, authoredLaneWidth);
             var lc = left.ParallelPoints(factor, ordinaryFactor, angle, cymbal, out var leftPosition);
             var rc = right.ParallelPoints(factor, ordinaryFactor, angle, cymbal, out var rightPosition);
             float contact = GetLateralContact(lc, rc);
@@ -386,8 +388,14 @@ namespace YARG.Gameplay.Visuals
 
         internal static void FitPair(ModelGeometry left, Transform leftModel, ModelGeometry right,
             Transform rightModel, int columns, float laneCenter, float laneWidth, float elementCenter,
-            bool regularFlam, EliteFlamLayout layout = EliteFlamLayout.V, bool cymbalModel = false,
-            bool lefty = false)
+            bool regularFlam, DrumFlamLayout layout = DrumFlamLayout.V, bool cymbalModel = false,
+            bool lefty = false) => FitPairWithAuthoredWidth(left, leftModel, right, rightModel, columns,
+                laneCenter, laneWidth, elementCenter, regularFlam, layout, cymbalModel, lefty,
+                TrackPlayer.TRACK_WIDTH / 5f);
+
+        internal static void FitPairWithAuthoredWidth(ModelGeometry left, Transform leftModel, ModelGeometry right,
+            Transform rightModel, int columns, float laneCenter, float laneWidth, float elementCenter,
+            bool regularFlam, DrumFlamLayout layout, bool cymbalModel, bool lefty, float authoredLaneWidth)
         {
             if (!float.IsFinite(laneCenter) || !float.IsFinite(laneWidth) || laneWidth <= 0f ||
                 !float.IsFinite(elementCenter))
@@ -399,7 +407,7 @@ namespace YARG.Gameplay.Visuals
             // Store highway-local poses, with the lane center in the key. The
             // note element offset is applied afterward; world positions are absent.
             var key = new EliteDrumsGeometryCache.PairKey(left.Identity, right.Identity, columns,
-                laneCenter, laneWidth, regularFlam, layout, cymbalModel, lefty);
+                laneCenter, laneWidth, regularFlam, layout, cymbalModel, lefty, authoredLaneWidth);
             PairPlacement placement;
             if (left.PreparedPlacements == null || !left.PreparedPlacements.TryGetValue(key, out placement))
             {
@@ -409,7 +417,7 @@ namespace YARG.Gameplay.Visuals
                     var l = new ModelPose(left);
                     var r = new ModelPose(right);
                     FitPairUncached(left, l, right, r, columns, laneCenter, laneWidth, 0f,
-                        regularFlam, layout, cymbalModel, lefty);
+                        regularFlam, layout, cymbalModel, lefty, authoredLaneWidth);
                     placement = new PairPlacement(l, r);
                     PairComputations++;
                     PairMilliseconds += clock.Elapsed.TotalMilliseconds;
@@ -423,7 +431,7 @@ namespace YARG.Gameplay.Visuals
 
         private static void FitPairUncached(ModelGeometry left, ModelPose leftModel, ModelGeometry right,
             ModelPose rightModel, int columns, float laneCenter, float laneWidth, float elementCenter,
-            bool regularFlam, EliteFlamLayout layout, bool cymbalModel, bool lefty)
+            bool regularFlam, DrumFlamLayout layout, bool cymbalModel, bool lefty, float authoredLaneWidth)
         {
             if (!float.IsFinite(laneCenter) || !float.IsFinite(laneWidth) || laneWidth <= 0f ||
                 !float.IsFinite(elementCenter))
@@ -432,15 +440,15 @@ namespace YARG.Gameplay.Visuals
                 if (rightModel != null) right.ResetPose(rightModel);
                 return;
             }
-            float factor = GetAuthoredLaneScale(laneWidth, TrackPlayer.TRACK_WIDTH / 5f) * GetPairWidthFactor(columns);
-            bool bucket = regularFlam && layout == EliteFlamLayout.Bucket;
-            bool parallel = regularFlam && layout == EliteFlamLayout.Parallel;
+            float factor = GetAuthoredLaneScale(laneWidth, authoredLaneWidth) * GetPairWidthFactor(columns);
+            bool bucket = regularFlam && layout == DrumFlamLayout.Bucket;
+            bool parallel = regularFlam && layout == DrumFlamLayout.Parallel;
             float leftAngle = regularFlam ? FLAM_ANGLE : 0f;
             float rightAngle = -leftAngle;
             if (parallel)
             {
                 FitParallel(left, leftModel, right, rightModel, columns, laneCenter, laneWidth, elementCenter,
-                    factor, lefty ? -FLAM_ANGLE : FLAM_ANGLE, cymbalModel);
+                    factor, lefty ? -FLAM_ANGLE : FLAM_ANGLE, cymbalModel, authoredLaneWidth);
                 return;
             }
 

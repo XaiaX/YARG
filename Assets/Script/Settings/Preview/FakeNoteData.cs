@@ -1,4 +1,5 @@
-﻿using YARG.Core.Game;
+﻿using YARG.Core.Chart;
+using YARG.Core.Game;
 using YARG.Themes;
 
 namespace YARG.Settings.Preview
@@ -35,8 +36,12 @@ namespace YARG.Settings.Preview
 
     public class FakeNoteData
     {
+        // pattern: Functional Core
         public double Time;
         public ElitePreviewDescriptor? EliteDescriptor;
+        // The shared Core projection retains authored color identity independently
+        // of the playable destination used by EliteDescriptor.
+        public EliteDrumNote ElitePlayableNote;
 
         public int Fret;
         public bool CenterNote;
@@ -58,5 +63,9 @@ namespace YARG.Settings.Preview
         public FakeNoteData ElitePairPartner;
         public bool EliteHandFlam;
         public bool EliteFlatFlam;
+        public bool ClassicHandFlam;
+        public bool ClassicFlatFlam;
+        public int ClassicFirstHandColumn = -1;
+        public int ClassicSecondHandColumn = -1;
     }
 }

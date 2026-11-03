@@ -213,11 +213,11 @@ namespace YARG.Tests.PlayMode
             Assert.That(effectParticle.GetComponent<ParticleSystem>().isPlaying, Is.True,
                 "The selected receptor's effect must actually play.");
         }
-        private static YargProfile Profile(bool lefty) => new YargProfile
+        private static YargProfile Profile(bool lefty, DrumFlamLayout flamLayout = DrumFlamLayout.V) => new YargProfile
         {
             GameMode = GameMode.EliteDrums, CurrentInstrument = Instrument.EliteDrums,
             PreferredInstrument = Instrument.EliteDrums, CurrentDifficulty = Difficulty.Hard,
-            UseCymbalModels = true, LeftyFlip = lefty
+            UseCymbalModels = true, LeftyFlip = lefty, FlamLayout = flamLayout
         };
 
         [UnityTest]
@@ -337,16 +337,10 @@ namespace YARG.Tests.PlayMode
             const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
             int Count(string name) => (int)geometry.GetField(name, flags).GetValue(null);
             double Time(string name) => (double)geometry.GetField(name, flags).GetValue(null);
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var setting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
-            var value = setting.GetType().GetProperty("Value");
-            var original = value.GetValue(setting);
-            try
             {
                 foreach (string layout in new[] { "V", "Bucket", "Parallel" })
                 foreach (string coverage in new[] { "ordinary", "mixed", "broad", "long" })
                 {
-                    value.SetValue(setting, Enum.Parse(value.PropertyType, layout));
                     geometry.GetMethod("ClearSessionCache", flags).Invoke(null, null);
                     int expectedModels = 0, expectedPairs = 0;
                     Guid? previousProfile = null;
@@ -357,7 +351,7 @@ namespace YARG.Tests.PlayMode
                         int fingerprintsBefore = Count("MeshFingerprints");
                         double signatureBefore = Time("SignatureMilliseconds");
                         double measurementBefore = Time("MeasurementMilliseconds"), pairBefore = Time("PairMilliseconds");
-                        var profile = Profile(false);
+                        var profile = Profile(false, Enum.Parse<DrumFlamLayout>(layout));
                         Assert.That(profile.Id, Is.Not.EqualTo(previousProfile), "The warm load must use a different profile identity.");
                         previousProfile = profile.Id;
                         yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(notes),
@@ -408,7 +402,6 @@ namespace YARG.Tests.PlayMode
                     }
                 }
             }
-            finally { value.SetValue(setting, original); }
         }
 
         private static EliteDrumNote[] CacheCoverageNotes(string coverage)
@@ -489,21 +482,18 @@ namespace YARG.Tests.PlayMode
             var originalPlacements = (IDictionary)placements.GetValue(first);
             int originalCount = originalPlacements.Count;
             var other = UnityEngine.Object.Instantiate(source);
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var setting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
-            var value = setting.GetType().GetProperty("Value");
-            var original = value.GetValue(setting);
+            var profile = (YargProfile)_fixture.Session.GetType().GetProperty("Profile").GetValue(_fixture.Session);
+            var original = profile.FlamLayout;
             try
             {
-                value.SetValue(setting, Enum.Parse(value.PropertyType,
-                    original.ToString() == "Parallel" ? "Bucket" : "Parallel"));
+                profile.FlamLayout = original == DrumFlamLayout.Parallel ? DrumFlamLayout.Bucket : DrumFlamLayout.Parallel;
                 var second = other.GetComponent(elementType);
                 elementType.GetMethod("PrepareSongGeometry", PreparedElitePlayerFixture.INSTANCE)
                     .Invoke(second, new object[] { player, GetPlayableNotes() });
                 Assert.That(placements.GetValue(second), Is.Not.SameAs(originalPlacements));
                 Assert.That(originalPlacements.Count, Is.EqualTo(originalCount),
                     "Preparing another source must not replace or mutate the first player's requirements.");
-                value.SetValue(setting, original);
+                profile.FlamLayout = original;
                 var geometry = Production("YARG.Gameplay.Visuals.EliteDrumsRuntimeGeometry");
                 const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
                 geometry.GetMethod("ClearSessionCache", flags).Invoke(null, null);
@@ -519,7 +509,7 @@ namespace YARG.Tests.PlayMode
             }
             finally
             {
-                value.SetValue(setting, original);
+                profile.FlamLayout = original;
                 UnityEngine.Object.Destroy(other);
             }
         }
@@ -527,10 +517,6 @@ namespace YARG.Tests.PlayMode
         [UnityTest, Timeout(600000)]
         public IEnumerator ParallelCymbalFixedScaleAppearance()
         {
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var setting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
-            var value = setting.GetType().GetProperty("Value");
-            var original = value.GetValue(setting);
             var cases = new List<(int columns, bool lefty, EliteDrumPad pad, DrumNoteType dynamics, EliteDrumsHatState hat)>();
             foreach (int columns in new[] { 5, 10 })
             foreach (bool lefty in new[] { false, true })
@@ -541,16 +527,14 @@ namespace YARG.Tests.PlayMode
             string directory = Environment.GetEnvironmentVariable("YARG_PARALLEL_CAPTURE_DIRECTORY") ??
                 System.IO.Path.Combine(System.IO.Path.GetTempPath(), "yarg-parallel-approximation");
             System.IO.Directory.CreateDirectory(directory);
-            try
             {
-                value.SetValue(setting, Enum.Parse(value.PropertyType, "Parallel"));
                 foreach (var item in cases)
                 {
                     var source = new EliteDrumNote(item.pad, item.dynamics, item.hat, EliteDrumsHatPedalType.Stomp,
                         true, DrumNoteFlags.None, NoteFlags.None, EliteDrumsChannelFlag.None, 8d, 7680, false);
                     _fixture = new InitializedElitePlayerFixture();
                     yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(source),
-                        Profile(item.lefty), PairCoverageLayout(item.columns));
+                        Profile(item.lefty, DrumFlamLayout.Parallel), PairCoverageLayout(item.columns));
                     var note = GetPlayableNotes()[0];
                     note.ClearFlag(NoteFlags.StarPower);
                     SpawnCoverageNote(_fixture.Player, note);
@@ -619,7 +603,6 @@ namespace YARG.Tests.PlayMode
                     _fixture = null;
                 }
             }
-            finally { value.SetValue(setting, original); }
         }
 
         [UnityTest]
@@ -1206,10 +1189,6 @@ namespace YARG.Tests.PlayMode
         public IEnumerator ElitePairActualPreviewParityVisibilityAndPooling()
         {
             var previewFixture = new ElitePreviewGeometryPlayModeTests();
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var layoutSetting = settings.GetType().GetProperty("EliteFlamLayout").GetValue(settings);
-            var valueProperty = layoutSetting.GetType().GetProperty("Value");
-            var originalLayout = valueProperty.GetValue(layoutSetting);
             try
             {
                 foreach (string flamLayout in new[] { "V", "Bucket", "Parallel" })
@@ -1218,7 +1197,6 @@ namespace YARG.Tests.PlayMode
                 foreach (bool cymbalModels in new[] { false, true })
                 foreach (bool edge in new[] { false, true })
                 {
-                    valueProperty.SetValue(layoutSetting, Enum.Parse(valueProperty.PropertyType, flamLayout));
                     var layout = PairCoverageLayout(columns);
                     if (!edge)
                     {
@@ -1230,7 +1208,7 @@ namespace YARG.Tests.PlayMode
                     var snare = Note(EliteDrumPad.Snare, false, 10d, 4800);
                     var crash = Note(EliteDrumPad.RightCrash, false, 10d, 4800);
                     snare.AddChildNote(crash);
-                    var profile = Profile(lefty);
+                    var profile = Profile(lefty, Enum.Parse<DrumFlamLayout>(flamLayout));
                     profile.UseCymbalModels = cymbalModels;
                     _fixture = new InitializedElitePlayerFixture();
                     yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(snare), profile, layout);
@@ -1240,6 +1218,7 @@ namespace YARG.Tests.PlayMode
                     var (preview, previewPool) = previewFixture.CreatePreparedPlayer(layout);
                     preview.GetType().GetProperty("LeftyFlip").SetValue(preview, lefty);
                     preview.GetType().GetProperty("UseCymbalModels").SetValue(preview, cymbalModels);
+                    preview.GetType().GetProperty("FlamLayout").SetValue(preview, profile.FlamLayout);
                     foreach (string shape in new[] { "regular", "flat", "collision" })
                     {
                         bool collision = shape == "collision";
@@ -1353,7 +1332,6 @@ namespace YARG.Tests.PlayMode
             }
             finally
             {
-                valueProperty.SetValue(layoutSetting, originalLayout);
                 previewFixture.DisposePreparedPlayers();
             }
         }

@@ -8,6 +8,26 @@ namespace YARG.Themes
     public static class ThemeNoteModelFallbacks
     {
         public static (Dictionary<ThemeNoteType, GameObject> Regular,
+            Dictionary<ThemeNoteType, GameObject> StarPower) ResolveClassicDrumModels(
+            IReadOnlyDictionary<ThemeNoteType, GameObject> models,
+            IReadOnlyDictionary<ThemeNoteType, GameObject> starPowerModels)
+        {
+            var (regular, starPower) = ResolveHiHatModels(models, starPowerModels);
+            foreach (var type in new[] { ThemeNoteType.KickFlam, ThemeNoteType.DedicatedLaneKickFlam })
+            {
+                // Keep a custom theme's authored optional shape during SP. Only
+                // absent regular slots inherit the theme's ordinary kick and SP.
+                if (regular.ContainsKey(type)) continue;
+                var fallback = EliteKickAppearance.IsDedicated(type)
+                    ? ThemeNoteType.DedicatedLaneKick : ThemeNoteType.Kick;
+                if (regular.TryGetValue(fallback, out var kick)) regular.Add(type, kick);
+                if (!starPower.ContainsKey(type) && starPower.TryGetValue(fallback, out var starKick))
+                    starPower.Add(type, starKick);
+            }
+            return (regular, starPower);
+        }
+
+        public static (Dictionary<ThemeNoteType, GameObject> Regular,
             Dictionary<ThemeNoteType, GameObject> StarPower) ResolveEliteModels(
             IReadOnlyDictionary<ThemeNoteType, GameObject> models,
             IReadOnlyDictionary<ThemeNoteType, GameObject> starPowerModels)
