@@ -625,7 +625,6 @@ namespace YARG.Gameplay
                             // Current classic output always uses neutral kicks.
                             bool noKickDynamics = classicArticulations == DrumsEngineParameters.CLASSIC_ARTICULATIONS_V1
                                 && profile.IsModifierActive(Modifier.NoKickDynamics);
-                            bool noHiHat = profile.IsModifierActive(Modifier.NoHiHat);
                             bool noHiHatPedal = profile.NoHiHatPedal;
                             var playable = DrumPlaybackPreparer.PrepareForScore(Chart, resolved,
                                 notes =>
@@ -637,7 +636,7 @@ namespace YARG.Gameplay
                                 notes =>
                                 {
                                     if (noKicks) notes.RemoveEliteKickDrumNotes();
-                                    if (noHiHat || noHiHatPedal) notes.RemoveEliteHiHatNotes(noHiHat, noHiHatPedal);
+                                    if (noHiHatPedal) notes.RemoveEliteHiHatPedalNotes();
                                     if (noDynamics) notes.RemoveEliteDynamics();
                                 }, classicArticulations,
                                 eliteCymbalLayout: player.EliteDrumsLayout,

@@ -35,6 +35,7 @@ namespace YARG.Gameplay.Visuals
         private readonly List<Material> _secondaryTopMaterials   = new();
         private readonly List<Material> _secondaryInnerMaterials = new();
 
+        private AnimatorOverrideController _ownedSustainController;
         private bool _hasPressedParam;
         private bool _hasSustainParam;
         private bool _hasOpenMissTrigger;
@@ -75,6 +76,7 @@ namespace YARG.Gameplay.Visuals
 
         private void OnDestroy()
         {
+            if (_ownedSustainController != null) Destroy(_ownedSustainController);
             var released = new HashSet<Material>();
             Release(_topMaterials);
             Release(_innerMaterials);
@@ -374,6 +376,27 @@ namespace YARG.Gameplay.Visuals
         public void PlayOpenMissParticles()
         {
             ThemeBind.OpenMissEffect.Play();
+        }
+
+        /// <summary>Native hat sustain uses the underlying guitar motion, retaining drum hit overrides.</summary>
+        public void UseBaseSustainAnimation()
+        {
+            if (_ownedSustainController != null ||
+                ThemeBind.Animator.runtimeAnimatorController is not AnimatorOverrideController source ||
+                source.name != "FretControllerDrums") return;
+            var clips = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            source.GetOverrides(clips);
+            bool changed = false;
+            for (int i = 0; i < clips.Count; i++)
+            {
+                if (clips[i].Key.name != "FretSustained" || clips[i].Value == clips[i].Key) continue;
+                clips[i] = new KeyValuePair<AnimationClip, AnimationClip>(clips[i].Key, clips[i].Key);
+                changed = true;
+            }
+            if (!changed) return;
+            _ownedSustainController = new AnimatorOverrideController(source.runtimeAnimatorController);
+            _ownedSustainController.ApplyOverrides(clips);
+            ThemeBind.Animator.runtimeAnimatorController = _ownedSustainController;
         }
 
         public void SetSustained(bool sustained)

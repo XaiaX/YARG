@@ -56,7 +56,7 @@ namespace YARG.Menu.DifficultySelect
         // Modifiers relocated from the Modifiers menu to the Accessibility menu.
         // RangeCompress is folded into the "No Range Shifts" toggle there.
         private const Modifier ACCESSIBILITY_MODIFIERS =
-            Modifier.OpensToGreens | Modifier.NoKicks | Modifier.NoHiHat |
+            Modifier.OpensToGreens | Modifier.NoKicks |
             Modifier.UnpitchedOnly | Modifier.RangeCompress;
 
         // Backdrop circle marking the selected instrument's ring — translucent
@@ -1049,6 +1049,16 @@ namespace YARG.Menu.DifficultySelect
                     on => profile.AutoHiHatPedal = on);
                 AddProfileToggle(LocalizeHeader("NoHiHatPedal"), profile.NoHiHatPedal,
                     on => profile.NoHiHatPedal = on);
+                ModifierItem sustainWidth = null;
+                AddProfileToggle(LocalizeHeader("HideHiHatSustains"), profile.HideHiHatSustains,
+                    on =>
+                    {
+                        profile.HideHiHatSustains = on;
+                        sustainWidth?.SetInteractable(!on);
+                    });
+                sustainWidth = AddProfileToggle(LocalizeHeader("OneFretHiHatSustains"), profile.OneFretHiHatSustains,
+                    on => profile.OneFretHiHatSustains = on);
+                sustainWidth.SetInteractable(!profile.HideHiHatSustains);
                 AddProfileToggle(LocalizeHeader("KeepOriginalCymbalColors"), profile.KeepOriginalCymbalColors,
                     on => profile.KeepOriginalCymbalColors = on)
                     .SetInteractable(CustomContentManager.HasMergedEliteCymbals(profile.EliteDrumsLayout));
@@ -1254,6 +1264,10 @@ namespace YARG.Menu.DifficultySelect
                     text += LocalizeHeader("AutoHiHatPedal") + "\n";
                 if (profile.NoHiHatPedal)
                     text += LocalizeHeader("NoHiHatPedal") + "\n";
+                if (profile.HideHiHatSustains)
+                    text += LocalizeHeader("HideHiHatSustains") + "\n";
+                else if (profile.OneFretHiHatSustains)
+                    text += LocalizeHeader("OneFretHiHatSustains") + "\n";
                 if (profile.KeepOriginalCymbalColors &&
                     CustomContentManager.HasMergedEliteCymbals(profile.EliteDrumsLayout))
                     text += LocalizeHeader("KeepOriginalCymbalColors") + "\n";

@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -15,7 +16,7 @@ namespace YARG.Tests.EditMode
         [TestCase(4)]
         [TestCase(5)]
         [TestCase(8)]
-        public void EliteLaneScaleMatchesProAtSameColumnCount(int columns)
+        public void EliteLaneScaleFitsItsActualColumn(int columns)
         {
             var go = new UnityEngine.GameObject("Elite lane scale regression");
             go.SetActive(false);
@@ -25,8 +26,8 @@ namespace YARG.Tests.EditMode
                 PLAYER_TYPE.GetProperty("LaneCount").SetValue(player, columns);
                 float actual = (float) PLAYER_TYPE.GetMethod("GetLaneScale", BindingFlags.Instance | BindingFlags.NonPublic)
                     .Invoke(player, null);
-                // Pro starts with TRACK_WIDTH/4, then corrects fret-array padding.
-                Assert.That(actual, Is.EqualTo(2f / 4 * (0.97f * 5 / columns)).Within(0.00001f));
+                // Compact layouts use their real column width, including the border gap.
+                Assert.That(actual, Is.EqualTo(2f / columns * 0.97f).Within(0.00001f));
             }
             finally { UnityEngine.Object.DestroyImmediate(go); }
         }

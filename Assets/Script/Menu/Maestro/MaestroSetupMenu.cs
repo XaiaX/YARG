@@ -1455,6 +1455,21 @@ namespace YARG.Menu.Maestro
                     Session.StageNoHiHatPedal(_selectedProfileId, enabled);
                     RefreshView();
                 });
+                ModifierItem sustainWidth = null;
+                AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "HideHiHatSustains"),
+                    player.HideHiHatSustains, enabled =>
+                {
+                    Session.StageHideHiHatSustains(_selectedProfileId, enabled);
+                    sustainWidth?.SetInteractable(!enabled);
+                    RefreshView();
+                });
+                sustainWidth = AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "OneFretHiHatSustains"),
+                    player.OneFretHiHatSustains, enabled =>
+                {
+                    Session.StageOneFretHiHatSustains(_selectedProfileId, enabled);
+                    RefreshView();
+                });
+                sustainWidth.SetInteractable(!player.HideHiHatSustains);
                 AddAdjustmentToggle(dialog, Localize.Key("Menu.DifficultySelect", "KeepOriginalCymbalColors"),
                     player.KeepOriginalCymbalColors, enabled =>
                 {

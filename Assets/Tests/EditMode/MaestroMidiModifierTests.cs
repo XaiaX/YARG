@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Linq;
@@ -43,6 +44,28 @@ namespace YARG.Tests.EditMode
             PreferredInstrument = Instrument.EliteDrums,
             CurrentDifficulty = Difficulty.Expert,
         };
+
+        [Test]
+        public void SustainDisplayChoicesAreStagedAndRollbackRestoresBoth()
+        {
+            var profile = Profile();
+            var session = Session(Player(profile));
+            var stage = session.GetType().GetMethod("StageOneFretHiHatSustains");
+            Assert.That(stage, Is.Not.Null);
+            stage.Invoke(session, new object[] { profile.Id, true });
+            Call(session, "StageHideHiHatSustains", profile.Id, true);
+            var staged = Staged(session);
+            Assert.That(staged.GetType().GetProperty("OneFretHiHatSustains").GetValue(staged), Is.True);
+            Assert.That(staged.GetType().GetProperty("HideHiHatSustains").GetValue(staged), Is.True);
+            Assert.That(profile.GetType().GetField("HideHiHatSustains").GetValue(profile), Is.False);
+            var snapshotType = RuntimeType("YARG.Menu.Maestro.MaestroSetupSession").GetNestedType("ProfileSnapshot", BindingFlags.NonPublic);
+            var snapshot = Activator.CreateInstance(snapshotType, new[] { Player(profile) });
+            profile.GetType().GetField("HideHiHatSustains").SetValue(profile, true);
+            profile.GetType().GetField("OneFretHiHatSustains").SetValue(profile, true);
+            Call(snapshot, "Restore");
+            Assert.That(profile.GetType().GetField("HideHiHatSustains").GetValue(profile), Is.False);
+            Assert.That(profile.GetType().GetField("OneFretHiHatSustains").GetValue(profile), Is.False);
+        }
 
         [Test]
         public void IndependentSession_InitializesOnlyStagedCopy_AndSeparatesAccessibility()

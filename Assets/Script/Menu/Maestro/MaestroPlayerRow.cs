@@ -129,6 +129,10 @@ namespace YARG.Menu.Maestro
                         activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "AutoHiHatPedal"));
                     if (player.NoHiHatPedal)
                         activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "NoHiHatPedal"));
+                    if (player.HideHiHatSustains)
+                        activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "HideHiHatSustains"));
+                    else if (player.OneFretHiHatSustains)
+                        activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "OneFretHiHatSustains"));
                     if (player.KeepOriginalCymbalColors &&
                         CustomContentManager.HasMergedEliteCymbals(player.Player.Profile.EliteDrumsLayout))
                         activeAdjustments.Add(Localize.Key("Menu.DifficultySelect", "KeepOriginalCymbalColors"));

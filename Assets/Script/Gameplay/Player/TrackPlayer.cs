@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
@@ -1152,6 +1153,7 @@ namespace YARG.Gameplay.Player
             practiceTrack.SetEliteDrumNativeAuthoredLaneRecords(
                 OriginalNoteTrack.SliceEliteDrumNativeAuthoredLaneRecords(start, end));
             practiceTrack.SetNativeElitePedalsFiltered(OriginalNoteTrack.NativeElitePedalsFiltered);
+            practiceTrack.SetEliteCymbalLaneRouting(OriginalNoteTrack.EliteCymbalLaneRouting);
             practiceTrack.SetEliteDrumVisualDescriptors(OriginalNoteTrack.EliteDrumVisualDescriptors);
             return practiceTrack;
         }

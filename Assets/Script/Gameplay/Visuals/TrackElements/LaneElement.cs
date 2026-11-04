@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿// pattern: Imperative Shell
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -14,9 +15,6 @@ namespace YARG.Gameplay.Visuals
     {
         // Maximum time in seconds where consecutive lanes at the same note index should be combined
         public const float COMBINE_LANE_THRESHOLD = 0.1f;
-
-        // Conversion rate from end cap bone movement units to 1 TrackElement.GetZPositionAtTime unit
-        private const float LANE_LENGTH_RATIO = 0.02f;
 
         private const float FULL_WIDTH_LANE_SCALE = 0.5f;
 
@@ -271,7 +269,13 @@ namespace YARG.Gameplay.Visuals
 
         private void RenderLength()
         {
-            _endCapPlacement.localPosition = _endCapPlacement.localPosition.WithY(_zLength * LANE_LENGTH_RATIO / _scale);
+            // Imported armature scale is not exactly 50. An approximate 0.02
+            // conversion accumulates enough error to hide long lanes' final gems.
+            // Measure the bone's axis in lane space; only the end cap moves.
+            float unitsPerBoneUnit = transform.InverseTransformVector(
+                _endCapPlacement.parent.TransformVector(Vector3.up)).z;
+            if (float.IsFinite(unitsPerBoneUnit) && Mathf.Abs(unitsPerBoneUnit) > Mathf.Epsilon)
+                _endCapPlacement.localPosition = _endCapPlacement.localPosition.WithY(_zLength / unitsPerBoneUnit);
         }
 
         private void RenderScale()

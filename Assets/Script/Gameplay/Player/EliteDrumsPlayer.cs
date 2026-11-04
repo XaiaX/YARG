@@ -51,6 +51,8 @@ namespace YARG.Gameplay.Player
         private readonly Dictionary<int, HighwayOrderingInfo> _ordering = new();
         private EliteDrumsAction? _pendingOverhitAction;
         private bool _pendingWildcardHit;
+        private HiHatSustainVisual _hiHatSustainVisual;
+        private bool _hiHatFretSustained;
 
         [SerializeField] private FretArray _fretArray;
         [SerializeField] private KickFretFlash _kickFretFlash;
@@ -171,7 +173,11 @@ namespace YARG.Gameplay.Player
                     SettingsManager.Settings?.EliteHiHatClosureForgiveness.Value ?? false);
             if (EngineContainer != null)
             {
-                if (Engine != null) Engine.OnFlamFollowUp -= OnFlamFollowUp;
+                if (Engine != null)
+                {
+                    Engine.OnFlamFollowUp -= OnFlamFollowUp;
+                    Engine.OnHiHatSustainEnded -= OnHiHatSustainEnded;
+                }
                 GameManager.EngineManager.Unregister(EngineContainer);
                 EngineContainer = null;
             }
@@ -191,7 +197,7 @@ namespace YARG.Gameplay.Player
             // direct/practice sessions, and before scores and visual geometry are built.
             var engine = new EliteDrumsEngine(NoteTrack, SyncTrack, EngineParams,
                 Player.Profile.IsBot, true, Player.Profile.EffectiveAutoHiHatPedal, cymbalLayout: _cymbalLayout);
-            _playableLaneSegments = EngineParams.EliteCymbalMergePolicy >= EliteDrumsCymbalProjection.CURRENT_POLICY &&
+            _playableLaneSegments = EngineParams.EliteCymbalMergePolicy >= EliteDrumsCymbalProjection.PHYSICAL_UNION_POLICY &&
                 EliteDrumsCymbalPairs.TryGet(_cymbalLayout, out _)
                 ? EliteDrumsPlayableLaneSegments.ResolvePhysical(NoteTrack)
                 : EliteDrumsPlayableLaneSegments.Resolve(NoteTrack);
@@ -203,6 +209,8 @@ namespace YARG.Gameplay.Player
             engine.OnPadHit += OnPadHit;
             engine.OnPedalAssisted += OnPedalAssisted;
             engine.OnFlamFollowUp += OnFlamFollowUp;
+            engine.OnHiHatSustainEnded += OnHiHatSustainEnded;
+            if (_hiHatSustainVisual != null) ConfigureHiHatSustainVisual(engine);
             engine.OnSoloStart += OnSoloStart;
             engine.OnSoloEnd += OnSoloEnd;
             engine.OnCodaStart += OnCodaStart;
@@ -265,7 +273,68 @@ namespace YARG.Gameplay.Player
             _noteTemplate.GetComponent<EliteDrumsNoteElement>().PrepareSongGeometry(this, Notes);
             NotePool.SetPrefabAndReset(_noteTemplate);
             base.FinishInitialization();
+            if (_ordering.ContainsKey((int)EliteDrumPad.HiHat))
+            {
+                _fretArray.UseBaseSustainAnimation((int)EliteDrumPad.HiHat);
+                if (_hiHatSustainVisual == null)
+                {
+                    var root = new GameObject("Hi-hat sustains");
+                    root.transform.SetParent(transform, false);
+                    _hiHatSustainVisual = root.AddComponent<HiHatSustainVisual>();
+                }
+                ConfigureHiHatSustainVisual(Engine);
+            }
         }
+
+        private void ConfigureHiHatSustainVisual(EliteDrumsEngine engine)
+        {
+            float column = TRACK_WIDTH / LaneCount;
+            int position = GetVisualPosition((int)EliteDrumPad.HiHat);
+            EliteDrumsRuntimeGeometry.GetPedalRegion(position, LaneCount, TRACK_WIDTH,
+                out float center, out float width);
+            if (Player.Profile.OneFretHiHatSustains)
+            {
+                center = column * (position + .5f) - TRACK_WIDTH / 2;
+                width = column;
+            }
+            var color = Player.ColorProfile.EliteDrums.GetNoteColor(EliteDrumsColorRole.HatOpen).ToUnityColor();
+            _hiHatSustainVisual.Configure(engine, center, width, color);
+            float headCenter = column * (position + .5f) - TRACK_WIDTH / 2;
+            _hiHatSustainVisual.ConfigureEnvelopes(SyncTrack, headCenter, column);
+            _hiHatSustainVisual.SetColors(color, Player.ColorProfile.EliteDrums
+                .GetNoteStarPowerColor(EliteDrumsColorRole.HatOpen).ToUnityColor());
+            SetHiHatSustained(false);
+        }
+
+        protected override void UpdateVisuals(double visualTime)
+        {
+            base.UpdateVisuals(visualTime);
+            UpdateHiHatSustains(visualTime);
+        }
+
+        private void UpdateHiHatSustains(double visualTime)
+        {
+            if (Player.Profile.HideHiHatSustains)
+            {
+                _hiHatSustainVisual?.Clear();
+                SetHiHatSustained(false);
+                return;
+            }
+            _hiHatSustainVisual?.SetBeatPhase((float)GameManager.BeatEventHandler.Visual.QuarterNote.CurrentPercentage);
+            _hiHatSustainVisual?.Render(visualTime, NoteSpeed, ZeroFadePosition + NOTE_SPAWN_OFFSET);
+            SetHiHatSustained(Engine.ActiveHiHatSustain != null);
+        }
+
+        private void SetHiHatSustained(bool active)
+        {
+            if (Player == null) return;
+            active &= !Player.Profile.HideHiHatSustains;
+            if (_hiHatFretSustained == active || !_ordering.ContainsKey((int)EliteDrumPad.HiHat)) return;
+            _hiHatFretSustained = active;
+            _fretArray.SetSustained((int)EliteDrumPad.HiHat, active);
+        }
+
+        private void OnHiHatSustainEnded(EliteHiHatSustain sustain, bool broken) => SetHiHatSustained(false);
 
         private int ApplyLefty(int lane) => Player.Profile.LeftyFlip ? LaneCount - 1 - lane : lane;
 
@@ -408,9 +477,9 @@ namespace YARG.Gameplay.Player
                     Layout.Lanes[ApplyLefty(laneIndex)].SavedColumn).ToUnityColor(), GetLaneScale());
         }
 
-        // Match Pro drums: its four-column baseline mesh scale is corrected for
-        // the five-unit fret-array padding before adapting to the actual columns.
-        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / 4f * (0.97f * 5f / LaneCount);
+        // The lane mesh is one unit wide. Fit its outer borders inside the real
+        // compacted column width, leaving a small gap between neighboring strips.
+        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / LaneCount * 0.97f;
 
         protected override void RescaleLanesForBRE()
         {
@@ -434,6 +503,7 @@ namespace YARG.Gameplay.Player
                 return;
             }
             AnimateHitFeedback(note);
+            SetHiHatSustained(Engine.ActiveHiHatSustain != null);
         }
 
         private void AnimateHitFeedback(EliteDrumNote note)
@@ -475,7 +545,12 @@ namespace YARG.Gameplay.Player
 
         protected override void GameplayDestroy()
         {
-            if (Engine != null) Engine.OnFlamFollowUp -= OnFlamFollowUp;
+            SetHiHatSustained(false);
+            if (Engine != null)
+            {
+                Engine.OnFlamFollowUp -= OnFlamFollowUp;
+                Engine.OnHiHatSustainEnded -= OnHiHatSustainEnded;
+            }
             base.GameplayDestroy();
         }
 
@@ -519,16 +594,22 @@ namespace YARG.Gameplay.Player
                 _pendingWildcardHit = false;
                 AnimateUnmatchedAction(action);
             }
+            if (Engine.IsHiHatSustainRelease)
+            {
+                AnimateUnmatchedAction(action);
+                _pendingOverhitAction = null;
+                return;
+            }
             _pendingOverhitAction = noteWasHit ? null : action;
             if (noteWasHit || wasOverhitInLane || _pendingOverhitAction is null) return;
 
             // Ordinary pedal motion is harmless; the experimental paired open-hat
             // fault explicitly follows the overhit path. Boundary/countdown/coda
             // exemptions still receive hit feedback.
-            if (((action is EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash) &&
+            if (!Engine.IsHiHatSustainOverhit && (((action is EliteDrumsAction.EliteStomp or EliteDrumsAction.EliteSplash) &&
                  !Engine.IsHiHatClosurePedalOverhit) ||
                 Engine.NoteIndex == 0 || Engine.NoteIndex >= Notes.Count ||
-                Engine.IsWaitCountdownActive || Engine.IsCodaActive)
+                Engine.IsWaitCountdownActive || Engine.IsCodaActive))
             {
                 AnimateUnmatchedAction(action);
                 _pendingOverhitAction = null;
@@ -601,12 +682,16 @@ namespace YARG.Gameplay.Player
             base.ResetVisuals();
             _pendingOverhitAction = null;
             _pendingWildcardHit = false;
+            _hiHatSustainVisual?.Clear();
+            SetHiHatSustained(false);
             _fretArray.ResetAll();
         }
 
         public override void ResetPracticeSection()
         {
             base.ResetPracticeSection();
+            _hiHatSustainVisual?.Clear();
+            SetHiHatSustained(false);
             _fretArray.ResetAll();
         }
 

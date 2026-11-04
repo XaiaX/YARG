@@ -290,6 +290,8 @@ namespace YARG.Gameplay.Visuals
             _frets[index].SetPressedDrum(pressed, animType);
         }
 
+        public void UseBaseSustainAnimation(int index) => _frets[index].UseBaseSustainAnimation();
+
         public void SetSustained(int index, bool sustained)
         {
             _frets[index].SetSustained(sustained);

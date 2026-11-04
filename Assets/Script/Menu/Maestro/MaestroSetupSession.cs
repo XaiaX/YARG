@@ -49,6 +49,8 @@ namespace YARG.Menu.Maestro
         public bool AutoHiHatPedal { get; internal set; }
         public bool NoHiHatPedal { get; internal set; }
         public bool KeepOriginalCymbalColors { get; internal set; }
+        public bool HideHiHatSustains { get; internal set; }
+        public bool OneFretHiHatSustains { get; internal set; }
         public bool RangeEnabled { get; internal set; }
         public OpenLaneDisplayType OpenLaneDisplayType { get; internal set; }
         public float NoteSpeed { get; internal set; }
@@ -109,6 +111,8 @@ namespace YARG.Menu.Maestro
             AutoHiHatPedal = player.Profile.AutoHiHatPedal;
             NoHiHatPedal = player.Profile.NoHiHatPedal;
             KeepOriginalCymbalColors = player.Profile.KeepOriginalCymbalColors;
+            HideHiHatSustains = player.Profile.HideHiHatSustains;
+            OneFretHiHatSustains = player.Profile.OneFretHiHatSustains;
             RangeEnabled = player.Profile.RangeEnabled;
             OpenLaneDisplayType = player.Profile.OpenLaneDisplayType;
             NoteSpeed = player.Profile.NoteSpeed;
@@ -603,6 +607,18 @@ namespace YARG.Menu.Maestro
                 player.NoHiHatPedal = enabled;
         }
 
+        public void StageOneFretHiHatSustains(Guid profileId, bool enabled)
+        {
+            if (_players.TryGetValue(profileId, out var player) && player.GameMode == GameMode.EliteDrums)
+                player.OneFretHiHatSustains = enabled;
+        }
+
+        public void StageHideHiHatSustains(Guid profileId, bool enabled)
+        {
+            if (_players.TryGetValue(profileId, out var player) && player.GameMode == GameMode.EliteDrums)
+                player.HideHiHatSustains = enabled;
+        }
+
         public void StageKeepOriginalCymbalColors(Guid profileId, bool enabled)
         {
             if (_players.TryGetValue(profileId, out var player) && player.GameMode == GameMode.EliteDrums)
@@ -664,6 +680,8 @@ namespace YARG.Menu.Maestro
             public readonly bool AutoHiHatPedal;
             public readonly bool NoHiHatPedal;
             public readonly bool KeepOriginalCymbalColors;
+            public readonly bool HideHiHatSustains;
+            public readonly bool OneFretHiHatSustains;
             public readonly bool RangeEnabled;
             public readonly OpenLaneDisplayType OpenLaneDisplayType;
             public readonly bool SittingOut;
@@ -689,6 +707,8 @@ namespace YARG.Menu.Maestro
                 AutoHiHatPedal = profile.AutoHiHatPedal;
                 NoHiHatPedal = profile.NoHiHatPedal;
                 KeepOriginalCymbalColors = profile.KeepOriginalCymbalColors;
+                HideHiHatSustains = profile.HideHiHatSustains;
+                OneFretHiHatSustains = profile.OneFretHiHatSustains;
                 RangeEnabled = profile.RangeEnabled;
                 OpenLaneDisplayType = profile.OpenLaneDisplayType;
                 SittingOut = player.SittingOut;
@@ -711,6 +731,8 @@ namespace YARG.Menu.Maestro
                 Profile.AutoHiHatPedal = AutoHiHatPedal;
                 Profile.NoHiHatPedal = NoHiHatPedal;
                 Profile.KeepOriginalCymbalColors = KeepOriginalCymbalColors;
+                Profile.HideHiHatSustains = HideHiHatSustains;
+                Profile.OneFretHiHatSustains = OneFretHiHatSustains;
                 Profile.RangeEnabled = RangeEnabled;
                 Profile.OpenLaneDisplayType = OpenLaneDisplayType;
                 Profile.EliteDrumsDownchartTarget = EliteDrumsDownchartTarget;
@@ -785,6 +807,8 @@ namespace YARG.Menu.Maestro
                     profile.AutoHiHatPedal = staged.AutoHiHatPedal;
                     profile.NoHiHatPedal = staged.NoHiHatPedal;
                     profile.KeepOriginalCymbalColors = staged.KeepOriginalCymbalColors;
+                    profile.HideHiHatSustains = staged.HideHiHatSustains;
+                    profile.OneFretHiHatSustains = staged.OneFretHiHatSustains;
                     profile.RangeEnabled = staged.RangeEnabled;
                     profile.OpenLaneDisplayType = staged.OpenLaneDisplayType;
                     if (staged.GameMode is not GameMode.Vocals and not GameMode.PartyVocals)

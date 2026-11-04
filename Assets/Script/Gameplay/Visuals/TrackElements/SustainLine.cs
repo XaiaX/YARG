@@ -321,7 +321,7 @@ namespace YARG.Gameplay.Visuals
             }
         }
 
-        private static Color GetBrighterColorIfTooDark(Color color)
+        internal static Color GetBrighterColorIfTooDark(Color color)
         {
             var resultingColor = new Color(color.r, color.g, color.b, color.a);
 

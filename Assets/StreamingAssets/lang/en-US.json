@@ -337,6 +337,8 @@
 			"LeftyFlip": "Lefty Flip",
 			"AutoHiHatPedal": "Auto Hi-Hat Pedal",
 			"NoHiHatPedal": "No Hi-Hat Pedal",
+			"OneFretHiHatSustains": "One-Fret Hi-Hat Sustains",
+			"HideHiHatSustains": "Hide Hi-Hat Sustains",
 			"DisablePartyVocalsCountIns": "Disable Party Vocals Count-Ins",
 			"NoRangeShifts": "No Range Shifts",
 			"DedicatedOpenLane": "Open Note Lane",
