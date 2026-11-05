@@ -177,6 +177,7 @@ namespace YARG.Gameplay.Player
                 {
                     Engine.OnFlamFollowUp -= OnFlamFollowUp;
                     Engine.OnHiHatSustainEnded -= OnHiHatSustainEnded;
+                    Engine.OnHiHatSustainStarted -= OnHiHatSustainStarted;
                 }
                 GameManager.EngineManager.Unregister(EngineContainer);
                 EngineContainer = null;
@@ -210,6 +211,7 @@ namespace YARG.Gameplay.Player
             engine.OnPedalAssisted += OnPedalAssisted;
             engine.OnFlamFollowUp += OnFlamFollowUp;
             engine.OnHiHatSustainEnded += OnHiHatSustainEnded;
+            engine.OnHiHatSustainStarted += OnHiHatSustainStarted;
             if (_hiHatSustainVisual != null) ConfigureHiHatSustainVisual(engine);
             engine.OnSoloStart += OnSoloStart;
             engine.OnSoloEnd += OnSoloEnd;
@@ -300,7 +302,10 @@ namespace YARG.Gameplay.Player
             var color = Player.ColorProfile.EliteDrums.GetNoteColor(EliteDrumsColorRole.HatOpen).ToUnityColor();
             _hiHatSustainVisual.Configure(engine, center, width, color);
             float headCenter = column * (position + .5f) - TRACK_WIDTH / 2;
-            _hiHatSustainVisual.ConfigureEnvelopes(SyncTrack, headCenter, column);
+            // Keep the actual hi-hat axis separate from the shifted pedal footprint;
+            // the full fret width defines the narrow, waiting sustain.
+            float coreWidth = column * (Player.Profile.OneFretHiHatSustains ? 1 : .25f);
+            _hiHatSustainVisual.ConfigureEnvelopes(SyncTrack, headCenter, coreWidth, column);
             _hiHatSustainVisual.SetColors(color, Player.ColorProfile.EliteDrums
                 .GetNoteStarPowerColor(EliteDrumsColorRole.HatOpen).ToUnityColor());
             SetHiHatSustained(false);
@@ -316,7 +321,7 @@ namespace YARG.Gameplay.Player
         {
             if (Player.Profile.HideHiHatSustains)
             {
-                _hiHatSustainVisual?.Clear();
+                _hiHatSustainVisual?.Clear(resetActivationTimes: false);
                 SetHiHatSustained(false);
                 return;
             }
@@ -334,7 +339,14 @@ namespace YARG.Gameplay.Player
             _fretArray.SetSustained((int)EliteDrumPad.HiHat, active);
         }
 
-        private void OnHiHatSustainEnded(EliteHiHatSustain sustain, bool broken) => SetHiHatSustained(false);
+        private void OnHiHatSustainStarted(EliteHiHatSustain sustain, double time) =>
+            _hiHatSustainVisual?.NotifyActivation(sustain, time);
+
+        private void OnHiHatSustainEnded(EliteHiHatSustain sustain, bool broken)
+        {
+            if (broken) _hiHatSustainVisual?.ResetInheritedWidth();
+            SetHiHatSustained(false);
+        }
 
         private int ApplyLefty(int lane) => Player.Profile.LeftyFlip ? LaneCount - 1 - lane : lane;
 
@@ -550,18 +562,21 @@ namespace YARG.Gameplay.Player
             {
                 Engine.OnFlamFollowUp -= OnFlamFollowUp;
                 Engine.OnHiHatSustainEnded -= OnHiHatSustainEnded;
+                Engine.OnHiHatSustainStarted -= OnHiHatSustainStarted;
             }
             base.GameplayDestroy();
         }
 
         protected override void OnNoteMissed(int index, EliteDrumNote note)
         {
+            _hiHatSustainVisual?.ResetInheritedWidth();
             base.OnNoteMissed(index, note);
             (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.MissNote();
         }
 
         private void OnEliteOverhit()
         {
+            _hiHatSustainVisual?.ResetInheritedWidth();
             base.OnOverhit();
             if (_pendingOverhitAction is not { } action) return;
 
@@ -596,6 +611,7 @@ namespace YARG.Gameplay.Player
             }
             if (Engine.IsHiHatSustainRelease)
             {
+                _hiHatSustainVisual?.ResetInheritedWidth();
                 AnimateUnmatchedAction(action);
                 _pendingOverhitAction = null;
                 return;
@@ -682,9 +698,17 @@ namespace YARG.Gameplay.Player
             base.ResetVisuals();
             _pendingOverhitAction = null;
             _pendingWildcardHit = false;
-            _hiHatSustainVisual?.Clear();
+            // Replay seeking rebuilds hit history before resetting the visuals.
+            _hiHatSustainVisual?.Clear(resetActivationTimes: false);
             SetHiHatSustained(false);
             _fretArray.ResetAll();
+        }
+
+        public override void SetReplayTime(double time)
+        {
+            // Clear old activation timestamps before the base replays input events.
+            _hiHatSustainVisual?.Clear();
+            base.SetReplayTime(time);
         }
 
         public override void ResetPracticeSection()

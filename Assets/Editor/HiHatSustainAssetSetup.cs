@@ -16,21 +16,31 @@ namespace YARG.Editor
             var shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Art/Shaders/Gameplay/HiHatSustain.shader");
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/Gameplay/Notes/SustainSecondary.png");
             if (shader == null || texture == null) throw new System.InvalidOperationException("Sustain source assets are missing.");
-            var highlights = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/PlayMode/Note_Shader.png");
-            if (highlights == null) throw new System.InvalidOperationException("Cymbal highlight texture is missing.");
             if (material == null)
             {
                 material = new Material(shader) { name = "HiHatSustain" };
                 material.SetTexture("_MainTex", texture);
                 AssetDatabase.CreateAsset(material, path);
             }
-            material.SetTexture("_NoiseTex", highlights);
+            material.shader = shader;
+            // Remove the old texture binding through Unity serialization, keeping
+            // material and texture GUIDs intact instead of hand-editing asset YAML.
+            using (var serialized = new SerializedObject(material))
+            {
+                var textures = serialized.FindProperty("m_SavedProperties.m_TexEnvs");
+                for (int i = textures.arraySize - 1; i >= 0; i--)
+                    if (textures.GetArrayElementAtIndex(i).FindPropertyRelative("first").stringValue == "_NoiseTex")
+                        textures.DeleteArrayElementAtIndex(i);
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
             material.SetFloat("_PatternStrength", .75f);
+            material.SetFloat("_WaveStrength", .4f);
+            material.SetVector("_GlowLevels", new Vector4(.35f, .7f, 0, 0));
             EditorUtility.SetDirty(material);
             AssetDatabase.SaveAssetIfDirty(material);
-            Debug.Log($"Hi-hat highlight binding: {material.GetTexture("_NoiseTex")?.name}, asset={AssetDatabase.GetAssetPath(highlights)}");
-            if (material.GetTexture("_NoiseTex") != highlights)
-                throw new System.InvalidOperationException("Failed to assign the cymbal highlight texture.");
+            if (!material.HasProperty("_PatternStrength") || !material.HasProperty("_WaveStrength") || material.HasProperty("_NoiseTex"))
+                throw new System.InvalidOperationException("Hi-hat shimmer shader did not import correctly.");
+            Debug.Log("Hi-hat sustain material uses mirrored shimmer and dark sound waves.");
         }
     }
 }

@@ -2225,6 +2225,22 @@
 				"Name": "Log Raw MIDI During Gameplay",
 				"Description": "Records MIDI note-on, note-off, and control-change messages while a song is playing. Saves local CSV files in the midi-logs folder under YARG's data directory; no data is uploaded. Turn off after diagnosing your controller."
 			},
+			"EliteHiHatWaitingOpacity": {
+				"Name": "Hi-Hat Sustain Waiting Opacity (%)",
+				"Description": "Temporary tuning: opacity before this sustain is activated. Updates without restarting gameplay."
+			},
+			"EliteHiHatHeldOpacity": {
+				"Name": "Hi-Hat Sustain Held Opacity (%)",
+				"Description": "Temporary tuning: opacity while this sustain is held. Does not change its width or animation state."
+			},
+			"EliteHiHatWaitingGlow": {
+				"Name": "Hi-Hat Sustain Waiting Glow (%)",
+				"Description": "Temporary tuning: color brightness before activation. Opacity is controlled separately."
+			},
+			"EliteHiHatHeldGlow": {
+				"Name": "Hi-Hat Sustain Held Glow (%)",
+				"Description": "Temporary tuning: color brightness while held. The beat pulse and shimmer remain active."
+			},
 			"EliteHiHatClosureForgiveness": {
 				"Name": "Hi-Hat Closure Forgiveness",
 				"Description": "Pairs Stomp and Closed Hi-Hat inputs within 30 ms to forgive extra hits caused by closing a physical hi-hat stand. Adds 30 ms of judging feedback delay. Applies to new native Elite gameplay sessions."

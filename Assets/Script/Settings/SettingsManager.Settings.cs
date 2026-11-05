@@ -793,6 +793,10 @@ namespace YARG.Settings
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
             public ToggleSetting EliteHiHatClosureForgiveness { get; } = new(false);
+            public SliderSetting EliteHiHatWaitingOpacity { get; } = new(28, 0, 100);
+            public SliderSetting EliteHiHatHeldOpacity { get; } = new(33, 0, 100);
+            public SliderSetting EliteHiHatWaitingGlow { get; } = new(35, 0, 200);
+            public SliderSetting EliteHiHatHeldGlow { get; } = new(70, 0, 200);
             // Compatibility input for the one-time profile migration; no longer a global control.
             public DropdownSetting<DrumFlamLayout> EliteFlamLayout { get; } = new(DrumFlamLayout.V)
             {

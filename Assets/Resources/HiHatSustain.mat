@@ -27,10 +27,6 @@ Material:
         m_Texture: {fileID: 2800000, guid: 342e33d746f923d49819aa62c4aa3534, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
-    - _NoiseTex:
-        m_Texture: {fileID: 2800000, guid: a41ac8340d2ec134d98edeabf7a11631, type: 3}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _BeatPhase: 0
@@ -39,6 +35,9 @@ Material:
     - _PatternStrength: 0.75
     - _PulseStrength: 0.08
     - _VisualTime: 0
-    m_Colors: []
+    - _WaveStrength: 0.4
+    m_Colors:
+    - _GlowLevels: {r: 0.35, g: 0.7, b: 0, a: 0}
+    - _HeadRange: {r: 0, g: 1, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
