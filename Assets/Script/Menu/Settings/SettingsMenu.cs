@@ -1,3 +1,5 @@
+﻿// pattern: Imperative Shell
+using Unity.Profiling;
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
@@ -510,8 +512,11 @@ namespace YARG.Menu.Settings
             _previewContainerUI.DestroyChildren();
         }
 
+        private static readonly ProfilerMarker NavigationMarker = new("YARG.Menu.SettingChanged");
+
         public void OnSettingChanged()
         {
+            using var sample = NavigationMarker.Auto();
             if (!_ready || !gameObject.activeSelf) return;
 
             CurrentTab?.OnSettingChanged();

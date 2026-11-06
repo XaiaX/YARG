@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -50,6 +51,7 @@ namespace YARG.Gameplay.Visuals
         private bool                       _allowTextureRecreation = true;
         private bool                       _needsInitialization    = true;
         private RenderTexture              _previewRenderTarget;
+        private RenderTexture              _previewAntialiasingTexture;
         private bool                       _needsCameraReset;
         private float                      _horizontalOffsetPx;
         private float                      _scaleMultiplier = 1f;
@@ -82,15 +84,7 @@ namespace YARG.Gameplay.Visuals
             _horizontalOffsetPx = 0f;
             _scaleMultiplier = 1f;
 
-            if (_previewRenderTarget != null)
-            {
-                _renderCamera.targetTexture = _previewRenderTarget;
-                ResetHighwayAlphaTexture();
-            }
-            else
-            {
-                RecreateHighwayOutputTexture();
-            }
+            RefreshAntialiasing();
             Shader.SetGlobalInteger(YargHighwaysNumberID, 0);
             RenderPipelineManager.beginCameraRendering += OnPreCameraRender;
             RenderPipelineManager.endCameraRendering += OnEndCameraRender;
@@ -113,18 +107,15 @@ namespace YARG.Gameplay.Visuals
                 _renderCamera = GetComponent<Camera>();
             }
 
-            if (renderTarget != null)
-            {
-                ReleaseHighwayOutputTexture();
-                _renderCamera.targetTexture = renderTarget;
-                if (isActiveAndEnabled)
-                {
-                    ResetHighwayAlphaTexture();
-                }
-            }
-            else if (isActiveAndEnabled)
+            if (isActiveAndEnabled)
             {
                 RecreateHighwayOutputTexture();
+            }
+            else
+            {
+                ReleaseHighwayOutputTexture();
+                ReleasePreviewAntialiasingTexture();
+                _renderCamera.targetTexture = renderTarget;
             }
             _needsCameraReset = true;
         }
@@ -152,29 +143,78 @@ namespace YARG.Gameplay.Visuals
                 return;
             }
 
-            HighwaysOutputTexture.Release();
-            HighwaysOutputTexture.DiscardContents();
             if (_renderCamera != null && _renderCamera.targetTexture == HighwaysOutputTexture)
             {
                 _renderCamera.targetTexture = null;
             }
+            HighwaysOutputTexture.Release();
+            HighwaysOutputTexture.DiscardContents();
             if (Application.isPlaying) Destroy(HighwaysOutputTexture);
             else DestroyImmediate(HighwaysOutputTexture);
             HighwaysOutputTexture = null;
         }
 
+        private void ReleasePreviewAntialiasingTexture()
+        {
+            if (_previewAntialiasingTexture == null)
+            {
+                return;
+            }
+            if (_renderCamera != null && _renderCamera.targetTexture == _previewAntialiasingTexture)
+            {
+                _renderCamera.targetTexture = null;
+            }
+            _previewAntialiasingTexture.Release();
+            if (Application.isPlaying) Destroy(_previewAntialiasingTexture);
+            else DestroyImmediate(_previewAntialiasingTexture);
+            _previewAntialiasingTexture = null;
+        }
+
+        public void RefreshAntialiasing()
+        {
+            _renderCamera ??= GetComponent<Camera>();
+            GraphicsManager.ApplyCameraAntialiasing(_renderCamera, false);
+            var current = _renderCamera.targetTexture;
+            if (current != null && _highwaysAlphaTexture != null)
+            {
+                var desired = GraphicsManager.ConfigureAntialiasingDescriptor(current.descriptor,
+                    GraphicsManager.GetEffectiveAntialiasing(false));
+                if (current.antiAliasing == desired.msaaSamples &&
+                    current.width == RenderWidth && current.height == RenderHeight)
+                {
+                    return;
+                }
+            }
+            RecreateHighwayOutputTexture();
+        }
+
         private void RecreateHighwayOutputTexture()
         {
+            ReleaseHighwayOutputTexture();
+            ReleasePreviewAntialiasingTexture();
+            var method = GraphicsManager.GetEffectiveAntialiasing(false);
             if (_previewRenderTarget != null)
             {
-                ReleaseHighwayOutputTexture();
-                _renderCamera.targetTexture = _previewRenderTarget;
+                var previewDescriptor = GraphicsManager.ConfigureAntialiasingDescriptor(
+                    _previewRenderTarget.descriptor, method);
+                if (previewDescriptor.msaaSamples != _previewRenderTarget.antiAliasing)
+                {
+                    // The caller owns this target. Resolve through a private target instead
+                    // of releasing it or changing its sample count behind the caller's back.
+                    _previewAntialiasingTexture = new RenderTexture(previewDescriptor)
+                    {
+                        name = "Highway preview antialiasing"
+                    };
+                    _previewAntialiasingTexture.Create();
+                }
+                _renderCamera.targetTexture = _previewAntialiasingTexture != null
+                    ? _previewAntialiasingTexture : _previewRenderTarget;
+                ResetHighwayAlphaTexture();
                 return;
             }
 
-            ReleaseHighwayOutputTexture();
             var descriptor = new RenderTextureDescriptor(RenderWidth, RenderHeight, RenderTextureFormat.DefaultHDR, 32, 0);
-
+            descriptor = GraphicsManager.ConfigureAntialiasingDescriptor(descriptor, method);
             HighwaysOutputTexture = new RenderTexture(descriptor);
             if (_highwaysOutput != null)
             {
@@ -433,6 +473,7 @@ namespace YARG.Gameplay.Visuals
             RenderPipelineManager.endCameraRendering -= OnEndCameraRender;
 
             ReleaseHighwayOutputTexture();
+            ReleasePreviewAntialiasingTexture();
             if (_highwaysAlphaTexture != null)
             {
                 _highwaysAlphaTextureHandle?.Release();
@@ -460,6 +501,16 @@ namespace YARG.Gameplay.Visuals
                 return;
             }
             Shader.SetGlobalInteger(YargHighwaysNumberID, 0);
+            if (_previewAntialiasingTexture != null && _previewRenderTarget != null)
+            {
+                var command = CommandBufferPool.Get("Resolve highway preview antialiasing");
+                command.Blit(_previewAntialiasingTexture, _previewRenderTarget);
+                ctx.ExecuteCommandBuffer(command);
+                // URP submits the camera before endCameraRendering. Submit this copy too:
+                // a preview may be the last camera, with no later render to flush it.
+                ctx.Submit();
+                CommandBufferPool.Release(command);
+            }
         }
 
         private void OnPreCameraRender(ScriptableRenderContext ctx, Camera cam)
@@ -671,9 +722,18 @@ namespace YARG.Gameplay.Visuals
                     var alphaTextureHandle = renderGraph.ImportTexture(_highwayCameraRendering._highwaysAlphaTextureHandle);
 
                     builder.SetRenderAttachment(alphaTextureHandle, 0, AccessFlags.WriteAll);
-                    // We could allocate a different depth texture, however at this point
-                    // We do not need to preserve depth from the camera as we'll calc this as a very first thing
-                    builder.SetRenderAttachmentDepth(resourceData.activeDepthTexture, AccessFlags.WriteAll);
+                    // Reuse camera depth when possible. The single-sample mask needs its own
+                    // depth attachment only when the main highway target is multisampled.
+                    var alphaDepth = resourceData.activeDepthTexture;
+                    var depthDescriptor = renderGraph.GetTextureDesc(alphaDepth);
+                    if (depthDescriptor.msaaSamples != MSAASamples.None)
+                    {
+                        depthDescriptor.name = "Highway alpha mask depth";
+                        depthDescriptor.msaaSamples = MSAASamples.None;
+                        depthDescriptor.bindTextureMS = false;
+                        alphaDepth = renderGraph.CreateTexture(depthDescriptor);
+                    }
+                    builder.SetRenderAttachmentDepth(alphaDepth, AccessFlags.WriteAll);
 
                     builder.AllowPassCulling(false);
 

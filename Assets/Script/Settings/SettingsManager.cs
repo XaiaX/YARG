@@ -179,12 +179,26 @@ namespace YARG.Settings
 
                 new HeaderMetadata("Graphics"),
                 nameof(Settings.LowQuality),
+                new FieldMetadata(nameof(Settings.FullResolutionTextures), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.AnisotropicFiltering), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.DetailedModels), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.FullSkinningQuality), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.AmbientOcclusion), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.HighQualityShadows), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.SoftShadows), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.AdditionalLightShadows), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.HighQualityLighting), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.EnhancedReflections), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.HighwayAntiAliasing), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.HighwayAntiAliasingQuality), isAdvanced: true),
                 new FieldMetadata(nameof(Settings.DisableBloom), isAdvanced: true),
                 new FieldMetadata(nameof(Settings.DisableFilmGrain), isAdvanced: true),
                 nameof(Settings.StarPowerHighwayFx),
                 nameof(Settings.SongBackgroundOpacity),
                 new FieldMetadata(nameof(Settings.VenueRenderingQuality), isAdvanced: true),
                 new FieldMetadata(nameof(Settings.VenueAntiAliasing), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.VenueAntiAliasingQuality), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.VenueTemporalAntiAliasingQuality), isAdvanced: true),
                 new FieldMetadata(nameof(Settings.VenuePostProcessing), isAdvanced: true),
                 nameof(Settings.ReduceFlashingLights),
 
@@ -291,6 +305,8 @@ namespace YARG.Settings
                 new ButtonRowMetadata(nameof(Settings.ShowMaestroPairingPin), () => Settings.MaestroEnable.Value),
                 nameof(Settings.SaveScoresWithBots),
                 nameof(Settings.FrameGraph),
+                nameof(Settings.TimingDiagnostics),
+                nameof(Settings.TargetedPerformanceChecks),
                 nameof(Settings.ReverbImplementation),
                 new HeaderMetadata("EliteDrums"),
                 nameof(Settings.EnableEliteDrumsDowncharts),
@@ -388,6 +404,9 @@ namespace YARG.Settings
 
                 settingType.ForceInvokeCallback();
             }
+            // Quality callbacks can replace Unity's VSync state. Apply timing last,
+            // without relying on reflection's property order.
+            FramePacing.Apply();
         }
 
         public static SettingContainer DeserializeSongSourceSettings(JObject settingsJson)

@@ -1,4 +1,6 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using Unity.Profiling;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -446,8 +448,11 @@ namespace YARG.Menu.MusicLibrary
             _ = Navigator.Instance.PushScheme(new NavigationScheme(entries, false));
         }
 
+        private static readonly ProfilerMarker NavigationMarker = new("YARG.Menu.SongSelection");
+
         protected override void OnSelectedIndexChanged()
         {
+            using var sample = NavigationMarker.Auto();
             const double PREVIEW_SCROLL_DELAY = .6f;
             base.OnSelectedIndexChanged();
 

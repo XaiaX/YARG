@@ -80,24 +80,7 @@ namespace YARG.Gameplay
             // Disable the camera so we can control when it renders
             _renderCamera.enabled = false;
 
-            _renderCamera.allowMSAA = false;
-            var cameraData = _renderCamera.GetUniversalAdditionalCameraData();
-            cameraData.antialiasing = AntialiasingMode.None;
-            switch (GraphicsManager.Instance.VenueAntiAliasing)
-            {
-                case VenueAntiAliasingMethod.None:
-                    break;
-                case VenueAntiAliasingMethod.FXAA:
-                    cameraData.antialiasing = AntialiasingMode.FastApproximateAntialiasing;
-                    break;
-                case VenueAntiAliasingMethod.MSAA:
-                    _renderCamera.allowMSAA = true;
-                    cameraData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
-                    break;
-                case VenueAntiAliasingMethod.TAA:
-                    cameraData.antialiasing = AntialiasingMode.TemporalAntiAliasing;
-                    break;
-            }
+            RefreshAntialiasing();
             UniversalRenderPipelineAsset = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
             _originalFactor = UniversalRenderPipelineAsset.renderScale;
 
@@ -111,12 +94,38 @@ namespace YARG.Gameplay
             }
         }
 
+        public void RefreshAntialiasing()
+        {
+            _renderCamera ??= GetComponent<Camera>();
+            var cameraData = _renderCamera.GetUniversalAdditionalCameraData();
+            cameraData.renderPostProcessing = SettingsManager.Settings?.VenuePostProcessing.Value ?? true;
+            GraphicsManager.ApplyCameraAntialiasing(_renderCamera, true);
+            if (_venueTexture != null)
+            {
+                var desired = GraphicsManager.ConfigureAntialiasingDescriptor(_venueTexture.descriptor,
+                    GraphicsManager.GetEffectiveAntialiasing(true));
+                if (_venueTexture.antiAliasing != desired.msaaSamples)
+                {
+                    RecreateTextures();
+                    cameraData.resetHistory = true;
+                }
+            }
+        }
+
         private void RecreateTextures()
         {
+            bool renderScheduled = _venueTexture != null && _renderCamera != null &&
+                _renderCamera.targetTexture == _venueTexture;
+            if (renderScheduled)
+            {
+                _renderCamera.targetTexture = null;
+            }
             if (_venueTexture != null)
             {
                 _venueTexture.Release();
-                _venueTexture.DiscardContents();
+                if (Application.isPlaying) Destroy(_venueTexture);
+                else DestroyImmediate(_venueTexture);
+                _venueTexture = null;
             }
 
             var outputWidth = (int)(Screen.width * renderScale);
@@ -129,10 +138,14 @@ namespace YARG.Gameplay
                 _trailsTextureHandle?.Release();
                 _trailsTextureHandle = null;
                 _trailsTexture.Release();
-                _trailsTexture.DiscardContents();
+                if (Application.isPlaying) Destroy(_trailsTexture);
+                else DestroyImmediate(_trailsTexture);
+                _trailsTexture = null;
             }
 
             var descriptor = new RenderTextureDescriptor(outputWidth, outputHeight, RenderTextureFormat.DefaultHDR, 16, 0);
+            descriptor = GraphicsManager.ConfigureAntialiasingDescriptor(descriptor,
+                GraphicsManager.GetEffectiveAntialiasing(true));
 
             if (_venueOutput != null)
             {
@@ -152,6 +165,7 @@ namespace YARG.Gameplay
             }
 
             descriptor.depthBufferBits = 0;
+            descriptor.msaaSamples = 1;
             _trailsTexture = new RenderTexture(descriptor);
             _trailsTexture.filterMode = FilterMode.Bilinear;
             _trailsTexture.wrapMode = TextureWrapMode.Clamp;
@@ -159,6 +173,11 @@ namespace YARG.Gameplay
             _trailsTextureHandle = RTHandles.Alloc(_trailsTexture);
             Shader.SetGlobalTexture(_trailsTextureId, _trailsTexture);
             Graphics.Blit(Texture2D.blackTexture, _trailsTexture);
+            if (renderScheduled)
+            {
+                _renderCamera.targetTexture = _venueTexture;
+                if (_venueTexture == null) _renderCamera.enabled = false;
+            }
         }
 
         private static void ResetRenderState()
@@ -186,6 +205,7 @@ namespace YARG.Gameplay
 
         private void OnDestroy()
         {
+            DetachVenueTarget();
             if (_venueTexture != null)
             {
                 _venueTexture.Release();
@@ -212,8 +232,18 @@ namespace YARG.Gameplay
             IsRendered = false;
         }
 
+        private void DetachVenueTarget()
+        {
+            if (_renderCamera != null && _venueTexture != null && _renderCamera.targetTexture == _venueTexture)
+            {
+                _renderCamera.targetTexture = null;
+                _renderCamera.enabled = false;
+            }
+        }
+
         private void OnSceneUnloaded(Scene scene)
         {
+            DetachVenueTarget();
             if (_venueTexture != null)
             {
                 _venueTexture.Release();

@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using TMPro;
 using UnityEngine;
@@ -209,49 +210,12 @@ namespace YARG.Menu.MusicLibrary
         {
             _trackGradient.gameObject.SetActive(selected);
 
-            NormalBackground.SetActive(false);
-            SelectedBackground.SetActive(false);
-            CategoryBackground.SetActive(false);
-            _buttonHeaderBackground.SetActive(false);
-
-            switch (type)
-            {
-                case BaseViewType.BackgroundType.Normal:
-                    if (selected)
-                    {
-                        SelectedBackground.SetActive(true);
-                    }
-                    else
-                    {
-                        NormalBackground.SetActive(true);
-                    }
-
-                    break;
-                case BaseViewType.BackgroundType.Category:
-                    if (selected)
-                    {
-                        SelectedBackground.SetActive(true);
-                    }
-                    else
-                    {
-                        CategoryBackground.SetActive(true);
-                    }
-
-                    break;
-                case BaseViewType.BackgroundType.Button:
-                    if (selected)
-                    {
-                        SelectedBackground.SetActive(true);
-                    }
-                    else
-                    {
-                        _buttonHeaderBackground.SetActive(true);
-                    }
-
-                    break;
-                default:
-                    break;
-            }
+            bool hasBackground = type == BaseViewType.BackgroundType.Normal ||
+                type == BaseViewType.BackgroundType.Category || type == BaseViewType.BackgroundType.Button;
+            NormalBackground.SetActive(!selected && type == BaseViewType.BackgroundType.Normal);
+            SelectedBackground.SetActive(selected && hasBackground);
+            CategoryBackground.SetActive(!selected && type == BaseViewType.BackgroundType.Category);
+            _buttonHeaderBackground.SetActive(!selected && type == BaseViewType.BackgroundType.Button);
         }
 
         private void UpdateFavoriteSprite(ViewType.FavoriteInfo favoriteInfo)

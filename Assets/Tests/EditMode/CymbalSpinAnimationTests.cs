@@ -150,11 +150,18 @@ namespace YARG.Tests.EditMode
                 new object[] { profile, null });
             Type.GetType("YARG.Gameplay.Player.BasePlayer, Assembly-CSharp", true)
                 .GetProperty("Player").SetValue(player, yargPlayer);
+            var noteType = Production("EliteDrumsNoteElement");
+            var note = root.AddComponent(noteType);
+            noteType.BaseType.BaseType.GetField("<Player>k__BackingField", INSTANCE).SetValue(note, player);
             return (root, profile);
         }
 
-        private static void Bind(Component animation) => animation.GetType()
-            .GetMethod("OnEnable", INSTANCE).Invoke(animation, null);
+        private static void Bind(Component animation)
+        {
+            var owner = animation.GetComponentInParent(Production("EliteDrumsNoteElement"), true);
+            animation.GetType().GetMethod("BindOwner", INSTANCE).Invoke(animation, new object[] { owner });
+            animation.GetType().GetMethod("OnEnable", INSTANCE).Invoke(animation, null);
+        }
 
         private static void AssertDirection(Transform rotor, bool lefty)
         {
@@ -188,7 +195,7 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void PoolActivationRefreshesTheOwningPlayer()
+        public void ExplicitRebindingRefreshesTheOwningPlayer()
         {
             var first = Player(true);
             var next = Player(false);

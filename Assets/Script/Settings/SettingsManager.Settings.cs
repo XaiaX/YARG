@@ -7,9 +7,11 @@ using Newtonsoft.Json;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering.Universal;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Engine;
+using YARG.Core.Diagnostics;
 using YARG.Core.Logging;
 using YARG.Core.Song;
 using YARG.Gameplay.HUD;
@@ -433,6 +435,19 @@ namespace YARG.Settings
             {
                 AutomaticPlaybackBuffer = new(true, AutomaticPlaybackBufferChanged);
                 PlaybackBufferLength.EditableWhen = () => !AutomaticPlaybackBuffer.Value;
+                FpsCap.EditableWhen = () => !VSync.Value;
+                FullResolutionTextures.EditableWhen = AnisotropicFiltering.EditableWhen =
+                    DetailedModels.EditableWhen = FullSkinningQuality.EditableWhen =
+                    AmbientOcclusion.EditableWhen = HighQualityShadows.EditableWhen =
+                    SoftShadows.EditableWhen = AdditionalLightShadows.EditableWhen =
+                    HighQualityLighting.EditableWhen = EnhancedReflections.EditableWhen =
+                    HighwayAntiAliasing.EditableWhen = VenueAntiAliasing.EditableWhen = () => !LowQuality.Value;
+                HighwayAntiAliasingQuality.EditableWhen = () => !LowQuality.Value &&
+                    HighwayAntiAliasing.Value == VenueAntiAliasingMethod.SMAA;
+                VenueAntiAliasingQuality.EditableWhen = () => !LowQuality.Value && VenuePostProcessing.Value &&
+                    VenueAntiAliasing.Value == VenueAntiAliasingMethod.SMAA;
+                VenueTemporalAntiAliasingQuality.EditableWhen = () => !LowQuality.Value && VenuePostProcessing.Value &&
+                    VenueAntiAliasing.Value == VenueAntiAliasingMethod.TAA;
             }
 
             public SliderSetting MicrophoneSensitivity { get; } = new(2f, -50f, 50f);
@@ -497,7 +512,7 @@ namespace YARG.Settings
             public ToggleSetting VSync            { get; } = new(true, VSyncCallback);
             public IntSetting    FpsCap           { get; } = new(60, 0, onChange: FpsCapCallback);
             public IntSetting    VenueFpsCap      { get; } = new(60, 0);
-            public IntSetting    BackgroundFpsCap { get; } = new(10, 0);
+            public IntSetting    BackgroundFpsCap { get; } = new(10, 0, onChange: FpsCapCallback);
 
             public DropdownSetting<FullScreenMode> FullscreenMode { get; }
                 = new(FullScreenMode.FullScreenWindow, FullscreenModeCallback)
@@ -522,21 +537,43 @@ namespace YARG.Settings
                      QualityMode.UltraPerformance
                  };
 
-            public DropdownSetting<VenueAntiAliasingMethod> VenueAntiAliasing { get; }
-                 = new(YARG.VenueAntiAliasingMethod.None, VenueAACallback)
-                 {
-                     YARG.VenueAntiAliasingMethod.None,
-                     YARG.VenueAntiAliasingMethod.FXAA,
-                     YARG.VenueAntiAliasingMethod.MSAA,
-                     YARG.VenueAntiAliasingMethod.TAA,
-                 };
+            public AntialiasingSetting HighwayAntiAliasing { get; }
+                = new(YARG.VenueAntiAliasingMethod.SMAA, false, VenueAACallback);
 
-            public ToggleSetting VenuePostProcessing { get; } = new(true);
+            public DropdownSetting<AntialiasingQuality> HighwayAntiAliasingQuality { get; }
+                = new(AntialiasingQuality.Low, _ => GraphicsQualityCallback(false))
+                { AntialiasingQuality.Low, AntialiasingQuality.Medium, AntialiasingQuality.High };
+
+            public AntialiasingSetting VenueAntiAliasing { get; }
+                = new(YARG.VenueAntiAliasingMethod.None, true, VenueAACallback);
+
+            public DropdownSetting<AntialiasingQuality> VenueAntiAliasingQuality { get; }
+                = new(AntialiasingQuality.High, _ => GraphicsQualityCallback(false))
+                { AntialiasingQuality.Low, AntialiasingQuality.Medium, AntialiasingQuality.High };
+
+            public DropdownSetting<TemporalAAQuality> VenueTemporalAntiAliasingQuality { get; }
+                = new(TemporalAAQuality.High, _ => GraphicsQualityCallback(false))
+                {
+                    TemporalAAQuality.VeryLow, TemporalAAQuality.Low, TemporalAAQuality.Medium,
+                    TemporalAAQuality.High, TemporalAAQuality.VeryHigh
+                };
+
+            public ToggleSetting VenuePostProcessing { get; } = new(true, GraphicsQualityCallback);
             public ToggleSetting ReduceFlashingLights { get; } = new(false);
             public ResolutionSetting Resolution { get; } = new(ResolutionCallback);
             public ToggleSetting FpsStats { get; } = new(false, FpsCounterCallback);
 
-            public ToggleSetting LowQuality { get; } = new(false, LowQualityCallback);
+            public ToggleSetting LowQuality { get; } = new(false, GraphicsQualityCallback);
+            public ToggleSetting FullResolutionTextures { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting AnisotropicFiltering { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting DetailedModels { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting FullSkinningQuality { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting AmbientOcclusion { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting HighQualityShadows { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting SoftShadows { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting AdditionalLightShadows { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting HighQualityLighting { get; } = new(true, GraphicsQualityCallback);
+            public ToggleSetting EnhancedReflections { get; } = new(true, GraphicsQualityCallback);
             public ToggleSetting DisableBloom { get; } = new(false, DisableBloomCallback);
             public ToggleSetting DisableFilmGrain { get; } = new(false, DisableFilmGrainCallback);
 
@@ -852,6 +889,8 @@ namespace YARG.Settings
             };
             public ToggleSetting SaveScoresWithBots { get; } = new(false);
             public ToggleSetting FrameGraph { get; } = new(false);
+            public ToggleSetting TimingDiagnostics { get; } = new(false);
+            public ToggleSetting TargetedPerformanceChecks { get; } = new(false, TargetedPerformance.SetEnabled);
             public SliderSetting FontScaling { get; } = new(0f, 0f, 100f, FontScalingCallback);
 
             public DropdownSetting<AudioOutputMode> OutputMode { get; } = new(AudioOutputMode.Shared,
@@ -1051,7 +1090,7 @@ namespace YARG.Settings
 
             private static void VSyncCallback(bool value)
             {
-                QualitySettings.vSyncCount = value ? 1 : 0;
+                FramePacing.Apply();
             }
 
             private static void FpsCounterCallback(bool value)
@@ -1066,15 +1105,12 @@ namespace YARG.Settings
 
             private static void VenueAACallback(VenueAntiAliasingMethod value)
             {
-                if (GraphicsManager.Instance != null)
-                {
-                    GraphicsManager.Instance.VenueAntiAliasing = value;
-                }
+                GraphicsManager.Instance?.ApplyGraphicsSettings();
             }
 
             private static void FpsCapCallback(int value)
             {
-                Application.targetFrameRate = value;
+                FramePacing.Apply();
             }
 
             private static void FullscreenModeCallback(FullScreenMode value)
@@ -1117,12 +1153,9 @@ namespace YARG.Settings
                 SettingsMenu.Instance?.RefreshPreview(true);
             }
 
-            private static void LowQualityCallback(bool value)
+            private static void GraphicsQualityCallback(bool value)
             {
-                if (GraphicsManager.Instance != null)
-                {
-                    GraphicsManager.Instance.LowQuality = value;
-                }
+                GraphicsManager.Instance?.ApplyGraphicsSettings();
             }
 
             private static void DisableBloomCallback(bool value)

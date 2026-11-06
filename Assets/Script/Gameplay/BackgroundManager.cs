@@ -510,7 +510,8 @@ namespace YARG.Gameplay
                     // UNFORTUNATELY, Videoplayer can't use streams, so video files
                     // MUST BE FULLY DECRYPTED
 
-                    VIDEO_PATH = Path.Combine(Application.persistentDataPath, sngStream.Name);
+                    VIDEO_PATH = Path.Combine(YARG.PerformanceTesting.PerformanceFixtureLaunch.Requested
+                        ? YARG.PerformanceTesting.PerformanceFixtureLaunch.DataDirectory : Application.persistentDataPath, sngStream.Name);
                     using var tmp = File.OpenWrite(VIDEO_PATH);
                     File.SetAttributes(VIDEO_PATH, File.GetAttributes(VIDEO_PATH) | FileAttributes.Temporary | FileAttributes.Hidden);
                     bg.Stream.CopyTo(tmp);

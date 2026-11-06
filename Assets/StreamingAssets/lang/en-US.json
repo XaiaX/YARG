@@ -1520,7 +1520,7 @@
 			},
 			"FpsCap": {
 				"Name": "FPS Cap",
-				"Description": "The framerate cap. <color=white>YOU DO NOT NEED TO PLAY YARG ON 1000FPS.</color> VSync recommended."
+				"Description": "Limits updates when VSync is off. VSync controls the frame rate when enabled. Set to 0 for unlimited. The desktop or graphics driver may impose another limit."
 			},
 			"BackgroundFpsCap": {
 				"Name": "Background FPS Cap",
@@ -1624,9 +1624,90 @@
 				"Name": "Drum Kick Bounce Multiplier",
 				"Description": "Controls the amount the track should bounce when you hit a kick note (drums only). Set to \"0\" if you want to disable."
 			},
+			"FullResolutionTextures": {
+				"Name": "Full Resolution Textures",
+				"Description": "Uses full-resolution textures instead of half-resolution textures. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"AnisotropicFiltering": {
+				"Name": "Anisotropic Filtering",
+				"Description": "Keeps angled textures, including the highway, sharper. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"DetailedModels": {
+				"Name": "Detailed Models",
+				"Description": "Keeps higher-detail models visible at longer distances. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"FullSkinningQuality": {
+				"Name": "Full Skinning Quality",
+				"Description": "Uses all bone influences for animated models instead of two per vertex. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"AmbientOcclusion": {
+				"Name": "Ambient Occlusion",
+				"Description": "Adds soft contact shadows where surfaces meet. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"HighQualityShadows": {
+				"Name": "High Detail Shadows",
+				"Description": "Uses higher-resolution shadow maps, four cascades and a longer shadow distance. Turning this off retains simpler main-light shadows. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"SoftShadows": {
+				"Name": "Soft Shadows",
+				"Description": "Softens the edges of shadows from venue lights. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"AdditionalLightShadows": {
+				"Name": "Additional Light Shadows",
+				"Description": "Allows lights other than the main venue light to cast shadows. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"HighQualityLighting": {
+				"Name": "High Detail Lighting",
+				"Description": "Allows more lights per object, higher-detail light cookies and a larger particle collision budget. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"EnhancedReflections": {
+				"Name": "Enhanced Reflections",
+				"Description": "Enables reflection probe blending, box projection and the reflection atlas for 3D scenes. Low Quality temporarily overrides this choice; turning it off restores your choice."
+			},
+			"HighwayAntiAliasing": {
+				"Name": "Highway Antialiasing",
+				"Description": "Smooths highway and note edges. MSAA choices depend on hardware support; Low Quality temporarily turns antialiasing off.",
+				"Dropdown": {
+					"None": "Off",
+					"FXAA": "FXAA",
+					"SMAA": "SMAA",
+					"MSAA2x": "MSAA 2×",
+					"MSAA": "MSAA 4×",
+					"MSAA8x": "MSAA 8×"
+				}
+			},
+			"HighwayAntiAliasingQuality": {
+				"Name": "Highway SMAA Quality",
+				"Description": "Higher SMAA quality improves edge detection at a higher rendering cost. Applies only while SMAA is selected.",
+				"Dropdown": {
+					"Low": "Low",
+					"Medium": "Medium",
+					"High": "High"
+				}
+			},
+			"VenueAntiAliasingQuality": {
+				"Name": "Venue SMAA Quality",
+				"Description": "Higher SMAA quality improves edge detection at a higher rendering cost. Applies only while SMAA is selected.",
+				"Dropdown": {
+					"Low": "Low",
+					"Medium": "Medium",
+					"High": "High"
+				}
+			},
+			"VenueTemporalAntiAliasingQuality": {
+				"Name": "Venue TAA Quality",
+				"Description": "Higher temporal antialiasing quality improves reconstruction at a higher rendering cost. Applies only while venue TAA is selected.",
+				"Dropdown": {
+					"VeryLow": "Very Low",
+					"Low": "Low",
+					"Medium": "Medium",
+					"High": "High",
+					"VeryHigh": "Very High"
+				}
+			},
 			"LowQuality": {
-				"Name": "Low Quality Mode",
-				"Description": "If enabled, the game will disable anti-aliasing, and use lower quality models and textures. This will significantly increase performance."
+				"Name": "Low Quality Preset",
+				"Description": "Temporarily overrides the Advanced texture, model, lighting, shadow, reflection and antialiasing choices. These controls are dimmed and retain their saved values until Low Quality is turned off. Bloom, film grain, resolution, VSync and FPS Cap stay independent."
 			},
 			"LyricDisplay": {
 				"Name": "Lyric Display",
@@ -1925,12 +2006,15 @@
 				"Description": "Number of semitones the pitch is changed when the whammy bar is fully pressed. Larger amounts result in lower pitches; default is \"1\"."
 			},
 			"VenueAntiAliasing": {
-				"Name": "Venue Anti Aliasing",
-				"Description": "The anti-aliasing method to use for venue backgrounds.",
+				"Name": "Venue Antialiasing",
+				"Description": "Smooths edges in 3D venues. MSAA choices depend on hardware support. FXAA, SMAA and TAA require venue post-processing; Low Quality temporarily turns antialiasing off.",
 				"Dropdown": {
-					"None": "None",
+					"None": "Off",
 					"FXAA": "FXAA",
-					"MSAA": "MSAA",
+					"SMAA": "SMAA",
+					"MSAA2x": "MSAA 2×",
+					"MSAA": "MSAA 4×",
+					"MSAA8x": "MSAA 8×",
 					"TAA": "TAA"
 				}
 			},
@@ -2026,7 +2110,7 @@
 			},
 			"VSync": {
 				"Name": "Enable VSync",
-				"Description": "Enables VSync. VSync caps the framerate at your monitor's maximum framerate, and prevents tearing."
+				"Description": "Synchronizes frames to the current display refresh rate to reduce tearing. Overrides FPS Cap. Quality presets do not change this choice; Background FPS Cap temporarily takes priority while unfocused."
 			},
 			"PauseOnDeviceDisconnect": {
 				"Name": "Pause On Device Disconnect",
@@ -2254,7 +2338,7 @@
 				"Name": "Use Audio Playback Buffer"
 			},
 			"FrameGraph": {
-				"Description": "Shows a real-time frame-time graph with a dropped-frame counter in the bottom-right corner during song playback. Visual only; pairs with Timing Diagnostics for captured data.",
+				"Description": "Shows update intervals, p95/worst times, and effective graphics settings in menus and gameplay. Measures application cadence, not display presentation. Does not save a log.",
 				"Name": "Frame Graph"
 			},
 			"HighwayInterpolation": {
@@ -2282,9 +2366,13 @@
 				"Description": "Hides score-screen dialogs from replay analysis while analysis and diagnostic logging still run. Applies to dialogs shown when replay analysis is enabled (Editor/Nightly); release and test builds retain their own compile-guard behavior.",
 				"Name": "Suppress Replay Analysis Dialogs"
 			},
+			"TargetedPerformanceChecks": {
+				"Name": "Targeted Performance Checks",
+				"Description": "Measures roll-lane scheduling, open-hi-hat activation, and pool preparation. Enable Save Frame Timing Log to save the results. For A/B tests, leave that log on and change only this toggle. No Deep Profiling required."
+			},
 			"TimingDiagnostics": {
-				"Description": "Logs per-frame timing data (frame deltas, engine timing stats, GC, gameplay clock) to a CSV under the stutter-profile folder while playing. For stutter analysis; logging only runs while enabled.",
-				"Name": "Timing Diagnostics"
+				"Name": "Save Frame Timing Log",
+				"Description": "Records menu and gameplay frame timings and effective graphics settings to stutter-profile in the game data folder. Independent of Frame Graph. Turn off to finish the CSV capture; the player log lists its path. Profiling builds provide additional CPU/GPU timing where supported."
 			},
 			"UseCrowdFx": {
 				"Description": "If enabled, crowd sounds will be played.\nIf set to Starpower Claps Only, crowd sounds will only be played during Starpower.",

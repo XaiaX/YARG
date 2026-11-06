@@ -30,7 +30,7 @@ namespace YARG.Settings.Types
 
         int IDropdownSetting.Count => _possibleValues.Count;
 
-        public int CurrentIndex => _possibleValues.IndexOf(Value);
+        public virtual int CurrentIndex => _possibleValues.IndexOf(Value);
 
         public DropdownSetting(T value, Action<T> onChange = null, bool localizable = true)
             : base(onChange)

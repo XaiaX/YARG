@@ -163,7 +163,8 @@ namespace YARG.Song
         {
             var directories = new List<string>(SettingsManager.Settings.SongFolders);
             string setlistPath = PathHelper.SetlistPath;
-            if (!string.IsNullOrEmpty(setlistPath) && !directories.Contains(setlistPath))
+            if (!YARG.PerformanceTesting.PerformanceFixtureLaunch.Requested &&
+                !string.IsNullOrEmpty(setlistPath) && !directories.Contains(setlistPath))
             {
                 directories.Add(setlistPath);
             }

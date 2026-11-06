@@ -1,3 +1,5 @@
+﻿// pattern: Imperative Shell
+using Unity.Profiling;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -149,8 +151,11 @@ namespace YARG.Menu.MusicLibrary
             }
         }
 
+        private static readonly ProfilerMarker NavigationMarker = new("YARG.Menu.SongSidebar");
+
         public void UpdateSidebar(bool force = false)
         {
+            using var sample = NavigationMarker.Auto();
             if (_musicLibraryMenu.ViewList.Count <= 0)
             {
                 return;

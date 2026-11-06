@@ -1,4 +1,5 @@
-﻿using Cysharp.Text;
+﻿// pattern: Imperative Shell
+using Cysharp.Text;
 using TMPro;
 
 namespace YARG.Helpers.UI
@@ -38,6 +39,12 @@ namespace YARG.Helpers.UI
         {
             var text = UnityEngine.Object.Instantiate(multiplierTextPrefab, multiplierTextPrefab.transform.parent);
             text.SetTextFormat("{0}<sub>x</sub>", multiplier);
+            // The template is disabled. Prepare dynamic glyphs and geometry now,
+            // while loading, instead of when the combo first reaches this value.
+            // Enabling first ensures OnDisable detaches the prepared render mesh;
+            // forcing an already-disabled TMP can otherwise leave it visible.
+            text.enabled = true;
+            text.ForceMeshUpdate(ignoreActiveState: true);
             text.enabled = false;
             return text;
         }

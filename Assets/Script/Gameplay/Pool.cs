@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿// pattern: Imperative Shell
+using System.Collections.Generic;
+using YARG.Core.Diagnostics;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -40,6 +42,7 @@ namespace YARG.Gameplay
 
         public void PrewarmTo(int targetTotalCount)
         {
+            using var timing = TargetedPerformance.Measure(TargetedOperation.PoolPrewarm);
             while (TotalCount < targetTotalCount)
             {
                 var poolable = CreateNew();
@@ -70,6 +73,7 @@ namespace YARG.Gameplay
                 return null;
             }
 
+            using var timing = TargetedPerformance.Measure(TargetedOperation.PoolCreate);
             var gameObject = Instantiate(Prefab, transform);
             gameObject.SetActive(false);
 

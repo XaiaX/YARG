@@ -1,7 +1,6 @@
 using System.Collections;
 using DG.Tweening;
 using UnityEngine;
-using UnityEngine.Rendering.Universal;
 using YARG.Core.Game;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Player;
@@ -53,17 +52,12 @@ namespace YARG.Gameplay.Visuals
 
         private void Start()
         {
-            // Set anti-aliasing
-            var info = GetComponent<UniversalAdditionalCameraData>();
-            if (SettingsManager.Settings.LowQuality.Value)
-            {
-                info.antialiasing = AntialiasingMode.None;
-            }
-            else
-            {
-                info.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
-                info.antialiasingQuality = AntialiasingQuality.Low;
-            }
+            RefreshAntialiasing();
+        }
+
+        public void RefreshAntialiasing()
+        {
+            GraphicsManager.ApplyCameraAntialiasing(GetComponent<Camera>(), false);
         }
 
         public void Initialize(CameraPreset preset)

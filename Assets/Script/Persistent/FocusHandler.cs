@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using UnityEngine;
 using YARG.Core.Audio;
 using YARG.Settings;
@@ -14,12 +15,18 @@ namespace YARG
         // so it can be restored when focus returns.
         private bool _mutedFromFocusLoss;
 
-        // Tracks whether the framerate was capped because the window lost focus,
-        // so it can be restored when focus returns.
-        private bool _framerateLimitedFromFocusLoss;
+        public bool HasFocus { get; private set; }
+
+        protected override void SingletonAwake()
+        {
+            HasFocus = Application.isFocused;
+        }
 
         private void OnApplicationFocus(bool hasFocus)
         {
+            HasFocus = hasFocus;
+            if (SettingsManager.Settings == null) return;
+            FramePacing.Apply(SettingsManager.Settings, hasFocus);
             if (!hasFocus)
             {
                 if (SettingsManager.Settings.MuteOnFocusLoss.Value && !_mutedFromFocusLoss)
@@ -28,15 +35,6 @@ namespace YARG
                     _mutedFromFocusLoss = true;
                 }
 
-                int backgroundFpsCap = SettingsManager.Settings.BackgroundFpsCap.Value;
-                if (backgroundFpsCap > 0 && !_framerateLimitedFromFocusLoss)
-                {
-                    // VSync would otherwise pin the framerate to the monitor's refresh
-                    // rate, ignoring targetFrameRate, so disable it while unfocused.
-                    QualitySettings.vSyncCount = 0;
-                    Application.targetFrameRate = backgroundFpsCap;
-                    _framerateLimitedFromFocusLoss = true;
-                }
             }
             else
             {
@@ -46,13 +44,6 @@ namespace YARG
                     _mutedFromFocusLoss = false;
                 }
 
-                if (_framerateLimitedFromFocusLoss)
-                {
-                    // Restore from the live settings so changes made while unfocused are respected.
-                    QualitySettings.vSyncCount = SettingsManager.Settings.VSync.Value ? 1 : 0;
-                    Application.targetFrameRate = SettingsManager.Settings.FpsCap.Value;
-                    _framerateLimitedFromFocusLoss = false;
-                }
             }
         }
     }

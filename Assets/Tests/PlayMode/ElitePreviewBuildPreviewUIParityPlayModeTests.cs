@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.IO;
@@ -64,12 +65,9 @@ namespace YARG.Tests.PlayMode
                     .MakeGenericMethod(Production("YARG.Audio.BASS.BassAudioManager")).Invoke(null, null);
                 _ownsAudio = true;
             }
-            if (_originalSettings == null)
-            {
-                settingsManager.GetProperty("Settings").GetSetMethod(true)
-                    .Invoke(null, new[] { Activator.CreateInstance(settingContainer) });
-                initialized.SetValue(null, true);
-            }
+            settingsManager.GetProperty("Settings").GetSetMethod(true)
+                .Invoke(null, new[] { Activator.CreateInstance(settingContainer) });
+            initialized.SetValue(null, true);
 
             var themeType = Production("YARG.Themes.ThemeManager");
             const BindingFlags STATIC = BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy;
@@ -96,9 +94,8 @@ namespace YARG.Tests.PlayMode
         [UnityTearDown]
         public IEnumerator TearDown()
         {
-            if (_originalPreviewTexture != null)
-                Production("YARG.Helpers.CameraPreviewTexture").GetProperty("PreviewTexture")
-                    .GetSetMethod(true).Invoke(null, new[] { _originalPreviewTexture });
+            Production("YARG.Helpers.CameraPreviewTexture").GetProperty("PreviewTexture")
+                .GetSetMethod(true).Invoke(null, new[] { _originalPreviewTexture });
             foreach (var item in _owned)
                 if (item != null) UnityEngine.Object.Destroy(item);
             _owned.Clear();
@@ -130,11 +127,75 @@ namespace YARG.Tests.PlayMode
 
         [UnityTest]
         public IEnumerator SameEliteRenderSourceUsesConfigureAndActualBuildPreviewUIWithVerticalScalePreserved()
+            => RenderPreviewParity("SMAA");
+
+        [UnityTest]
+        public IEnumerator MultisampledElitePreviewRemainsVisibleInConfigureAndPresetUI()
+            => RenderPreviewParity("MSAA2x");
+
+        private void ConfigureAntialiasing(string antialiasing)
+        {
+            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
+            var setting = settings.GetType().GetProperty("HighwayAntiAliasing").GetValue(settings);
+            setting.GetType().GetMethod("SetValueWithoutNotify").Invoke(setting,
+                new[] { Enum.Parse(Production("YARG.VenueAntiAliasingMethod"), antialiasing) });
+            var graphicsObject = Own(new GameObject("Preview parity graphics settings"));
+            graphicsObject.SetActive(false);
+            var graphics = graphicsObject.AddComponent(Production("YARG.GraphicsManager"));
+            graphics.GetType().GetField("postProcessingProfile", INSTANCE).SetValue(graphics,
+                AssetDatabase.LoadAssetAtPath("Assets/Settings/PostProcessProfile.asset",
+                    Production("UnityEngine.Rendering.VolumeProfile")));
+            graphicsObject.SetActive(true);
+            Call(graphics, "ApplyGraphicsSettings");
+
+        }
+
+        [UnityTest]
+        public IEnumerator SharedPresetWorldPublishesVisiblePixelsWithMultisampling()
+        {
+            ConfigureAntialiasing("MSAA2x");
+            var previewType = Production("YARG.Helpers.CameraPreviewTexture");
+            _originalPreviewTexture = previewType.GetProperty("PreviewTexture").GetValue(null);
+            previewType.GetMethod("SetAllPreviews").Invoke(null, null);
+            var target = Own((RenderTexture)previewType.GetProperty("PreviewTexture").GetValue(null));
+            var world = Own(new GameObject("Independent shared preset preview"));
+            var builderType = Production("YARG.Settings.Metadata.TrackPreviewBuilder");
+            var builder = Activator.CreateInstance(builderType, new object[] { false, false, false, null });
+            builderType.GetProperty("StartingGameMode").SetValue(builder, YARG.Core.GameMode.EliteDrums);
+            Call(builder, "BuildPreviewWorld", world.transform);
+            var camera = world.GetComponentInChildren<Camera>(true);
+            Assert.That(camera, Is.Not.Null);
+            // The copy cannot depend on another camera submitting later in the frame.
+            camera.depth = 1000;
+            int rendered = 0;
+            void OnRendered(UnityEngine.Rendering.ScriptableRenderContext context, Camera value)
+            {
+                if (value == camera) rendered++;
+            }
+            UnityEngine.Rendering.RenderPipelineManager.endCameraRendering += OnRendered;
+            try
+            {
+                double deadline = Time.realtimeSinceStartupAsDouble + 10;
+                while (rendered < 3 && Time.realtimeSinceStartupAsDouble < deadline) yield return null;
+                Assert.That(rendered, Is.GreaterThanOrEqualTo(3));
+                Assert.That(ReadPixels(target).Count(pixel => pixel.a > 200), Is.GreaterThan(1000),
+                    "The independently built preset world must publish visible pixels to the shared UI texture.");
+                WriteLabeledCapture(target, "/tmp/yarg-shared-preset-msaa.png");
+            }
+            finally
+            {
+                UnityEngine.Rendering.RenderPipelineManager.endCameraRendering -= OnRendered;
+            }
+        }
+
+        private IEnumerator RenderPreviewParity(string antialiasing)
         {
 #if !UNITY_EDITOR
             Assert.Ignore("The production menu and preview UI prefabs require the Editor asset database.");
             yield break;
 #else
+            ConfigureAntialiasing(antialiasing);
+
             var menuPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/EliteDrumsLayoutMenu.prefab");
             Assert.That(menuPrefab, Is.Not.Null);
             _host = Own(new GameObject("Configure and preset preview parity Canvas"));
@@ -202,7 +263,8 @@ namespace YARG.Tests.PlayMode
             Assert.That(configureCamera, Is.Not.Null);
             Assert.That(configureTexture.width, Is.EqualTo(outputCamera.pixelWidth));
             Assert.That(configureTexture.height, Is.EqualTo(outputCamera.pixelHeight));
-            Assert.That(configureCamera.targetTexture, Is.SameAs(configureTexture));
+            Assert.That(configureCamera.targetTexture.width, Is.EqualTo(configureTexture.width));
+            Assert.That(configureCamera.targetTexture.height, Is.EqualTo(configureTexture.height));
             Assert.That(configureImage.uvRect.width, Is.GreaterThan(0.1f));
             Assert.That(configureImage.uvRect.height, Is.GreaterThan(0.1f));
 
@@ -248,6 +310,9 @@ namespace YARG.Tests.PlayMode
             Assert.That(configureImage.texture, Is.SameAs(configureTexture),
                 "The shared source must remain alive and bound throughout both preview builds.");
             var sourcePixels = ReadPixels(configureTexture);
+            Assert.That(sourcePixels.Count(pixel => pixel.a > 200), Is.GreaterThan(1000),
+                "The UI target must receive the rendered highway, including its alpha channel.");
+
             var sourceSnapshot = new Texture2D(configureTexture.width, configureTexture.height, TextureFormat.RGBA32, false, true);
             sourceSnapshot.SetPixels32(sourcePixels);
             sourceSnapshot.Apply(false, false);
@@ -343,7 +408,7 @@ namespace YARG.Tests.PlayMode
 
             Canvas.ForceUpdateCanvases();
             yield return null;
-            WriteLabeledCapture(outputTarget, "/tmp/yarg-elite-buildpreviewui-configure-parity.png");
+            WriteLabeledCapture(outputTarget, $"/tmp/yarg-elite-preview-{antialiasing}.png");
             Debug.Log($"ACTUAL PREVIEW PARITY configureUV={configureImage.uvRect} presetBuildPreviewUIUV={presetImage.uvRect} " +
                 $"configureTarget={configureTexture.width}x{configureTexture.height} output={outputTarget.width}x{outputTarget.height} " +
                 $"configurePane={configureImage.rectTransform.rect} presetPane={presetImage.rectTransform.rect} " +

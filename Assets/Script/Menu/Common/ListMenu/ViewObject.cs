@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿// pattern: Imperative Shell
+using System.Collections.Generic;
 using System.Threading;
 using TMPro;
 using UnityEngine;
@@ -64,35 +65,12 @@ namespace YARG.Menu.ListMenu
 
         protected virtual void SetBackground(bool selected, BaseViewType.BackgroundType type)
         {
-            NormalBackground.SetActive(false);
-            SelectedBackground.SetActive(false);
-            CategoryBackground.SetActive(false);
-
-            switch (type)
-            {
-                case BaseViewType.BackgroundType.Normal:
-                    if (selected)
-                    {
-                        SelectedBackground.SetActive(true);
-                    }
-                    else
-                    {
-                        NormalBackground.SetActive(true);
-                    }
-
-                    break;
-                case BaseViewType.BackgroundType.Category:
-                    if (selected)
-                    {
-                        SelectedBackground.SetActive(true);
-                    }
-                    else
-                    {
-                        CategoryBackground.SetActive(true);
-                    }
-
-                    break;
-            }
+            // Rebinding a visible row must not restart its unchanged graphics.
+            bool hasBackground = type == BaseViewType.BackgroundType.Normal ||
+                type == BaseViewType.BackgroundType.Category;
+            NormalBackground.SetActive(!selected && type == BaseViewType.BackgroundType.Normal);
+            SelectedBackground.SetActive(selected && hasBackground);
+            CategoryBackground.SetActive(!selected && type == BaseViewType.BackgroundType.Category);
         }
 
         public void IconClick()

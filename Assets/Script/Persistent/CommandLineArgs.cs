@@ -1,6 +1,8 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Linq;
 using UnityEngine;
+using YARG.PerformanceTesting;
 
 namespace YARG
 {
@@ -35,6 +37,9 @@ namespace YARG
 
         private const string PERSISTENT_DATA_PATH_ARG = "-persistent-data-path";
 
+        private static bool _initialized;
+        static CommandLineArgs() => InitCommandLineArgs();
+
         public static bool Offline { get; private set; }
 
         public static bool VerboseReplays { get; private set; }
@@ -47,13 +52,23 @@ namespace YARG
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSplashScreen)]
         private static void InitCommandLineArgs()
         {
+            if (_initialized) return;
+            _initialized = true;
             var args = Environment.GetCommandLineArgs();
+            string fixture = null, fixtureOutput = null;
 
             // Remember, the first argument is always the application itself
             for (int i = 1; i < args.Length; i++)
             {
                 switch (args[i])
                 {
+                    case "-performance-fixture":
+                        fixture = i + 1 < args.Length ? args[++i] : "";
+                        if (string.IsNullOrWhiteSpace(fixture)) fixture = "missing-fixture.json";
+                        break;
+                    case "-performance-output":
+                        fixtureOutput = i + 1 < args.Length ? args[++i] : null;
+                        break;
                     case OFFLINE_ARG:
                         Offline = true;
                         break;
@@ -85,6 +100,12 @@ namespace YARG
 
                         break;
                 }
+            }
+            if (fixture != null)
+            {
+                PerformanceFixtureLaunch.Initialize(fixture, fixtureOutput);
+                PersistentDataPath = PerformanceFixtureLaunch.DataDirectory;
+                Offline = true;
             }
         }
     }

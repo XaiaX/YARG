@@ -1,4 +1,6 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using Unity.Profiling;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -176,8 +178,11 @@ namespace YARG.Menu.ListMenu
 
         protected abstract List<TViewType> CreateViewList();
 
+        private static readonly ProfilerMarker NavigationMarker = new("YARG.Menu.RefreshListRows");
+
         public void RefreshViewsObjects()
         {
+            using var sample = NavigationMarker.Auto();
             for (int i = 0; i < _viewObjects.Count; i++)
             {
                 // Hide if it's not in range

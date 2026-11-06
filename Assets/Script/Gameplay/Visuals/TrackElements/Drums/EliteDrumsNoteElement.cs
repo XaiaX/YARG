@@ -61,6 +61,15 @@ namespace YARG.Gameplay.Visuals
             _preparedPlacements = new();
         private EliteDrumsNoteElement _geometryTemplate;
 
+        internal bool CymbalLeftyFlip => Player != null && Player.Player?.Profile?.LeftyFlip == true;
+
+        internal Quaternion GetCymbalRotation(float beatsPerRevolution)
+        {
+            if (NoteRef == null || GameManager == null || !GameManager.Started || GameManager.Chart?.SyncTrack == null)
+                return Quaternion.identity;
+            return GameManager.GetCymbalRotation(beatsPerRevolution, CymbalLeftyFlip);
+        }
+
         private NoteGroup[] GeometryGroups(int kind) => kind switch
         {
             0 => NoteGroups, 1 => StarPowerNoteGroups, 2 => _splitGemGroups, _ => _splitStarGemGroups
@@ -176,6 +185,10 @@ namespace YARG.Gameplay.Visuals
                 _starGemScales[i] = StarPowerNoteGroups[i].transform.localScale;
                 _starGemPositions[i] = StarPowerNoteGroups[i].transform.localPosition;
             }
+            // One traversal during theme assembly, never during note activation.
+            // Bind after creating split copies so every model points at this note.
+            foreach (var spin in GetComponentsInChildren<CymbalSpinAnimation>(true))
+                spin.BindOwner(this);
         }
 
         // Layout for same-tick tom/cymbal pairs that share one native Elite lane.

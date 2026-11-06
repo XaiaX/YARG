@@ -11,6 +11,7 @@ using YARG.Localization;
 using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Player;
+using YARG.PerformanceTesting;
 using YARG.Settings;
 using YARG.Song;
 
@@ -42,6 +43,11 @@ namespace YARG
             // Check for bad paths
             if (PathHelper.PathError)
             {
+                if (PerformanceFixtureLaunch.Requested)
+                {
+                    PerformanceFixtureRunner.LibraryReady("Unable to create fixture data directory");
+                    return;
+                }
                 // We may well not be able to localize, so don't even try
                 DialogManager.Instance.ShowMessage("Error creating persistent data directory", $"YARG was unable to create persistent data directory: \n\n{CommandLineArgs.PersistentDataPath}\n\nThis is an unrecoverable error, so YARG will exit.");
                 await DialogManager.Instance.WaitUntilCurrentClosed();
@@ -92,11 +98,13 @@ namespace YARG
             try
             {
                 await SongContainer.RunRefresh(YARG.Core.Song.Cache.SongScanScope.All, quick: true, context: context);
+                PerformanceFixtureRunner.LibraryReady();
             }
             catch (Exception ex)
             {
                 YargLogger.LogException(ex);
-                DialogManager.Instance.ShowMessage(Localize.Key("Menu.Settings.Sources.Invalid"), ex.Message);
+                if (PerformanceFixtureLaunch.Requested) PerformanceFixtureRunner.LibraryReady(ex.Message);
+                else DialogManager.Instance.ShowMessage(Localize.Key("Menu.Settings.Sources.Invalid"), ex.Message);
             }
         }
 

@@ -1,5 +1,4 @@
 ﻿using UnityEngine;
-using YARG.Gameplay.Player;
 
 // pattern: Imperative Shell
 namespace YARG.Gameplay.Visuals
@@ -18,18 +17,17 @@ namespace YARG.Gameplay.Visuals
         [Tooltip("Full-spin envelope in this assembly's local space, authored once for fitting.")]
         [SerializeField] private Bounds _sweptBounds;
 
-        private GameManager _gameManager;
-        private EliteDrumsNoteElement _noteElement;
-        private EliteDrumsPlayer _player;
+        // Set while assembling the note template. Unity remaps this reference to
+        // each pooled clone, including its inactive SP and split-flam models.
+        [SerializeField, HideInInspector] private EliteDrumsNoteElement _noteElement;
+
+        internal void BindOwner(EliteDrumsNoteElement owner) => _noteElement = owner;
 
         public Transform Rotor => _rotor;
         public Bounds SweptLocalBounds => _sweptBounds;
 
         private void OnEnable()
         {
-            _noteElement = GetComponentInParent<EliteDrumsNoteElement>();
-            _player = GetComponentInParent<EliteDrumsPlayer>(true);
-            if (_gameManager == null) _gameManager = FindAnyObjectByType<GameManager>();
             // The serialized rotor rest is identity even when a pool/template was
             // cloned from an active source whose rotor was already turning.
             RestorePose();
@@ -38,18 +36,16 @@ namespace YARG.Gameplay.Visuals
 
         private void LateUpdate()
         {
-            if (_noteElement == null || _noteElement.NoteRef == null || _gameManager == null ||
-                !_gameManager.Started || _gameManager.Chart?.SyncTrack == null)
-            {
-                RestorePose();
-                return;
-            }
-            ApplyBeatPhase(HiHatBeatMotion.EvaluateBeatPhase(_gameManager.VisualTime, _gameManager.Chart.SyncTrack));
+            if (_rotor == null) return;
+            _rotor.localRotation = _noteElement != null
+                ? _noteElement.GetCymbalRotation(_beatsPerRevolution)
+                : Quaternion.identity;
         }
 
+        // Explicit phase sampling is also used by the authoring previews.
         public void ApplyBeatPhase(double beat)
         {
-            bool leftyFlip = _player != null && _player.Player?.Profile?.LeftyFlip == true;
+            bool leftyFlip = _noteElement != null && _noteElement.CymbalLeftyFlip;
             if (_rotor != null)
                 _rotor.localRotation = Quaternion.AngleAxis(
                     (leftyFlip ? 1f : -1f) * CymbalSpinMotion.EvaluateAngle(beat, _beatsPerRevolution), Vector3.forward);
