@@ -3,6 +3,7 @@ using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using YARG.Audio.BASS.Native;
+using YARG.Core.Diagnostics;
 using YARG.Core.Logging;
 
 namespace YARG.Audio.BASS
@@ -63,6 +64,13 @@ namespace YARG.Audio.BASS
         public long DecodePosition;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ReadAheadPositionTiming
+    {
+        public uint Size, Attempts, CallbackYields, InvalidatedAttempts;
+        public ulong SourceLockNs, CallbackBusyNs, InvalidatedNs, BassDecodePositionNs, BassHeardPositionNs;
+    }
+
     /// <summary>
     ///     Wraps a native C++ read-ahead stream that buffers decoded audio frames in a ring buffer,
     ///     preventing audio underruns and glitches during low-latency ASIO callbacks.
@@ -72,6 +80,11 @@ namespace YARG.Audio.BASS
         private BassReadAheadStream() : base(true)
         {
         }
+
+        private static bool _timedSnapshotUnavailable;
+        private static bool _trySnapshotUnavailable;
+        private const int SNAPSHOT_BUSY = -9;
+        private static readonly uint PositionTimingSize = (uint) Marshal.SizeOf<ReadAheadPositionTiming>();
 
         public int StreamHandle { get; private set; }
 
@@ -154,15 +167,75 @@ namespace YARG.Audio.BASS
         }
 
         public bool TryGetPositionSnapshot(int sourceHandle, int endpointDelayFrames,
-            out ReadAheadPositionSnapshot snapshot)
+            out ReadAheadPositionSnapshot snapshot, bool profile = false)
+            => ReadPositionSnapshot(sourceHandle, endpointDelayFrames, out snapshot, out _, profile, false);
+
+        public bool ReadPositionSnapshot(int sourceHandle, int endpointDelayFrames,
+            out ReadAheadPositionSnapshot snapshot, out bool busy, bool profile, bool nonBlocking)
         {
+            busy = false;
             ThrowIfDisposed();
             snapshot = new ReadAheadPositionSnapshot
             {
                 Size = (uint) Marshal.SizeOf<ReadAheadPositionSnapshot>(),
             };
-            return Native.GetPositionSnapshot(this, unchecked((uint) sourceHandle),
-                checked((uint) Math.Max(0, endpointDelayFrames)), ref snapshot) == 0;
+            uint source = unchecked((uint) sourceHandle);
+            uint delay = checked((uint) Math.Max(0, endpointDelayFrames));
+            var collector = profile ? TargetedPerformance.Current : null;
+            if (nonBlocking && !_trySnapshotUnavailable)
+            {
+                var timing = new ReadAheadPositionTiming { Size = PositionTimingSize };
+                try
+                {
+                    int result;
+                    using (profile ? TargetedPerformance.Measure(TargetedOperation.AudioClockNativeQuery) : default)
+                        result = collector != null
+                            ? Native.TryGetPositionSnapshotTimed(this, source, delay, ref snapshot, ref timing)
+                            : Native.TryGetPositionSnapshot(this, source, delay, ref snapshot, IntPtr.Zero);
+                    if (collector != null) RecordTiming(collector, timing);
+                    busy = result == SNAPSHOT_BUSY;
+                    return result == 0;
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    _trySnapshotUnavailable = true;
+                }
+            }
+            if (collector != null && !_timedSnapshotUnavailable)
+            {
+                var timing = new ReadAheadPositionTiming { Size = PositionTimingSize };
+                try
+                {
+                    int result;
+                    using (TargetedPerformance.Measure(TargetedOperation.AudioClockNativeQuery))
+                        result = Native.GetPositionSnapshotTimed(this, source, delay, ref snapshot, ref timing);
+                    RecordTiming(collector, timing);
+                    return result == 0;
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    // Diagnostics are an optional extension of the existing native ABI.
+                    _timedSnapshotUnavailable = true;
+                }
+            }
+            using (profile ? TargetedPerformance.Measure(TargetedOperation.AudioClockNativeQuery) : default)
+                return Native.GetPositionSnapshot(this, source, delay, ref snapshot) == 0;
+        }
+
+        private static void RecordTiming(TargetedPerformance.Collector collector, in ReadAheadPositionTiming timing)
+        {
+            collector.RecordAudioClockNative(new AudioClockNativeTiming
+            {
+                Samples = 1,
+                Attempts = timing.Attempts,
+                CallbackYields = timing.CallbackYields,
+                InvalidatedAttempts = timing.InvalidatedAttempts,
+                SourceLockNs = (long) timing.SourceLockNs,
+                CallbackBusyNs = (long) timing.CallbackBusyNs,
+                InvalidatedNs = (long) timing.InvalidatedNs,
+                BassDecodePositionNs = (long) timing.BassDecodePositionNs,
+                BassHeardPositionNs = (long) timing.BassHeardPositionNs,
+            });
         }
 
         public ReadAheadStats GetStats()
@@ -230,6 +303,21 @@ namespace YARG.Audio.BASS
                 CallingConvention = CallingConvention.Cdecl)]
             internal static extern int GetPositionSnapshot(BassReadAheadStream stream, uint source,
                 uint endpointDelayFrames, ref ReadAheadPositionSnapshot snapshot);
+
+            [DllImport(LIBRARY, EntryPoint = "yarg_read_ahead_stream_get_position_snapshot_timed",
+                CallingConvention = CallingConvention.Cdecl)]
+            internal static extern int GetPositionSnapshotTimed(BassReadAheadStream stream, uint source,
+                uint endpointDelayFrames, ref ReadAheadPositionSnapshot snapshot, ref ReadAheadPositionTiming timing);
+
+            [DllImport(LIBRARY, EntryPoint = "yarg_read_ahead_stream_try_get_position_snapshot",
+                CallingConvention = CallingConvention.Cdecl)]
+            internal static extern int TryGetPositionSnapshotTimed(BassReadAheadStream stream, uint source,
+                uint endpointDelayFrames, ref ReadAheadPositionSnapshot snapshot, ref ReadAheadPositionTiming timing);
+
+            [DllImport(LIBRARY, EntryPoint = "yarg_read_ahead_stream_try_get_position_snapshot",
+                CallingConvention = CallingConvention.Cdecl)]
+            internal static extern int TryGetPositionSnapshot(BassReadAheadStream stream, uint source,
+                uint endpointDelayFrames, ref ReadAheadPositionSnapshot snapshot, IntPtr timing);
 
             [DllImport(LIBRARY, EntryPoint = "yarg_read_ahead_stream_get_stats",
                 CallingConvention = CallingConvention.Cdecl)]

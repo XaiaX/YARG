@@ -1,3 +1,5 @@
+// pattern: Imperative Shell
+using YARG.Core.Diagnostics;
 using UnityEngine;
 using YARG.Core.Chart;
 using YARG.Core.Logging;
@@ -18,11 +20,21 @@ namespace YARG.Gameplay
     {
         protected GameManager GameManager { get; private set; }
 
+        // Reuse the owning player's scene context; never retain it in a cross-scene static cache.
+        internal GameManager GameplayContext => GameManager;
+
+        protected virtual GameManager ResolveGameManager()
+        {
+            using var timing = TargetedPerformance.Measure(TargetedOperation.GameplayManagerDiscovery);
+            return FindAnyObjectByType<GameManager>();
+        }
+
         // Protected to warn when hidden by an inheriting class
         protected void Awake()
         {
+            using var timing = TargetedPerformance.Measure(TargetedOperation.GameplayAwake);
             // Retrieve the game manager
-            GameManager = FindAnyObjectByType<GameManager>();
+            GameManager = ResolveGameManager();
             if (GameManager == null)
             {
                 YargLogger.LogFormatWarning("Gameplay object {0} was instantiated outside of the gameplay scene!", gameObject.name);

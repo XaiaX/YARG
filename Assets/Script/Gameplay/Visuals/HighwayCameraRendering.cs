@@ -9,6 +9,7 @@ using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.UI;
 using YARG.Core.Logging;
 using YARG.Gameplay.Player;
+using YARG.Helpers.Authoring;
 using YARG.Helpers.UI;
 using YARG.Settings;
 
@@ -411,6 +412,46 @@ namespace YARG.Gameplay.Visuals
             var cameraData = trackPlayer.TrackCamera.GetUniversalAdditionalCameraData();
             cameraData.renderType = CameraRenderType.Overlay;
             AddPlayerParams(trackPlayer.transform.position, trackPlayer.TrackCamera, trackPlayer.Player.CameraPreset.CurveFactor, trackPlayer.ZeroFadePosition, trackPlayer.FadeSize, trackPlayer.Player.CameraPreset.Rotation);
+        }
+
+        internal bool WarmHitLighting(IEnumerable<EffectLight> effects)
+        {
+            if (!isActiveAndEnabled || HighwaysOutputTexture == null ||
+                GraphicsSettings.currentRenderPipeline is not UniversalRenderPipelineAsset pipeline ||
+                pipeline.additionalLightsRenderingMode == LightRenderingMode.Disabled)
+                return false;
+
+            var request = new UniversalRenderPipeline.SingleCameraRequest();
+            if (!RenderPipeline.SupportsRenderRequest(_renderCamera, request)) return false;
+
+            var originalTarget = _renderCamera.targetTexture;
+            var originalActive = RenderTexture.active;
+            var intensities = new Dictionary<Light, float>();
+            try
+            {
+                foreach (var effect in effects)
+                {
+                    var light = effect.RuntimeLight;
+                    if (light == null || !light.isActiveAndEnabled || effect.AuthoredIntensity <= 0 ||
+                        !intensities.TryAdd(light, light.intensity)) continue;
+                    light.intensity = effect.AuthoredIntensity;
+                }
+
+                if (intensities.Count == 0) return false;
+
+                // Match the real highway target's render setup without publishing a lit frame.
+                request.destination = RenderTexture.GetTemporary(HighwaysOutputTexture.descriptor);
+                RenderPipeline.SubmitRenderRequest(_renderCamera, request);
+                return true;
+            }
+            finally
+            {
+                foreach (var (light, intensity) in intensities)
+                    light.intensity = intensity;
+                _renderCamera.targetTexture = originalTarget;
+                RenderTexture.active = originalActive;
+                if (request.destination != null) RenderTexture.ReleaseTemporary(request.destination);
+            }
         }
 
         public void AddVocalTrack(VocalTrack vocalTrack, int highwayIndex)

@@ -1,4 +1,7 @@
-﻿namespace YARG.Gameplay.Visuals
+﻿// pattern: Imperative Shell
+using YARG.Core.Diagnostics;
+
+namespace YARG.Gameplay.Visuals
 {
     public abstract class BaseElement : GameplayBehaviour, IPoolable
     {
@@ -15,6 +18,7 @@
         protected virtual float RemovePointOffset => 0f;
 
         protected bool Initialized { get; private set; }
+        private bool _hasBeenEnabled;
 
         protected override void GameplayAwake()
         {
@@ -24,13 +28,20 @@
 
         public void EnableFromPool()
         {
-            gameObject.SetActive(true);
+            using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.ElementEnable,
+                TargetedPerformance.Enabled ? GetInstanceID() : 0);
+            if (!_hasBeenEnabled) TargetedPerformance.Current?.RecordFirstElementEnable();
+            _hasBeenEnabled = true;
+            using (TargetedPerformance.Measure(TargetedOperation.ElementSetActive))
+                gameObject.SetActive(true);
 
-            InitializeElement();
+            using (TargetedPerformance.Measure(TargetedOperation.ElementInitialize))
+                InitializeElement();
             Initialized = true;
 
             // Force update the position once just in case to prevent flickering
-            UpdateVisualElement();
+            using (TargetedPerformance.Measure(TargetedOperation.ElementFirstVisualUpdate))
+                UpdateVisualElement();
         }
 
         protected abstract void InitializeElement();

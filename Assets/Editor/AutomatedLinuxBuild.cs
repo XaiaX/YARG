@@ -55,7 +55,9 @@ namespace Editor
             try
             {
                 bool profile = Environment.GetCommandLineArgs().Contains("-profileBuild");
-                EditorUserBuildSettings.development = profile;
+                bool development = Environment.GetCommandLineArgs().Contains("-developmentBuild");
+                var buildOptions = GetBuildOptions(development, profile);
+                EditorUserBuildSettings.development = (buildOptions & BuildOptions.Development) != 0;
                 EditorUserBuildSettings.connectProfiler = profile;
                 EditorUserBuildSettings.allowDebugging = false;
                 EditorUserBuildSettings.buildWithDeepProfilingSupport = false;
@@ -71,7 +73,7 @@ namespace Editor
                     locationPathName = Path.Combine(output, "YARG.x86_64"),
                     target = BuildTarget.StandaloneLinux64,
                     targetGroup = BuildTargetGroup.Standalone,
-                    options = profile ? BuildOptions.Development | BuildOptions.ConnectWithProfiler : BuildOptions.None,
+                    options = buildOptions,
                     extraScriptingDefines = new[] { "YARG_NIGHTLY_BUILD" }
                 };
                 var result = BuildPipeline.BuildPlayer(options).summary;
@@ -91,6 +93,14 @@ namespace Editor
             RequireTarget(BuildTarget.StandaloneOSX);
             RestoreSettingsFromFile(RequiredArgument("-settingsState"));
             WriteReceipt(RequiredArgument("-restoreReceipt"));
+        }
+
+        private static BuildOptions GetBuildOptions(bool development, bool profile)
+        {
+            if (development && profile)
+                throw new ArgumentException("Choose either development recorders or profiler autoconnect.");
+            if (profile) return BuildOptions.Development | BuildOptions.ConnectWithProfiler;
+            return development ? BuildOptions.Development : BuildOptions.None;
         }
 
         private static void CaptureSettings(string path)

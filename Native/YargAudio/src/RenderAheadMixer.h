@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioRingBuffer.h"
+#include "yarg_audio.h"
 
 #include <atomic>
 #include <chrono>
@@ -30,6 +31,11 @@ struct SourcePositionSnapshot {
     std::uint32_t totalDelayFrames;
 };
 
+inline std::uint64_t positionElapsedNs(std::chrono::steady_clock::time_point start) noexcept {
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - start).count());
+}
+
 class RenderAheadMixer {
 public:
     static constexpr std::size_t RenderChunkFrames = 128;
@@ -55,10 +61,20 @@ public:
         return bufferedSourcePositionLocked(sourceHandle, delayProvider());
     }
     template <typename DelayProvider>
-    bool sourcePositionSnapshotAfterLock(std::uint32_t sourceHandle,
-        SourcePositionSnapshot& snapshot, DelayProvider delayProvider) noexcept {
-        std::lock_guard lock(sourceMutex_);
-        return sourcePositionSnapshotLocked(sourceHandle, delayProvider(), snapshot);
+    int sourcePositionSnapshotAfterLock(std::uint32_t sourceHandle,
+        SourcePositionSnapshot& snapshot, DelayProvider delayProvider,
+        yarg_read_ahead_position_timing* timing, bool nonBlocking) noexcept {
+        const auto start = timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        std::unique_lock lock(sourceMutex_, std::defer_lock);
+        if (nonBlocking) {
+            lock.try_lock();
+        } else {
+            lock.lock();
+        }
+        if (timing) timing->source_lock_ns += positionElapsedNs(start);
+        if (!lock.owns_lock()) return YARG_AUDIO_ERROR_BUSY;
+        return sourcePositionSnapshotLocked(sourceHandle, delayProvider(), snapshot, timing)
+            ? YARG_AUDIO_OK : YARG_AUDIO_ERROR_BASS;
     }
 
     std::size_t queuedFrames() const noexcept { return ring_.available(); }
@@ -73,7 +89,8 @@ private:
     std::int64_t bufferedSourcePositionLocked(std::uint32_t sourceHandle,
         std::uint32_t endpointDelayFrames) noexcept;
     bool sourcePositionSnapshotLocked(std::uint32_t sourceHandle,
-        std::uint32_t endpointDelayFrames, SourcePositionSnapshot& snapshot) noexcept;
+        std::uint32_t endpointDelayFrames, SourcePositionSnapshot& snapshot,
+        yarg_read_ahead_position_timing* timing = nullptr) noexcept;
     void run() noexcept;
     void updateMaximum(std::uint64_t nanoseconds) noexcept;
 

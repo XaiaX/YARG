@@ -75,6 +75,60 @@ namespace YARG.Tests.EditMode
             finally { UnityEngine.Object.DestroyImmediate(host); }
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RealNoteGroupReportsMaterialAccessAndFirstUseWithoutChangingMaterials(bool enabled)
+        {
+            var host = new GameObject("note-timing-test");
+            var material = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            Material instance = null;
+            try
+            {
+                var renderer = host.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = material;
+                var themeType = Production("YARG.Themes.ThemeNote");
+                var theme = host.AddComponent(themeType);
+                foreach (var field in themeType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Where(f => f.FieldType.IsArray))
+                    field.SetValue(theme, Array.CreateInstance(field.FieldType.GetElementType(), 0));
+                var colored = themeType.GetField("_coloredMaterials", BindingFlags.NonPublic | BindingFlags.Instance);
+                var itemType = colored.FieldType.GetElementType();
+                var item = Activator.CreateInstance(itemType);
+                itemType.GetField("Mesh").SetValue(item, renderer);
+                var items = Array.CreateInstance(itemType, 1); items.SetValue(item, 0);
+                colored.SetValue(theme, items);
+                var groupType = Production("YARG.Gameplay.Visuals.NoteGroup");
+                var group = host.AddComponent(groupType);
+                groupType.GetField("_themeNote", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(group, theme);
+                TargetedPerformance.SetEnabled(enabled);
+                // This is the real play-mode path, exercised in EditMode with explicit cleanup below.
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Error,
+                    "Instantiating material due to calling renderer.material during edit mode. This will leak materials into the scene. You most likely want to use renderer.sharedMaterial instead.");
+                groupType.GetMethod("Initialize").Invoke(group, null);
+                instance = renderer.sharedMaterial;
+                var first = TargetedPerformance.TakeSnapshot();
+                groupType.GetMethod("Initialize").Invoke(group, null);
+                groupType.GetMethod("SetActive").Invoke(group, new object[] { false });
+                groupType.GetMethod("SetActive").Invoke(group, new object[] { true });
+                var reused = TargetedPerformance.TakeSnapshot();
+                Assert.That(renderer.sharedMaterial, Is.SameAs(instance));
+                Assert.That(host.activeSelf, Is.True);
+                Assert.That(first.NoteGroupInitialize.Calls, Is.EqualTo(enabled ? 1 : 0));
+                Assert.That(first.MaterialAccess.Calls, Is.EqualTo(enabled ? 1 : 0));
+                Assert.That(first.FirstNoteGroupInitializations, Is.EqualTo(enabled ? 1 : 0));
+                Assert.That(reused.FirstNoteGroupInitializations, Is.Zero);
+                Assert.That(reused.NoteGroupInitialize.Calls, Is.EqualTo(enabled ? 1 : 0));
+                Assert.That(reused.MaterialAccess.Calls, Is.EqualTo(enabled ? 1 : 0));
+                Assert.That(reused.NoteGroupSetActive.Calls, Is.EqualTo(enabled ? 2 : 0));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+                if (instance != null && instance != material) UnityEngine.Object.DestroyImmediate(instance);
+                UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
         [Test]
         public void CurrentThemeDoesNotExecuteTheObsoleteHiHatDiscoveryPath()
         {

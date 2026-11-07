@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using YARG.Audio.BASS;
@@ -11,7 +12,9 @@ using YARG.Input;
 using YARG.Input.Bindings;
 using YARG.Integration;
 using YARG.Localization;
+using YARG.Menu.MusicLibrary;
 using YARG.Menu.Navigation;
+using YARG.Menu.Persistent;
 using YARG.Player;
 using YARG.Playlists;
 using YARG.Replays;
@@ -162,11 +165,20 @@ namespace YARG
 #endif
         }
 
-        private async void LoadSceneAdditive(SceneIndex scene)
+        private async void LoadSceneAdditive(SceneIndex scene, Task previewDrain)
         {
             CurrentScene = scene;
 
             GameStateFetcher.SetSceneIndex(scene);
+
+            if (scene == SceneIndex.Gameplay)
+            {
+                // Change CurrentScene first so a navigation refresh cannot
+                // turn the persistent menu player back on while we wait.
+                var musicDrain = HelpBar.Instance?.MusicPlayer?.StopAndDrainAsync() ?? Task.CompletedTask;
+                await Task.WhenAll(previewDrain, musicDrain);
+                YargLogger.LogInfo("[MenuAudio] Stopped and drained before gameplay.");
+            }
 
             await SceneManager.LoadSceneAsync((int) scene, LoadSceneMode.Additive);
 
@@ -182,6 +194,13 @@ namespace YARG
         {
             Navigator.Instance.DisableMenuInputs = true;
 
+            // The library (including any in-flight preview work) belongs to
+            // the outgoing scene. Take its drain before unloading that scene.
+            var previewDrain = scene == SceneIndex.Gameplay && CurrentScene == SceneIndex.Menu
+                ? FindFirstObjectByType<MusicLibraryMenu>(FindObjectsInactive.Include)?.StopPreviewForGameplayAsync()
+                    ?? Task.CompletedTask
+                : Task.CompletedTask;
+
             // Unload the current scene and load in the new one, or just load in the new one
             if (CurrentScene != SceneIndex.Persistent)
             {
@@ -189,11 +208,11 @@ namespace YARG
                 var asyncOp = SceneManager.UnloadSceneAsync((int) CurrentScene);
 
                 // The load the new scene
-                asyncOp.completed += _ => LoadSceneAdditive(scene);
+                asyncOp.completed += _ => LoadSceneAdditive(scene, previewDrain);
             }
             else
             {
-                LoadSceneAdditive(scene);
+                LoadSceneAdditive(scene, previewDrain);
             }
         }
 

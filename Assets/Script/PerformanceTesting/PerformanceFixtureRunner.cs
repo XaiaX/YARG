@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
+using YARG.Audio.BASS;
 using YARG.Core;
 using YARG.Core.Game;
 using YARG.Gameplay;
@@ -29,6 +30,9 @@ namespace YARG.PerformanceTesting
         private bool _launched, _measuring, _finishing;
         private int _frames, _unfocusedFrames, _overBudgetFrames, _lastFrame = -1;
         private double _wallTotal, _wallMaximum;
+        private ReadAheadStats _audioStart;
+        private int _audioFresh, _audioSkipped, _audioSkipRun, _audioMaxSkipRun;
+        private double _audioMaxHeard, _audioMaxControl, _audioHeardSquares, _audioControlSquares;
         private JObject _result;
         private int _runtimeErrors;
         private string _firstRuntimeError;
@@ -65,7 +69,8 @@ namespace YARG.PerformanceTesting
                 ["os"] = SystemInfo.operatingSystem, ["device"] = SystemInfo.deviceModel,
                 ["gpu"] = SystemInfo.graphicsDeviceName, ["graphicsApi"] = SystemInfo.graphicsDeviceType.ToString(),
                 ["processor"] = SystemInfo.processorType, ["processorCount"] = SystemInfo.processorCount,
-                ["dataDirectory"] = PerformanceFixtureLaunch.DataDirectory
+                ["dataDirectory"] = PerformanceFixtureLaunch.DataDirectory,
+                ["skipDrumHitWarmup"] = _fixture?.SkipDrumHitWarmup
             };
         }
 
@@ -131,8 +136,10 @@ namespace YARG.PerformanceTesting
             {
                 _measuring = true;
                 _result["firstMeasurementFrame"] = Time.frameCount;
+                if (_game.Mixer is BassSong audio) _audioStart = audio.GetReadAheadStats();
                 Status("measuring");
             }
+            SampleAudioSync();
             var probe = StutterProbe.Instance;
             if (probe == null || probe.CaptureError != null)
                 throw new InvalidOperationException("Frame capture unavailable: " + probe?.CaptureError);
@@ -150,6 +157,23 @@ namespace YARG.PerformanceTesting
             {
                 _result["lastMeasurementFrame"] = Time.frameCount;
                 _result["bandScore"] = _game.BandScore;
+                if (_game.Mixer is BassSong audio)
+                {
+                    var end = audio.GetReadAheadStats();
+                    _result["audioSync"] = new JObject
+                    {
+                        ["freshSamples"] = _audioFresh, ["skippedSamples"] = _audioSkipped,
+                        ["maxConsecutiveSkipped"] = _audioMaxSkipRun,
+                        ["maxAbsoluteHeardErrorMs"] = _audioMaxHeard * 1000,
+                        ["maxAbsoluteControlErrorMs"] = _audioMaxControl * 1000,
+                        ["rmsHeardErrorMs"] = Math.Sqrt(_audioHeardSquares / Math.Max(1, _audioFresh)) * 1000,
+                        ["rmsControlErrorMs"] = Math.Sqrt(_audioControlSquares / Math.Max(1, _audioFresh)) * 1000,
+                        ["underrunEventsAtStart"] = _audioStart.UnderrunEvents,
+                        ["underrunEventsAtEnd"] = end.UnderrunEvents,
+                        ["underrunFramesAtStart"] = _audioStart.UnderrunFrames,
+                        ["underrunFramesAtEnd"] = end.UnderrunFrames,
+                    };
+                }
                 _result["players"] = new JArray(_game.Players.Select(player => new JObject
                 {
                     ["score"] = player.Score, ["notesHit"] = player.NotesHit
@@ -159,6 +183,25 @@ namespace YARG.PerformanceTesting
                     throw new InvalidOperationException("Window lost focus during measurement");
                 Finish("passed");
             }
+        }
+
+        private void SampleAudioSync()
+        {
+            if (!_game.HasFreshAudioSyncSample)
+            {
+                _audioSkipped++;
+                _audioMaxSkipRun = Math.Max(_audioMaxSkipRun, ++_audioSkipRun);
+                return;
+            }
+
+            _audioFresh++;
+            _audioSkipRun = 0;
+            double heard = _game.AudioSyncHeardError;
+            double control = _game.AudioSyncControlError;
+            _audioMaxHeard = Math.Max(_audioMaxHeard, Math.Abs(heard));
+            _audioMaxControl = Math.Max(_audioMaxControl, Math.Abs(control));
+            _audioHeardSquares += heard * heard;
+            _audioControlSquares += control * control;
         }
 
         private void StartRun()
@@ -185,6 +228,7 @@ namespace YARG.PerformanceTesting
             FramePacing.Apply();
             _result["song"] = JObject.FromObject(PerformanceFixtureCatalog.Describe(song));
             _result["requestedSettings"] = _fixture.Settings.DeepClone();
+            _result["deferTimingWrites"] = _fixture.DeferTimingWrites;
             _result["roster"] = new JArray(_profiles.Select(profile => new JObject
             {
                 ["name"] = profile.Name, ["instrument"] = profile.CurrentInstrument.ToString(),

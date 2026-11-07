@@ -1,6 +1,9 @@
-﻿using System.Linq;
+﻿// pattern: Imperative Shell
+using System;
 using UnityEngine;
 using YARG.Themes;
+
+using YARG.Core.Diagnostics;
 
 namespace YARG.Gameplay.Visuals
 {
@@ -25,7 +28,9 @@ namespace YARG.Gameplay.Visuals
             {
                 try
                 {
-                    var material = a.Mesh.materials[a.MaterialIndex];
+                    Material material;
+                    using (TargetedPerformance.Measure(TargetedOperation.MaterialAccess))
+                        material = a.Mesh.materials[a.MaterialIndex];
                     return new MaterialInfo
                     {
                         MaterialCache = material,
@@ -61,11 +66,10 @@ namespace YARG.Gameplay.Visuals
 
         private MaterialInfo[] _coloredMaterialCache;
         private MaterialInfo[] _coloredMaterialNoStarPowerCache;
-        private MaterialInfo[] _allColoredCache;
         private MaterialInfo[] _coloredMetalMaterialCache;
 
         private MaterialInfo[] _coloredKick2MaterialCache;
-        public bool HasKickFlamColors => _themeNote.ColoredKick2Materials?.Any() == true;
+        public bool HasKickFlamColors => !_themeNote.SecondKickColorSlots.IsEmpty;
 
         public bool PedalStrikeAligned => _themeNote != null && _themeNote.PedalStrikeAligned;
 
@@ -77,19 +81,35 @@ namespace YARG.Gameplay.Visuals
 
         public void Initialize()
         {
-            _coloredMaterialCache = _themeNote.ColoredMaterials.Select(MaterialInfo.From).ToArray();
-            _coloredMaterialNoStarPowerCache = _themeNote.ColoredMaterialsNoStarPower.Select(MaterialInfo.From).ToArray();
-            _allColoredCache = _coloredMaterialCache.Concat(_coloredMaterialNoStarPowerCache).ToArray();
-            _coloredMetalMaterialCache = _themeNote.ColoredMetalMaterials.Select(MaterialInfo.From).ToArray();
-            _coloredSecondaryMaterialCache = _themeNote.ColoredSecondaryMaterials?.Select(MaterialInfo.From).ToArray() ?? System.Array.Empty<MaterialInfo>();
-
-            _coloredKick2MaterialCache = _themeNote.ColoredKick2Materials?.Select(MaterialInfo.From).ToArray()
-                ?? System.Array.Empty<MaterialInfo>();
+            using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.NoteGroupInitialize,
+                TargetedPerformance.Enabled ? (int)_themeNote.NoteType : 0);
+            if (_coloredMaterialCache == null) TargetedPerformance.Current?.RecordFirstNoteGroupInitialization();
+            _coloredMaterialCache = ReadMaterials(_themeNote.ColorSlots);
+            _coloredMaterialNoStarPowerCache = ReadMaterials(_themeNote.NoStarPowerColorSlots);
+            _coloredMetalMaterialCache = ReadMaterials(_themeNote.MetalColorSlots);
+            _coloredSecondaryMaterialCache = ReadMaterials(_themeNote.SecondaryColorSlots);
+            _coloredKick2MaterialCache = ReadMaterials(_themeNote.SecondKickColorSlots);
 
             // Set random values
-            var randomFloat = Random.Range(-1f, 1f);
-            var randomVector = new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f));
-            foreach (var info in _allColoredCache)
+            var randomFloat = UnityEngine.Random.Range(-1f, 1f);
+            var randomVector = new Vector2(UnityEngine.Random.Range(-1f, 1f), UnityEngine.Random.Range(-1f, 1f));
+            SetRandomMaterialValues(_coloredMaterialCache, randomFloat, randomVector);
+            SetRandomMaterialValues(_coloredMaterialNoStarPowerCache, randomFloat, randomVector);
+        }
+
+        private static MaterialInfo[] ReadMaterials(ReadOnlySpan<MeshEmissionMaterialIndex> slots)
+        {
+            if (slots.IsEmpty) return Array.Empty<MaterialInfo>();
+
+            var materials = new MaterialInfo[slots.Length];
+            for (int i = 0; i < slots.Length; i++)
+                materials[i] = MaterialInfo.From(slots[i]);
+            return materials;
+        }
+
+        private static void SetRandomMaterialValues(MaterialInfo[] materials, float randomFloat, Vector2 randomVector)
+        {
+            foreach (var info in materials)
             {
                 var material = info.MaterialCache;
 
@@ -269,7 +289,12 @@ namespace YARG.Gameplay.Visuals
             }
         }
 
-        public void SetActive(bool a) => gameObject.SetActive(a);
+        public void SetActive(bool a)
+        {
+            using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.NoteGroupSetActive,
+                TargetedPerformance.Enabled && _themeNote != null ? (int)_themeNote.NoteType : 0);
+            gameObject.SetActive(a);
+        }
 
         /// <summary>
         /// This method is only called <b>once</b> when the note prefab is being created

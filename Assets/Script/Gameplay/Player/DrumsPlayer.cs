@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using YARG.Core.Diagnostics;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
@@ -16,6 +17,7 @@ using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Visuals;
 using YARG.Helpers;
+using YARG.Helpers.Authoring;
 using YARG.Helpers.Extensions;
 using YARG.Menu.HighwayConfiguration;
 using YARG.Player;
@@ -147,6 +149,9 @@ namespace YARG.Gameplay.Player
         private bool _fiveLaneMode;
         [SerializeField]
         private FretArray _fretArray;
+
+        internal IEnumerable<EffectLight> GetProCymbalHitLights() =>
+            _fretArray.GetHitLights((int) FourLaneDrumPad.YellowCymbal, includeSustain: false);
         [SerializeField]
         private KickFretFlash _kickFretFlash;
 
@@ -722,102 +727,99 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            DrumNote kickLaneStart = null;
             foreach (var childNote in parentNote.AllNotes)
             {
-                if (childNote.IsKickLaneStart)
+                if (!childNote.IsKickLaneStart) continue;
+                SpawnStartedKickLanes(parentNote, childNote);
+                return;
+            }
+        }
+
+        private void SpawnStartedKickLanes(DrumNote parentNote, DrumNote kickLaneStart)
+        {
+            DrumNote kickLaneEnd = kickLaneStart;
+            var noteRef = parentNote.NextNote;
+
+            while (noteRef is not null)
+            {
+                var containsKickLaneEnd = false;
+
+                foreach (var childNote in noteRef.AllNotes)
                 {
-                    kickLaneStart = childNote;
+                    if (childNote.IsKickLane)
+                    {
+                        kickLaneEnd = childNote;
+                    }
+
+                    if (childNote.IsKickLaneEnd)
+                    {
+                        containsKickLaneEnd = true;
+                    }
+                }
+
+                if (containsKickLaneEnd)
+                {
                     break;
                 }
+
+                noteRef = noteRef.NextNote;
             }
 
-            if (kickLaneStart is not null)
+            if (kickLaneEnd is not null)
             {
-                DrumNote kickLaneEnd = kickLaneStart;
-                var noteRef = parentNote.NextNote;
-
-                while (noteRef is not null)
+                if (!LanePool.CanSpawnAmount(NumberOfDedicatedKickLanes))
                 {
-                    var containsKickLaneEnd = false;
-
-                    foreach (var childNote in noteRef.AllNotes)
-                    {
-                        if (childNote.IsKickLane)
-                        {
-                            kickLaneEnd = childNote;
-                        }
-
-                        if (childNote.IsKickLaneEnd)
-                        {
-                            containsKickLaneEnd = true;
-                        }
-                    }
-
-                    if (containsKickLaneEnd)
-                    {
-                        break;
-                    }
-
-                    noteRef = noteRef.NextNote;
-                }
-
-                if (kickLaneEnd is not null)
-                {
+                    BeforeNativeLaneAllocation(NumberOfDedicatedKickLanes);
                     if (!LanePool.CanSpawnAmount(NumberOfDedicatedKickLanes))
-                    {
-                        BeforeNativeLaneAllocation(NumberOfDedicatedKickLanes);
-                        if (!LanePool.CanSpawnAmount(NumberOfDedicatedKickLanes))
-                        {
-                            return;
-                        }
-                    }
-
-                    var newLane = TakeNativeLane();
-                    if (newLane == null)
                     {
                         return;
                     }
-                    newLane.SetTimeRange(kickLaneStart.Time, kickLaneEnd.Time);
-                    InitializeSpawnedLane(newLane, kickLaneStart);
-                    ModifyLaneFromNote(newLane, kickLaneStart);
+                }
 
-                    if (NumberOfDedicatedKickLanes == 2)
+                var newLane = TakeNativeLane();
+                if (newLane == null)
+                {
+                    return;
+                }
+                newLane.SetTimeRange(kickLaneStart.Time, kickLaneEnd.Time);
+                InitializeSpawnedLane(newLane, kickLaneStart);
+                ModifyLaneFromNote(newLane, kickLaneStart);
+
+                if (NumberOfDedicatedKickLanes == 2)
+                {
+                    if (!LanePool.CanSpawnAmount(1))
                     {
-                        if (!LanePool.CanSpawnAmount(1))
-                        {
-                            BeforeNativeLaneAllocation(1);
-                        }
-
-                        var newDoubleKickLane = TakeNativeLane();
-                        if (newDoubleKickLane == null)
-                        {
-                            LanePool.Return(newLane);
-                            return;
-                        }
-                        newDoubleKickLane.SetTimeRange(kickLaneStart.Time, kickLaneEnd.Time);
-
-                        var doubleKickHighwayOrderingInfo = _highwayOrdering[DOUBLE_KICK_FRET_INDEX];
-                        var doubleKickPosition = doubleKickHighwayOrderingInfo.Position;
-                        var doubleKickColor = (_fiveLaneMode ?
-                            Player.ColorProfile.FiveLaneDrums.GetNoteColor(doubleKickHighwayOrderingInfo.ColorIndex) :
-                            Player.ColorProfile.FourLaneDrums.GetNoteColor(doubleKickHighwayOrderingInfo.ColorIndex)
-                        ).ToUnityColor();
-
-                        newDoubleKickLane.SetAppearance(
-                            Player.Profile.CurrentInstrument,
-                            DOUBLE_KICK_FRET_INDEX,
-                            doubleKickPosition,
-                            LaneCount,
-                            doubleKickColor
-                        );
-
-                        newDoubleKickLane.MultiplyScale(FRET_ARRAY_PADDING_CORRECTION);
-                        newDoubleKickLane.EnableFromPool();
+                        BeforeNativeLaneAllocation(1);
                     }
 
-                    newLane.EnableFromPool();
+                    var newDoubleKickLane = TakeNativeLane();
+                    if (newDoubleKickLane == null)
+                    {
+                        LanePool.Return(newLane);
+                        return;
+                    }
+                    newDoubleKickLane.SetTimeRange(kickLaneStart.Time, kickLaneEnd.Time);
+
+                    var doubleKickHighwayOrderingInfo = _highwayOrdering[DOUBLE_KICK_FRET_INDEX];
+                    var doubleKickPosition = doubleKickHighwayOrderingInfo.Position;
+                    var doubleKickColor = (_fiveLaneMode ?
+                        Player.ColorProfile.FiveLaneDrums.GetNoteColor(doubleKickHighwayOrderingInfo.ColorIndex) :
+                        Player.ColorProfile.FourLaneDrums.GetNoteColor(doubleKickHighwayOrderingInfo.ColorIndex)
+                    ).ToUnityColor();
+
+                    newDoubleKickLane.SetAppearance(
+                        Player.Profile.CurrentInstrument,
+                        DOUBLE_KICK_FRET_INDEX,
+                        doubleKickPosition,
+                        LaneCount,
+                        doubleKickColor
+                    );
+
+                    newDoubleKickLane.MultiplyScale(FRET_ARRAY_PADDING_CORRECTION);
+                    newDoubleKickLane.EnableFromPool();
                 }
+
+                newLane.EnableFromPool();
             }
         }
 
@@ -925,14 +927,17 @@ namespace YARG.Gameplay.Player
 
         protected override void OnNoteHit(int index, DrumNote note)
         {
+            using var hit = TargetedPerformance.MeasureWithContext(TargetedOperation.ClassicDrumHit, unchecked((int) note.Tick));
             DrumsEngine.TraceEliteLane($"Unity OnNoteHit index={index} tick={note.Tick} pad={note.Pad} " +
                 $"origin={note.ConversionOrigin?.ToString() ?? "none"} combo={Engine.EngineStats.Combo}");
-            base.OnNoteHit(index, note);
+            using (TargetedPerformance.Measure(TargetedOperation.DrumHitBookkeeping))
+                base.OnNoteHit(index, note);
             OnNoteHitOrMissed(note);
 
             // Remember that drums treat each note separately
 
-            (NotePool.GetByKey(note) as DrumsNoteElement)?.HitNote();
+            using (TargetedPerformance.Measure(TargetedOperation.DrumHitGemReturn))
+                (NotePool.GetByKey(note) as DrumsNoteElement)?.HitNote();
 
             // The AnimType doesn't actually matter here
             // We handle the animation in OnPadHit instead
@@ -1432,6 +1437,7 @@ namespace YARG.Gameplay.Player
 
         private void AnimateFret(int pad, Fret.AnimType animType)
         {
+            using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.ClassicHitFeedback, pad);
             // Four and five lane drums have the same kick value
             if ((pad == (int) FourLaneDrumPad.Kick && NumberOfDedicatedKickLanes == 0) || pad == (int)FourLaneDrumPad.Wildcard)
             {

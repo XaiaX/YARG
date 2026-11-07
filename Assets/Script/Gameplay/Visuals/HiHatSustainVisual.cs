@@ -19,8 +19,8 @@ namespace YARG.Gameplay.Visuals
         private readonly List<Vector2> _state = new();
         private readonly List<Vector4> _waves = new();
         private readonly List<Vector3> _envelopes = new();
-        private readonly Dictionary<EliteHiHatSustain, HiHatSustainExpansion> _expansions = new();
         private readonly Dictionary<EliteHiHatSustain, int> _indices = new();
+        private HiHatSustainExpansion[] _expansions = Array.Empty<HiHatSustainExpansion>();
         private HiHatSustainExpansion _carriedExpansion;
         private int[] _runEnds;
         private bool[] _pedalOrigins;
@@ -46,13 +46,16 @@ namespace YARG.Gameplay.Visuals
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             _width = width;
             _sync = null;
-            _expansions.Clear(); _indices.Clear(); _carriedExpansion = default;
-            _runEnds = HiHatSustainExpansion.FindRunEnds(engine.HiHatSustains);
-            _pedalOrigins = new bool[engine.HiHatSustains.Count];
-            for (int i = 0; i < engine.HiHatSustains.Count; i++)
+            _indices.Clear();
+            _carriedExpansion = default;
+            var sustains = engine.HiHatSustains;
+            _runEnds = HiHatSustainExpansion.FindRunEnds(sustains);
+            _expansions = new HiHatSustainExpansion[sustains.Count];
+            _pedalOrigins = new bool[sustains.Count];
+            for (int i = 0; i < sustains.Count; i++)
             {
-                _indices.Add(engine.HiHatSustains[i], i);
-                _pedalOrigins[i] = HiHatSustainExpansion.HasVisiblePedal(engine.HiHatSustains[i]);
+                _indices.Add(sustains[i], i);
+                _pedalOrigins[i] = HiHatSustainExpansion.HasVisiblePedal(sustains[i]);
             }
             SetColors(color, color);
             _first = 0;
@@ -96,7 +99,7 @@ namespace YARG.Gameplay.Visuals
         {
             if (!double.IsFinite(time) || sustain == null || !_indices.TryGetValue(sustain, out int index)) return;
             _carriedExpansion = HiHatSustainExpansion.Activate(_carriedExpansion, index, _runEnds[index], time, _pedalOrigins[index]);
-            _expansions[sustain] = _carriedExpansion;
+            _expansions[index] = _carriedExpansion;
         }
 
         public void ResetInheritedWidth() => _carriedExpansion = default;
@@ -199,9 +202,9 @@ namespace YARG.Gameplay.Visuals
             float expansion = pedal ? 1 : 0;
             if (!pedal)
             {
-                bool hasOrigin = _expansions.TryGetValue(sustain, out var source);
-                if (!hasOrigin && _carriedExpansion.Contains(index)) { source = _carriedExpansion; hasOrigin = true; }
-                if (hasOrigin)
+                var source = _expansions[index];
+                if (!source.IsValid && _carriedExpansion.Contains(index)) source = _carriedExpansion;
+                if (source.IsValid)
                     expansion = source.Immediate ? 1 : Mathf.SmoothStep(0, 1,
                         (float)((QuarterNote(_engine.CurrentTime) - QuarterNote(source.OriginTime)) * 4));
                 else if (held)
@@ -283,7 +286,11 @@ namespace YARG.Gameplay.Visuals
         public void Clear(bool resetActivationTimes = true)
         {
             _mesh?.Clear();
-            if (resetActivationTimes) { _expansions.Clear(); _carriedExpansion = default; }
+            if (resetActivationTimes)
+            {
+                Array.Clear(_expansions, 0, _expansions.Length);
+                _carriedExpansion = default;
+            }
             _first = 0;
             _lastTime = double.NegativeInfinity;
         }

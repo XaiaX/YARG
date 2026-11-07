@@ -22,6 +22,7 @@ namespace YARG.PerformanceTesting
             "HighwayAntiAliasingQuality", "VenueAntiAliasing", "VenueAntiAliasingQuality",
             "VenueTemporalAntiAliasingQuality", "DisableBloom", "DisableFilmGrain",
             "ReduceFlashingLights", "StarPowerHighwayFx", "SongBackgroundOpacity",
+            "DisableDefaultBackground", "DisableGlobalBackgrounds", "DisablePerSongBackgrounds",
             "StaticVocalsMode", "EnableTrackEffects", "EnableHighwayAnimation",
             "KickBounceMultiplier", "HighwayTiltMultiplier", "FpsStats", "FrameGraph",
             "TimingDiagnostics", "TargetedPerformanceChecks"

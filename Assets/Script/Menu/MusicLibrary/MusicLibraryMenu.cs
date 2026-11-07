@@ -161,6 +161,8 @@ namespace YARG.Menu.MusicLibrary
 
         private CancellationTokenSource _previewCanceller;
         private PreviewContext _previewContext;
+        private Task _previewWork = Task.CompletedTask;
+        private bool _previewStoppedForGameplay;
         private double _previewDelay;
 
         private SongEntry _currentSong;
@@ -477,8 +479,9 @@ namespace YARG.Menu.MusicLibrary
             }
 
             StopPreview();
+            if (_previewStoppedForGameplay) return;
             _previewCanceller = new CancellationTokenSource();
-            StartPreview(_previewDelay, _previewCanceller);
+            TrackPreviewWork(StartPreviewAsync(_previewDelay, _previewCanceller));
 
             _previewDelay = PREVIEW_SCROLL_DELAY;
         }
@@ -697,6 +700,7 @@ namespace YARG.Menu.MusicLibrary
             ShowPlaylist.Clear();
             _previewCanceller?.Cancel();
             _previewContext?.Dispose();
+            if (_previewContext != null) TrackPreviewWork(_previewContext.WaitForCompletionAsync());
             _previewContext = null;
             StemSettings.ApplySettings = true;
             MenuManager.Instance.PopMenu();
@@ -757,7 +761,26 @@ namespace YARG.Menu.MusicLibrary
             _ = StopPreviewAsync(clearCurrentSong);
         }
 
-        private async Task StopPreviewAsync(bool clearCurrentSong = false)
+        internal Task StopPreviewForGameplayAsync()
+        {
+            _previewStoppedForGameplay = true;
+            StopPreview(clearCurrentSong: true);
+            return _previewWork;
+        }
+
+        private void TrackPreviewWork(Task work)
+        {
+            _previewWork = _previewWork.IsCompletedSuccessfully ? work : Task.WhenAll(_previewWork, work);
+        }
+
+        private Task StopPreviewAsync(bool clearCurrentSong = false)
+        {
+            var work = CancelPreviewAsync(clearCurrentSong);
+            TrackPreviewWork(work);
+            return work;
+        }
+
+        private async Task CancelPreviewAsync(bool clearCurrentSong)
         {
             if (clearCurrentSong)
             {
@@ -792,6 +815,7 @@ namespace YARG.Menu.MusicLibrary
 
             previewCanceller?.Cancel();
             previewContext?.Dispose();
+            if (previewContext != null) TrackPreviewWork(previewContext.WaitForCompletionAsync());
             previewCanceller?.Dispose();
         }
 
@@ -824,7 +848,7 @@ namespace YARG.Menu.MusicLibrary
             }
         }
 
-        private async void StartPreview(double delay, CancellationTokenSource canceller)
+        private async Task StartPreviewAsync(double delay, CancellationTokenSource canceller)
         {
             if (_currentSong == null)
             {
@@ -860,6 +884,7 @@ namespace YARG.Menu.MusicLibrary
                 else
                 {
                     context.Dispose();
+                    await context.WaitForCompletionAsync();
                 }
             }
         }

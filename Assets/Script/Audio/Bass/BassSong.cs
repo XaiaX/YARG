@@ -8,6 +8,7 @@ using ManagedBass.Mix;
 using UnityEngine;
 using YARG.Audio.BASS.Effects;
 using YARG.Core.Audio;
+using YARG.Core.Diagnostics;
 using YARG.Core.Logging;
 using YARG.Core.Song;
 using YARG.Helpers;
@@ -257,10 +258,24 @@ namespace YARG.Audio.BASS
 
         protected override double GetPosition_Internal() => GetSongPosition();
 
-        protected override SyncPosition GetSyncPosition_Internal()
+        protected override SyncPosition GetSyncPosition_Internal() => ReadSyncPosition(TargetedPerformance.Enabled);
+
+        protected override bool TryGetSyncPosition_Internal(out SyncPosition position)
+        {
+            position = default;
+            if (!TryGetSongPositionSnapshot(out double heardPosition, out double decodePosition,
+                out double outputDelay, TargetedPerformance.Enabled, nonBlocking: true))
+                return false;
+
+            position = new SyncPosition(heardPosition,
+                decodePosition - (_songSpeed * outputDelay) - (_outputLatency * _songSpeed));
+            return true;
+        }
+
+        private SyncPosition ReadSyncPosition(bool profile)
         {
             bool measured = TryGetSongPositionSnapshot(out double heardPosition,
-                out double decodePosition, out double outputDelay);
+                out double decodePosition, out double outputDelay, profile);
             double controlPosition = measured
                 ? decodePosition - (_songSpeed * outputDelay) -
                     (_outputLatency * _songSpeed)
@@ -268,7 +283,7 @@ namespace YARG.Audio.BASS
             return new SyncPosition(heardPosition, controlPosition);
         }
 
-        protected override double GetControlPosition_Internal() => GetSyncPosition_Internal().Control;
+        protected override double GetControlPosition_Internal() => ReadSyncPosition(false).Control;
 
         protected override double GetTempoStreamLatency_Internal() => _connection?.GetCommandDelay() ?? 0;
 
@@ -599,15 +614,16 @@ namespace YARG.Audio.BASS
         }
 
         private bool TryGetSongPositionSnapshot(out double heardPosition,
-            out double decodePosition, out double outputDelay)
+            out double decodePosition, out double outputDelay, bool profile = false, bool nonBlocking = false)
         {
             heardPosition = _lastSongPosition;
             decodePosition = _lastSongPosition;
             outputDelay = 0;
 
-            if (_connection?.TryGetPositionSnapshot(out var snapshot) != true)
+            bool busy = false;
+            if (_connection?.ReadPositionSnapshot(out var snapshot, out busy, profile, nonBlocking) != true)
             {
-                YargLogger.LogFormatError("Failed to get byte position: {0}!", Bass.LastError);
+                if (!busy) YargLogger.LogFormatError("Failed to get byte position: {0}!", Bass.LastError);
                 return false;
             }
 
@@ -623,8 +639,12 @@ namespace YARG.Audio.BASS
                 _seekPending = false;
             }
 
-            bool heardValid = TryConvertTempoBytesToSongPosition(snapshot.HeardPosition, out heardPosition);
-            bool decodeValid = TryConvertTempoBytesToSongPosition(snapshot.DecodePosition, out decodePosition);
+            bool heardValid, decodeValid;
+            using (profile ? TargetedPerformance.Measure(TargetedOperation.AudioClockBassConvert) : default)
+            {
+                heardValid = TryConvertTempoBytesToSongPosition(snapshot.HeardPosition, out heardPosition);
+                decodeValid = TryConvertTempoBytesToSongPosition(snapshot.DecodePosition, out decodePosition);
+            }
             if (heardValid)
             {
                 _lastSongPosition = heardPosition;

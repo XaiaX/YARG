@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using PlasticBand.Haptics;
 using UnityEngine;
+using YARG.Core.Diagnostics;
 using UnityEngine.InputSystem;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
@@ -274,7 +275,8 @@ namespace YARG.Gameplay.Player
                 }
             }
 
-            BaseEngine.Update(time);
+            using (TargetedPerformance.MeasureWithContext(TargetedOperation.EngineUpdate, HighwayIndex))
+                BaseEngine.Update(time);
         }
 
         protected virtual bool HasPhysicalInputAliases => false;

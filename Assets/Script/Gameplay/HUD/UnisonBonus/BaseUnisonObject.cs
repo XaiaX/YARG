@@ -12,6 +12,15 @@ namespace YARG.Gameplay.HUD
         protected int[]  ParticipantNotesHit;
         protected int    ParticipantCount;
 
+        protected override GameManager ResolveGameManager()
+        {
+            // The icon group and bar first activate under the already-initialized HUD.
+            var display = GetComponentInParent<UnisonDisplay>(true);
+            return display != null && display.GameplayContext != null
+                ? display.GameplayContext
+                : base.ResolveGameManager();
+        }
+
         protected float ParticipantProgress(int engineId) =>
             YargMath.InverseLerpF(0f, ParticipantTotalNotes[engineId], ParticipantNotesHit[engineId]);
 

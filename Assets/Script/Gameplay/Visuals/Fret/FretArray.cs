@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using YARG.Core.Chart;
+using YARG.Helpers.Authoring;
 using YARG.Themes;
 using static YARG.Core.Game.ColorProfile;
 
@@ -295,6 +296,16 @@ namespace YARG.Gameplay.Visuals
         public void SetSustained(int index, bool sustained)
         {
             _frets[index].SetSustained(sustained);
+        }
+
+        internal IEnumerable<EffectLight> GetHitLights(int index, bool includeSustain)
+        {
+            if (!_frets.TryGetValue(index, out var fret)) yield break;
+            foreach (var light in fret.ThemeBind.HitEffect.EffectLights)
+                yield return light;
+            if (!includeSustain) yield break;
+            foreach (var light in fret.ThemeBind.SustainEffect.EffectLights)
+                yield return light;
         }
 
         public void PlayHitAnimation(int index)

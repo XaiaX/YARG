@@ -255,9 +255,14 @@ namespace YARG.Audio.BASS
 
         public long GetPosition() => TryGetPositionSnapshot(out var snapshot) ? snapshot.HeardPosition : -1;
 
-        public bool TryGetPositionSnapshot(out BassSourcePositionSnapshot snapshot)
+        public bool TryGetPositionSnapshot(out BassSourcePositionSnapshot snapshot, bool profile = false)
+            => ReadPositionSnapshot(out snapshot, out _, profile, false);
+
+        public bool ReadPositionSnapshot(out BassSourcePositionSnapshot snapshot, out bool busy,
+            bool profile, bool nonBlocking)
         {
-            if (!_readAhead.TryGetPositionSnapshot(TempoStreamHandle, _endpointDelayFrames, out var native))
+            if (!_readAhead.ReadPositionSnapshot(TempoStreamHandle, _endpointDelayFrames,
+                out var native, out busy, profile, nonBlocking))
             {
                 snapshot = default;
                 return false;

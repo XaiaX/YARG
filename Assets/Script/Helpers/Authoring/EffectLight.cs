@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using YARG.Core.Diagnostics;
 using UnityEngine.Serialization;
 
 namespace YARG.Helpers.Authoring
@@ -35,6 +36,9 @@ namespace YARG.Helpers.Authoring
         private Light _light;
 
         private float _initialIntensity;
+
+        internal Light RuntimeLight => _light;
+        internal float AuthoredIntensity => _initialIntensity;
 
         private float BrightIntensity => _initialIntensity * 5;
 
@@ -95,6 +99,7 @@ namespace YARG.Helpers.Authoring
 
         public void Play()
         {
+            using var timing = TargetedPerformance.Measure(TargetedOperation.HitLightPlay);
             _light.intensity = GetIntensity();
             _timeRemaining = _totalDuration;
             _playing = true;

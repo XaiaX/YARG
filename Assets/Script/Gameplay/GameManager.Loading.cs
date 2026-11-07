@@ -320,6 +320,38 @@ namespace YARG.Gameplay
             YargLogger.LogFormatDebug("Audio calibration: {0}, video calibration: {1}, song offset: {2}",
                 _songRunner.AudioCalibration, _songRunner.VideoCalibration, _songRunner.SongOffset);
 
+#if ENABLE_MONO && !UNITY_EDITOR
+            if (PerformanceTesting.PerformanceFixtureLaunch.Definition?.SkipDrumHitWarmup != true)
+            {
+                var warmupStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                int prepared = DrumHitWarmup.Prepare(_players);
+                if (prepared > 0 && PerformanceTesting.PerformanceFixtureLaunch.Requested)
+                {
+                    double warmupMs = (System.Diagnostics.Stopwatch.GetTimestamp() - warmupStart) *
+                        (1000.0 / System.Diagnostics.Stopwatch.Frequency);
+                    YargLogger.LogFormatInfo("[DrumHitWarmup] Prepared {0} engine paths in {1:F3} ms", prepared, warmupMs);
+                }
+            }
+#endif
+
+            if (PerformanceTesting.PerformanceFixtureLaunch.Definition?.WarmEliteHitLighting == true)
+            {
+                var lightingStart = System.Diagnostics.Stopwatch.StartNew();
+                bool rendered = _players.OfType<EliteDrumsPlayer>().Any(_trackViewManager.WarmEliteHitLighting);
+                YargLogger.LogFormatInfo("[EliteHitLighting] Rendered {0} in {1:F3} ms",
+                    rendered, lightingStart.Elapsed.TotalMilliseconds);
+            }
+
+            if (PerformanceTesting.PerformanceFixtureLaunch.Definition?.WarmProDrumHitLighting == true)
+            {
+                var lightingStart = System.Diagnostics.Stopwatch.StartNew();
+                bool rendered = _players.OfType<DrumsPlayer>()
+                    .Where(player => player.NoteTrack.Instrument == Instrument.ProDrums)
+                    .Any(_trackViewManager.WarmProDrumHitLighting);
+                YargLogger.LogFormatInfo("[ProDrumHitLighting] Rendered {0} in {1:F3} ms",
+                    rendered, lightingStart.Elapsed.TotalMilliseconds);
+            }
+
             // Loaded, enable updates
             enabled = true;
             IsSongStarted = true;

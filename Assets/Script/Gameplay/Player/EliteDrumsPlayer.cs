@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using YARG.Core.Diagnostics;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
@@ -15,6 +16,7 @@ using YARG.Core.Replays;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Visuals;
 using YARG.Helpers;
+using YARG.Helpers.Authoring;
 using YARG.Helpers.Extensions;
 using YARG.Player;
 using YARG.Settings;
@@ -71,22 +73,21 @@ namespace YARG.Gameplay.Player
             _kickFretFlash = kickFlash;
         }
 
-        private readonly Dictionary<SongStem, bool> _stemMuteStates = new()
+        private static readonly SongStem[] _drumStems =
         {
-            { SongStem.Drums1, false }, { SongStem.Drums2, false },
-            { SongStem.Drums3, false }, { SongStem.Drums4, false }
+            SongStem.Drums1, SongStem.Drums2, SongStem.Drums3, SongStem.Drums4
         };
 
         public override void SetStemMuteState(bool muted)
         {
-            foreach (var stem in new[] { SongStem.Drums1, SongStem.Drums2, SongStem.Drums3, SongStem.Drums4 })
-            {
-                if (_stemMuteStates[stem] == muted) continue;
+            if (IsStemMuted == muted) return;
+            foreach (var stem in _drumStems)
                 GameManager.ChangeStemMuteState(stem, muted);
-                _stemMuteStates[stem] = muted;
-            }
             IsStemMuted = muted;
         }
+
+        internal IEnumerable<EffectLight> GetHiHatLights() =>
+            _fretArray.GetHitLights((int) EliteDrumPad.HiHat, includeSustain: true);
         protected override float[] StarMultiplierThresholds { get; set; } =
             { 0.06f, 0.12f, 0.2f, 0.45f, 0.75f, 1.09f };
 
@@ -428,7 +429,6 @@ namespace YARG.Gameplay.Player
 
         protected override void OnNoteSpawned(EliteDrumNote parentNote)
         {
-            base.OnNoteSpawned(parentNote);
             // Pedal-down duration describes hat state, not a rendered roll lane.
             if (!Engine.BaseParameters.EnableLanes)
             {
@@ -506,8 +506,11 @@ namespace YARG.Gameplay.Player
 
         protected override void OnNoteHit(int index, EliteDrumNote note)
         {
-            base.OnNoteHit(index, note);
-            (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.HitNote();
+            using var hit = TargetedPerformance.MeasureWithContext(TargetedOperation.EliteDrumHit, unchecked((int) note.Tick));
+            using (TargetedPerformance.Measure(TargetedOperation.DrumHitBookkeeping))
+                base.OnNoteHit(index, note);
+            using (TargetedPerformance.Measure(TargetedOperation.DrumHitGemReturn))
+                (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.HitNote();
             if (note.Pad == (int) EliteDrumPad.Wildcard)
             {
                 // The following pad callback supplies the physical strike, not the wildcard identity.
@@ -520,6 +523,7 @@ namespace YARG.Gameplay.Player
 
         private void AnimateHitFeedback(EliteDrumNote note)
         {
+            using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.EliteHitFeedback, note.Pad);
             var colors = Player?.ColorProfile?.EliteDrums ?? new ColorProfile.EliteDrumsColors();
             var effectRole = IsFootPad(note.Pad) && (note.IsFlam || note.IsFlatFlam)
                 ? EliteDrumsColorRole.KickFlam

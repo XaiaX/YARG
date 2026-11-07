@@ -114,6 +114,12 @@ namespace YARG.Themes
         public IEnumerable<MeshEmissionMaterialIndex> ColoredMetalMaterials => _coloredMetalMaterials;
         public IEnumerable<MeshEmissionMaterialIndex> ColoredSecondaryMaterials => _coloredSecondaryMaterials;
 
+        internal System.ReadOnlySpan<MeshEmissionMaterialIndex> ColorSlots => _coloredMaterials;
+        internal System.ReadOnlySpan<MeshEmissionMaterialIndex> NoStarPowerColorSlots => _coloredMaterialsNoStarPower;
+        internal System.ReadOnlySpan<MeshEmissionMaterialIndex> MetalColorSlots => _coloredMetalMaterials;
+        internal System.ReadOnlySpan<MeshEmissionMaterialIndex> SecondaryColorSlots => _coloredSecondaryMaterials;
+        internal System.ReadOnlySpan<MeshEmissionMaterialIndex> SecondKickColorSlots => _coloredKick2Materials;
+
         private void OnDrawGizmos()
         {
             Gizmos.color = Color.green;

@@ -24,6 +24,10 @@ namespace YARG.PerformanceTesting
         [JsonProperty("durationSeconds")] public double? DurationSeconds { get; set; }
         [JsonProperty("loadTimeoutSeconds")] public double LoadTimeoutSeconds { get; set; } = 300;
         [JsonProperty("runTimeoutSeconds")] public double RunTimeoutSeconds { get; set; } = 1200;
+        [JsonProperty("deferTimingWrites")] public bool DeferTimingWrites { get; set; }
+        [JsonProperty("skipDrumHitWarmup")] public bool SkipDrumHitWarmup { get; set; }
+        [JsonProperty("warmEliteHitLighting")] public bool WarmEliteHitLighting { get; set; }
+        [JsonProperty("warmProDrumHitLighting")] public bool WarmProDrumHitLighting { get; set; }
         [JsonProperty("requireFocus")] public bool RequireFocus { get; set; } = true;
 
         public static PerformanceFixtureDefinition Parse(string json)

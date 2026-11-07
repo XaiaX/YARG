@@ -34,7 +34,9 @@ public:
         std::uint32_t endpointDelayFrames, int& error) noexcept;
     int getPositionSnapshot(std::uint32_t source,
         std::uint32_t endpointDelayFrames,
-        yarg_read_ahead_position_snapshot& snapshot) noexcept;
+        yarg_read_ahead_position_snapshot& snapshot,
+        yarg_read_ahead_position_timing* timing = nullptr,
+        bool nonBlocking = false) noexcept;
     int getStats(yarg_read_ahead_stats& stats) noexcept;
     bool destroy(int* bassError) noexcept;
 
@@ -61,7 +63,8 @@ private:
     std::uint64_t playbackClockElapsedFrames(std::int64_t timestamp,
         std::int64_t clockTimestamp) const noexcept;
     std::uint32_t remainingPlaybackDelayFrames(std::uint32_t endpointDelayFrames,
-        std::int64_t timestamp) noexcept;
+        std::int64_t timestamp, std::uint64_t* deferredHeardFrame = nullptr) noexcept;
+    std::uint64_t advanceHeardFrame(std::uint64_t estimated) noexcept;
     bool playbackClockExpired(std::uint64_t submittedFrames,
         std::uint32_t callbackFrames, std::int64_t timestamp) const noexcept;
     void updateMinimum(std::uint32_t queued) noexcept;

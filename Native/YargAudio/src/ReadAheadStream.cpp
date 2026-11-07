@@ -178,7 +178,8 @@ std::int64_t ReadAheadStream::getSourcePosition(std::uint32_t source,
 
 int ReadAheadStream::getPositionSnapshot(std::uint32_t source,
     std::uint32_t endpointDelayFrames,
-    yarg_read_ahead_position_snapshot& snapshot) noexcept {
+    yarg_read_ahead_position_snapshot& snapshot,
+    yarg_read_ahead_position_timing* timing, bool nonBlocking) noexcept {
     if (!renderer_ || source == 0) {
         return YARG_AUDIO_ERROR_INVALID_ARGUMENT;
     }
@@ -186,24 +187,47 @@ int ReadAheadStream::getPositionSnapshot(std::uint32_t source,
     // The callback may update this state while the game reads it. Odd means
     // busy; a changed value means retry.
     SourcePositionSnapshot position{};
+    std::chrono::steady_clock::time_point busyStart{};
+    bool timingBusy = false;
+    std::uint64_t deferredHeardFrame = 0;
+    if (nonBlocking) endpointDelayFrames_.store(endpointDelayFrames, std::memory_order_relaxed);
     for (;;) {
         const auto sequence = consumerSequence_.load(std::memory_order_acquire);
         if ((sequence & 1u) != 0) {
+            if (nonBlocking) return YARG_AUDIO_ERROR_BUSY;
+            if (timing) {
+                if (!timingBusy) {
+                    busyStart = std::chrono::steady_clock::now();
+                    timingBusy = true;
+                }
+                ++timing->callback_yields;
+            }
             std::this_thread::yield();
             continue;
         }
 
-        const auto succeeded = renderer_->sourcePositionSnapshotAfterLock(
-            source, position, [this, endpointDelayFrames] {
-                return remainingPlaybackDelayFrames(
-                    endpointDelayFrames, timestampProvider_());
-            });
-        if (!succeeded) {
-            return YARG_AUDIO_ERROR_BASS;
+        if (timingBusy) {
+            timing->callback_busy_ns += positionElapsedNs(busyStart);
+            timingBusy = false;
         }
+        const auto attemptStart = timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        if (timing) ++timing->attempts;
+        const auto result = renderer_->sourcePositionSnapshotAfterLock(
+            source, position, [&] {
+                return remainingPlaybackDelayFrames(
+                    endpointDelayFrames, timestampProvider_(),
+                    nonBlocking ? &deferredHeardFrame : nullptr);
+            }, timing, nonBlocking);
+        if (result != YARG_AUDIO_OK) return result;
         if (consumerSequence_.load(std::memory_order_acquire) == sequence) {
+            if (nonBlocking) advanceHeardFrame(deferredHeardFrame);
             break;
         }
+        if (timing) {
+            ++timing->invalidated_attempts;
+            timing->invalidated_ns += positionElapsedNs(attemptStart);
+        }
+        if (nonBlocking) return YARG_AUDIO_ERROR_BUSY;
     }
 
     snapshot.total_delay_frames = position.totalDelayFrames;
@@ -465,7 +489,7 @@ void ReadAheadStream::setPlaybackClockRate(std::int64_t ratePpm,
 
 std::uint32_t ReadAheadStream::remainingPlaybackDelayFrames(
     std::uint32_t endpointDelayFrames,
-    std::int64_t timestamp) noexcept {
+    std::int64_t timestamp, std::uint64_t* deferredHeardFrame) noexcept {
     // Return frames still between BASS and the listener, including device delay.
     endpointDelayFrames_.store(endpointDelayFrames, std::memory_order_relaxed);
     const auto submittedFrames = generationConsumedFrames_.load(std::memory_order_relaxed);
@@ -492,12 +516,10 @@ std::uint32_t ReadAheadStream::remainingPlaybackDelayFrames(
     const auto estimatedHeardFrames = heardFixedFrames / PLAYBACK_CLOCK_SCALE;
 
     // Never report an earlier position than a previous read.
-    auto previousHeardFrames = lastHeardFrame_.load(std::memory_order_relaxed);
-    while (previousHeardFrames < estimatedHeardFrames &&
-        !lastHeardFrame_.compare_exchange_weak(
-            previousHeardFrames, estimatedHeardFrames,
-            std::memory_order_relaxed)) {
-    }
+    if (deferredHeardFrame) *deferredHeardFrame = estimatedHeardFrames;
+    const auto previousHeardFrames = deferredHeardFrame
+        ? lastHeardFrame_.load(std::memory_order_relaxed)
+        : advanceHeardFrame(estimatedHeardFrames);
     const auto heardFrames = std::min(
         std::max(previousHeardFrames, estimatedHeardFrames), submittedFrames);
     if (heardFrames == 0 && remainingFixedFrames > submittedFixedFrames) {
@@ -509,6 +531,14 @@ std::uint32_t ReadAheadStream::remainingPlaybackDelayFrames(
     }
     return static_cast<std::uint32_t>(std::min<std::uint64_t>(
         submittedFrames - heardFrames, UINT32_MAX));
+}
+
+std::uint64_t ReadAheadStream::advanceHeardFrame(std::uint64_t estimated) noexcept {
+    auto previous = lastHeardFrame_.load(std::memory_order_relaxed);
+    while (previous < estimated && !lastHeardFrame_.compare_exchange_weak(
+        previous, estimated, std::memory_order_relaxed)) {
+    }
+    return std::max(previous, estimated);
 }
 
 std::uint64_t ReadAheadStream::playbackClockElapsedFrames(

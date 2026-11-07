@@ -45,6 +45,12 @@ namespace YARG.Tests.EditMode
                 void Check(GameObject model)
                 {
                     var owner = model.GetComponent(noteType);
+                    var groupType = Production("YARG.Gameplay.Visuals.NoteGroup");
+                    var groups = model.GetComponentsInChildren(groupType, true);
+                    Assert.That(groups.Length, Is.GreaterThan(0));
+                    foreach (var group in groups)
+                        Assert.That(group.gameObject.activeSelf, Is.False,
+                            "Unused model branches must stay inactive when a pooled note first wakes.");
                     var spins = model.GetComponentsInChildren(Spin, true);
                     Assert.That(spins.Length, Is.GreaterThanOrEqualTo(15), "Normal, SP and both split halves need binding.");
                     foreach (var spin in spins)

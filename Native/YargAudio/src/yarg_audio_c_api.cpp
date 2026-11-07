@@ -17,6 +17,7 @@
 static_assert(sizeof(yarg_read_ahead_config) == 28);
 static_assert(sizeof(yarg_read_ahead_stats) == 104);
 static_assert(sizeof(yarg_read_ahead_position_snapshot) == 24);
+static_assert(sizeof(yarg_read_ahead_position_timing) == 56);
 static_assert(sizeof(yarg_one_shot_config) == 24);
 static_assert(sizeof(yarg_freeverb_params) == 24);
 static_assert(sizeof(yarg_dattorro_reverb_params) == 24);
@@ -385,6 +386,34 @@ int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_get_position_snapshot(
     }
     return stream->value->getPositionSnapshot(
         source, endpointDelayFrames, *snapshot);
+}
+
+int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_get_position_snapshot_timed(
+    yarg_read_ahead_stream* stream, uint32_t source, uint32_t endpointDelayFrames,
+    yarg_read_ahead_position_snapshot* snapshot, yarg_read_ahead_position_timing* timing) {
+    if (!stream || !stream->value || !snapshot || !timing ||
+        snapshot->size < sizeof(yarg_read_ahead_position_snapshot) ||
+        timing->size < sizeof(yarg_read_ahead_position_timing)) {
+        return YARG_AUDIO_ERROR_INVALID_ARGUMENT;
+    }
+    *timing = {};
+    timing->size = sizeof(yarg_read_ahead_position_timing);
+    return stream->value->getPositionSnapshot(source, endpointDelayFrames, *snapshot, timing);
+}
+
+int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_try_get_position_snapshot(
+    yarg_read_ahead_stream* stream, uint32_t source, uint32_t endpointDelayFrames,
+    yarg_read_ahead_position_snapshot* snapshot, yarg_read_ahead_position_timing* timing) {
+    if (!stream || !stream->value || !snapshot ||
+        snapshot->size < sizeof(yarg_read_ahead_position_snapshot) ||
+        (timing && timing->size < sizeof(yarg_read_ahead_position_timing))) {
+        return YARG_AUDIO_ERROR_INVALID_ARGUMENT;
+    }
+    if (timing) {
+        *timing = {};
+        timing->size = sizeof(yarg_read_ahead_position_timing);
+    }
+    return stream->value->getPositionSnapshot(source, endpointDelayFrames, *snapshot, timing, true);
 }
 
 int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_get_stats(

@@ -15,6 +15,10 @@ namespace YARG.Persistent
         public int IntervalStartFrame;
         public bool TargetedChanged;
         public TargetedPerformanceSnapshot Targeted;
+        public GcDiagnosticSample GcDiagnostics;
+        public RenderDiagnosticSample RenderDiagnostics;
+        public CpuPhaseDiagnosticSample CpuPhases;
+        public ulong CpuTimerFrequency, PresentCalledTimestamp, FrameCompleteTimestamp, FirstSubmitTimestamp;
         public double CpuMs, MainMs, RenderMs, PresentWaitMs, GpuMs;
     }
 }

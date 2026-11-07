@@ -1,5 +1,6 @@
 ﻿// pattern: Imperative Shell
 using System;
+using YARG.Core.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
 using Cysharp.Threading.Tasks;
@@ -986,154 +987,151 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
-            bool containsLaneStart = false;
             foreach (var childNote in parentNote.AllNotes)
             {
-                if (childNote.IsLaneStart && ShouldSpawnNativeLane(childNote))
+                if (!childNote.IsLaneStart || !ShouldSpawnNativeLane(childNote)) continue;
+                SpawnStartedNativeLanes(parentNote);
+                return;
+            }
+        }
+
+        private void SpawnStartedNativeLanes(TNote parentNote)
+        {
+            if (!LanePool.CanSpawnAmount(1))
+            {
+                BeforeNativeLaneAllocation(1);
+                if (!LanePool.CanSpawnAmount(1))
                 {
-                    containsLaneStart = true;
-                    break;
+                    return;
                 }
             }
 
-            if (containsLaneStart)
+            var laneStartNotes = new Dictionary<int, TNote>();
+            var laneEndTimes = new Dictionary<int, double>();
+
+            // Iterate forward to find the length of all lanes in this phrase
+            var noteRef = parentNote;
+            var thisLaneFlag = parentNote.IsTrill ? NoteFlags.Trill : NoteFlags.Tremolo;
+
+            while (noteRef != null)
             {
+                // Create one lane for single notes, create multiple lanes for non-drum chords
+                bool containsLaneEnd = false;
+                foreach (var childNote in noteRef.AllNotes)
+                {
+                    if (childNote.IsLaneEnd && ShouldSpawnNativeLane(childNote))
+                    {
+                        containsLaneEnd = true;
+                    }
+
+                    if (childNote.IsLane && ShouldSpawnNativeLane(childNote))
+                    {
+                        if (!laneStartNotes.ContainsKey(childNote.LaneNote))
+                        {
+                            laneStartNotes[childNote.LaneNote] = childNote;
+                        }
+
+                        laneEndTimes[childNote.LaneNote] = noteRef.Time;
+                    }
+                }
+
+                if (containsLaneEnd)
+                {
+                    break;
+                }
+
+                noteRef = noteRef.NextNote;
+            }
+
+            foreach (var (laneIndex, note) in laneStartNotes)
+            {
+                if (!laneEndTimes.ContainsKey(laneIndex))
+                {
+                    // Ending note was not found, do not create lane
+                    continue;
+                }
+
+                var firstLaneNote = laneStartNotes[laneIndex];
+                double startTime = firstLaneNote.Time;
+                double endTime = laneEndTimes[laneIndex];
+
+                // Extend a previous lane if possible instead of creating two adjoining lanes at the same index
+                bool extendExisting = false;
+                foreach (var poolable in LanePool.AllSpawned)
+                {
+                    // The shared pool can hold foreign IPoolables parked out of the free
+                    // stack by a failed native take (see TakeNativeLane). Iterate by the
+                    // poolable interface and skip them (and nulls) instead of casting:
+                    // a direct LaneElement cast throws InvalidCastException on the next
+                    // native lane start after a foreign item is parked.
+                    if (poolable is not LaneElement existingLane)
+                    {
+                        continue;
+                    }
+
+                    if (!ShouldExtendExistingLane(existingLane))
+                    {
+                        // Descriptor-owned adapter lanes are invisible to the native combiner:
+                        // never matched, never extended, and never allowed to consume the
+                        // first-match slot a native lane at the same index relies on.
+                        continue;
+                    }
+
+                    if (existingLane.ContainsIndex(laneIndex))
+                    {
+                        if (startTime - existingLane.EndTime <= LaneElement.COMBINE_LANE_THRESHOLD)
+                        {
+                            // New lane will overlap with existing one
+                            // Determine if the previous notes in this chart should prevent combining
+                            int notesToSearch = firstLaneNote.IsTrill ? 2 : 1;
+                            noteRef = firstLaneNote.PreviousNote;
+                            for (int n = 0; n < notesToSearch; n++)
+                            {
+                                if (noteRef == null)
+                                {
+                                    break;
+                                }
+
+                                if (existingLane.ContainsIndex(noteRef.LaneNote) && (noteRef.Flags & thisLaneFlag) != 0)
+                                {
+                                    extendExisting = true;
+                                    break;
+                                }
+
+                                noteRef = noteRef.PreviousNote;
+                            }
+                        }
+
+                        if (extendExisting)
+                        {
+                            existingLane.SetTimeRange(existingLane.ElementTime, Math.Max(endTime, existingLane.EndTime));
+                        }
+
+                        break;
+                    }
+                }
+
+                if (extendExisting)
+                {
+                    continue;
+                }
+
+                // Create a new lane element at this index
                 if (!LanePool.CanSpawnAmount(1))
                 {
                     BeforeNativeLaneAllocation(1);
-                    if (!LanePool.CanSpawnAmount(1))
-                    {
-                        return;
-                    }
                 }
 
-                var laneStartNotes = new Dictionary<int, TNote>();
-                var laneEndTimes = new Dictionary<int, double>();
-
-                // Iterate forward to find the length of all lanes in this phrase
-                var noteRef = parentNote;
-                var thisLaneFlag = parentNote.IsTrill ? NoteFlags.Trill : NoteFlags.Tremolo;
-
-                while (noteRef != null)
+                var newLane = TakeNativeLane();
+                if (newLane == null)
                 {
-                    // Create one lane for single notes, create multiple lanes for non-drum chords
-                    bool containsLaneEnd = false;
-                    foreach (var childNote in noteRef.AllNotes)
-                    {
-                        if (childNote.IsLaneEnd && ShouldSpawnNativeLane(childNote))
-                        {
-                            containsLaneEnd = true;
-                        }
-
-                        if (childNote.IsLane && ShouldSpawnNativeLane(childNote))
-                        {
-                            if (!laneStartNotes.ContainsKey(childNote.LaneNote))
-                            {
-                                laneStartNotes[childNote.LaneNote] = childNote;
-                            }
-
-                            laneEndTimes[childNote.LaneNote] = noteRef.Time;
-                        }
-                    }
-
-                    if (containsLaneEnd)
-                    {
-                        break;
-                    }
-
-                    noteRef = noteRef.NextNote;
+                    continue;
                 }
+                newLane.SetTimeRange(startTime, endTime);
+                InitializeSpawnedLane(newLane, note);
+                ModifyLaneFromNote(newLane, firstLaneNote);
 
-                foreach (var (laneIndex, note) in laneStartNotes)
-                {
-                    if (!laneEndTimes.ContainsKey(laneIndex))
-                    {
-                        // Ending note was not found, do not create lane
-                        continue;
-                    }
-
-                    var firstLaneNote = laneStartNotes[laneIndex];
-                    double startTime = firstLaneNote.Time;
-                    double endTime = laneEndTimes[laneIndex];
-
-                    // Extend a previous lane if possible instead of creating two adjoining lanes at the same index
-                    bool extendExisting = false;
-                    foreach (var poolable in LanePool.AllSpawned)
-                    {
-                        // The shared pool can hold foreign IPoolables parked out of the free
-                        // stack by a failed native take (see TakeNativeLane). Iterate by the
-                        // poolable interface and skip them (and nulls) instead of casting:
-                        // a direct LaneElement cast throws InvalidCastException on the next
-                        // native lane start after a foreign item is parked.
-                        if (poolable is not LaneElement existingLane)
-                        {
-                            continue;
-                        }
-
-                        if (!ShouldExtendExistingLane(existingLane))
-                        {
-                            // Descriptor-owned adapter lanes are invisible to the native combiner:
-                            // never matched, never extended, and never allowed to consume the
-                            // first-match slot a native lane at the same index relies on.
-                            continue;
-                        }
-
-                        if (existingLane.ContainsIndex(laneIndex))
-                        {
-                            if (startTime - existingLane.EndTime <= LaneElement.COMBINE_LANE_THRESHOLD)
-                            {
-                                // New lane will overlap with existing one
-                                // Determine if the previous notes in this chart should prevent combining
-                                int notesToSearch = firstLaneNote.IsTrill ? 2 : 1;
-                                noteRef = firstLaneNote.PreviousNote;
-                                for (int n = 0; n < notesToSearch; n++)
-                                {
-                                    if (noteRef == null)
-                                    {
-                                        break;
-                                    }
-
-                                    if (existingLane.ContainsIndex(noteRef.LaneNote) && (noteRef.Flags & thisLaneFlag) != 0)
-                                    {
-                                        extendExisting = true;
-                                        break;
-                                    }
-
-                                    noteRef = noteRef.PreviousNote;
-                                }
-                            }
-
-                            if (extendExisting)
-                            {
-                                existingLane.SetTimeRange(existingLane.ElementTime, Math.Max(endTime, existingLane.EndTime));
-                            }
-
-                            break;
-                        }
-                    }
-
-                    if (extendExisting)
-                    {
-                        continue;
-                    }
-
-                    // Create a new lane element at this index
-                    if (!LanePool.CanSpawnAmount(1))
-                    {
-                        BeforeNativeLaneAllocation(1);
-                    }
-
-                    var newLane = TakeNativeLane();
-                    if (newLane == null)
-                    {
-                        continue;
-                    }
-                    newLane.SetTimeRange(startTime, endTime);
-                    InitializeSpawnedLane(newLane, note);
-                    ModifyLaneFromNote(newLane, firstLaneNote);
-
-                    newLane.EnableFromPool();
-                }
+                newLane.EnableFromPool();
             }
         }
 
@@ -1220,6 +1218,7 @@ namespace YARG.Gameplay.Player
 
         protected virtual void SpawnNote(TNote note)
         {
+            using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.NoteSpawn, HighwayIndex);
             var poolable = NotePool.KeyedTakeWithoutEnabling(note);
             if (poolable == null)
             {

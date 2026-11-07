@@ -63,6 +63,7 @@ namespace YARG.Tests.PlayMode
             void Set(string name, bool value) => Setting(name).GetType().GetMethod("SetValueWithoutNotify")
                 .Invoke(Setting(name), new object[] { value });
             bool oldGraph = (bool)Setting("FrameGraph").GetType().GetProperty("Value").GetValue(Setting("FrameGraph"));
+            bool oldTargeted = (bool)Setting("TargetedPerformanceChecks").GetType().GetProperty("Value").GetValue(Setting("TargetedPerformanceChecks"));
             bool oldCapture = (bool)Setting("TimingDiagnostics").GetType().GetProperty("Value").GetValue(Setting("TimingDiagnostics"));
             var initialized = state.Settings.GetType().GetField("IsInitialized");
             var probeType = Production("YARG.Persistent.StutterProbe");
@@ -72,6 +73,7 @@ namespace YARG.Tests.PlayMode
             try
             {
                 initialized.SetValue(null, true);
+                Set("TargetedPerformanceChecks", false);
                 Set("TimingDiagnostics", false); Set("FrameGraph", true);
                 double deadline = Time.realtimeSinceStartupAsDouble + 5;
                 while ((int)probeType.GetProperty("SampleCount").GetValue(probe) < 5 && Time.realtimeSinceStartupAsDouble < deadline)
@@ -84,7 +86,13 @@ namespace YARG.Tests.PlayMode
                 Assert.That(graph, Is.Not.Null);
                 for (int i = 0; i < 20; i++) yield return null;
                 var text = (string)graph.GetType().GetField("_readout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(graph);
-                Assert.That(text, Does.Contain("UPDATE CADENCE"));
+                Assert.That(text, Does.Contain("FRAME DURATION"));
+                Assert.That(text, Does.Contain("Native main-thread"));
+                Assert.That(text, Does.Contain("Late-Update"));
+                var render = latest.GetType().GetField("RenderDiagnostics").GetValue(latest);
+                Assert.That(render.GetType().GetField("Enabled").GetValue(render), Is.True,
+                    "Native graph timing must work with targeted checks and CSV disabled.");
+                Assert.That(render.GetType().GetField("AvailableMask").GetValue(render), Is.EqualTo(1));
                 Assert.That(text, Does.Contain("Effective:"));
                 ScreenCapture.CaptureScreenshot("/tmp/yarg-frame-diagnostics-menu.png");
                 Set("TimingDiagnostics", true);
@@ -103,7 +111,7 @@ namespace YARG.Tests.PlayMode
             }
             finally
             {
-                Set("FrameGraph", oldGraph); Set("TimingDiagnostics", oldCapture);
+                Set("FrameGraph", oldGraph); Set("TimingDiagnostics", oldCapture); Set("TargetedPerformanceChecks", oldTargeted);
                 initialized.SetValue(null, false);
                 if (path != null && File.Exists(path)) File.Delete(path);
             }

@@ -98,7 +98,7 @@ std::int64_t RenderAheadMixer::bufferedSourcePositionLocked(
 
 bool RenderAheadMixer::sourcePositionSnapshotLocked(
     std::uint32_t sourceHandle, std::uint32_t endpointDelayFrames,
-    SourcePositionSnapshot& snapshot) noexcept {
+    SourcePositionSnapshot& snapshot, yarg_read_ahead_position_timing* timing) noexcept {
     const auto totalDelayFrames = static_cast<std::uint64_t>(ring_.available()) +
         endpointDelayFrames;
     const auto maximumFrames = UINT32_MAX / (channels_ * sizeof(float));
@@ -117,12 +117,16 @@ bool RenderAheadMixer::sourcePositionSnapshotLocked(
     const auto delayBytes = static_cast<std::uint32_t>(
         delayFrames * channels_ * sizeof(float));
 
+    auto start = timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     snapshot.decodePosition = source_->position(sourceHandle, 0);
+    if (timing) timing->bass_decode_position_ns += positionElapsedNs(start);
     if (snapshot.decodePosition < 0) {
         return false;
     }
 
+    if (timing) start = std::chrono::steady_clock::now();
     snapshot.heardPosition = source_->position(sourceHandle, delayBytes);
+    if (timing) timing->bass_heard_position_ns += positionElapsedNs(start);
     if (snapshot.heardPosition >= 0) {
         return true;
     }

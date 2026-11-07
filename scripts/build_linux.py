@@ -72,10 +72,10 @@ def execute(args):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("another Linux build workflow is already running") from None
-        return build_and_restore(project, unity, output, logs_root, args.profile)
+        return build_and_restore(project, unity, output, logs_root, args.profile, args.development)
 
 
-def build_and_restore(project, unity, output_root, logs_root, profile):
+def build_and_restore(project, unity, output_root, logs_root, profile, development=False):
     run_name = "linux-" + datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
     logs = logs_root / run_name
     logs.mkdir()
@@ -91,9 +91,12 @@ def build_and_restore(project, unity, output_root, logs_root, profile):
                       "-logFile", str(logs / "linux.log")]
     if profile:
         build.append("-profileBuild")
+    elif development:
+        build.append("-developmentBuild")
     restore = common + ["-buildTarget", "OSXUniversal", "-executeMethod", "Editor.AutomatedLinuxBuild.RestoreMac",
                         "-restoreReceipt", str(restore_receipt), "-logFile", str(logs / "restore-mac.log")]
     report = {"project": str(project), "output": str(output), "logs": str(logs), "profile": profile,
+              "development": profile or development,
               "build_succeeded": False, "mac_restored": False, "build_command": build, "restore_command": restore}
     for label, directory in [("game_commit", project), ("core_commit", project / "YARG.Core")]:
         result = subprocess.run(["git", "-C", str(directory), "rev-parse", "HEAD"], capture_output=True, text=True)
@@ -151,7 +154,9 @@ def build_and_restore(project, unity, output_root, logs_root, profile):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="Existing local/NAS folder; each build gets a new subfolder.")
-    parser.add_argument("--profile", action="store_true", help="Development Build + Autoconnect Profiler; no Deep Profiling.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--profile", action="store_true", help="Development Build + Autoconnect Profiler; no Deep Profiling.")
+    mode.add_argument("--development", action="store_true", help="Development Build for native recorders; no Profiler autoconnect or Deep Profiling.")
     parser.add_argument("--project", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--unity", type=Path, help="Override the Unity executable (normally read from ProjectVersion.txt).")
     args = parser.parse_args()

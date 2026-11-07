@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using YARG.Core.Chart;
@@ -172,11 +173,15 @@ namespace YARG.Gameplay.Visuals
             int index, ThemeNoteType noteType)
         {
             var normalNote = NoteGroup.CreateNoteGroupFromTheme(transform, models[noteType]);
+            // Hide template branches before pooling. Otherwise the first root activation
+            // wakes every unused variant before GameplayAwake can hide them again.
+            normalNote.SetActive(false);
             NoteGroups[index] = normalNote;
 
             if (starPowerModels.TryGetValue(noteType, out var starPowerModel))
             {
                 StarPowerNoteGroups[index] = NoteGroup.CreateNoteGroupFromTheme(transform, starPowerModel);
+                StarPowerNoteGroups[index].SetActive(false);
             }
             else
             {

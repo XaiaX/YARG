@@ -18,6 +18,15 @@ namespace YARG.Tests.EditMode
             var sampleType = Production("YARG.Persistent.FrameDiagnosticSample");
             var targetedField = sampleType.GetField("Targeted");
             Assert.That(targetedField, Is.Not.Null, "Frame log needs a targeted interval snapshot.");
+            var operations = new[] { "NoteSpawn", "ElementEnable", "ElementSetActive",
+                "ElementInitialize", "ElementFirstVisualUpdate", "NoteGroupInitialize", "MaterialAccess",
+                "NoteGroupSetActive", "PedalMeshBuild", "GameplayAwake", "GameplayManagerDiscovery",
+                "GameManagerUpdate", "SongRunnerUpdate", "AudioSynchronize", "AudioClockQuery",
+                "AudioClockCorrection", "GameplaySpeedUpdate", "GameplayBeatEvents", "GameplayCrowdEvents",
+                "GameplayPlayerUpdate", "GameplayScoreUpdate", "GameplaySongEnd",
+                "AudioClockMixerLock", "AudioClockNativeQuery", "AudioClockBassConvert" };
+            foreach (string operation in operations)
+                Assert.That(targetedField.FieldType.GetField(operation), Is.Not.Null, operation);
             var captureType = Production("YARG.Persistent.FrameTimingCapture");
             string path = Path.Combine(Path.GetTempPath(), "yarg-targeted-" + Guid.NewGuid() + ".csv");
             var capture = Activator.CreateInstance(captureType, new object[] { path });
@@ -39,6 +48,23 @@ namespace YARG.Tests.EditMode
                 timingField.FieldType.GetField("ElapsedTicks").SetValue(timing, System.Diagnostics.Stopwatch.Frequency);
                 timingField.FieldType.GetField("MaxTicks").SetValue(timing, System.Diagnostics.Stopwatch.Frequency / 2);
                 timingField.SetValue(snapshot, timing);
+                foreach (string operation in operations)
+                {
+                    var field = snapshot.GetType().GetField(operation);
+                    var value = Activator.CreateInstance(field.FieldType);
+                    field.FieldType.GetField("Calls").SetValue(value, 1L);
+                    field.FieldType.GetField("ElapsedTicks").SetValue(value, System.Diagnostics.Stopwatch.Frequency);
+                    field.FieldType.GetField("MaxTicks").SetValue(value, System.Diagnostics.Stopwatch.Frequency);
+                    field.FieldType.GetField("MaxContext").SetValue(value, 42);
+                    field.FieldType.GetField("MaxStartTicks").SetValue(value, System.Diagnostics.Stopwatch.Frequency * 2);
+                    field.SetValue(snapshot, value);
+                }
+                var nativeField = snapshot.GetType().GetField("AudioClockNative");
+                var native = Activator.CreateInstance(nativeField.FieldType);
+                nativeField.FieldType.GetField("Samples").SetValue(native, 1L);
+                nativeField.FieldType.GetField("InvalidatedAttempts").SetValue(native, 2L);
+                nativeField.FieldType.GetField("SourceLockNs").SetValue(native, 1230000L);
+                nativeField.SetValue(snapshot, native);
                 targetedField.SetValue(sample, snapshot);
                 sampleType.GetField("TargetedChanged").SetValue(sample, true);
                 sampleType.GetField("IntervalStartFrame").SetValue(sample, 17);
@@ -59,6 +85,23 @@ namespace YARG.Tests.EditMode
                 Assert.That(Cell(3, "targetedGeneration"), Is.EqualTo("3"));
                 Assert.That(Cell(3, "targetedChanged"), Is.EqualTo("True"));
                 Assert.That(Cell(3, "intervalStartFrame"), Is.EqualTo("17"));
+                foreach (string operation in operations)
+                {
+                    string column = char.ToLowerInvariant(operation[0]) + operation.Substring(1);
+                    Assert.That(Cell(1, column + "Ms"), Is.Empty);
+                    Assert.That(Cell(2, column + "Ms"), Is.EqualTo("0"));
+                    Assert.That(Cell(3, column + "Calls"), Is.EqualTo("1"));
+                    Assert.That(Cell(3, column + "Ms"), Is.EqualTo("1000"));
+                    Assert.That(Cell(3, column + "MaxContext"), Is.EqualTo("42"));
+                    Assert.That(Cell(3, column + "MaxStartSeconds"), Is.EqualTo("2"));
+                }
+                Assert.That(Cell(1, "audioClockNativeSamples"), Is.Empty);
+                Assert.That(Cell(2, "audioClockNativeSamples"), Is.EqualTo("0"));
+                Assert.That(Cell(2, "audioClockSourceLockMs"), Is.Empty);
+                Assert.That(Cell(3, "audioClockNativeSamples"), Is.EqualTo("1"));
+                Assert.That(Cell(3, "audioClockInvalidatedAttempts"), Is.EqualTo("2"));
+                Assert.That(Cell(3, "audioClockSourceLockMs"), Is.EqualTo("1.23"));
+                Assert.That(Cell(3, "schema"), Is.EqualTo("10"));
                 foreach (var line in lines.Skip(1).Take(3))
                     Assert.That(line.Split(',').Length, Is.EqualTo(header.Length));
             }

@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿// pattern: Imperative Shell
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using YARG.Gameplay.Player;
 
@@ -22,11 +23,15 @@ namespace YARG.Gameplay.Visuals
         /// </summary>
         protected float LeftyFlipMultiplier => LeftyFlip ? -1f : 1f;
 
-        protected override void GameplayAwake()
+        protected override GameManager ResolveGameManager()
         {
             Player = GetComponentInParent<TPlayer>();
-
-            base.GameplayAwake();
+            // Pools are owned by an initialized player. A scene-wide search per fresh
+            // note scales with the whole scene and defers that cost until first use.
+            // Keep the existing fallback for unusual startup order or standalone elements.
+            return Player != null && Player.GameplayContext != null
+                ? Player.GameplayContext
+                : base.ResolveGameManager();
         }
 
         protected float GetZPositionAtTime(double time)

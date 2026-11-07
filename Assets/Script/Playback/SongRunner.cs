@@ -5,6 +5,7 @@ using DG.Tweening;
 using UnityEngine;
 using YARG.Core.Logging;
 using YARG.Core.Audio;
+using YARG.Core.Diagnostics;
 using YARG.Input;
 using YARG.Settings;
 
@@ -218,6 +219,7 @@ namespace YARG.Playback
         public float DebugSyncStartDelta => _audioSynchronizer.StartDelta;
         public float DebugSyncWorstDelta => _audioSynchronizer.WorstDelta;
         public double DebugRawControlSyncError => _audioSynchronizer.RawControlError;
+        internal bool HasFreshAudioSyncSample => _audioSynchronizer.HasFreshSample;
         public double DebugControlSyncError => _audioSynchronizer.ControlError;
 
         /// <summary>
@@ -823,6 +825,7 @@ namespace YARG.Playback
         /// Latest unfiltered difference between target time and delay-free control position.
         /// </summary>
         public  double RawControlError     { get; private set; }
+        internal bool HasFreshSample { get; private set; }
         /// <summary>
         /// Control error used to drive playback correction.
         /// </summary>
@@ -844,7 +847,13 @@ namespace YARG.Playback
         public void Synchronize(double controlTargetTime, double heardTargetTime, float songSpeed,
             double targetTimestamp)
         {
-            SyncPosition position = _mixer.GetSyncPosition();
+            using var syncTiming = TargetedPerformance.Measure(TargetedOperation.AudioSynchronize);
+            SyncPosition position;
+            using (TargetedPerformance.Measure(TargetedOperation.AudioClockQuery))
+                HasFreshSample = _mixer.TryGetSyncPosition(out position);
+            if (!HasFreshSample) return;
+
+            using var correctionTiming = TargetedPerformance.Measure(TargetedOperation.AudioClockCorrection);
             double now = InputManager.CurrentInputTime;
             double targetAdvance = (now - targetTimestamp) * songSpeed;
             controlTargetTime += targetAdvance;
@@ -923,6 +932,7 @@ namespace YARG.Playback
             WorstDelta = 0f;
             Error = 0;
             RawControlError = 0;
+            HasFreshSample = false;
             ControlError = 0;
             _state = SyncState.Idle;
             _settleUntil = double.NegativeInfinity;

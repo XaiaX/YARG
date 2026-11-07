@@ -11,6 +11,7 @@ using YARG.Core;
 using YARG.Core.Chart;
 using YARG.Core.Game;
 using YARG.Core.Input;
+using YARG.Core.Diagnostics;
 using static YARG.Core.Chart.EliteDrumNote;
 
 namespace YARG.Tests.PlayMode
@@ -252,6 +253,8 @@ namespace YARG.Tests.PlayMode
                 .GetField("_geometry", PreparedElitePlayerFixture.INSTANCE);
             var clock = new System.Diagnostics.Stopwatch();
             var timings = new List<double>();
+            TargetedPerformance.SetEnabled(true);
+            TargetedPerformance.TakeSnapshot();
             foreach (var note in GetPlayableNotes())
             {
                 clock.Restart();
@@ -260,6 +263,11 @@ namespace YARG.Tests.PlayMode
                 timings.Add(clock.Elapsed.TotalMilliseconds);
                 elements.Add(FindCoverageElement(player, note));
             }
+            var activation = TargetedPerformance.TakeSnapshot();
+            TargetedPerformance.SetEnabled(false);
+            Assert.That(activation.GameplayAwake.Calls, Is.GreaterThan(0));
+            Assert.That(activation.GameplayManagerDiscovery.Calls, Is.Zero,
+                "Fresh notes should inherit their owning player's manager, not search the entire scene.");
             Assert.That(elements.Distinct().Count(), Is.EqualTo(notes.Length),
                 "Measure fresh pooled objects, rather than repeatedly reusing the same one.");
             var counts = elements.Select(e => ((IDictionary) geometryField.GetValue(e)).Count).ToArray();
@@ -2055,6 +2063,7 @@ namespace YARG.Tests.PlayMode
         [UnityTearDown]
         public IEnumerator TearDown()
         {
+            TargetedPerformance.SetEnabled(false);
             try
             {
                 if (_fixture != null) yield return _fixture.Dispose();

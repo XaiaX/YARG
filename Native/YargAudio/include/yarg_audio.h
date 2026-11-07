@@ -37,7 +37,8 @@ typedef enum yarg_audio_result {
     YARG_AUDIO_ERROR_BASS = -5,
     YARG_AUDIO_ERROR_INTERNAL = -6,
     YARG_AUDIO_ERROR_SOURCE = -7,
-    YARG_AUDIO_ERROR_TIMEOUT = -8
+    YARG_AUDIO_ERROR_TIMEOUT = -8,
+    YARG_AUDIO_ERROR_BUSY = -9
 } yarg_audio_result;
 
 typedef struct yarg_one_shot_config {
@@ -116,6 +117,20 @@ typedef struct yarg_read_ahead_position_snapshot {
     int64_t heard_position;
     int64_t decode_position;
 } yarg_read_ahead_position_snapshot;
+
+/* Per-query, reader-thread diagnostics. Invalidated time overlaps the other
+ * counters: it is the total work of attempts discarded after a callback. */
+typedef struct yarg_read_ahead_position_timing {
+    uint32_t size;
+    uint32_t attempts;
+    uint32_t callback_yields;
+    uint32_t invalidated_attempts;
+    uint64_t source_lock_ns;
+    uint64_t callback_busy_ns;
+    uint64_t invalidated_ns;
+    uint64_t bass_decode_position_ns;
+    uint64_t bass_heard_position_ns;
+} yarg_read_ahead_position_timing;
 
 YARG_AUDIO_API uint32_t YARG_AUDIO_CALL yarg_audio_get_abi_version(void);
 YARG_AUDIO_API int32_t YARG_AUDIO_CALL yarg_gain_dsp_attach(
@@ -234,6 +249,14 @@ YARG_AUDIO_API int64_t YARG_AUDIO_CALL yarg_read_ahead_stream_get_source_positio
 YARG_AUDIO_API int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_get_position_snapshot(
     yarg_read_ahead_stream* stream, uint32_t source_handle,
     uint32_t endpoint_delay_frames, yarg_read_ahead_position_snapshot* snapshot);
+YARG_AUDIO_API int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_get_position_snapshot_timed(
+    yarg_read_ahead_stream* stream, uint32_t source_handle,
+    uint32_t endpoint_delay_frames, yarg_read_ahead_position_snapshot* snapshot,
+    yarg_read_ahead_position_timing* timing);
+YARG_AUDIO_API int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_try_get_position_snapshot(
+    yarg_read_ahead_stream* stream, uint32_t source_handle,
+    uint32_t endpoint_delay_frames, yarg_read_ahead_position_snapshot* snapshot,
+    yarg_read_ahead_position_timing* timing);
 YARG_AUDIO_API int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_get_stats(
     yarg_read_ahead_stream* stream, yarg_read_ahead_stats* stats);
 YARG_AUDIO_API int32_t YARG_AUDIO_CALL yarg_read_ahead_stream_destroy(

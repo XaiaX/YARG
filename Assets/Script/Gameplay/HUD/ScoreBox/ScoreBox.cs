@@ -26,6 +26,7 @@ namespace YARG.Gameplay.HUD
     public class ScoreBox : GameplayBehaviour
     {
         private const string SCORE_PREFIX = "<mspace=0.538em>";
+        private const string SCORE_FORMAT = "{0}{1:N0}";
 
         private const string TIME_FORMAT       = @"m\:ss";
         private const string TIME_FORMAT_HOURS = @"h\:mm\:ss";
@@ -104,8 +105,9 @@ namespace YARG.Gameplay.HUD
 
         private void Start()
         {
-            _scoreText.text = SCORE_PREFIX + "0";
-            _bandComboText.text = SCORE_PREFIX + "0";
+            _scoreText.SetTextFormat(SCORE_FORMAT, SCORE_PREFIX, _bandScore);
+            _bandComboText.SetTextFormat(SCORE_FORMAT, SCORE_PREFIX, _bandCombo);
+            _starScoreDisplay.SetStars(GameManager.BandStars);
             _songTimer.text = string.Empty;
             _displayedCountUpSeconds = -1;
             _displayedCountDownSeconds = -1;
@@ -151,7 +153,7 @@ namespace YARG.Gameplay.HUD
             if (GameManager.BandScore != _bandScore)
             {
                 _bandScore = GameManager.BandScore;
-                _scoreText.SetTextFormat("{0}{1:N0}", SCORE_PREFIX, _bandScore);
+                _scoreText.SetTextFormat(SCORE_FORMAT, SCORE_PREFIX, _bandScore);
 
                 var scoreTextLength = _bandScore == 0 ? 1 : Math.Floor(Math.Log10(_bandScore) + 1);
                 scoreTextLength += Math.Floor((scoreTextLength - 1) / 3); // thousand coma separators
@@ -172,7 +174,7 @@ namespace YARG.Gameplay.HUD
             if (GameManager.BandCombo != _bandCombo)
             {
                 _bandCombo = GameManager.BandCombo;
-                _bandComboText.SetTextFormat("{0}{1:N0}", SCORE_PREFIX, _bandCombo / _bandComboUnits);
+                _bandComboText.SetTextFormat(SCORE_FORMAT, SCORE_PREFIX, _bandCombo / _bandComboUnits);
             }
 
             UpdateBandMultiplier();

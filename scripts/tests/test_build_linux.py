@@ -116,6 +116,24 @@ class LinuxBuildWorkflowTests(unittest.TestCase):
         self.assertIn("-profileBuild", self.calls()[0])
         self.assertNotIn("-profileBuild", self.calls()[1])
 
+    def test_development_does_not_enable_autoconnect_and_is_recorded(self):
+        self.command.append("--development")
+        result = self.run_build()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("-developmentBuild", self.calls()[0])
+        self.assertNotIn("-profileBuild", self.calls()[0])
+        self.assertNotIn("-developmentBuild", self.calls()[1])
+        report = json.loads(next(self.output.glob("*/build-info.json")).read_text())
+        self.assertTrue(report["development"])
+        self.assertFalse(report["profile"])
+
+    def test_development_and_profile_are_mutually_exclusive(self):
+        self.command += ["--development", "--profile"]
+        result = self.run_build()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not allowed with argument", result.stderr)
+        self.assertFalse((self.project / "calls.jsonl").exists())
+
     def test_cancel_waits_for_build_process_then_restores_mac(self):
         process = subprocess.Popen(self.command, env={**os.environ, "HANG_BUILD":"1"},
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

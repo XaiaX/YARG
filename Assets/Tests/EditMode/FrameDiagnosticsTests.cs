@@ -80,6 +80,36 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void ConsecutivePacingChangesEachOmitTheCrossingInterval()
+        {
+            int oldCap = Application.targetFrameRate;
+            var type = Production("YARG.Persistent.StutterProbe");
+            var sample = type.GetMethod("Sample");
+            var host = new GameObject("consecutive-pacing-test"); host.SetActive(false);
+            try
+            {
+                var probe = host.AddComponent(type);
+                Application.targetFrameRate = 10;
+                sample.Invoke(probe, new object[] { 1.0 });
+                sample.Invoke(probe, new object[] { 1.1 });
+                Application.targetFrameRate = 60;
+                sample.Invoke(probe, new object[] { 1.2 });
+                Assert.That(type.GetProperty("SampleCount").GetValue(probe), Is.Zero);
+                Application.targetFrameRate = 120;
+                sample.Invoke(probe, new object[] { 1.216 });
+                var latest = type.GetProperty("Latest").GetValue(probe);
+                Assert.That(latest.GetType().GetField("PacingChanged").GetValue(latest), Is.True,
+                    "An empty history after a transition must not hide the next pacing change.");
+                Assert.That(type.GetProperty("SampleCount").GetValue(probe), Is.Zero);
+                sample.Invoke(probe, new object[] { 1.224 });
+                Assert.That(type.GetProperty("SampleCount").GetValue(probe), Is.EqualTo(1));
+                latest = type.GetProperty("Latest").GetValue(probe);
+                Assert.That(latest.GetType().GetField("PacingChanged").GetValue(latest), Is.False);
+            }
+            finally { Application.targetFrameRate = oldCap; UnityEngine.Object.DestroyImmediate(host); }
+        }
+
+        [Test]
         public void CsvDrainPreservesMenuSamplesAndMarksUnavailableTimingBlank()
         {
             string path = Path.Combine(Path.GetTempPath(), "yarg-frame-test-" + Guid.NewGuid() + ".csv");

@@ -1,14 +1,16 @@
-﻿using System.Diagnostics.CodeAnalysis;
+// pattern: Imperative Shell
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using YARG.Settings;
-using YARG.Helpers.Extensions;
 using YARG.Core.Audio;
+using YARG.Core.Logging;
 using YARG.Core.Song;
+using YARG.Settings;
 using YARG.Song;
-using System.Threading.Tasks;
 
 namespace YARG.Menu.Persistent
 {
@@ -17,8 +19,11 @@ namespace YARG.Menu.Persistent
         private static SongEntry _nowPlaying = null;
         public static SongEntry NowPlaying => _nowPlaying;
 
-        private object _lock = new();
-        private StemMixer _mixer = null;
+        private StemMixer _mixer;
+        private SongEntry _lastPlayed;
+        private Action _songEnded;
+        private CancellationTokenSource _loadCancellation;
+        private Task _loadChain = Task.CompletedTask;
 
         [SerializeField]
         private Image _playPauseButton;
@@ -33,113 +38,146 @@ namespace YARG.Menu.Persistent
         [SerializeField]
         private Sprite _pauseSprite;
 
-        private async void OnEnable()
+        private void OnEnable()
         {
             _songText.text = _artistText.text = string.Empty;
-
-            // Wait until the loading is done
-            await UniTask.WaitUntil(() => !LoadingScreen.IsActive);
-
-            // Disable if there are no songs to play
-            if (SongContainer.Count <= 0)
-            {
-                gameObject.SetActive(false);
-                return;
-            }
-            StemSettings.ApplySettings = SettingsManager.Settings.ApplyVolumesInMusicPlayer.Value;
-            NextSong();
+            QueueLoad(waitForLoadingScreen: true);
         }
 
         private void OnDisable()
         {
-            StemSettings.ApplySettings = SettingsManager.Settings.ApplyVolumesInMusicLibrary.Value; // reset to default value
-            lock (_lock)
-            {
-                _mixer?.Dispose();
-                _mixer = null;
-            }
+            _loadCancellation?.Cancel();
+            StopPlayback();
+            StemSettings.ApplySettings = SettingsManager.Settings.ApplyVolumesInMusicLibrary.Value;
         }
 
-        private static Task<StemMixer> _current;
-        public async void NextSong()
+        public Task StopAndDrainAsync()
         {
-            const int MAX_TRIES = 20;
-            for (int tries = 0; tries < MAX_TRIES; tries++)
-            {
-                var entry = SongContainer.GetRandomSong();
-                if (entry == _nowPlaying)
-                {
-                    continue;
-                }
-                _nowPlaying = entry;
-
-                Task<StemMixer> task;
-                lock (_lock)
-                {
-                    const float SPEED = 1f;
-                    _current = task = Task.Run(() => entry.LoadAudio(SPEED, SettingsManager.Settings.MusicPlayerVolume.Value, SettingsManager.Settings.CensorMatureContent.Value, SongStem.Crowd));
-                }
-
-                var mixer = await task;
-                if (mixer == null)
-                {
-                    continue;
-                }
-
-                lock (_lock)
-                {
-                    if (_current != task || !gameObject.activeSelf)
-                    {
-                        mixer.Dispose();
-                        continue;
-                    }
-
-                    _mixer?.Dispose();
-                    _mixer = mixer;
-                    _mixer.SongEnd += () =>
-                    {
-                        _mixer.Dispose();
-                        _mixer = null;
-                        NextSong();
-                    };
-                    _mixer.Play();
-
-                    _songText.text = _nowPlaying.Name;
-                    _artistText.text = _nowPlaying.Artist;
-                    _playPauseButton.sprite = _pauseSprite;
-                }
-                return;
-            }
-            _nowPlaying = null;
+            gameObject.SetActive(false);
+            // OnDisable stops playback synchronously. The chain still owns any
+            // decoder already running and will dispose its result before completing.
+            return _loadChain;
         }
 
-        public void UpdateVolume(double volume)
+        public void NextSong() => QueueLoad(waitForLoadingScreen: false);
+
+        private void QueueLoad(bool waitForLoadingScreen)
         {
-            lock (_lock)
-            {
-                _mixer?.SetVolume(volume);
-            }
+            if (!isActiveAndEnabled) return;
+
+            _loadCancellation?.Cancel();
+            var cancellation = new CancellationTokenSource();
+            _loadCancellation = cancellation;
+            _loadChain = LoadNextSongAsync(_loadChain, cancellation, waitForLoadingScreen);
         }
 
-        public void TogglePlay()
+        private async Task LoadNextSongAsync(Task previous, CancellationTokenSource cancellation,
+            bool waitForLoadingScreen)
         {
-            lock (_lock)
+            var token = cancellation.Token;
+            try
             {
-                if (_mixer == null)
+                // Serialize native loads so the scene transition can drain every
+                // request, even when the user pressed Next several times.
+                await previous;
+                token.ThrowIfCancellationRequested();
+                if (waitForLoadingScreen)
+                    await UniTask.WaitUntil(() => !LoadingScreen.IsActive, cancellationToken: token);
+
+                if (!isActiveAndEnabled || token.IsCancellationRequested) return;
+                if (SongContainer.Count == 0)
                 {
+                    gameObject.SetActive(false);
                     return;
                 }
 
-                if (!_mixer.IsPaused)
+                var settings = SettingsManager.Settings;
+                StemSettings.ApplySettings = settings.ApplyVolumesInMusicPlayer.Value;
+                var lastSong = _lastPlayed;
+                const int MAX_TRIES = 20;
+                for (int tries = 0; tries < MAX_TRIES; tries++)
                 {
-                    _mixer.Pause();
-                    _playPauseButton.sprite = _playSprite;
-                }
-                else
-                {
-                    _mixer.Play();
+                    var entry = SongContainer.GetRandomSong();
+                    if (entry == lastSong) continue;
+                    lastSong = entry;
+
+                    float volume = settings.MusicPlayerVolume.Value;
+                    bool censor = settings.CensorMatureContent.Value;
+                    var mixer = await Task.Run(() => entry.LoadAudio(1f, volume, censor, SongStem.Crowd), token);
+                    if (token.IsCancellationRequested || !isActiveAndEnabled)
+                    {
+                        mixer?.Dispose();
+                        return;
+                    }
+                    if (mixer == null) continue;
+
+                    StopPlayback();
+                    _mixer = mixer;
+                    _nowPlaying = entry;
+                    _lastPlayed = entry;
+                    _songEnded = () => OnSongEnded(mixer);
+                    mixer.SongEnd += _songEnded;
+                    mixer.Play();
+                    _songText.text = entry.Name;
+                    _artistText.text = entry.Artist;
                     _playPauseButton.sprite = _pauseSprite;
+                    return;
                 }
+                if (_mixer == null) _lastPlayed = null;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                // A hidden menu or a newer request superseded this one.
+            }
+            catch (Exception exception)
+            {
+                YargLogger.LogException(exception, "Failed to load menu music.");
+            }
+            finally
+            {
+                if (ReferenceEquals(_loadCancellation, cancellation))
+                    _loadCancellation = null;
+                cancellation.Dispose();
+            }
+        }
+
+        private void OnSongEnded(StemMixer mixer)
+        {
+            // The audio backend queues this callback to the Unity thread. A queued
+            // callback may belong to a mixer that has already been disposed.
+            if (!ReferenceEquals(_mixer, mixer)) return;
+
+            StopPlayback();
+            if (_loadCancellation == null) NextSong();
+        }
+
+        private void StopPlayback()
+        {
+            var mixer = _mixer;
+            if (mixer == null) return;
+
+            _mixer = null;
+            _nowPlaying = null;
+            mixer.SongEnd -= _songEnded;
+            _songEnded = null;
+            mixer.Dispose();
+        }
+
+        public void UpdateVolume(double volume) => _mixer?.SetVolume(volume);
+
+        public void TogglePlay()
+        {
+            if (_mixer == null) return;
+
+            if (!_mixer.IsPaused)
+            {
+                _mixer.Pause();
+                _playPauseButton.sprite = _playSprite;
+            }
+            else
+            {
+                _mixer.Play();
+                _playPauseButton.sprite = _pauseSprite;
             }
         }
     }

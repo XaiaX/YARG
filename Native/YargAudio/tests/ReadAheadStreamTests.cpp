@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <future>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -291,7 +292,7 @@ void testDecodePositionLookupFailureIsReported() {
     REQUIRE(stream->destroy(nullptr));
 }
 
-void testPositionSnapshotRetriesAfterConsumption() {
+void testPositionSnapshotRetriesAfterConsumption(bool nonBlocking) {
     MockBass state;
     state.availableFrames.store(8);
     auto core = makeCore(state);
@@ -303,9 +304,10 @@ void testPositionSnapshotRetriesAfterConsumption() {
     state.blockPosition.store(true);
     yarg_read_ahead_position_snapshot snapshot{
         sizeof(yarg_read_ahead_position_snapshot)};
+    yarg_read_ahead_position_timing timing{sizeof(yarg_read_ahead_position_timing)};
     int result = YARG_AUDIO_ERROR_INTERNAL;
     std::thread positionThread([&] {
-        result = stream->getPositionSnapshot(23, 0, snapshot);
+        result = stream->getPositionSnapshot(23, 0, snapshot, &timing, nonBlocking);
     });
 
     const auto deadline = std::chrono::steady_clock::now() +
@@ -316,14 +318,33 @@ void testPositionSnapshotRetriesAfterConsumption() {
     }
     REQUIRE(state.positionBlocked.load());
 
+    auto contender = std::async(std::launch::async, [&] {
+        yarg_read_ahead_position_snapshot other{};
+        return stream->getPositionSnapshot(23, 0, other, nullptr, true);
+    });
+    const auto contenderStatus = contender.wait_for(std::chrono::seconds(1));
     float output = -1;
     state.callback(19, &output, sizeof(output), state.callbackUser);
     state.blockPosition.store(false);
     positionThread.join();
+    REQUIRE(contenderStatus == std::future_status::ready);
+    REQUIRE(contender.get() == YARG_AUDIO_ERROR_BUSY);
 
-    REQUIRE(result == YARG_AUDIO_OK);
-    REQUIRE(state.positionCalls.load() >= 4);
-    REQUIRE(snapshot.total_delay_frames == 7);
+    if (nonBlocking) {
+        REQUIRE(result == YARG_AUDIO_ERROR_BUSY);
+        REQUIRE(snapshot.total_delay_frames == 0);
+        REQUIRE(timing.attempts == 1);
+    } else {
+        REQUIRE(result == YARG_AUDIO_OK);
+        REQUIRE(state.positionCalls.load() >= 4);
+        REQUIRE(snapshot.total_delay_frames == 7);
+        REQUIRE(timing.attempts == 2);
+    }
+    REQUIRE(timing.invalidated_attempts == 1);
+    REQUIRE(timing.callback_yields == 0);
+    REQUIRE(timing.callback_busy_ns == 0);
+    REQUIRE(timing.invalidated_ns > 0);
+    REQUIRE(timing.bass_decode_position_ns > 0);
     REQUIRE(stream->destroy(nullptr));
 }
 
@@ -702,7 +723,8 @@ void runReadAheadStreamTests() {
     testPositionBeforeGenerationStartUsesAvailableHistory();
     testPositionLookupFailureIsReported();
     testDecodePositionLookupFailureIsReported();
-    testPositionSnapshotRetriesAfterConsumption();
+    testPositionSnapshotRetriesAfterConsumption(false);
+    testPositionSnapshotRetriesAfterConsumption(true);
     testPositionAdvancesBetweenOutputPulls();
     testCallbackTimingDoesNotMovePositionBackward();
     testLateCallbackDoesNotJumpPosition();

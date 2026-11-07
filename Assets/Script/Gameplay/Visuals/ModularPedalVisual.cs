@@ -1,4 +1,6 @@
+// pattern: Imperative Shell
 using System;
+using YARG.Core.Diagnostics;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -36,6 +38,7 @@ namespace YARG.Gameplay.Visuals
             }
             if (!_meshes.TryGetValue(count, out var meshes))
             {
+                using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.PedalMeshBuild, count);
                 meshes = new Mesh[_sources.Length];
                 for (int part = 0; part < _sources.Length; part++)
                 {

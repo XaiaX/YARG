@@ -2338,7 +2338,7 @@
 				"Name": "Use Audio Playback Buffer"
 			},
 			"FrameGraph": {
-				"Description": "Shows update intervals, p95/worst times, and effective graphics settings in menus and gameplay. Measures application cadence, not display presentation. Does not save a log.",
+				"Description": "Shows native frame duration, p95/worst times, and effective graphics settings in menus and gameplay. Uses a labeled Unity frame-time fallback when native timing is unavailable. Does not measure display presentation or save a log.",
 				"Name": "Frame Graph"
 			},
 			"HighwayInterpolation": {

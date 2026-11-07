@@ -54,6 +54,12 @@ namespace YARG.Gameplay.HUD
             _highwayCameraRendering.AddTrackPlayer(trackPlayer);
         }
 
+        internal bool WarmEliteHitLighting(EliteDrumsPlayer player) =>
+            _highwayCameraRendering.WarmHitLighting(player.GetHiHatLights());
+
+        internal bool WarmProDrumHitLighting(DrumsPlayer player) =>
+            _highwayCameraRendering.WarmHitLighting(player.GetProCymbalHitLights());
+
         protected override void GameplayDestroy()
         {
         }

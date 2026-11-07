@@ -8,6 +8,7 @@ using UnityEngine.InputSystem;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
+using YARG.Core.Diagnostics;
 using YARG.Core.Engine;
 using YARG.Core.Game;
 using YARG.Core.Input;
@@ -121,6 +122,9 @@ namespace YARG.Gameplay
 
         /// <inheritdoc cref="SongRunner.IsAudioSyncCorrectionActive"/>
         public bool IsAudioSyncCorrectionActive => _songRunner.IsAudioSyncCorrectionActive;
+        internal bool HasFreshAudioSyncSample => _songRunner.HasFreshAudioSyncSample;
+        internal double AudioSyncHeardError => _songRunner.SyncError;
+        internal double AudioSyncControlError => _songRunner.DebugRawControlSyncError;
 
         /// <inheritdoc cref="SongRunner.Started"/>
         public bool Started => _isExternallyInitialized ? IsSongStarted : _songRunner?.Started ?? false;
@@ -362,6 +366,8 @@ namespace YARG.Gameplay
                 return;
             }
 
+            using var updateTiming = TargetedPerformance.Measure(TargetedOperation.GameManagerUpdate);
+
             // Pause/unpause
             if (Keyboard.current.escapeKey.wasPressedThisFrame)
             {
@@ -401,33 +407,44 @@ namespace YARG.Gameplay
             }
 
             // Update handlers
-            _songRunner.Update();
+            using (TargetedPerformance.Measure(TargetedOperation.SongRunnerUpdate))
+                _songRunner.Update();
 
-            ApplySongSpeed();
-            BeatEventHandler.Update(_songRunner.SongTime, _songRunner.VisualTime);
-            CrowdEventHandler.Update(_songRunner.SongTime);
+            using (TargetedPerformance.Measure(TargetedOperation.GameplaySpeedUpdate))
+                ApplySongSpeed();
+            using (TargetedPerformance.Measure(TargetedOperation.GameplayBeatEvents))
+                BeatEventHandler.Update(_songRunner.SongTime, _songRunner.VisualTime);
+            using (TargetedPerformance.Measure(TargetedOperation.GameplayCrowdEvents))
+                CrowdEventHandler.Update(_songRunner.SongTime);
 
             // Update players
             int totalScore = 0;
-            foreach (var player in _players)
+            using (TargetedPerformance.Measure(TargetedOperation.GameplayPlayerUpdate))
             {
-                player.GameplayUpdate();
+                foreach (var player in _players)
+                {
+                    player.GameplayUpdate();
 
-                totalScore += player.Score;
-                totalScore += player.BandBonusScore;
+                    totalScore += player.Score;
+                    totalScore += player.BandBonusScore;
+                }
             }
 
-            if (GlobalVariables.VerboseReplays)
+            using (TargetedPerformance.Measure(TargetedOperation.GameplayScoreUpdate))
             {
-                _frameTimes.Add(_songRunner.InputTime);
-            }
+                if (GlobalVariables.VerboseReplays)
+                {
+                    _frameTimes.Add(_songRunner.InputTime);
+                }
 
-            BandScore = totalScore;
-            EngineManager.UpdateStars();
+                BandScore = totalScore;
+                EngineManager.UpdateStars();
+            }
 
             // End song if needed (required for the [end] event)
             if (_songRunner.SongTime >= SongLength)
             {
+                using var songEndTiming = TargetedPerformance.Measure(TargetedOperation.GameplaySongEnd);
                 if (YargPlayers.Any(player => player.Profile.GameMode == GameMode.PartyVocals))
                 {
                     YargLogger.LogDebug($"[PartyVocalsDiag] EndSong check songTime={_songRunner.SongTime} songLength={SongLength} " +

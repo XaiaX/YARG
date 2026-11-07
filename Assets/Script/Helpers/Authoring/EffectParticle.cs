@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using YARG.Core.Diagnostics;
 
 namespace YARG.Helpers.Authoring
 {
@@ -155,6 +156,7 @@ namespace YARG.Helpers.Authoring
             // Prevent double starts
             if (_particleSystem.main.loop && _particleSystem.isEmitting) return;
 
+            using var timing = TargetedPerformance.Measure(TargetedOperation.HitParticlePlay);
             _particleSystem.Play();
         }
 

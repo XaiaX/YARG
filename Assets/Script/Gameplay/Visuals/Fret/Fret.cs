@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using YARG.Core.Diagnostics;
 using YARG.Helpers.Extensions;
 using YARG.Themes;
 using Color = System.Drawing.Color;
@@ -321,23 +322,27 @@ namespace YARG.Gameplay.Visuals
 
         public void PlayHitAnimation()
         {
+            using var timing = TargetedPerformance.Measure(TargetedOperation.FretHitAnimator);
             ThemeBind.Animator.SetTrigger(_hit);
         }
 
         public void PlayCymbalHitAnimation()
         {
+            using var timing = TargetedPerformance.Measure(TargetedOperation.FretHitAnimator);
             ThemeBind.Animator.SetTrigger(_cymbalHit);
         }
 
         public void PlayHitParticles()
         {
+            using var timing = TargetedPerformance.Measure(TargetedOperation.FretHitEffect);
             ThemeBind.HitEffect.Play();
         }
 
         public void PlayHitParticles(System.Drawing.Color color)
         {
-            ThemeBind.HitEffect.SetColor(color.ToUnityColor());
-            ThemeBind.HitEffect.Play();
+            using (TargetedPerformance.Measure(TargetedOperation.FretHitColor))
+                ThemeBind.HitEffect.SetColor(color.ToUnityColor());
+            PlayHitParticles();
         }
 
         public void PlayFullWidthHitParticles()

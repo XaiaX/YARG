@@ -1,4 +1,5 @@
-﻿using System;
+﻿// pattern: Imperative Shell
+using System;
 using Cysharp.Threading.Tasks;
 using DG.Tweening;
 using UnityEngine;
@@ -30,6 +31,16 @@ namespace YARG.Gameplay.HUD
         private Tweener _seekTween;
         private bool     _hasFailed;
         private float    _progress;
+
+        protected override GameManager ResolveGameManager()
+        {
+            // Icons are created under the hidden HUD during song setup. Their first
+            // Awake runs when a phrase appears, but the display already owns the context.
+            var display = GetComponentInParent<UnisonDisplay>(true);
+            return display != null && display.GameplayContext != null
+                ? display.GameplayContext
+                : base.ResolveGameManager();
+        }
 
         protected override void GameplayAwake()
         {

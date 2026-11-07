@@ -303,8 +303,14 @@ namespace YARG.Song
             {
                 try
                 {
-                    var indexPath = Path.Combine(SourcesFolder, SOURCE_REPO_FOLDER, index, "index.json");
-                    ReadIndexPath(indexPath);
+                    var sourcePath = Path.Combine(SourcesFolder, SOURCE_REPO_FOLDER, index);
+                    // Offline builds can ship only the required base sources.
+                    if (index == "extra" && !Directory.Exists(sourcePath))
+                    {
+                        continue;
+                    }
+
+                    ReadIndexPath(Path.Combine(sourcePath, "index.json"));
                 }
                 catch (Exception e)
                 {

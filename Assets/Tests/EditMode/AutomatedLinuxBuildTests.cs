@@ -9,6 +9,17 @@ namespace YARG.Tests.EditMode
 {
     public sealed class AutomatedLinuxBuildTests
     {
+        [TestCase(false, false, BuildOptions.None)]
+        [TestCase(true, false, BuildOptions.Development)]
+        [TestCase(false, true, BuildOptions.Development | BuildOptions.ConnectWithProfiler)]
+        public void DevelopmentRecordersDoNotRequireAutoconnect(bool development, bool profile, BuildOptions expected)
+        {
+            var type = Type.GetType("Editor.AutomatedLinuxBuild, Assembly-CSharp-Editor", true);
+            var select = type.GetMethod("GetBuildOptions", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(select, Is.Not.Null);
+            Assert.That(select.Invoke(null, new object[] { development, profile }), Is.EqualTo(expected));
+        }
+
         [Test]
         public void SavedEditorOptionsCanBeRecoveredAfterBuildProcessExits()
         {
