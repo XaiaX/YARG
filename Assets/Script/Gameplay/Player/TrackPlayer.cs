@@ -1273,27 +1273,34 @@ namespace YARG.Gameplay.Player
             LastCombo = Combo;
         }
 
-        protected virtual void OnNoteMissed(int index, TNote note)
-        {
-            if (IsFc)
-            {
-                ComboMeter.SetFullCombo(false);
-                IsFc = false;
-            }
+        protected virtual void OnNoteMissed(int index, TNote note) => ShowNoteMiss(note, preserveCombo: false);
 
+        protected void InvalidateFullCombo()
+        {
+            if (!IsFc) return;
+            ComboMeter.SetFullCombo(false);
+            IsFc = false;
+        }
+
+        protected void ShowNoteMiss(TNote note, bool preserveCombo)
+        {
+            InvalidateFullCombo();
             if (!GameManager.IsSeekingReplay)
             {
                 UpdateMuteState(note, true);
 
-                if (LastCombo >= 10)
+                if (!preserveCombo)
                 {
-                    GlobalAudioHandler.PlaySoundEffect(SfxSample.NoteMiss);
-                    CameraPositioner.Punch();
-                }
+                    if (LastCombo >= 10)
+                    {
+                        GlobalAudioHandler.PlaySoundEffect(SfxSample.NoteMiss);
+                        CameraPositioner.Punch();
+                    }
 
-                foreach (var haptics in SantrollerHaptics)
-                {
-                    haptics.SetMultiplier(0);
+                    foreach (var haptics in SantrollerHaptics)
+                    {
+                        haptics.SetMultiplier(0);
+                    }
                 }
             }
 

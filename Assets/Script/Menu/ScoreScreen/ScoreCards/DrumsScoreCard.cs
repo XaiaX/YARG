@@ -25,26 +25,51 @@ namespace YARG.Menu.ScoreScreen
                 .LoadAssetAsync<Sprite>($"InstrumentIcons[drums]")
                 .WaitForCompletion();
 
+            SetDrumStatRows();
+        }
+
+        private void SetDrumStatRows()
+        {
             _overhits.text = ColorizePrimary(Stats.Overhits);
 
             var overhitsRow = _overhits.transform.parent;
+            var rows = overhitsRow.parent;
+            if (Stats.MisarticulatedHiHats > 0)
+            {
+                var articulationRow = CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.MisarticulatedHiHats"),
+                    ColorizePrimary(Stats.MisarticulatedHiHats));
+                articulationRow.transform.SetSiblingIndex(overhitsRow.GetSiblingIndex());
+            }
             var bindings = BindingCollection.CreateGameplayBindings(Player.Profile.CurrentInstrument.ToNativeGameMode());
 
             foreach (var binding in bindings)
             {
                 if (Stats.OverhitsByAction.TryGetValue(binding.Action, out int count))
                 {
-                    CreateOverhitRow(binding, count, overhitsRow.parent);
+                    string key = Player.Profile.LeftyFlip ? binding.NameLefty : binding.Name;
+                    CreateStatRow(rows, "<space=20px>" + Localize.Key("Bindings", key), ColorizePrimary(count));
                 }
+            }
+
+            if (Stats.TotalGhosts > 0 || Stats.TotalAccents > 0)
+            {
+                CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.GhostsHitCorrectly"),
+                    DynamicsCount(Stats.GhostsHit, Stats.TotalGhosts));
+                CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.AccentsHitCorrectly"),
+                    DynamicsCount(Stats.AccentsHit, Stats.TotalAccents));
+                CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.BaseDynamicsBonus"),
+                    ColorizePrimary(Stats.DynamicsBonus.ToString("N0")));
             }
         }
 
-        private void CreateOverhitRow(ControlBinding binding, int count, Transform parent)
+        private string DynamicsCount(int correct, int total) => $"{ColorizePrimary(correct)} / {ColorizeSecondary(total)}";
+
+        private StatInfo CreateStatRow(Transform parent, string label, string value)
         {
             var info = Instantiate(_statInfoPrefab, parent);
-            string key = Player.Profile.LeftyFlip ? binding.NameLefty : binding.Name;
-            info.Label.text = "<space=20px>" + Localize.Key("Bindings", key);
-            info.Value.text = ColorizePrimary(count);
+            info.Label.text = label;
+            info.Value.text = value;
+            return info;
         }
 
     }

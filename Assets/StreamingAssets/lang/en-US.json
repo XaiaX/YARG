@@ -674,6 +674,10 @@
 			"AddSongOffset": "(Hold) Save song offset",
 			"RemoveSongOffset": "(Hold) Undo offset save",
 			"ViewReplay": "View Replay",
+			"MisarticulatedHiHats": "Misarticulated Hi-Hats",
+			"GhostsHitCorrectly": "Correct Ghosts",
+			"AccentsHitCorrectly": "Correct Accents",
+			"BaseDynamicsBonus": "Base Dynamics Bonus",
 			"Percussion": "Percussion",
 			"PhraseSummaryHeader": "Phrase Breakdown"
 		},
@@ -1340,6 +1344,7 @@
 			"StatusBar": "Status Bar",
 			"AdvancedDMXSettings": "Advanced sACN and DMX settings",
 			"Experimental": "Experimental",
+			"Drums": "Drums",
 			"EliteDrums": "Elite Drums",
 			"HUD": "HUD",
 			"Gameplay": "Gameplay",
@@ -2334,6 +2339,14 @@
 			"EliteHiHatClosureForgiveness": {
 				"Name": "Hi-Hat Closure Forgiveness",
 				"Description": "Pairs Closed Hi-Hat hits with Stomp or a bound Hi-Hat Position CC crossing within 30 ms. Adds 30 ms of judging feedback delay in new native Elite sessions."
+			},
+			"LenientHiHatArticulation": {
+				"Name": "Lenient Hi-Hat Articulation",
+				"Description": "An on-time Elite hi-hat strike earns half credit one position away and quarter credit two positions away. Partial hits preserve the streak and forfeit its increment."
+			},
+			"AlternateGhostScoring": {
+				"Name": "Alternate Ghost Scoring",
+				"Description": "In all drum modes, a missed ghost preserves your streak and multiplier. It still counts as a miss and forfeits full combo."
 			},
 			"UseCumulativeSongUpdates": {
 				"Description": "Experimental: apply numbered songs_updates folders in order. After changing this setting, re-scan your song library (or restart) for it to take effect.",

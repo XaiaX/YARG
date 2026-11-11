@@ -7,6 +7,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using YARG.Core.Chart;
+using YARG.Core.Engine.Drums;
 using YARG.Core.Engine.Drums.Engines;
 using YARG.Core.Input;
 using static YARG.Core.Chart.EliteDrumNote;
@@ -644,6 +645,48 @@ namespace YARG.Tests.PlayMode
             }
             finally { UnityEngine.Object.Destroy(root); }
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ExperimentalScoringUsesLiveSettingsAndForfeitsTheOpenHatTail()
+        {
+            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
+            foreach (string name in new[] { "LenientHiHatArticulation", "AlternateGhostScoring" })
+            {
+                var toggle = settings.GetType().GetProperty(name).GetValue(settings);
+                var value = toggle.GetType().GetProperty("Value");
+                Assert.That(value.GetValue(toggle), Is.False);
+                value.SetValue(toggle, true);
+            }
+            var ghost = new EliteDrumNote(EliteDrumPad.Snare, DrumNoteType.Ghost, EliteDrumsHatState.Indifferent,
+                EliteDrumsHatPedalType.Stomp, false, DrumNoteFlags.None, NoteFlags.None,
+                EliteDrumsChannelFlag.None, 3.5, 3360, false);
+            yield return Initialize(notes: new[] { Note(EliteDrumPad.Snare, .5), Open(1, 1920),
+                ghost, Note(EliteDrumPad.Ride, 5) });
+            var engine = (EliteDrumsEngine) Engine(Fixture.Player);
+            var parameters = (DrumsEngineParameters) engine.BaseParameters;
+            Assert.That(parameters.LenientHiHatArticulation, Is.True);
+            Assert.That(parameters.AlternateGhostScoring, Is.True);
+
+            Press(Fixture.Player, EliteDrumsAction.EliteSnare, .5);
+            Press(Fixture.Player, EliteDrumsAction.EliteClosedHiHat, 1);
+            var sustain = engine.HiHatSustains.Single();
+            Assert.That(engine.WasHiHatSustainBroken(sustain), Is.True);
+            Assert.That(engine.ActiveHiHatSustain, Is.Null);
+            Assert.That(Fixture.Player.GetType().GetProperty("IsFc").GetValue(Fixture.Player), Is.False);
+            Assert.That(engine.EngineStats.MisarticulatedHiHats, Is.EqualTo(1));
+            Assert.That(engine.EngineStats.Overhits, Is.Zero);
+            Assert.That(engine.EngineStats.CommittedScore, Is.EqualTo(56));
+            Assert.That(engine.EngineStats.Combo, Is.EqualTo(1));
+
+            engine.Update(4);
+            Assert.That(engine.EngineStats.Combo, Is.EqualTo(1));
+            Assert.That(engine.EngineStats.GhostsHit, Is.Zero);
+            Assert.That(engine.EngineStats.TotalGhosts, Is.EqualTo(1));
+            Press(Fixture.Player, EliteDrumsAction.EliteRide, 5);
+            Assert.That(engine.EngineStats.NotesMissed, Is.EqualTo(1));
+            Assert.That(engine.EngineStats.Combo, Is.EqualTo(2));
+            Assert.That(engine.EngineStats.SustainScore, Is.Zero);
         }
 
         [UnityTest]

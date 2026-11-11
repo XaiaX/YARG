@@ -830,6 +830,8 @@ namespace YARG.Settings
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
             public ToggleSetting EliteHiHatClosureForgiveness { get; } = new(false);
+            public ToggleSetting LenientHiHatArticulation { get; } = new(false);
+            public ToggleSetting AlternateGhostScoring { get; } = new(false);
             public SliderSetting EliteHiHatWaitingOpacity { get; } = new(28, 0, 100);
             public SliderSetting EliteHiHatHeldOpacity { get; } = new(33, 0, 100);
             public SliderSetting EliteHiHatWaitingGlow { get; } = new(35, 0, 200);

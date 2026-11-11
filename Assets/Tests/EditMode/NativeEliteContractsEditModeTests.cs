@@ -1,9 +1,13 @@
 // pattern: Imperative Shell
 using System;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using YARG.Core;
+using YARG.Core.Engine.Drums;
+using YARG.Core.Game;
 using YARG.Core.Input;
 
 // pattern: Imperative Shell
@@ -12,6 +16,51 @@ namespace YARG.Tests.EditMode
 {
     public sealed class NativeEliteContractsEditModeTests
     {
+        [Test]
+        public void DrumResultsShowDynamicsAndMisarticulationOutsideOverhits()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Menu/ScoreScreen/DrumsScoreCard.prefab");
+            var cardObject = UnityEngine.Object.Instantiate(prefab);
+            try
+            {
+                const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+                var cardType = Type.GetType("YARG.Menu.ScoreScreen.DrumsScoreCard, Assembly-CSharp", true);
+                var playerType = Type.GetType("YARG.Player.YargPlayer, Assembly-CSharp", true);
+                var profile = new YargProfile { GameMode = GameMode.EliteDrums, CurrentInstrument = Instrument.EliteDrums };
+                var player = Activator.CreateInstance(playerType, profile, null);
+                var stats = new DrumsStats
+                {
+                    MisarticulatedHiHats = 2, GhostsHit = 3, TotalGhosts = 5,
+                    AccentsHit = 1, TotalAccents = 4, DynamicsBonus = 100,
+                };
+                stats.RecordOverhit((int) EliteDrumsAction.EliteClosedHiHat);
+                var card = cardObject.GetComponent(cardType);
+                cardType.GetMethod("Initialize").Invoke(card, new[] { (object) false, player, stats, false });
+                var overhits = (Component) cardType.GetField("_overhits", fields).GetValue(card);
+                var rows = overhits.transform.parent.parent;
+                int initialRows = rows.childCount;
+                cardType.GetMethod("SetDrumStatRows", fields).Invoke(card, null);
+
+                var statType = Type.GetType("YARG.Menu.ScoreScreen.StatInfo, Assembly-CSharp", true);
+                string Text(Component row, string field)
+                {
+                    var label = statType.GetField(field).GetValue(row);
+                    return (string) label.GetType().GetProperty("text").GetValue(label);
+                }
+                string Value(string english, string key) => rows.GetComponentsInChildren(statType, true)
+                    .Where(row => row.transform.parent == rows)
+                    .Where(row => Text(row, "Label") == english || Text(row, "Label").EndsWith("." + key, StringComparison.Ordinal))
+                    .Select(row => Text(row, "Value")).Single();
+                Assert.That(rows.childCount - initialRows, Is.EqualTo(5));
+                Assert.That(Value("Correct Ghosts", "GhostsHitCorrectly"), Does.Contain(">3<").And.Contain(">5<"));
+                Assert.That(Value("Correct Accents", "AccentsHitCorrectly"), Does.Contain(">1<").And.Contain(">4<"));
+                Assert.That(Value("Base Dynamics Bonus", "BaseDynamicsBonus"), Does.Contain(">100<"));
+                Assert.That(Value("Misarticulated Hi-Hats", "MisarticulatedHiHats"), Does.Contain(">2<"));
+                Assert.That(overhits.GetType().GetProperty("text").GetValue(overhits), Does.Contain(">1<"));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(cardObject); }
+        }
+
         [Test]
         public void Bindings()
         {

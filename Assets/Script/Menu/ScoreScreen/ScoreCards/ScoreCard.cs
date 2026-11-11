@@ -622,7 +622,7 @@ namespace YARG.Menu.ScoreScreen
             return $"<font-weight=600><color=#FFFFFF>{s}</color></font-weight>";
         }
 
-        private string ColorizeSecondary(object s)
+        protected string ColorizeSecondary(object s)
         {
             return $"<font-weight=500><color=#7D7DA3>{s}</color></font-weight>";
         }

@@ -171,7 +171,9 @@ namespace YARG.Gameplay.Player
             EngineParams = Player.IsReplay ? (DrumsEngineParameters) Player.EngineParameterOverride :
                 Player.EnginePreset.Drums.Create(StarMultiplierThresholds, SoloBonusStarMultiplierThresholds,
                     DrumsEngineParameters.DrumMode.ProFourLane,
-                    SettingsManager.Settings?.EliteHiHatClosureForgiveness.Value ?? false);
+                    SettingsManager.Settings?.EliteHiHatClosureForgiveness.Value ?? false,
+                    lenientHiHatArticulation: SettingsManager.Settings?.LenientHiHatArticulation.Value ?? false,
+                    alternateGhostScoring: SettingsManager.Settings?.AlternateGhostScoring.Value ?? false);
             if (EngineContainer != null)
             {
                 if (Engine != null)
@@ -507,6 +509,8 @@ namespace YARG.Gameplay.Player
         protected override void OnNoteHit(int index, EliteDrumNote note)
         {
             using var hit = TargetedPerformance.MeasureWithContext(TargetedOperation.EliteDrumHit, unchecked((int) note.Tick));
+            if (Engine.IsJudgingMisarticulatedHiHat) InvalidateFullCombo();
+            if (Engine.IsJudgingClosedAsOpen) _hiHatSustainVisual?.ResetInheritedWidth();
             using (TargetedPerformance.Measure(TargetedOperation.DrumHitBookkeeping))
                 base.OnNoteHit(index, note);
             using (TargetedPerformance.Measure(TargetedOperation.DrumHitGemReturn))
@@ -556,6 +560,7 @@ namespace YARG.Gameplay.Player
             // The source note already completed its lifecycle. Only the physical follow-up
             // gets feedback here; do not hit its pooled gem or repeat SP/solo callbacks.
             _pendingOverhitAction = null;
+            if (Engine.IsJudgingMisarticulatedHiHat) InvalidateFullCombo();
             AnimateHitFeedback(note);
         }
 
@@ -574,7 +579,7 @@ namespace YARG.Gameplay.Player
         protected override void OnNoteMissed(int index, EliteDrumNote note)
         {
             _hiHatSustainVisual?.ResetInheritedWidth();
-            base.OnNoteMissed(index, note);
+            ShowNoteMiss(note, preserveCombo: EngineParams.AlternateGhostScoring && note.IsGhost);
             (NotePool.GetByKey(note) as EliteDrumsNoteElement)?.MissNote();
         }
 

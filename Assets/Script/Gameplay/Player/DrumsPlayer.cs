@@ -267,13 +267,15 @@ namespace YARG.Gameplay.Player
                 // path opts into V1 only after the selected track proves it has eligible
                 // generated metadata/descriptors; native and disabled states stay legacy.
                 var presetParams = Player.EnginePreset.Drums.Create(
-                    StarMultiplierThresholds, SoloBonusStarMultiplierThresholds, mode);
+                    StarMultiplierThresholds, SoloBonusStarMultiplierThresholds, mode,
+                    alternateGhostScoring: SettingsManager.Settings?.AlternateGhostScoring.Value ?? false);
                 EngineParams = ShouldUseEliteFillRulesetV1(Player.Profile, NoteTrack, false)
                     ? new DrumsEngineParameters(presetParams.HitWindow, presetParams.MaxMultiplier,
                         presetParams.StarMultiplierThresholds, presetParams.SoloBonusStarMultiplierThresholds,
                         presetParams.Mode, presetParams.NoStarPowerOverlap, presetParams.EnableLanes,
                         DrumsEngineParameters.ELITE_FILL_RULESET_V1,
-                        DrumsEngineParameters.DEFAULT_ENTRY_GRACE_MULTIPLIER)
+                        DrumsEngineParameters.DEFAULT_ENTRY_GRACE_MULTIPLIER,
+                        alternateGhostScoring: presetParams.AlternateGhostScoring)
                     : presetParams;
             }
             else
@@ -965,7 +967,7 @@ namespace YARG.Gameplay.Player
         {
             DrumsEngine.TraceEliteLane($"Unity OnNoteMissed index={index} tick={note.Tick} pad={note.Pad} " +
                 $"origin={note.ConversionOrigin?.ToString() ?? "none"} combo={Engine.EngineStats.Combo}");
-            base.OnNoteMissed(index, note);
+            ShowNoteMiss(note, preserveCombo: EngineParams.AlternateGhostScoring && note.IsGhost);
             OnNoteHitOrMissed(note);
 
             // Remember that drums treat each note separately
