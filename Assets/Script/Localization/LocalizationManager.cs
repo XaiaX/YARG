@@ -13,6 +13,7 @@ namespace YARG.Localization
     public static class LocalizationManager
     {
         private const string DEFAULT_CULTURE = "en-US";
+        private const string YOLO_MOTD_KEY = "Menu.Main.YoloMessageOfTheDay";
 
         private const string MESSAGES_URL = "https://raw.githubusercontent.com/YARC-Official/News/master/messages/index.json";
 
@@ -211,7 +212,8 @@ namespace YARG.Localization
             // translations for one or more languages.
             foreach (var (localizationKey, langs) in version)
             {
-                if (langs is null || langs.Type != JTokenType.Object)
+                // The fork's support notice is bundled and stays visible when upstream news loads.
+                if (localizationKey == YOLO_MOTD_KEY || langs is null || langs.Type != JTokenType.Object)
                 {
                     continue;
                 }

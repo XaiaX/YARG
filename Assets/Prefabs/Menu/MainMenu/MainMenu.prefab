@@ -300,7 +300,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7666ce39360a4330a733067d9e66b929, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _localizationKey: Menu.Main.MessageOfTheDay
+  _localizationKey: Menu.Main.YoloMessageOfTheDay
 --- !u!222 &1764166612918682742
 CanvasRenderer:
   m_ObjectHideFlags: 0
