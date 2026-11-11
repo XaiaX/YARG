@@ -6,9 +6,11 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
+import zipfile
 
 
 WRAPPER = Path(__file__).resolve().parents[1] / "build_linux.py"
@@ -33,10 +35,22 @@ if target == 'Linux64':
         signal.pause()
     if os.environ.get('FAIL_BUILD'): sys.exit(7)
     out = pathlib.Path(arg('-buildOutput'))
-    (out / 'YARG.x86_64').write_text('test player')
+    (out / 'YARG.x86_64').write_text(str(root) if os.environ.get('LEAK_PROJECT_PATH') else 'test player')
+    (out / 'UnityPlayer.so').write_text('test library')
+    data = out / 'YARG_Data'
+    data.mkdir()
+    (data / '._metadata').touch()
+    (out / 'YARG_BurstDebugInformation_DoNotShip').mkdir()
     if not os.environ.get('OMIT_RECEIPT'):
         pathlib.Path(arg('-buildReceipt')).write_text(json.dumps({'status':'Succeeded','target':'StandaloneLinux64'}))
+elif '-buildOutput' in args:
+    app = pathlib.Path(arg('-buildOutput')) / 'YARG.app/Contents'
+    app.mkdir(parents=True)
+    (app / 'Info.plist').write_text('test app')
+    (app / '.DS_Store').write_text('Finder metadata')
+    pathlib.Path(arg('-buildReceipt')).write_text(json.dumps({'status':'Succeeded','target':'StandaloneOSX'}))
 else:
+    if (root / 'Assets/csc.rsp').exists(): sys.exit(98)
     if (root / 'terminating').exists() and not (root / 'child-finished').exists(): sys.exit(99)
     if os.environ.get('FAIL_RESTORE'): sys.exit(8)
     pathlib.Path(arg('-restoreReceipt')).write_text(json.dumps({'status':'Succeeded','target':'StandaloneOSX'}))
@@ -78,6 +92,25 @@ class LinuxBuildWorkflowTests(unittest.TestCase):
         self.assertEqual(len(list(self.output.glob("*/YARG.x86_64"))), 1)
         self.assertEqual(len(self.calls()), 2)
 
+    def test_success_publishes_clean_linux_archive(self):
+        result = self.run_build()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        archive, = (self.output / "current").glob("*.tar.gz")
+        build = archive.name.removesuffix(".tar.gz")
+        with tarfile.open(archive) as contents:
+            self.assertEqual(set(contents.getnames()), {build, f"{build}/YARG.x86_64",
+                                                       f"{build}/UnityPlayer.so", f"{build}/YARG_Data"})
+            self.assertEqual(contents.getmember(f"{build}/YARG.x86_64").mode, 0o755)
+        receipt = json.loads((self.output / build / "build-info.json").read_text())
+        self.assertEqual(Path(receipt["share_archive"]), archive.resolve())
+
+    def test_local_path_blocks_archive_and_restores_editor(self):
+        result = self.run_build(LEAK_PROJECT_PATH="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("player contains a local checkout path", result.stderr)
+        self.assertIn("macOS target restored", result.stdout)
+        self.assertFalse(list((self.output / "current").glob("*.tar.gz")))
+
     def test_failed_build_still_restores_mac_and_reports_failure(self):
         result = self.run_build(FAIL_BUILD="1")
         self.assertNotEqual(result.returncode, 0)
@@ -94,6 +127,41 @@ class LinuxBuildWorkflowTests(unittest.TestCase):
         result = self.run_build(FAIL_RESTORE="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("macOS restoration failed", result.stdout + result.stderr)
+        self.assertFalse(list((self.output / "current").glob("*.tar.gz")))
+
+    def test_share_failure_leaves_the_build_available_for_retry(self):
+        (self.output / "current").touch()
+        result = self.run_build()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not publish Linux share archive", result.stderr)
+        receipt, = self.output.glob("linux-*/build-info.json")
+        report = json.loads(receipt.read_text())
+        self.assertTrue(report["build_succeeded"])
+        self.assertTrue(report["mac_restored"])
+        self.assertIn("share_error", report)
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS archives require ditto")
+    def test_macos_shares_the_dated_archive_after_restoration(self):
+        self.command[1] = str(WRAPPER.with_name("build_macos.py"))
+        result = self.run_build()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        archive, = self.output.glob("macos-*/*.zip")
+        shared = self.output / "current" / archive.name
+        self.assertEqual(shared.read_bytes(), archive.read_bytes())
+        with zipfile.ZipFile(shared) as contents:
+            self.assertEqual(contents.read("YARG.app/Contents/Info.plist"), b"test app")
+            self.assertFalse(any(name.endswith("/.DS_Store") for name in contents.namelist()))
+            self.assertFalse(any(entry.extra for entry in contents.infolist()))
+        report = json.loads((archive.parent / "build-info.json").read_text())
+        self.assertEqual(Path(report["share_archive"]), shared.resolve())
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS archives require ditto")
+    def test_macos_keeps_dated_archive_private_if_restoration_fails(self):
+        self.command[1] = str(WRAPPER.with_name("build_macos.py"))
+        result = self.run_build(FAIL_RESTORE="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(len(list(self.output.glob("macos-*/*.zip"))), 1)
+        self.assertFalse(list((self.output / "current").glob("*.zip")))
 
     def test_missing_destination_does_not_launch_unity(self):
         self.output.rmdir()

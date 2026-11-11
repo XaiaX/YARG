@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 import linux_deploy as deploy
+from build_linux import NAS_BUILDS
 
 SCRIPTS = Path(__file__).resolve().parent
 
@@ -82,14 +83,15 @@ def execute(args):
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument('--output', type=Path, required=True, help='Existing mounted NAS build directory on this computer.')
+    result.add_argument('--output', type=Path, default=NAS_BUILDS / 'Linux',
+                        help='Existing mounted NAS build directory on this computer.')
     result.add_argument('--project', type=Path, default=SCRIPTS.parent)
     result.add_argument('--existing-build', help='Retry installation of this successful dated folder without rebuilding.')
     result.add_argument('--profile', action='store_true', help='Explicitly build a profiling nightly instead of normal.')
     result.add_argument('--keep', type=int, default=5)
     result.add_argument('--host', default='deck@192.168.1.157')
     result.add_argument('--key', type=Path, default=Path.home()/'.ssh/deck_ed25519')
-    result.add_argument('--deck-nas-root', type=Path, default=Path('/home/deck/NAS/Songs for YARG/Builds'))
+    result.add_argument('--deck-nas-root', type=Path, default=Path('/home/deck/NAS/scratch/yarg/builds/Linux'))
     result.add_argument('--deck-installs', type=Path, default=Path('/home/deck/.local/share/YARC/YARG Installs'))
     return result
 

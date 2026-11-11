@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # pattern: Imperative Shell
-"""Publish, verify, install and retain complete Linux nightlies. Cleanup defaults to a dry run."""
+"""Publish, verify, package, install and retain Linux nightlies. Cleanup defaults to a dry run."""
 import argparse
 from contextlib import contextmanager
 import fcntl
@@ -11,11 +11,13 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import tarfile
 import uuid
 
 MANIFEST = 'nightly-manifest.json'
 LATEST = 'YOLO-nightly'
 NAME = re.compile(r'linux-\d{8}-\d{6}-[0-9a-f]{6}\Z')
+LINUX_SHARE_NAME = re.compile(NAME.pattern.removesuffix(r'\Z') + r'\.tar\.gz\Z')
 EXCLUDED = {MANIFEST, '.keep', '.deck-install.json'}
 
 
@@ -39,6 +41,62 @@ def require_build(path):
     if not (path / 'YARG_Data').is_dir():
         raise RuntimeError(f'player data is not a directory: {path}')
     return report
+
+
+def share_archive_member(member):
+    name = member.name.rsplit('/', 1)[-1]
+    if (name in EXCLUDED or name in {'build-info.json', '.DS_Store', '__MACOSX', '.git'}
+            or name.startswith('._') or name.endswith(('_DoNotShip', '_ButDontShipItWithYourGame'))):
+        return None
+    if not (member.isfile() or member.isdir()):
+        raise RuntimeError(f'unsupported archive member: {member.name}')
+    executable = name == 'YARG.x86_64' or name.startswith('UnityCrashHandler')
+    member.mode = 0o755 if member.isdir() or executable else 0o644
+    member.uid = member.gid = 0
+    member.uname = member.gname = ''
+    return member
+
+
+def rotate_share_archives(root, name_pattern):
+    current = root / 'current'
+    if current.is_symlink() or not current.is_dir():
+        raise RuntimeError(f'expected an existing share directory: {current}')
+    archives = sorted(path for path in current.iterdir()
+                      if name_pattern.fullmatch(path.name) and path.is_file() and not path.is_symlink())
+    if len(archives) > 1:
+        previous = root / 'previous'
+        if previous.is_symlink():
+            raise RuntimeError(f'previous archive directory cannot be a symlink: {previous}')
+        previous.mkdir(exist_ok=True)
+        for old in archives[:-1]:
+            destination = previous / old.name
+            if destination.exists() or destination.is_symlink():
+                raise RuntimeError(f'archive already exists: {destination}')
+        for old in archives[:-1]:
+            old.rename(previous / old.name)
+    return archives[-1] if archives else None
+
+
+def package(build):
+    with locked(build.parent):
+        require_build(build)
+        output = build.parent / 'current'
+        if output.is_symlink():
+            raise RuntimeError(f'share directory cannot be a symlink: {output}')
+        output.mkdir(exist_ok=True)
+        archive = output / f'{build.name}.tar.gz'
+        previous = build.parent / 'previous' / archive.name
+        if any(path.exists() or path.is_symlink() for path in (archive, previous)):
+            raise RuntimeError(f'archive already exists: {archive}')
+        temporary = output / ('.package-' + uuid.uuid4().hex)
+        try:
+            with tarfile.open(temporary, 'x:gz', compresslevel=6) as contents:
+                contents.add(build, arcname=build.name, filter=share_archive_member)
+            temporary.rename(archive)
+            active = rotate_share_archives(build.parent, LINUX_SHARE_NAME)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return archive if active == archive else previous
 
 
 def inventory(path):
@@ -264,7 +322,7 @@ def prune(root, keep=5, apply=False, protect=()):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest='command', required=True)
-    for name in ('publish', 'verify'):
+    for name in ('publish', 'verify', 'package'):
         sub = subs.add_parser(name); sub.add_argument('--build', type=Path, required=True)
     sub = subs.add_parser('install')
     sub.add_argument('--build', type=Path, required=True)
@@ -280,12 +338,14 @@ def main():
             result = publish(args.build); result = {'build': result['build'], 'files': len(result['files'])}
         elif args.command == 'verify':
             result = verify(args.build); result = {'build': result['build'], 'verified_files': len(result['files'])}
+        elif args.command == 'package':
+            result = {'archive': str(package(args.build))}
         elif args.command == 'install': result = install(args.build, args.root, args.apply)
         else: result = prune(args.root, args.keep, args.apply)
         print(json.dumps(result, indent=2))
         return 0
     except (OSError, ValueError, RuntimeError) as error:
-        print(f'deployment refused: {error}', file=sys.stderr)
+        print(f'{args.command} refused: {error}', file=sys.stderr)
         return 1
 
 

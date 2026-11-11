@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import tarfile
 import tempfile
 import unittest
 
@@ -36,6 +37,43 @@ class DeploymentTests(unittest.TestCase):
         (p / 'build-info.json').write_text(json.dumps({'build_succeeded': True, 'mac_restored': False}))
         with self.assertRaises(RuntimeError): self.m.publish(p)
         self.assertFalse((p / self.m.MANIFEST).exists())
+
+    def test_share_archive_filters_metadata_and_preserves_linux_permissions(self):
+        p = self.build(1)
+        data = p / 'YARG_Data'
+        output = self.nas / 'current'
+        output.mkdir()
+        for name in ('.DS_Store', '._data file', '.git'):
+            (data / name).write_text('metadata')
+        for name in ('__MACOSX', 'YARG_BurstDebugInformation_DoNotShip', 'YARG_ButDontShipItWithYourGame'):
+            (p / name).mkdir()
+            (p / name / 'report').write_text('metadata')
+        (p / 'YARG.x86_64').chmod(0o600)
+        (data / 'data file').chmod(0o700)
+
+        archive = self.m.package(p)
+        self.assertEqual(archive, output / f'{p.name}.tar.gz')
+        with tarfile.open(archive) as contents:
+            members = {item.name: item for item in contents}
+            self.assertEqual(set(members), {p.name, *(f'{p.name}/{name}' for name in (
+                'YARG.x86_64', 'UnityPlayer.so', 'YARG_Data', 'YARG_Data/data file',
+            ))})
+            self.assertEqual(members[f'{p.name}/YARG.x86_64'].mode, 0o755)
+            self.assertEqual(members[f'{p.name}/YARG_Data'].mode, 0o755)
+            self.assertEqual(members[f'{p.name}/YARG_Data/data file'].mode, 0o644)
+        with self.assertRaisesRegex(RuntimeError, 'already exists'):
+            self.m.package(p)
+
+    def test_share_archive_keeps_only_the_newest_build_current(self):
+        first = self.build(1)
+        latest = self.build(3)
+        older = self.build(2)
+        first_archive = self.m.package(first)
+        latest_archive = self.m.package(latest)
+        older_archive = self.m.package(older)
+        self.assertEqual(list((self.nas / 'current').glob('*.tar.gz')), [latest_archive])
+        self.assertTrue((self.nas / 'previous' / first_archive.name).is_file())
+        self.assertEqual(older_archive.parent, self.nas / 'previous')
 
     def test_install_verifies_then_switches_and_removes_old_managed_build(self):
         old = self.build(1, self.deck)

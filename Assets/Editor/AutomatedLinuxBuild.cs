@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Editor
 {
-    /// <summary>Normal Linux builds for scripts/build_linux.py; target switching belongs to the CLI wrapper.</summary>
+    /// <summary>Desktop nightlies; the CLI selects the target before Unity loads scripts.</summary>
     public static class AutomatedLinuxBuild
     {
         [Serializable]
@@ -32,11 +32,15 @@ namespace Editor
             public AddressableAssetSettings.PlayerBuildOption contentBuild;
         }
 
-        public static void Build()
+        public static void Build() => BuildNightly(BuildTarget.StandaloneLinux64, "YARG.x86_64");
+
+        public static void BuildMac() => BuildNightly(BuildTarget.StandaloneOSX, "YARG.app");
+
+        private static void BuildNightly(BuildTarget target, string playerName)
         {
-            RequireTarget(BuildTarget.StandaloneLinux64);
-            if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Standalone, BuildTarget.StandaloneLinux64))
-                throw new InvalidOperationException("Linux Build Support is not installed for this Editor.");
+            RequireTarget(target);
+            if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Standalone, target))
+                throw new InvalidOperationException($"Build support for {target} is not installed for this Editor.");
             // Linux Mono cross-builds from macOS without changing the shared Standalone backend setting.
             if (PlayerSettings.GetScriptingBackend(NamedBuildTarget.Standalone) != ScriptingImplementation.Mono2x)
                 throw new InvalidOperationException("This command requires the Standalone Mono backend; no backend setting was changed.");
@@ -70,15 +74,15 @@ namespace Editor
                 var options = new BuildPlayerOptions
                 {
                     scenes = scenes,
-                    locationPathName = Path.Combine(output, "YARG.x86_64"),
-                    target = BuildTarget.StandaloneLinux64,
+                    locationPathName = Path.Combine(output, playerName),
+                    target = target,
                     targetGroup = BuildTargetGroup.Standalone,
                     options = buildOptions,
                     extraScriptingDefines = new[] { "YARG_NIGHTLY_BUILD" }
                 };
                 var result = BuildPipeline.BuildPlayer(options).summary;
                 if (result.result != BuildResult.Succeeded)
-                    throw new InvalidOperationException($"Linux player build {result.result}: {result.totalErrors} errors.");
+                    throw new InvalidOperationException($"{target} player build {result.result}: {result.totalErrors} errors.");
             }
             finally
             {
