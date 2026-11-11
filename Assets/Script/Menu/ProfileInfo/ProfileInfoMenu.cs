@@ -19,19 +19,23 @@ namespace YARG.Menu.ProfileInfo
         [SerializeField]
         private GameObject _editBindsTab;
 
+        private NavigationScheme _scheme;
+
         private void OnEnable()
         {
             _tabs.TabChanged += OnTabChanged;
             _tabs.SelectFirstTab();
 
-            _ = Navigator.Instance.PushScheme(NavigationScheme.EmptyWithMusicPlayer);
+            _scheme = new NavigationScheme(new(), true);
+            Navigator.Instance.PushSchemeImmediate(_scheme);
         }
 
         private void OnDisable()
         {
             _tabs.TabChanged -= OnTabChanged;
 
-            Navigator.Instance.PopScheme();
+            Navigator.Instance?.RemoveScheme(_scheme);
+            _scheme = null;
         }
 
         public async void ShowQuickBind()

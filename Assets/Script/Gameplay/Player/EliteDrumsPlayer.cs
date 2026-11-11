@@ -728,6 +728,8 @@ namespace YARG.Gameplay.Player
             // Elite bindings retain the legacy actions for generated targets, but only the
             // selected chart's action family may reach its typed engine or replay recording.
             var action = input.GetAction<EliteDrumsAction>();
+            if (action == EliteDrumsAction.EliteHiHatPosition)
+                return !EngineParams.HiHatClosureSuppression || input.Integer != 1;
             if (Player.Profile.EliteDrumsDownchartTarget is null)
             {
                 if (Player.Profile.CurrentDifficulty == Difficulty.Beginner &&

@@ -95,6 +95,7 @@ namespace YARG.Input
             new DrumPadButtonBinding("Drums.Kick", (int) EliteDrumsAction.Kick),
 
             new DrumPadButtonBinding("EliteDrums.Stomp", (int) EliteDrumsAction.EliteStomp),
+            new HiHatPositionBinding(),
             new DrumPadButtonBinding("EliteDrums.Splash", (int) EliteDrumsAction.EliteSplash),
             new DrumPadButtonBinding("EliteDrums.Snare", (int) EliteDrumsAction.EliteSnare),
             new DrumPadButtonBinding("EliteDrums.ClosedHiHat", (int) EliteDrumsAction.EliteClosedHiHat),

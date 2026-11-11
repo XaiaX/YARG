@@ -55,7 +55,7 @@ namespace YARG.Input
             }
         }
 
-        public float PressPoint
+        public virtual float PressPoint
         {
             get => _pressPoint;
             set
@@ -186,7 +186,7 @@ namespace YARG.Input
             InvokeStateChanged(State);
         }
 
-        private float CalculateState(float rawValue)
+        protected virtual float CalculateState(float rawValue)
         {
             return rawValue * _invertSign;
         }

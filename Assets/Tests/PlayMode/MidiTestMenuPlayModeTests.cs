@@ -7,11 +7,15 @@ using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Game;
 using YARG.Core.Input.Diagnostics;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace YARG.Tests.PlayMode
 {
@@ -142,6 +146,102 @@ namespace YARG.Tests.PlayMode
             Assert.That((bool)capture.GetType().GetProperty("IsRecording").GetValue(capture), Is.False);
             Assert.That(File.ReadAllText(log), Does.Contain("recording_end"));
             yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ProfileBindingDialogAcceptsBothScrolledMidiSelectionAndPlayedNotes()
+        {
+#if UNITY_EDITOR
+            _canvas = new GameObject("MIDI binding test canvas", typeof(Canvas), typeof(GraphicRaycaster));
+            var events = new GameObject("MIDI binding EventSystem", typeof(EventSystem));
+            events.transform.SetParent(_canvas.transform, false);
+            var helperType = Production("YARG.Input.InputControlBindingHelper");
+            if (helperType.GetProperty("Instance", FLAGS | BindingFlags.FlattenHierarchy).GetValue(null) == null)
+                _canvas.AddComponent(helperType);
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Prefabs/Menu/ProfileInfo/EditBinds/InputControlDialog/InputControlDialog.prefab");
+            _menu = UnityEngine.Object.Instantiate(prefab, _canvas.transform, false);
+            var dialogRect = (RectTransform)_menu.transform;
+            dialogRect.anchorMin = Vector2.zero;
+            dialogRect.anchorMax = Vector2.one;
+            dialogRect.offsetMin = dialogRect.offsetMax = Vector2.zero;
+            var dialog = _menu.GetComponent(Production("YARG.Menu.ProfileInfo.InputControlDialogMenu"));
+            var profile = new YargProfile { Name = "MIDI binding example", GameMode = GameMode.EliteDrums };
+            var bindings = Activator.CreateInstance(Production("YARG.Input.ProfileBindings"), profile);
+            var player = Activator.CreateInstance(Production("YARG.Player.YargPlayer"), profile, bindings);
+            var inputSystem = Production("UnityEngine.InputSystem.InputSystem");
+            var descriptionType = Production("UnityEngine.InputSystem.Layouts.InputDeviceDescription");
+            object description = Activator.CreateInstance(descriptionType);
+            descriptionType.GetProperty("interfaceName").SetValue(description, "Minis");
+            descriptionType.GetProperty("product").SetValue(description, "Manual binding test");
+            descriptionType.GetProperty("capabilities").SetValue(description, "{\"channel\":9}");
+            var device = inputSystem.GetMethod("AddDevice", new[] { descriptionType }).Invoke(null, new[] { description });
+            try
+            {
+                bindings.GetType().GetMethod("AddDevice").Invoke(bindings, new[] { device });
+                var collection = bindings.GetType().GetProperty("Item").GetValue(bindings, new object[] { GameMode.EliteDrums });
+                var binding = collection.GetType().GetMethod("TryGetBindingByKey").Invoke(collection,
+                    new object[] { "EliteDrums.SizzleHiHat" });
+                var getNote = device.GetType().GetMethod("GetNote");
+                var hasControl = binding.GetType().GetMethod("ContainsControl",
+                    new[] { Production("UnityEngine.InputSystem.InputControl") });
+                var show = dialog.GetType().GetMethod("Show");
+                show.Invoke(dialog, new[] { player, binding });
+                var browse = (Button)Field(dialog, "_browseMidiButton");
+                Assert.That(browse.gameObject.activeInHierarchy, Is.True);
+                browse.onClick.Invoke();
+                var picker = (Component)Field(dialog, "_manualMidiPicker");
+                var noteDropdown = (Component)Field(picker, "_noteDropdown");
+                var add = (Button)Field(picker, "_addButton");
+                Assert.That(((Component)Field(picker, "_deviceDropdown")).gameObject.activeInHierarchy, Is.False);
+                Assert.That(add.interactable, Is.False);
+                yield return null; // Let TMP initialize the newly visible dropdown before opening it.
+                noteDropdown.GetType().GetMethod("Show", Type.EmptyTypes).Invoke(noteDropdown, null);
+                yield return null;
+                var list = noteDropdown.transform.Find("Dropdown List");
+                Assert.That(list, Is.Not.Null);
+                var scroll = list.GetComponent<ScrollRect>();
+                var toggles = list.GetComponentsInChildren<Toggle>();
+                Assert.That(toggles, Has.Length.EqualTo(129));
+                Assert.That(scroll.content.rect.height, Is.GreaterThan(scroll.viewport.rect.height));
+                scroll.verticalNormalizedPosition = 1f - 47f / 128f;
+                Canvas.ForceUpdateCanvases();
+                toggles[47].isOn = true;
+                Assert.That(add.interactable, Is.True);
+                add.onClick.Invoke();
+                float deadline = Time.realtimeSinceStartup + 2f;
+                while (_menu.activeSelf && Time.realtimeSinceStartup < deadline) yield return null;
+                Assert.That(_menu.activeSelf, Is.False);
+                Assert.That(hasControl.Invoke(binding, new[] { getNote.Invoke(device, new object[] { 46 }) }), Is.True);
+
+                show.Invoke(dialog, new[] { player, binding });
+                browse.onClick.Invoke();
+                dialog.GetType().GetMethod("CancelAndClose").Invoke(dialog, null);
+                deadline = Time.realtimeSinceStartup + 2f;
+                while (Field(dialog, "_cancellationToken") != null && Time.realtimeSinceStartup < deadline) yield return null;
+                Assert.That(Field(dialog, "_cancellationToken"), Is.Null);
+
+                show.Invoke(dialog, new[] { player, binding });
+                var learnedControl = getNote.Invoke(device, new object[] { 48 });
+                inputSystem.GetMethod("QueueDeltaStateEvent").MakeGenericMethod(typeof(byte))
+                    .Invoke(null, new[] { learnedControl, (object)(byte)100, -1d });
+                deadline = Time.realtimeSinceStartup + 2f;
+                while (_menu.activeSelf && Time.realtimeSinceStartup < deadline) yield return null;
+                Assert.That(_menu.activeSelf, Is.False);
+                Assert.That(hasControl.Invoke(binding, new[] { learnedControl }), Is.True);
+            }
+            finally
+            {
+                ((IDisposable)bindings).Dispose();
+                inputSystem.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(method => method.Name == "RemoveDevice" && method.GetParameters().Length == 1)
+                    .Invoke(null, new[] { device });
+            }
+#else
+            Assert.Ignore("Requires the native profile binding dialog prefab from the Unity Editor.");
+            yield break;
+#endif
         }
 
         [UnityTearDown]

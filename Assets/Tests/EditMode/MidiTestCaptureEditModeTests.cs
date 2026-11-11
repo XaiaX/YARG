@@ -5,8 +5,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UI;
 using YARG.Core;
 using YARG.Core.Game;
+using YARG.Core.Input;
 using YARG.Core.Input.Diagnostics;
 
 namespace YARG.Tests.EditMode
@@ -69,12 +73,20 @@ namespace YARG.Tests.EditMode
         }
 
         private void Assign(object device) => Call(_bindings, "AddDevice", device);
-        private void Bind(object device, string key, int number, bool controller = false)
+
+        private object GetBinding(string key)
         {
             var collection = _bindings.GetType().GetProperty("Item").GetValue(_bindings, new object[] { GameMode.EliteDrums });
             var binding = Call(collection, "TryGetBindingByKey", key);
+            Assert.That(binding, Is.Not.Null, key);
+            return binding;
+        }
+
+        private bool Bind(object device, string key, int number, bool controller = false)
+        {
+            var binding = GetBinding(key);
             var control = Call(device, controller ? "GetControl" : "GetNote", number);
-            binding.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            return (bool)binding.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
                 .Single(method => method.Name == "AddControl" && method.GetParameters().Length == 1 &&
                     method.GetParameters()[0].ParameterType.FullName == "UnityEngine.InputSystem.InputControl")
                 .Invoke(binding, new[] { control });
@@ -83,6 +95,137 @@ namespace YARG.Tests.EditMode
         private static void Publish(long port, byte status, byte number, byte value) => Type("Minis.RawMidiEvents")
             .GetMethod("Publish", ALL).Invoke(null, new object[] { port, "Identical device name", .001, status, number, value });
         private MidiTestRecord[] History => (MidiTestRecord[])Get(_capture, "History");
+
+        [Test]
+        public void ManualMidiPickerUsesAssignedEndpointsAndTheOrdinaryNoteControl()
+        {
+            var first = Device(707, 9);
+            var second = Device(707, 10);
+            Device(808, 9);
+            Assign(first);
+            Assign(second);
+            const string key = "EliteDrums.SizzleHiHat";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Prefabs/Menu/ProfileInfo/EditBinds/InputControlDialog/InputControlDialog.prefab");
+            var instance = UnityEngine.Object.Instantiate(prefab);
+            try
+            {
+                var picker = instance.GetComponentsInChildren<MonoBehaviour>(true)
+                    .SingleOrDefault(component => component?.GetType().Name == "ManualMidiNotePicker");
+                Assert.That(picker, Is.Not.Null, "Add Binding should offer manual note selection.");
+                Assert.That(Call(picker, "Prepare", _bindings, GetBinding("EliteDrums.HiHatPosition")), Is.False);
+                Assert.That(Call(picker, "Prepare", _bindings, GetBinding(key)), Is.True);
+
+                var fields = BindingFlags.Instance | BindingFlags.NonPublic;
+                var deviceDropdown = picker.GetType().GetField("_deviceDropdown", fields).GetValue(picker);
+                var noteDropdown = picker.GetType().GetField("_noteDropdown", fields).GetValue(picker);
+                var deviceOptions = ((System.Collections.IList)Get(deviceDropdown, "options")).Cast<object>()
+                    .Select(option => (string)Get(option, "text")).ToArray();
+                Assert.That(deviceOptions, Has.Length.EqualTo(2));
+                Assert.That(deviceOptions[0], Does.Contain("CH 10"));
+                Assert.That(deviceOptions[1], Does.Contain("CH 11"));
+                var noteOptions = ((System.Collections.IList)Get(noteDropdown, "options")).Cast<object>()
+                    .Select(option => (string)Get(option, "text")).ToArray();
+                Assert.That(noteOptions, Has.Length.EqualTo(129));
+                Assert.That(noteOptions[1], Does.Contain("000"));
+                Assert.That(noteOptions[47], Does.Contain("046"));
+                Assert.That(noteOptions[128], Does.Contain("127"));
+                Assert.That(((RectTransform)Get(noteDropdown, "template")).GetComponent<ScrollRect>().vertical);
+                Assert.That(Get(picker, "SelectedControl"), Is.Null, "A note must be selected explicitly.");
+
+                deviceDropdown.GetType().GetProperty("value").SetValue(deviceDropdown, 1);
+                noteDropdown.GetType().GetProperty("value").SetValue(noteDropdown, 47);
+                Assert.That(Get(picker, "SelectedControl"), Is.SameAs(Call(second, "GetNote", 46)));
+                Assert.That(Bind(first, key, 46), Is.True);
+                Assert.That(Get(picker, "SelectedControl"), Is.Not.Null, "The same note on another endpoint is distinct.");
+                Assert.That(Bind(second, key, 46), Is.True);
+                Assert.That(Get(picker, "SelectedControl"), Is.Null, "The existing endpoint/note pair is a duplicate.");
+                noteDropdown.GetType().GetProperty("value").SetValue(noteDropdown, 48);
+                Call(_bindings, "RemoveDevice", second);
+                Assert.That(Get(picker, "SelectedControl"), Is.Null, "A removed device cannot be bound.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(instance); }
+        }
+
+        [Test]
+        public void HiHatPositionAcceptsOnlyCcAndTakesPriorityOverLegacyStompCc()
+        {
+            var device = Device(707, 9);
+            Assign(device);
+            Assert.That(Bind(device, "EliteDrums.HiHatPosition", 44), Is.False);
+            Assert.That(Bind(device, "EliteDrums.HiHatPosition", 4, true), Is.True);
+            Assert.That(Bind(device, "EliteDrums.Stomp", 11, true), Is.True);
+            Capture();
+            Publish(707, 0xB9, 11, 127);
+            Publish(707, 0xB9, 4, 52);
+            Publish(707, 0xB9, 4, 127);
+            Assert.That(History[1].Matches.Select(match => match.Key), Is.EqualTo(new[] { "EliteDrums.HiHatPosition" }));
+            Assert.That(History[1].PedalClosed, Is.False);
+            Assert.That(History[2].PedalController?.Number, Is.EqualTo(4));
+            Assert.That(History[2].PedalClosed, Is.True);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SavedHiHatPositionProducesOnlyCalibratedClosureEdges(bool inverted)
+        {
+            const string key = "EliteDrums.HiHatPosition";
+            var device = Device(707, 9);
+            Assign(device);
+            Assert.That(Bind(device, key, 4, true), Is.True);
+            var binding = GetBinding(key);
+            var single = ((System.Collections.IEnumerable)Get(binding, "Bindings")).Cast<object>().Single();
+            single.GetType().GetProperty("Inverted").SetValue(single, inverted);
+            single.GetType().GetProperty("PressPoint").SetValue(single, .85f);
+            single.GetType().GetProperty("DebounceThreshold").SetValue(single, 0L);
+            binding.GetType().GetProperty("DebounceThreshold").SetValue(binding, 0L);
+            var saved = Call(_bindings, "Serialize");
+            var profile = Get(_bindings, "Profile");
+            ((IDisposable)_bindings).Dispose();
+            _bindings = Activator.CreateInstance(Type("YARG.Input.ProfileBindings"), profile, saved);
+            Call(_bindings, "OnDeviceAdded", device);
+
+            binding = GetBinding(key);
+            var inputs = new List<GameInput>();
+            void Record(ref GameInput input) => inputs.Add(input);
+            var processed = binding.GetType().GetEvent("InputProcessed");
+            var handler = (ActionRecorder)Record;
+            var callback = Delegate.CreateDelegate(processed.EventHandlerType, handler.Target, handler.Method);
+            processed.AddEventHandler(binding, callback);
+            Call(_bindings, "EnableInputs");
+            Call(binding, "UpdateForFrame", 0d);
+            Assert.That(inputs, Is.Empty, "Resolving the device must not manufacture a closure.");
+
+            var inputSystem = Type("UnityEngine.InputSystem.InputSystem");
+            var queue = inputSystem.GetMethod("QueueDeltaStateEvent").MakeGenericMethod(typeof(byte));
+            var control = Call(device, "GetControl", 4);
+            var manager = inputSystem.GetField("s_Manager", ALL).GetValue(null);
+            var playerUpdates = manager.GetType().GetProperty("runPlayerUpdatesInEditMode");
+            var updateType = Type("UnityEngine.InputSystem.LowLevel.InputUpdateType");
+            var update = manager.GetType().GetMethod("Update", new[] { updateType });
+            object dynamicUpdate = Enum.Parse(updateType, "Dynamic");
+            var previousMode = playerUpdates.GetValue(manager);
+            try
+            {
+                playerUpdates.SetValue(manager, true);
+                foreach (byte value in new byte[] { 0, 105, 116, 125, 40, 127 })
+                {
+                    queue.Invoke(null, new object[] { control, inverted ? (byte)(127 - value) : value, -1d });
+                    update.Invoke(manager, new[] { dynamicUpdate });
+                }
+            }
+            finally
+            {
+                playerUpdates.SetValue(manager, previousMode);
+                processed.RemoveEventHandler(binding, callback);
+            }
+
+            Assert.That(inputs, Has.Count.EqualTo(3));
+            Assert.That(inputs.All(input => input.GetAction<EliteDrumsAction>() == EliteDrumsAction.EliteHiHatPosition));
+            Assert.That(inputs.Select(input => input.Button).ToArray(), Is.EqualTo(new[] { true, false, true }));
+        }
+
+        private delegate void ActionRecorder(ref GameInput input);
 
         [TestCase(0xA9, 42, 91, 3, true, 2, 91)]
         [TestCase(0xD9, 91, 255, 2, true, 1, 91)]

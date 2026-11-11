@@ -234,7 +234,8 @@ namespace YARG.Input.Diagnostics
                         mappings.Add(new MidiTestBinding(device.SourcePortId, device.channel, controller, number,
                             binding.Key, name, binding.Action,
                             controller && Profile.GameMode == GameMode.EliteDrums &&
-                            binding.Action == (int)EliteDrumsAction.EliteStomp, single.Inverted, single.PressPoint));
+                            binding.Action is (int)EliteDrumsAction.EliteStomp or (int)EliteDrumsAction.EliteHiHatPosition,
+                            single.Inverted, single.PressPoint));
                     }
                 }
                 var configuration = new MidiTestConfiguration(endpoints, mappings);

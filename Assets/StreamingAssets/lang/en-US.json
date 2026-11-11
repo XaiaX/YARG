@@ -137,6 +137,11 @@
 		}
 	},
 	"Menu": {
+		"ManualMidiBinding": {
+			"Browse": "Choose MIDI Note",
+			"ChooseNote": "Select a MIDI note…",
+			"Add": "Add Binding"
+		},
 		"MidiTest": {
 			"Title": "MIDI TEST",
 			"ProfileLabel": "MIDI DIAGNOSTICS",
@@ -1217,6 +1222,7 @@
 		},
 		"EliteDrums": {
 			"Stomp": "Hi-Hat Pedal Stomp",
+			"HiHatPosition": "Hi-Hat Position (CC)",
 			"Splash": "Hi-Hat Pedal Splash",
 			"Snare": "Snare",
 			"ClosedHiHat": "Closed Hi-Hat",
@@ -2327,7 +2333,7 @@
 			},
 			"EliteHiHatClosureForgiveness": {
 				"Name": "Hi-Hat Closure Forgiveness",
-				"Description": "Pairs Stomp and Closed Hi-Hat inputs within 30 ms to forgive extra hits caused by closing a physical hi-hat stand. Adds 30 ms of judging feedback delay. Applies to new native Elite gameplay sessions."
+				"Description": "Pairs Closed Hi-Hat hits with Stomp or a bound Hi-Hat Position CC crossing within 30 ms. Adds 30 ms of judging feedback delay in new native Elite sessions."
 			},
 			"UseCumulativeSongUpdates": {
 				"Description": "Experimental: apply numbered songs_updates folders in order. After changing this setting, re-scan your song library (or restart) for it to take effect.",

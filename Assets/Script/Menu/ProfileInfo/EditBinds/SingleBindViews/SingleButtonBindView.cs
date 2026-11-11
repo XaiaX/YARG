@@ -28,6 +28,8 @@ namespace YARG.Menu.ProfileInfo
 
             // Set with notify for propogation to other components
             _invertToggle.isOn = singleBinding.Inverted;
+            if (binding is HiHatPositionBinding)
+                _pressPointSlider.MinimumValue = HiHatPositionBinding.MIN_CLOSED_THRESHOLD;
             _pressPointSlider.Value = singleBinding.PressPoint;
             _debounceModeDropdown.value = (int) singleBinding.DebounceMode;
             _debounceSlider.Value = singleBinding.DebounceThreshold;

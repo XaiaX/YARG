@@ -363,23 +363,21 @@ namespace YARG.Menu.Navigation
 
             Highlight();
 
-            bool popped = false;
+            var navigator = Navigator.Instance;
+            NavigationScheme scheme = null;
             void PopOnce()
             {
-                // Navigator can already be gone if the list dies during teardown
-                if (!popped && Navigator.Instance != null)
-                {
-                    popped = true;
-                    Navigator.Instance.PopScheme();
-                }
+                if (scheme == null) return;
+                if (navigator != null) navigator.RemoveScheme(scheme);
+                scheme = null;
             }
 
             var watcher = list.gameObject.AddComponent<DropdownListCloseWatcher>();
             watcher.Closed = PopOnce;
 
-            if (Navigator.Instance == null) return;
+            if (navigator == null) return;
 
-            Navigator.Instance.PushScheme(new NavigationScheme(new()
+            scheme = new NavigationScheme(new()
             {
                 new NavigationScheme.Entry(MenuAction.Up, "Menu.Common.Previous", () =>
                 {
@@ -415,7 +413,8 @@ namespace YARG.Menu.Navigation
                     if (dropdown == null) { PopOnce(); return; }
                     dropdown.Hide();
                 }),
-            }, null));
+            }, null);
+            navigator.PushSchemeImmediate(scheme);
         }
     }
 

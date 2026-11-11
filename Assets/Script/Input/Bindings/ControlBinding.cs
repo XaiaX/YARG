@@ -380,9 +380,10 @@ namespace YARG.Input
 
         public bool AddControl(ActuationSettings settings, InputControl<TState> control)
         {
-            if (ContainsControl(control)) return false;
+            if (!IsControlCompatible(control, out var compatibleControl) || ContainsControl(compatibleControl))
+                return false;
 
-            var binding = CreateBinding(settings, control);
+            var binding = CreateBinding(settings, compatibleControl);
             AddBinding(binding);
             FireBindingsChanged();
             return true;
@@ -633,7 +634,7 @@ namespace YARG.Input
                 }
             }
 
-            if (control is not InputControl<TState> tControl)
+            if (!IsControlCompatible(control, out var tControl))
             {
                 YargLogger.LogFormatWarning(
                     "Found control {0}, but it was not of the right type! Expected a derivative of {1}, found {2}",
