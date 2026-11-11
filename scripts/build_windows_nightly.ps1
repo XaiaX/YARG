@@ -9,10 +9,10 @@
 .EXAMPLE
     .\build_windows_nightly.ps1 -Project .\YARG -OutputRoot 'N:\scratch\yarg\builds\Windows'
 .NOTES
-    Close Unity first. The script fast-forwards the current branch and refuses
-    local changes. Builds reuse Unity's cache by default. Use -Clean to clear
-    Library and Temp before building. Finished
-    players and logs are stored under the checkout's Builds/WindowsNightly folder
+    Close Unity first. The script fast-forwards the current branch, updates a
+    clean YARG.Core to the pinned commit, and refuses local edits. Builds reuse
+    Unity's cache by default. Use -Clean to clear Library and Temp before
+    building. Finished players and logs are stored under Builds/WindowsNightly
     unless -OutputRoot is supplied. A shareable player ZIP is written to the
     output root's current folder. Paths are relative to the calling directory.
     Unity's build log is displayed live and saved under the run's logs folder.
@@ -182,9 +182,17 @@ function Restore-LfsFiles {
 }
 
 function Assert-CleanCheckout {
-    param([string] $Path, [switch] $ApplyGeneratedCleanup)
+    param([string] $Path, [switch] $ApplyGeneratedCleanup, [switch] $AllowCoreCommitMismatch)
 
-    $changes = @(Invoke-Git @('-C', $Path, 'status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=none'))
+    $statusArguments = @('-C', $Path, 'status', '--untracked-files=normal', '--ignore-submodules=none')
+    $changes = @(Invoke-Git ($statusArguments + '--porcelain'))
+    if ($AllowCoreCommitMismatch -and $changes -ccontains ' M YARG.Core') {
+        # Porcelain v2 reports a changed submodule commit separately from tracked and untracked edits.
+        $coreStatus = @(Invoke-Git ($statusArguments + @('--porcelain=v2', '--', 'YARG.Core')))
+        if ($coreStatus.Count -eq 1 -and $coreStatus[0] -cmatch '^1 \.M SC\.\. .* YARG\.Core$') {
+            $changes = @($changes | Where-Object { $_ -cne ' M YARG.Core' })
+        }
+    }
     $linkerFiles = @('Assets/Settings/AddressableAssetsData/link.xml',
         'Assets/Settings/AddressableAssetsData/link.xml.meta')
     $generated = @($linkerFiles | Where-Object { $changes -ccontains "?? $_" })
@@ -319,7 +327,7 @@ if (!$OutputRoot) { $OutputRoot = Join-Path $projectPath 'Builds/WindowsNightly'
 $rootPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputRoot)
 $currentBranch = Invoke-Git @('-C', $projectPath, 'branch', '--show-current')
 if ($currentBranch -cne $Branch) { throw "Open the $Branch branch in $projectPath first. Current branch: $currentBranch" }
-Assert-CleanCheckout $projectPath
+Assert-CleanCheckout $projectPath -AllowCoreCommitMismatch
 
 $runName = 'windows-nightly-{0}-{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'), ([guid]::NewGuid().ToString('N').Substring(0, 6))
 $run = (New-Item -ItemType Directory -Path (Join-Path $rootPath $runName)).FullName
@@ -340,7 +348,7 @@ try {
     $gitDirectory = Invoke-Git @('-C', $projectPath, 'rev-parse', '--absolute-git-dir')
     $lockPath = Join-Path $gitDirectory 'yolo-windows-nightly.lock'
     $buildLock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::None)
-    Assert-CleanCheckout $projectPath -ApplyGeneratedCleanup
+    Assert-CleanCheckout $projectPath -ApplyGeneratedCleanup -AllowCoreCommitMismatch
     Write-Host "Updating $Branch in $projectPath"
     Invoke-Git @('-C', $projectPath, 'fetch', '--', $Remote, "refs/heads/$Branch") | Out-Host
     Invoke-Git @('-C', $projectPath, 'merge', '--ff-only', 'FETCH_HEAD') | Out-Host
@@ -350,6 +358,7 @@ try {
     $coreCommit = Invoke-Git @('-C', $core, 'rev-parse', 'HEAD')
     $corePin = Invoke-Git @('-C', $projectPath, 'rev-parse', 'HEAD:YARG.Core')
     if ($coreCommit -ne $corePin) { throw 'YARG.Core does not match the commit pinned by the game.' }
+    Assert-CleanCheckout $projectPath
     Restore-LfsFiles $projectPath
     Restore-LfsFiles $core
     $receipt = [ordered]@{ status = 'CheckedOut'; branch = $Branch; gameCommit = $gameCommit; coreCommit = $coreCommit }
