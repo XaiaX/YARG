@@ -321,6 +321,12 @@ namespace YARG.Gameplay.HUD
             _textNotifications.ShowVocalPhraseResult(resultText, combo);
         }
 
+        public bool SongFinishPending => _textNotifications.SongFinishPending;
+
+        public void ShowSongFinish(System.Func<float> getStars) => _textNotifications.ShowSongFinish(getStars);
+
+        public void ResetTextNotifications() => _textNotifications.ForceReset();
+
         public void ShowNotification(TextNotificationType notificationType)
         {
             _textNotifications.ShowNotification(notificationType);

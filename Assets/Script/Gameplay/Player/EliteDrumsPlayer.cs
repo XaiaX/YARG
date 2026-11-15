@@ -51,6 +51,7 @@ namespace YARG.Gameplay.Player
         public int GetVisualPosition(EliteDrumNote note) =>
             _ordering.TryGetValue(GetReceptorKey(note), out var info) ? info.Position : 0;
         private readonly Dictionary<int, HighwayOrderingInfo> _ordering = new();
+        private double[] _breLaneLastHit = Array.Empty<double>();
         private EliteDrumsAction? _pendingOverhitAction;
         private bool _pendingWildcardHit;
         private HiHatSustainVisual _hiHatSustainVisual;
@@ -275,6 +276,7 @@ namespace YARG.Gameplay.Player
             TrackEffect.ConfigureEliteDrumFills(Notes, _trackEffects,
                 note => UsesKickBars && IsFootPad(note.Pad) ? -1f : GetVisualPosition(note), LaneCount);
             BRELanes = new LaneElement[LaneCount];
+            _breLaneLastHit = new double[LaneCount];
             _noteTemplate.GetComponent<EliteDrumsNoteElement>().PrepareSongGeometry(this, Notes);
             NotePool.SetPrefabAndReset(_noteTemplate);
             base.FinishInitialization();
@@ -318,6 +320,14 @@ namespace YARG.Gameplay.Player
         {
             base.UpdateVisuals(visualTime);
             UpdateHiHatSustains(visualTime);
+            if (Engine.IsCodaActive)
+            {
+                for (int lane = 0; lane < BRELanes.Length; lane++)
+                {
+                    BRELanes[lane]?.SetEmissionColor(
+                        CodaSection.GetNormalizedTimeSinceLastHit(visualTime, _breLaneLastHit[lane]));
+                }
+            }
         }
 
         private void UpdateHiHatSustains(double visualTime)
@@ -611,7 +621,12 @@ namespace YARG.Gameplay.Player
             bool wasOverhitInLane, DrumNoteType type, float velocity)
         {
             if (Engine.IsCodaActive)
-                CurrentCoda.HitLane(Engine.CurrentTime, (int) action);
+            {
+                CurrentCoda?.HitLane(Engine.CurrentTime, (int) action);
+                AnimateBreHit(action, GameManager.VisualTime);
+                _pendingOverhitAction = null;
+                return;
+            }
 
             if (_pendingWildcardHit)
             {
@@ -639,6 +654,31 @@ namespace YARG.Gameplay.Player
                 AnimateUnmatchedAction(action);
                 _pendingOverhitAction = null;
             }
+        }
+
+        private void AnimateBreHit(EliteDrumsAction action, double visualTime)
+        {
+            int pad = GetInputPad(action);
+            if (IsFootPad(pad) && UsesKickBars)
+            {
+                AnimateUnmatchedAction(action);
+                return;
+            }
+
+            LightBreReceptor(pad, visualTime);
+            if (IsFootPad(pad))
+            {
+                if (Layout.KickMode == EliteDrumsLayoutKickMode.Split)
+                    LightBreReceptor(SECOND_KICK_RECEPTOR, visualTime);
+                CameraPositioner.Bounce();
+            }
+        }
+
+        private void LightBreReceptor(int receptor, double visualTime)
+        {
+            if (!_ordering.TryGetValue(receptor, out var info)) return;
+            _breLaneLastHit[info.Position] = visualTime;
+            _fretArray.PlayCodaHitAnimation(receptor);
         }
 
         private void AnimateUnmatchedAction(EliteDrumsAction action)
@@ -693,6 +733,7 @@ namespace YARG.Gameplay.Player
         protected override void OnCodaStart(CodaSection coda)
         {
             base.OnCodaStart(coda);
+            Array.Fill(_breLaneLastHit, double.NegativeInfinity);
             _fretArray.SetBreMode(true);
         }
 
@@ -705,6 +746,7 @@ namespace YARG.Gameplay.Player
         protected override void ResetVisuals()
         {
             base.ResetVisuals();
+            Array.Fill(_breLaneLastHit, double.NegativeInfinity);
             _pendingOverhitAction = null;
             _pendingWildcardHit = false;
             // Replay seeking rebuilds hit history before resetting the visuals.

@@ -233,7 +233,8 @@ namespace YARG.Audio.BASS
             }, info.Indices.Length);
         }
 
-        internal static float[,]? BuildVolumeMatrix(IEnumerable<StemMixer.StemInfo> infos, int totalChannels)
+        internal static float[,]? BuildVolumeMatrix(IEnumerable<StemMixer.StemInfo> infos, int totalChannels,
+            bool applyStereoSwap = false)
         {
             if (totalChannels == 0)
             {
@@ -246,10 +247,12 @@ namespace YARG.Audio.BASS
             foreach (var info in infos)
             {
                 float[] panning = info.Panning!;
+                int left = applyStereoSwap && info.SwapStereo ? 1 : 0;
+                int right = 1 - left;
                 for (int i = 0; i < info.Indices!.Length; i++)
                 {
-                    matrix[0, channelIndex] = panning[2 * i];
-                    matrix[1, channelIndex] = panning[2 * i + 1];
+                    matrix[0, channelIndex] = panning[2 * i + left];
+                    matrix[1, channelIndex] = panning[2 * i + right];
                     channelIndex++;
                 }
             }

@@ -10,6 +10,13 @@ namespace YARG.Gameplay.HUD
 
         public void Enqueue(TextNotification notification)
         {
+            if (notification.Type == TextNotificationType.SongFinish)
+            {
+                _notificationQueue.RemoveAll(x => !IsFinishAward(x.Type));
+                _notificationQueue.Add(notification);
+                return;
+            }
+
             //if the queue is not empty, we remove the notifications that can be skipped
             if (_notificationQueue.Count > 0)
             {
@@ -32,6 +39,9 @@ namespace YARG.Gameplay.HUD
                 _notificationQueue.Add(notification);
             }
         }
+
+        internal static bool IsFinishAward(TextNotificationType? type) =>
+            type is TextNotificationType.FullCombo or TextNotificationType.StrongFinish;
 
         public TextNotification Dequeue()
         {
@@ -89,6 +99,7 @@ namespace YARG.Gameplay.HUD
         StarPowerReady,
         HotStart,
         StrongFinish,
-        VocalPhraseResult
+        VocalPhraseResult,
+        SongFinish
     }
 }

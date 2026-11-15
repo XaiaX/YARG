@@ -310,6 +310,7 @@ namespace YARG.Settings
                 nameof(Settings.ReverbImplementation),
                 new HeaderMetadata("Drums"),
                 nameof(Settings.AlternateGhostScoring),
+                nameof(Settings.PreferredDrumPanning),
                 new HeaderMetadata("EliteDrums"),
                 nameof(Settings.EnableEliteDrumsDowncharts),
                 nameof(Settings.EliteHiHatClosureForgiveness),

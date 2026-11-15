@@ -832,6 +832,13 @@ namespace YARG.Settings
             public ToggleSetting EliteHiHatClosureForgiveness { get; } = new(false);
             public ToggleSetting LenientHiHatArticulation { get; } = new(false);
             public ToggleSetting AlternateGhostScoring { get; } = new(false);
+            public DropdownSetting<DrumPanningPreference> PreferredDrumPanning { get; } =
+                new(DrumPanningPreference.DontChange, value => GlobalAudioHandler.PreferredDrumPanning = value)
+                {
+                    DrumPanningPreference.DontChange,
+                    DrumPanningPreference.ForceAudiencePanning,
+                    DrumPanningPreference.ForceDrummerPanning
+                };
             public SliderSetting EliteHiHatWaitingOpacity { get; } = new(28, 0, 100);
             public SliderSetting EliteHiHatHeldOpacity { get; } = new(33, 0, 100);
             public SliderSetting EliteHiHatWaitingGlow { get; } = new(35, 0, 200);

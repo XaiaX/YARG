@@ -17,7 +17,7 @@ namespace YARG.Tests.EditMode
     public sealed class NativeEliteContractsEditModeTests
     {
         [Test]
-        public void DrumResultsShowDynamicsAndMisarticulationOutsideOverhits()
+        public void DrumResultsShowDynamicsFlamsAndMisarticulationOutsideOverhits()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Menu/ScoreScreen/DrumsScoreCard.prefab");
             var cardObject = UnityEngine.Object.Instantiate(prefab);
@@ -32,6 +32,8 @@ namespace YARG.Tests.EditMode
                 {
                     MisarticulatedHiHats = 2, GhostsHit = 3, TotalGhosts = 5,
                     AccentsHit = 1, TotalAccents = 4, DynamicsBonus = 100,
+                    FlamsHit = 3, TotalFlams = 6,
+                    FlatFlamOverhitsForgiven = 1, TotalFlatFlams = 2,
                 };
                 stats.RecordOverhit((int) EliteDrumsAction.EliteClosedHiHat);
                 var card = cardObject.GetComponent(cardType);
@@ -51,14 +53,50 @@ namespace YARG.Tests.EditMode
                     .Where(row => row.transform.parent == rows)
                     .Where(row => Text(row, "Label") == english || Text(row, "Label").EndsWith("." + key, StringComparison.Ordinal))
                     .Select(row => Text(row, "Value")).Single();
-                Assert.That(rows.childCount - initialRows, Is.EqualTo(5));
+                Assert.That(rows.childCount - initialRows, Is.EqualTo(7));
                 Assert.That(Value("Correct Ghosts", "GhostsHitCorrectly"), Does.Contain(">3<").And.Contain(">5<"));
                 Assert.That(Value("Correct Accents", "AccentsHitCorrectly"), Does.Contain(">1<").And.Contain(">4<"));
                 Assert.That(Value("Base Dynamics Bonus", "BaseDynamicsBonus"), Does.Contain(">100<"));
+                Assert.That(Value("Flam Second Hits", "FlamFollowUps"), Does.Contain(">3<").And.Contain(">6<"));
+                Assert.That(Value("Unflattened Flams", "FlatFlamOverhitsForgiven"), Does.Contain(">1<").And.Contain(">2<"));
                 Assert.That(Value("Misarticulated Hi-Hats", "MisarticulatedHiHats"), Does.Contain(">2<"));
                 Assert.That(overhits.GetType().GetProperty("text").GetValue(overhits), Does.Contain(">1<"));
             }
             finally { UnityEngine.Object.DestroyImmediate(cardObject); }
+        }
+
+        [Test]
+        public void EliteBreStrikesLightResolvedColumns()
+        {
+            var host = new GameObject("Elite BRE layout fixture");
+            host.SetActive(false);
+            try
+            {
+                const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+                var playerType = Type.GetType("YARG.Gameplay.Player.EliteDrumsPlayer, Assembly-CSharp", true);
+                var fretType = Type.GetType("YARG.Gameplay.Visuals.FretArray, Assembly-CSharp", true);
+                var orderingType = Type.GetType("YARG.Gameplay.Visuals.HighwayOrderingInfo, Assembly-CSharp", true);
+                var player = host.AddComponent(playerType);
+                playerType.GetField("_fretArray", fields).SetValue(player, host.AddComponent(fretType));
+                var times = new double[4];
+                playerType.GetField("_breLaneLastHit", fields).SetValue(player, times);
+                var ordering = (System.Collections.IDictionary) playerType.GetField("_ordering", fields).GetValue(player);
+                ordering.Add((int) YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HiHat,
+                    Activator.CreateInstance(orderingType, 3, 0));
+                ordering.Add((int) YARG.Core.Chart.EliteDrumNote.EliteDrumPad.HatPedal,
+                    Activator.CreateInstance(orderingType, 3, 0));
+                ordering.Add((int) YARG.Core.Chart.EliteDrumNote.EliteDrumPad.LeftCrash,
+                    Activator.CreateInstance(orderingType, 1, 0));
+                ordering.Add((int) YARG.Core.Chart.EliteDrumNote.EliteDrumPad.Ride,
+                    Activator.CreateInstance(orderingType, 1, 0));
+                var hit = playerType.GetMethod("AnimateBreHit", fields);
+                hit.Invoke(player, new object[] { EliteDrumsAction.EliteSizzleHiHat, 2d });
+                hit.Invoke(player, new object[] { EliteDrumsAction.EliteLeftCrash, 3d });
+                hit.Invoke(player, new object[] { EliteDrumsAction.EliteStomp, 4d });
+                hit.Invoke(player, new object[] { EliteDrumsAction.EliteRide, 5d });
+                Assert.That(times, Is.EqualTo(new[] { 0d, 5d, 0d, 4d }));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(host); }
         }
 
         [Test]

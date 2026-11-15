@@ -82,6 +82,19 @@ namespace YARG.Gameplay.Player
 
         public float Stars => BaseStats.Stars;
 
+        protected bool SongFinishNotificationQueued { get; private set; }
+        internal virtual bool SongFinishNotificationPending => false;
+        protected virtual void ShowSongFinish() { }
+
+        internal void UpdateSongFinishNotification(bool endDelayElapsed)
+        {
+            if (SongFinishNotificationQueued || (!endDelayElapsed && !BaseEngine.HasResolvedFinalNote))
+                return;
+
+            SongFinishNotificationQueued = true;
+            ShowSongFinish();
+        }
+
         public int Score => BaseStats.TotalScore;
         public int BandBonusScore => BaseStats.BandBonusScore;
         public int Combo => BaseStats.Combo;
@@ -227,6 +240,7 @@ namespace YARG.Gameplay.Player
             IsFc = true;
 
             _replayInputIndex = BaseEngine.ProcessUpToTime(time, ReplayInputs);
+            SongFinishNotificationQueued = BaseEngine.HasResolvedFinalNote;
 
             SetStemMuteState(false);
 

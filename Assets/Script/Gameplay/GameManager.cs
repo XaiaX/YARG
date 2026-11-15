@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -144,6 +145,8 @@ namespace YARG.Gameplay
         public bool Rewinding { get; private set; }
 
         public double SongLength { get; private set; }
+        private bool IsSongEndDelayComplete => _songRunner.SongTime >= SongLength + SONG_END_DELAY &&
+            !_players.Any(player => player.SongFinishNotificationPending);
 
         public bool IsPractice      { get; private set; }
 
@@ -441,6 +444,13 @@ namespace YARG.Gameplay
                 EngineManager.UpdateStars();
             }
 
+            if (Started && !Rewinding && !IsPractice && !IsSeekingReplay && !PlayerHasFailed)
+            {
+                bool endDelayElapsed = _songRunner.SongTime >= SongLength + SONG_END_DELAY;
+                foreach (var player in _players)
+                    player.UpdateSongFinishNotification(endDelayElapsed);
+            }
+
             // End song if needed (required for the [end] event)
             if (_songRunner.SongTime >= SongLength)
             {
@@ -683,7 +693,7 @@ namespace YARG.Gameplay
                 _pauseMenu.PopAllMenus();
             }
 
-            if (_songRunner.SongTime >= SongLength + SONG_END_DELAY)
+            if (IsSongEndDelayComplete)
             {
                 return;
             }
@@ -794,7 +804,7 @@ namespace YARG.Gameplay
                 return false;
             }
 
-            if (_songRunner.SongTime < SongLength + SONG_END_DELAY)
+            if (!IsSongEndDelayComplete)
             {
                 if (partyVocalsSession)
                 {

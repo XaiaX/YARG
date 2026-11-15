@@ -4,6 +4,7 @@ using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using YARG.Localization;
 using YARG.Settings;
 
 namespace YARG.Gameplay.HUD
@@ -56,6 +57,12 @@ namespace YARG.Gameplay.HUD
         private int _nextStreakCount;
 
         private Coroutine _coroutine;
+        private Sequence _activeAnimation;
+        private TextNotificationType? _activeNotification;
+        private Func<float> _getSongFinishStars;
+
+        public bool SongFinishPending => _getSongFinishStars != null && isActiveAndEnabled &&
+            !SettingsManager.Settings.DisableTextNotifications.Value;
 
         private readonly TextNotificationQueue _notificationQueue = new();
 
@@ -98,12 +105,7 @@ namespace YARG.Gameplay.HUD
 
         private void OnDisable()
         {
-            if (_coroutine != null)
-            {
-                StopCoroutine(_coroutine);
-            }
-
-            _animationSequence.Kill();
+            ForceReset();
             _notificationBackground.gameObject.SetActive(false);
             _containerRect.gameObject.SetActive(false);
         }
@@ -122,6 +124,30 @@ namespace YARG.Gameplay.HUD
         {
             ShowNotification(TextNotificationType.StrongFinish);
         }
+
+        public void ShowSongFinish(Func<float> getStars)
+        {
+            if (!isActiveAndEnabled || SettingsManager.Settings.DisableTextNotifications.Value) return;
+
+            _getSongFinishStars = getStars;
+            _notificationQueue.Enqueue(new TextNotification(TextNotificationType.SongFinish, string.Empty));
+
+            if (_activeNotification.HasValue && !TextNotificationQueue.IsFinishAward(_activeNotification))
+                StopActiveNotification();
+
+            StartNextNotification();
+        }
+
+        internal static string GetSongFinishKey(float stars) => stars switch
+        {
+            >= 6 => "CrushedIt",
+            >= 5 => "NailedIt",
+            >= 4 => "GreatJob",
+            >= 3 => "GoodJob",
+            >= 2 => "GoodWork",
+            >= 1 => "YouMadeIt",
+            _ => "ThatsAll",
+        };
 
         public void ShowHotStart()
         {
@@ -221,6 +247,11 @@ namespace YARG.Gameplay.HUD
                 return;
             }
 
+            StartNextNotification();
+        }
+
+        private void StartNextNotification()
+        {
             if (_coroutine == null && _notificationQueue.Count > 0)
             {
                 var textNotification = _notificationQueue.Dequeue();
@@ -228,17 +259,39 @@ namespace YARG.Gameplay.HUD
                 // Set the color of the text background image based on the notifcation type
                 _notificationBackground.color = GetBackgroundColor(textNotification.Type);
 
-                _coroutine = StartCoroutine(ShowNextNotification(textNotification.Text));
+                _coroutine = StartCoroutine(ShowNextNotification(textNotification));
             }
         }
 
-        private IEnumerator ShowNextNotification(string notificationText)
+        private IEnumerator ShowNextNotification(TextNotification notification)
         {
-            _text.text = notificationText;
-            yield return _animationSequence.WaitForCompletion();
+            _activeNotification = notification.Type;
+            _text.text = notification.Type == TextNotificationType.SongFinish
+                ? Localize.Key("Gameplay.Notifications", GetSongFinishKey(_getSongFinishStars()))
+                : notification.Text;
+            _activeAnimation = _animationSequence;
+            yield return _activeAnimation.WaitForCompletion();
+
+            if (notification.Type == TextNotificationType.SongFinish)
+                _getSongFinishStars = null;
 
             _text.text = string.Empty;
+            _activeAnimation = null;
+            _activeNotification = null;
             _coroutine = null;
+        }
+
+        private void StopActiveNotification()
+        {
+            if (_coroutine != null)
+                StopCoroutine(_coroutine);
+
+            _activeAnimation?.Kill();
+            _activeAnimation = null;
+            _activeNotification = null;
+            _coroutine = null;
+            _text.text = string.Empty;
+            _containerRect.localScale = Vector3.zero;
         }
 
         private void NextStreakNotification()
@@ -311,7 +364,9 @@ namespace YARG.Gameplay.HUD
 
         public void ForceReset()
         {
+            StopActiveNotification();
             _notificationQueue.Clear();
+            _getSongFinishStars = null;
             _nextStreakCount = 0;
             _streak = 0;
         }

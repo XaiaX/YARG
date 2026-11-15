@@ -266,7 +266,8 @@ namespace YARG.Audio.BASS
                     return false;
                 }
 
-                float[,]? volumeMatrix = BassHelpers.BuildVolumeMatrix(group, indices.Length);
+                // The normalizer uses the authored pan so swapping drums retains the same whole-song gain.
+                float[,]? volumeMatrix = BassHelpers.BuildVolumeMatrix(group, indices.Length, applyStereoSwap: true);
                 stemDatas.Add(new StemData(stem, source, volumeMatrix, streamHandle, reverbHandle, pitchFxDelay));
             }
 

@@ -276,6 +276,10 @@ namespace YARG.Gameplay.HUD
             _textNotifications.ShowStarPowerReady();
         }
 
+        public bool SongFinishPending => _textNotifications.SongFinishPending;
+
+        public void ShowSongFinish(Func<float> getStars) => _textNotifications.ShowSongFinish(getStars);
+
         public void ShowStrongFinish()
         {
             _textNotifications.ShowStrongFinish();

@@ -359,7 +359,10 @@ namespace YARG.Gameplay.Player
         {
             _lastTargetNote = null;
             if (_hud != null)
+            {
                 _hud.SetFullCombo(IsFc);
+                _hud.ResetTextNotifications();
+            }
         }
 
         public override void ResetPracticeSection()
@@ -455,6 +458,13 @@ namespace YARG.Gameplay.Player
                 _hud.ShowNotification(TextNotificationType.StarPowerReady);
         }
 
+        internal override bool SongFinishNotificationPending => _hud != null && _hud.SongFinishPending;
+        protected override void ShowSongFinish()
+        {
+            if (_hud != null)
+                _hud.ShowSongFinish(() => Stars);
+        }
+
         protected void ShowTextNotifications(bool isLastPhrase)
         {
             if (SettingsManager.Settings.DisableTextNotifications.Value)
@@ -481,7 +491,7 @@ namespace YARG.Gameplay.Player
                 _newHighScoreShown = true;
             }
 
-            if (!isLastPhrase)
+            if (!isLastPhrase || GameManager.IsSeekingReplay)
             {
                 return;
             }

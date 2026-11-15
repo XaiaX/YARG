@@ -557,7 +557,10 @@ namespace YARG.Gameplay.Player
                 haptics.SetStarPowerFill((float) currentStarPowerAmount);
             }
 
-            bool isSongEnd = visualTime > SongLength;
+            bool isSongEnd = visualTime > SongLength &&
+                (GameManager.IsPractice || GameManager.IsSeekingReplay ||
+                    SettingsManager.Settings.DisableTextNotifications.Value ||
+                    (SongFinishNotificationQueued && !SongFinishNotificationPending));
             bool shouldLowerTrack = isSongEnd || GameManager.PlayerHasFailed;
             if (!_didLowerTrack && shouldLowerTrack)
             {
@@ -1236,6 +1239,9 @@ namespace YARG.Gameplay.Player
         protected virtual void ModifyLaneFromNote(LaneElement lane, TNote note) {}
 
         protected abstract void RescaleLanesForBRE();
+
+        internal override bool SongFinishNotificationPending => TrackView.SongFinishPending;
+        protected override void ShowSongFinish() => TrackView.ShowSongFinish(() => Stars);
 
         protected virtual void OnNoteHit(int index, TNote note)
         {

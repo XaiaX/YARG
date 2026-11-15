@@ -54,15 +54,22 @@ namespace YARG.Menu.ScoreScreen
             if (Stats.TotalGhosts > 0 || Stats.TotalAccents > 0)
             {
                 CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.GhostsHitCorrectly"),
-                    DynamicsCount(Stats.GhostsHit, Stats.TotalGhosts));
+                    StatCount(Stats.GhostsHit, Stats.TotalGhosts));
                 CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.AccentsHitCorrectly"),
-                    DynamicsCount(Stats.AccentsHit, Stats.TotalAccents));
+                    StatCount(Stats.AccentsHit, Stats.TotalAccents));
                 CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.BaseDynamicsBonus"),
                     ColorizePrimary(Stats.DynamicsBonus.ToString("N0")));
             }
+
+            if (Stats.TotalFlams > 0)
+                CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.FlamFollowUps"),
+                    StatCount(Stats.FlamsHit, Stats.TotalFlams));
+            if (Stats.TotalFlatFlams > 0)
+                CreateStatRow(rows, Localize.Key("Menu.ScoreScreen.FlatFlamOverhitsForgiven"),
+                    StatCount(Stats.FlatFlamOverhitsForgiven, Stats.TotalFlatFlams));
         }
 
-        private string DynamicsCount(int correct, int total) => $"{ColorizePrimary(correct)} / {ColorizeSecondary(total)}";
+        private string StatCount(int correct, int total) => $"{ColorizePrimary(correct)} / {ColorizeSecondary(total)}";
 
         private StatInfo CreateStatRow(Transform parent, string label, string value)
         {
