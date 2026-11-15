@@ -12,9 +12,10 @@
     Close Unity first. The script fast-forwards the current branch, updates a
     clean YARG.Core to the pinned commit, and refuses local edits. Builds reuse
     Unity's cache by default. Use -Clean to clear Library and Temp before
-    building. Finished players and logs are stored under Builds/WindowsNightly
-    unless -OutputRoot is supplied. A shareable player ZIP is written to the
-    output root's current folder. Paths are relative to the calling directory.
+    building. Finished players and logs are stored in Builds/WindowsNightly
+    alongside the checkout unless -OutputRoot is supplied. A shareable player
+    ZIP is written to the output root's current folder. Explicit relative
+    paths are resolved from the calling directory.
     Unity's build log is displayed live and saved under the run's logs folder.
     Builds require licensed Unity, .NET, CMake 3.25+, and Visual Studio 2022 C++
     desktop build tools. Use -UseBundledAudio to skip the native DLL rebuild.
@@ -323,7 +324,7 @@ if ([IO.Path]::GetFullPath($gitRoot).TrimEnd('\', '/') -ne $projectPath.TrimEnd(
 if (Test-Path -LiteralPath (Join-Path $projectPath 'Temp/UnityLockfile')) {
     throw "Close Unity before updating or building $projectPath."
 }
-if (!$OutputRoot) { $OutputRoot = Join-Path $projectPath 'Builds/WindowsNightly' }
+if (!$OutputRoot) { $OutputRoot = Join-Path (Split-Path -Parent $projectPath) 'Builds/WindowsNightly' }
 $rootPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputRoot)
 $currentBranch = Invoke-Git @('-C', $projectPath, 'branch', '--show-current')
 if ($currentBranch -cne $Branch) { throw "Open the $Branch branch in $projectPath first. Current branch: $currentBranch" }
