@@ -968,13 +968,13 @@
 			"PhraseStreak": "{0:N0}-PHRASE STREAK",
 			"StarPowerReady": "STAR POWER READY",
 			"StrongFinish": "STRONG FINISH",
-			"CrushedIt": "Crushed It!",
-			"NailedIt": "Nailed It!",
-			"GreatJob": "Great Job!",
-			"GoodJob": "Good Job!",
-			"GoodWork": "Good Work!",
-			"YouMadeIt": "You Made It!",
-			"ThatsAll": "That's All!"
+			"CrushedIt": "CRUSHED IT!",
+			"NailedIt": "NAILED IT!",
+			"GreatJob": "GREAT JOB!",
+			"GoodJob": "GOOD JOB!",
+			"GoodWork": "GOOD WORK!",
+			"YouMadeIt": "YOU MADE IT!",
+			"ThatsAll": "THAT'S ALL!"
 		},
 		"Solo": {
 			"Performance": {
