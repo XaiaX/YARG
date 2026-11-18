@@ -2,6 +2,9 @@
 #nullable enable
 using System;
 using System.Threading;
+#if UNITY_EDITOR
+using YARG.Audio.PitchDetection;
+#endif
 using YARG.Core.Audio;
 using YARG.Core.Logging;
 using YARG.Input;
@@ -82,9 +85,16 @@ namespace YARG.Audio.BASS
 
         public void ReleaseRecordingChannel(int handle) => _source.ReleaseRecordingChannel(handle);
 
-        private BassMicAnalyzer CreateAnalyzer() =>
-            new(_source, () => IsRecordingOutput, () => InputManager.CurrentInputTime,
-                () => Volatile.Read(ref _levelPreviewLeases) > 0, () => SensitivityOffsetDb);
+        private BassMicAnalyzer CreateAnalyzer()
+        {
+            return new BassMicAnalyzer(_source, () => IsRecordingOutput, () => InputManager.CurrentInputTime,
+                () => Volatile.Read(ref _levelPreviewLeases) > 0, () => SensitivityOffsetDb
+#if UNITY_EDITOR
+                , fftPitchTracker: string.Equals(Environment.GetEnvironmentVariable("YARG_LIVE_VOCAL_DETECTOR"),
+                    "fft", StringComparison.OrdinalIgnoreCase) ? new FftPitchTracker(_source.SampleRate) : null
+#endif
+                );
+        }
 
         public IDisposable BeginLevelPreview()
         {

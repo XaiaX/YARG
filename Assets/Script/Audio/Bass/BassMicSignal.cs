@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 #nullable enable
 using System;
 using System.Collections.Generic;
@@ -29,6 +30,10 @@ namespace YARG.Audio.BASS
             fCenter = 10_000f,
             fGain = -10f,
         };
+
+        internal static bool TryAddAnalysisEq(int handle) =>
+            BassHelpers.AddEqToChannel(handle, LowAnalysisEq) != 0 &&
+            BassHelpers.AddEqToChannel(handle, HighAnalysisEq) != 0;
 
         private static readonly BQFParameters MonitorHighPass1Params = new()
         {
@@ -361,8 +366,7 @@ namespace YARG.Audio.BASS
                     return null;
                 }
 
-                if (applyAnalysisEq && (BassHelpers.AddEqToChannel(analysisHandle, LowAnalysisEq) == 0 ||
-                    BassHelpers.AddEqToChannel(analysisHandle, HighAnalysisEq) == 0))
+                if (applyAnalysisEq && !TryAddAnalysisEq(analysisHandle))
                 {
                     YargLogger.LogFormatError("Failed to add EQ to mic '{0}' analysis split: {1}", name,
                         Bass.LastError);

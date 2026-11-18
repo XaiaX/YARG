@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using ManagedBass;
 using ManagedBass.Mix;
 using UnityEngine;
@@ -19,6 +20,10 @@ namespace YARG.Audio.BASS
         private          double _volume;
         private          bool   _isReverbing;
         private readonly long   _length;
+
+#if UNITY_EDITOR
+        internal int DecodedStemHandle => _streamHandles.Stream;
+#endif
 
         internal BassStemChannel(AudioManager manager, SongStem stem, bool clampStemVolume, int sourceStream, in PitchShiftParametersStruct pitchParams, in StreamHandle streamHandles, in StreamHandle reverbHandles)
             : base(manager, stem, clampStemVolume)

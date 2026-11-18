@@ -1,4 +1,8 @@
+// pattern: Imperative Shell
 using System;
+#if UNITY_EDITOR
+using YARG.Audio.PitchDetection;
+#endif
 using UnityEngine;
 using YARG.Core;
 using YARG.Core.Audio;
@@ -35,6 +39,9 @@ namespace YARG.Gameplay.Player
         /// </summary>
         private int _enabledHarmonyIndex = -1;
 
+#if UNITY_EDITOR
+        private readonly int _traceSource = VocalsTimingTrace.NewSourceId();
+#endif
         private readonly ToneChannel           _toneChannel;
         private readonly VocalsTrack           _vocalsTrack;
         private readonly Action<string, Color> _statusChanged;
@@ -133,7 +140,25 @@ namespace YARG.Gameplay.Player
         /// </summary>
         private void PublishSchedule()
         {
-            if (_toneChannel.SetSchedule(VocalToneSchedule.Build(GetEnabledPart())))
+            var schedule = VocalToneSchedule.Build(GetEnabledPart());
+            bool accepted = _toneChannel.SetSchedule(schedule);
+#if UNITY_EDITOR
+            if (VocalsTimingTrace.Enabled)
+            {
+                VocalsTimingTrace.Emit(VocalsTraceEvent.GuideState, _traceSource,
+                    _enabledHarmonyIndex, accepted ? 1 : 0, schedule.Length, VOLUME, FADE_SECONDS);
+                if (accepted)
+                {
+                    for (int i = 0; i < schedule.Length; i++)
+                    {
+                        var segment = schedule[i];
+                        VocalsTimingTrace.Emit(VocalsTraceEvent.GuideSchedule, _traceSource,
+                            i, segment.StartTime, segment.EndTime, segment.StartPitch, segment.EndPitch);
+                    }
+                }
+            }
+#endif
+            if (accepted)
             {
                 return;
             }

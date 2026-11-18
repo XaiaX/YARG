@@ -1,5 +1,8 @@
 // pattern: Imperative Shell
 using System;
+#if UNITY_EDITOR
+using YARG.Audio.PitchDetection;
+#endif
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -419,6 +422,20 @@ namespace YARG.Gameplay
                 BeatEventHandler.Update(_songRunner.SongTime, _songRunner.VisualTime);
             using (TargetedPerformance.Measure(TargetedOperation.GameplayCrowdEvents))
                 CrowdEventHandler.Update(_songRunner.SongTime);
+
+#if UNITY_EDITOR
+            if (IsPractice && VocalsTimingTrace.Enabled)
+            {
+                try
+                {
+                    VocalsTimingTrace.Emit(VocalsTraceEvent.Playback, 0,
+                        InputManager.CurrentInputTime, _songRunner.InputTime, _songRunner.SongTime,
+                        _songRunner.VisualTime, _songRunner.AudioTime, _songRunner.AudioCalibration,
+                        _songRunner.VideoCalibration, _songRunner.SongOffset, _songRunner.SongSpeed, 0);
+                }
+                catch (Exception) { /* A diagnostic clock read must not interrupt gameplay. */ }
+            }
+#endif
 
             // Update players
             int totalScore = 0;

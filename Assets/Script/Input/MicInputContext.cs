@@ -1,4 +1,8 @@
+// pattern: Imperative Shell
 using System.Collections.Generic;
+#if UNITY_EDITOR
+using YARG.Audio.PitchDetection;
+#endif
 using YARG.Audio;
 using YARG.Core.Audio;
 using YARG.Core.Input;
@@ -54,6 +58,12 @@ namespace YARG.Input
                         gameInput = GameInput.Create(frame.Time, VocalsAction.Hit, true);
                     }
 
+#if UNITY_EDITOR
+                    if (VocalsTimingTrace.Enabled)
+                        VocalsTimingTrace.Emit(VocalsTraceEvent.Dequeue, 0,
+                            frame.Time, InputManager.CurrentInputTime, _gameManager.InputTime,
+                            gameInput.Action, gameInput.Integer);
+#endif
                     yield return gameInput;
                 }
             }

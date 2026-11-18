@@ -2,6 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#if UNITY_EDITOR
+using YARG.Audio.PitchDetection;
+#endif
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using YARG.Core;
@@ -429,6 +432,12 @@ namespace YARG.Gameplay.Player
         {
             UpdatePercussionPhrase(visualTime);
             UpdateSingNeedle();
+#if UNITY_EDITOR
+            if (GameManager.IsPractice && !Player.IsReplay && !Player.Profile.IsBot && VocalsTimingTrace.Enabled)
+                VocalsTimingTrace.Emit(VocalsTraceEvent.Needle, HighwayIndex,
+                    GameManager.InputTime, visualTime, Engine.PitchSang, transform.localPosition.z,
+                    _needleVisualContainer.activeInHierarchy ? 1 : 0);
+#endif
 
             // Get combo meter fill
             float fill = 0f;

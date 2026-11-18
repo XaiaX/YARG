@@ -49,6 +49,10 @@ namespace YARG.Audio.BASS
         private readonly Func<float>                     _getSensitivityOffset;
         private readonly ConcurrentQueue<MicOutputFrame> _outputFrames = new();
         private readonly PitchTracker                    _pitchTracker;
+#if UNITY_EDITOR
+        private readonly FftPitchTracker?                _fftPitchTracker;
+        private readonly int _traceSource = VocalsTimingTrace.NewSourceId();
+#endif
 
         private readonly float[] _readBuffer;
 
@@ -91,8 +95,15 @@ namespace YARG.Audio.BASS
         }
 
         public BassMicAnalyzer(IBassMicSampleSource source, Func<bool> isOutputRecording, Func<double> getInputTime,
-            Func<bool>? isLevelPreview = null, Func<float>? getSensitivityOffset = null)
+            Func<bool>? isLevelPreview = null, Func<float>? getSensitivityOffset = null
+#if UNITY_EDITOR
+            , FftPitchTracker? fftPitchTracker = null
+#endif
+            )
         {
+#if UNITY_EDITOR
+            _fftPitchTracker = fftPitchTracker;
+#endif
             _source = source;
             _isOutputRecording = isOutputRecording;
             _getInputTime = getInputTime;
@@ -277,31 +288,77 @@ namespace YARG.Audio.BASS
             {
                 _lastAmplitude = null;
                 _lastPitch = null;
-                _pitchTracker.Reset();
+                ResetPitchTrackers();
                 _wasOutputRecording = recording;
+#if UNITY_EDITOR
+                if (recording && VocalsTimingTrace.Enabled)
+                    VocalsTimingTrace.Emit(VocalsTraceEvent.Analyzer, _traceSource,
+                        _fftPitchTracker == null ? 0 : 1, _source.SampleRate, MicDevice.RECORD_PERIOD_MS);
+#endif
             }
             if (!recording) return;
 
             if (_lastAmplitude is { } previousAmplitude && amplitude - previousAmplitude >= HIT_THRESHOLD_DB)
             {
                 double midpoint = frameEndTime - MicDevice.RECORD_PERIOD_MS / 2000.0;
-                _outputFrames.Enqueue(new MicOutputFrame(midpoint, true, UNAVAILABLE_VALUE, UNAVAILABLE_VALUE));
+                PublishFrame(new MicOutputFrame(midpoint, true, UNAVAILABLE_VALUE, UNAVAILABLE_VALUE));
             }
 
             _lastAmplitude = amplitude;
 
-            if (amplitude < SettingsManager.Settings.MicrophoneSensitivity.Value + _getSensitivityOffset())
+            float sensitivity = SettingsManager.Settings.MicrophoneSensitivity.Value + _getSensitivityOffset();
+            if (amplitude < sensitivity)
             {
                 _lastPitch = null;
+#if UNITY_EDITOR
+                // Gated samples leave a gap in the FFT's trailing PCM window.
+                _fftPitchTracker?.Reset();
+                if (VocalsTimingTrace.Enabled)
+                    VocalsTimingTrace.Emit(VocalsTraceEvent.Decision, _traceSource, frameEndTime, amplitude, 0, 0,
+                        sensitivity);
+#endif
                 return;
             }
 
-            _lastPitch = _pitchTracker.ProcessBuffer(samples) ?? _lastPitch;
+            float? detectedPitch = DetectPitch(samples);
+            _lastPitch = detectedPitch ?? _lastPitch;
+#if UNITY_EDITOR
+            if (VocalsTimingTrace.Enabled)
+                VocalsTimingTrace.Emit(VocalsTraceEvent.Decision, _traceSource, frameEndTime, amplitude, 1,
+                    detectedPitch.HasValue ? 1 : _lastPitch.HasValue ? 2 : 0, sensitivity);
+#endif
 
             if (_lastPitch is { } pitch)
             {
-                _outputFrames.Enqueue(new MicOutputFrame(frameEndTime, false, pitch, amplitude));
+                PublishFrame(new MicOutputFrame(frameEndTime, false, pitch, amplitude));
             }
+        }
+
+        private void PublishFrame(MicOutputFrame frame)
+        {
+#if UNITY_EDITOR
+            if (VocalsTimingTrace.Enabled)
+                VocalsTimingTrace.Emit(VocalsTraceEvent.Output, _traceSource, frame.Time,
+                    frame.IsHit ? 1 : 0, frame.Pitch, frame.IsHit ? double.NaN : frame.PitchAsMidiNote, frame.Volume);
+#endif
+            _outputFrames.Enqueue(frame);
+        }
+
+        private float? DetectPitch(ReadOnlySpan<float> samples)
+        {
+#if UNITY_EDITOR
+            if (_fftPitchTracker != null)
+                return _fftPitchTracker.ProcessBuffer(samples);
+#endif
+            return _pitchTracker.ProcessBuffer(samples);
+        }
+
+        private void ResetPitchTrackers()
+        {
+            _pitchTracker.Reset();
+#if UNITY_EDITOR
+            _fftPitchTracker?.Reset();
+#endif
         }
 
         private static float MeasureAmplitude(ReadOnlySpan<float> samples)
@@ -334,8 +391,12 @@ namespace YARG.Audio.BASS
             _lastAmplitude = null;
             _frameSamples = 0;
             Array.Clear(_frameBuffer, 0, _frameBuffer.Length);
-            _pitchTracker.Reset();
+            ResetPitchTrackers();
             _outputFrames.Clear();
+#if UNITY_EDITOR
+            if (VocalsTimingTrace.Enabled)
+                VocalsTimingTrace.Emit(VocalsTraceEvent.Reset, _traceSource);
+#endif
         }
 
         private void LogFailure(string message)
