@@ -1171,7 +1171,8 @@ namespace YARG.Tests.PlayMode
                         {
                             var activeGroups = element.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
                                 .Where(g => g.gameObject.activeInHierarchy).ToArray();
-                            Assert.That(activeGroups, Has.Length.EqualTo(2), "Every eligible hand flam displays two physical gems.");
+                            Assert.That(activeGroups, Has.Length.EqualTo(legacyTheme ? 2 : 1),
+                                "The Rectangular model fuses the flam. Legacy themes keep two groups.");
                             float before = measured.max - measured.min;
                             element.GetType().GetMethod("OnStarPowerUpdated").Invoke(element, null);
                             var after = ActiveMeshBounds(element, player.transform);
@@ -1230,6 +1231,7 @@ namespace YARG.Tests.PlayMode
                     foreach (string shape in new[] { "regular", "flat", "collision" })
                     {
                         bool collision = shape == "collision";
+                        bool fused = !collision && !cymbalModels && (shape == "flat" || flamLayout == "V");
                         if (collision && columns == 10) continue; // Full ten-column layout separates all hand sources; merging a collision resolves to nine.
                         snare.IsFlam = shape == "regular";
                         snare.IsFlatFlam = shape == "flat";
@@ -1270,7 +1272,7 @@ namespace YARG.Tests.PlayMode
                             }
                             previewFirst.GetType().GetMethod("OnSettingChanged").Invoke(previewFirst, null);
                             if (collision) previewSecond.GetType().GetMethod("OnSettingChanged").Invoke(previewSecond, null);
-                            if (shape == "regular")
+                            if (shape == "regular" && !fused)
                             {
                                 if (swap == 0 || (flamLayout == "Parallel" && swap == 1))
                                 {
@@ -1282,9 +1284,10 @@ namespace YARG.Tests.PlayMode
                             }
                             var actual = PairMemberBounds(gameplayFirst, gameplaySecond, player.transform);
                             var expected = PairMemberBounds(previewFirst, previewSecond, preview.transform);
-                            Assert.That(actual.Length, Is.EqualTo(2));
-                            Assert.That(expected.Length, Is.EqualTo(2));
-                            for (int member = 0; member < 2; member++)
+                            int members = fused ? 1 : 2;
+                            Assert.That(actual.Length, Is.EqualTo(members));
+                            Assert.That(expected.Length, Is.EqualTo(members));
+                            for (int member = 0; member < members; member++)
                             {
                                 Assert.That(actual[member].min, Is.EqualTo(expected[member].min).Within(0.001f),
                                     $"Actual gameplay/preview left mesh corner: N={columns}, lefty={lefty}, cymbals={cymbalModels}, {shape}, swap={swap}, member={member}");
@@ -1296,16 +1299,29 @@ namespace YARG.Tests.PlayMode
                             float max = actual.Max(b => b.max);
                             float halfPair = (max - min) / 2f;
                             float midpoint = center / (1f - laneWidth / 2f) * (1f - halfPair);
-                            if (shape != "regular" || (!cymbalModels && flamLayout == "V"))
-                                Assert.That(actual[0].max, Is.EqualTo(actual[1].min).Within(0.001f), "Flat/original drum member bounds meet.");
-                            Assert.That((min + max) / 2f, Is.EqualTo(midpoint).Within(0.001f));
-                            if (edge && columns < 10) Assert.That(lefty ? max : min, Is.EqualTo(lefty ? 1f : -1f).Within(0.001f),
-                                "The outside mesh corner of an edge pair is flush with the highway.");
-                            var selected = (Array)gameplayFirst.GetType().GetField(collision ?
+                            if (fused)
+                            {
+                                const float neutralGemWidth = .384944f;
+                                Assert.That(max - min, Is.EqualTo(neutralGemWidth * 1.5f * laneWidth / .4f).Within(.001f));
+                                Assert.That((min + max) / 2f, Is.EqualTo(midpoint).Within(.001f),
+                                    "The full-width fused flam uses the pair's center-distance offset.");
+                                Assert.That(min, Is.GreaterThanOrEqualTo(-1.001f));
+                                Assert.That(max, Is.LessThanOrEqualTo(1.001f));
+                            }
+                            else
+                            {
+                                if (shape != "regular")
+                                    Assert.That(actual[0].max, Is.EqualTo(actual[1].min).Within(0.001f), "Flat/pair members meet.");
+                                Assert.That((min + max) / 2f, Is.EqualTo(midpoint).Within(0.001f));
+                                if (edge && columns < 10) Assert.That(lefty ? max : min,
+                                    Is.EqualTo(lefty ? 1f : -1f).Within(0.001f),
+                                    "The outside mesh corner of an edge pair is flush with the highway.");
+                            }
+                            var selected = (Array)gameplayFirst.GetType().GetField(collision || fused ?
                                 (star ? "StarPowerNoteGroups" : "NoteGroups") :
                                 (star ? "_splitStarGemGroups" : "_splitGemGroups"), PreparedElitePlayerFixture.INSTANCE).GetValue(gameplayFirst);
                             Assert.That(selected.Cast<Component>().Count(g => g != null && g.gameObject.activeInHierarchy),
-                                Is.EqualTo(collision ? 1 : 2), "The actual selected normal/SP variant must be visible after the flag transition.");
+                                Is.EqualTo(collision || fused ? 1 : 2), "The actual selected normal/SP variant must be visible after the flag transition.");
                             if (collision && swap == 0)
                             {
                                 // Capture both independent actual members together, including mixed-SP identity.
@@ -1684,6 +1700,7 @@ namespace YARG.Tests.PlayMode
                 var originals = ((IEnumerable) field.GetValue(template)).Cast<Component>().ToArray();
                 for (int i = 0; i < instances.Length; i++)
                 {
+                    if (originals[i] == null) continue;
                     var original = originals[i].transform;
                     authored[instances[i]] = (original.localScale, original.localPosition, original.localRotation);
                 }
@@ -1699,9 +1716,10 @@ namespace YARG.Tests.PlayMode
                 Assert.That(reused, Is.SameAs(element), "Actual gameplay pool must reuse the returned element.");
                 var groups = reused.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.NoteGroup"))
                     .Where(g => g.gameObject.activeInHierarchy).ToArray();
-                Assert.That(groups, Has.Length.EqualTo(shape == "ordinary" ? 1 : 2));
+                bool split = shape == "regular" && layout != "V";
+                Assert.That(groups, Has.Length.EqualTo(split ? 2 : 1));
                 var resolved = (EliteDrumsResolvedLayout)player.GetType().GetProperty("Layout").GetValue(player);
-                float factor = 5f / resolved.Lanes.Count * (shape == "ordinary" ? 1f : (resolved.Lanes.Count - 1f) / resolved.Lanes.Count);
+                float factor = 5f / resolved.Lanes.Count * (split ? (resolved.Lanes.Count - 1f) / resolved.Lanes.Count : 1f);
                 var ordered = groups.OrderBy(g => ActiveMeshBounds(g, player.transform).min).ToArray();
                 for (int i = 0; i < ordered.Length; i++)
                 {
@@ -1711,11 +1729,11 @@ namespace YARG.Tests.PlayMode
                     Assert.That(scale.y, Is.EqualTo(authoredScale.y).Within(0.00001f));
                     Assert.That(scale.z, Is.EqualTo(authoredScale.z).Within(0.00001f));
                     float angle = layout == "Parallel" ? (lefty ? -25f : 25f) : (i == 0 ? 25f : -25f);
-                    var expectedRotation = shape == "regular" ? Quaternion.AngleAxis(layout == "Bucket" ? -angle : angle,
+                    var expectedRotation = split ? Quaternion.AngleAxis(layout == "Bucket" ? -angle : angle,
                         layout == "Bucket" ? Vector3.forward : Vector3.up) * authoredRotation : authoredRotation;
                     Assert.That(Quaternion.Angle(ordered[i].transform.localRotation, expectedRotation), Is.LessThan(0.001f),
                         "Pooled regular/flat/ordinary gems preserve authored rotation and never accumulate extra rotation.");
-                    if (shape != "regular") Assert.That(ordered[i].transform.localPosition.z,
+                    if (!split) Assert.That(ordered[i].transform.localPosition.z,
                         Is.EqualTo(authoredPosition.z).Within(0.00001f), "No temporal stagger survives pool reuse.");
                 }
                 element = reused;

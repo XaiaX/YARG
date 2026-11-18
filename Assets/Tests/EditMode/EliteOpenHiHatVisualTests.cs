@@ -199,16 +199,28 @@ namespace YARG.Tests.EditMode
             for (int index = 0; index < renderer.sharedMaterials.Length; index++)
             {
                 string material = renderer.sharedMaterials[index].name;
-                bool isColor = material == "CymbalMiddle" || material == "CymbalGhostCenter" || material == "EliteCymbalGapLight"
-                    || material == "EliteOpenHatInterior" || material == "EliteOpenHatGlow";
+                bool isColor = material is "CymbalMiddle" or "EliteCymbalMiddleInvertedLayers" or
+                    "CymbalGhostCenter" or "EliteCymbalGapLight" or "EliteOpenHatInterior" or "EliteOpenHatGlow";
                 Assert.That(Contains(colored, renderer, index), Is.EqualTo(isColor), type + "/" + renderer.name);
                 Assert.That(Contains(metal, renderer, index), Is.EqualTo(material == "CymbalMetal"), type + "/" + renderer.name);
             }
             if (type.StartsWith("Open", StringComparison.Ordinal))
             {
                 var light = filters.Single(f => f.name == "Light");
-                Assert.That(light.transform.parent, Is.SameAs(filters.Single(f => f.name == "Top").transform.parent),
-                    "The exposed underside light must move with the top.");
+                var top = filters.Single(f => f.name == "Top");
+                if (type == "OpenHiHatAccent")
+                {
+                    var rotor = model.GetComponentInChildren(Production("YARG.Gameplay.Visuals.CymbalSpinAnimation"));
+                    var spin = (Transform)rotor.GetType().GetProperty("Rotor").GetValue(rotor);
+                    Assert.That(top.transform.IsChildOf(spin), Is.True);
+                    Assert.That(light.transform.IsChildOf(spin), Is.True,
+                        "The gap light moves with the lowered Petal crown.");
+                }
+                else
+                {
+                    Assert.That(light.transform.parent, Is.SameAs(top.transform.parent),
+                        "The exposed underside light must move with the top.");
+                }
             }
         }
 

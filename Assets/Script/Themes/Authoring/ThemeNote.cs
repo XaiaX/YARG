@@ -69,6 +69,13 @@ namespace YARG.Themes
         DedicatedLaneKickFlam = 41,
         DedicatedLaneKickFlamGhost = 42,
         DedicatedLaneKickFlamAccent = 43,
+
+        EliteFlatFlam = 44,
+        EliteFlatFlamGhost = 45,
+        EliteFlatFlamAccent = 46,
+        EliteVFlam = 47,
+        EliteVFlamGhost = 48,
+        EliteVFlamAccent = 49,
     }
 
     public class ThemeNote : MonoBehaviour

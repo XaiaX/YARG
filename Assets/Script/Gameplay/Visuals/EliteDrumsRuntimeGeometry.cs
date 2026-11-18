@@ -93,6 +93,23 @@ namespace YARG.Gameplay.Visuals
             rightOrigin = seam - rightMin;
         }
 
+        internal static void FitFusedFlam(ModelGeometry geometry, Transform model, int columns,
+            float laneCenter, float laneWidth, float elementCenter)
+        {
+            float factor = GetAuthoredLaneScale(laneWidth, TrackPlayer.TRACK_WIDTH / 5f);
+            geometry.Extents(factor, 0f, out float min, out float max);
+            // This single mesh has the silhouette of the entire pair. Use
+            // the pair's proportional offset with a zero-width second member.
+            GetPairPlacement(min, max, 0f, 0f, laneCenter, laneWidth, TrackPlayer.TRACK_WIDTH, columns,
+                out float origin, out _);
+            var position = geometry.Position;
+            position.x += origin - elementCenter;
+            var scale = geometry.Scale;
+            scale.x *= factor;
+            model.localScale = scale;
+            model.SetLocalPositionAndRotation(position, geometry.Rotation);
+        }
+
         // Captured once per assembled model (including normal/SP variants). Mesh
         // corners are in the group's parent space, so authored pivots/rotations,
         // child highlights and caps are preserved without world AABB projection.

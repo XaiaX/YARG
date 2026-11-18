@@ -150,16 +150,12 @@ namespace YARG.Gameplay.Visuals
         {
             foreach (var note in NoteGroups)
             {
-                if (note == null) return;
-
-                note.SetActive(false);
+                if (note != null) note.SetActive(false);
             }
 
             foreach (var note in StarPowerNoteGroups)
             {
-                if (note == null) return;
-
-                note.SetActive(false);
+                if (note != null) note.SetActive(false);
             }
         }
 

@@ -15,6 +15,14 @@ namespace YARG.Gameplay.Visuals
 
             public float EmissionMultiplier;
             public float EmissionAddition;
+            public float ColorMultiplier;
+
+            public Color Tint(Color color)
+            {
+                float a = EmissionAddition;
+                float m = ColorMultiplier;
+                return new Color(color.r * m + a, color.g * m + a, color.b * m + a, color.a + 1f);
+            }
 
             // Original values captured at From() time — used for proportional
             // scaling in OverrideZeroEmission so repeated calls don't compound.
@@ -36,6 +44,7 @@ namespace YARG.Gameplay.Visuals
                         MaterialCache = material,
                         EmissionMultiplier = a.EmissionMultiplier,
                         EmissionAddition = a.EmissionAddition,
+                        ColorMultiplier = a.ColorMultiplier == 0 ? 1 : a.ColorMultiplier,
                         OriginalEmissionMultiplier = a.EmissionMultiplier,
                         OriginalEmissionAddition = a.EmissionAddition,
                         OriginalEmissionEnabled = material.IsKeywordEnabled(EMISSION_ENABLED_KEYWORD),
@@ -131,8 +140,7 @@ namespace YARG.Gameplay.Visuals
 
             foreach (var info in _coloredMaterialCache)
             {
-                float a = info.EmissionAddition;
-                var realColor = color + new Color(a, a, a);
+                var realColor = info.Tint(color);
 
                 info.MaterialCache.color = realColor;
                 info.MaterialCache.SetColor(_emissionColor, realColor * info.EmissionMultiplier);
@@ -143,8 +151,7 @@ namespace YARG.Gameplay.Visuals
 
             foreach (var info in _coloredMaterialNoStarPowerCache)
             {
-                float a = info.EmissionAddition;
-                var realColor = colorNoStarPower + new Color(a, a, a);
+                var realColor = info.Tint(colorNoStarPower);
 
                 info.MaterialCache.color = realColor;
                 info.MaterialCache.SetColor(_emissionColor, realColor * info.EmissionMultiplier);

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using YARG.Core;
 
 // pattern: Functional Core
 
@@ -7,6 +8,24 @@ namespace YARG.Themes
 {
     public static class ThemeNoteModelFallbacks
     {
+        internal static readonly ThemeNoteType[] EliteFusedFlamTypes =
+        {
+            ThemeNoteType.EliteFlatFlam, ThemeNoteType.EliteFlatFlamGhost, ThemeNoteType.EliteFlatFlamAccent,
+            ThemeNoteType.EliteVFlam, ThemeNoteType.EliteVFlamGhost, ThemeNoteType.EliteVFlamAccent
+        };
+
+        internal static ThemeNoteType? GetEliteFusedFlamType(ThemeNoteType drumType, bool flat, DrumFlamLayout layout)
+        {
+            if (!flat && layout != DrumFlamLayout.V) return null;
+            return drumType switch
+            {
+                ThemeNoteType.Normal => flat ? ThemeNoteType.EliteFlatFlam : ThemeNoteType.EliteVFlam,
+                ThemeNoteType.Ghost => flat ? ThemeNoteType.EliteFlatFlamGhost : ThemeNoteType.EliteVFlamGhost,
+                ThemeNoteType.Accent => flat ? ThemeNoteType.EliteFlatFlamAccent : ThemeNoteType.EliteVFlamAccent,
+                _ => null
+            };
+        }
+
         public static (Dictionary<ThemeNoteType, GameObject> Regular,
             Dictionary<ThemeNoteType, GameObject> StarPower) ResolveClassicDrumModels(
             IReadOnlyDictionary<ThemeNoteType, GameObject> models,

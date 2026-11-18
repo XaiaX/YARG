@@ -91,7 +91,7 @@ namespace YARG.Themes
             var defaultComp = _defaultTheme.GetThemeComponent();
             foreach (var (type, prefab) in defaultComp.GetNoteModelsForVisualStyle(style, false))
             {
-                if (!regular.ContainsKey(type))
+                if (!regular.ContainsKey(type) && System.Array.IndexOf(ThemeNoteModelFallbacks.EliteFusedFlamTypes, type) < 0)
                 {
                     YargLogger.LogFormatDebug(
                         "Theme `{0}` does not have model for note type `{1}`. Falling back to the default theme.",
@@ -103,7 +103,8 @@ namespace YARG.Themes
 
             foreach (var (type, prefab) in defaultComp.GetNoteModelsForVisualStyle(style, true))
             {
-                if (!starPower.ContainsKey(type))
+                if (!starPower.ContainsKey(type) &&
+                    System.Array.IndexOf(ThemeNoteModelFallbacks.EliteFusedFlamTypes, type) < 0)
                 {
                     YargLogger.LogFormatDebug(
                         "Theme `{0}` does not have SP model for note type `{1}`. Falling back to the default theme.",

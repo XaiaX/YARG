@@ -19,5 +19,7 @@ namespace YARG.Themes
         [Space]
         public float EmissionMultiplier;
         public float EmissionAddition;
+        [Tooltip("Lane-color multiplier. Zero uses full color for legacy themes.")]
+        public float ColorMultiplier;
     }
 }

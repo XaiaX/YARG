@@ -137,6 +137,16 @@ namespace YARG.Settings.Preview
             _ => type
         };
 
+        private ThemeNoteType ResolveEliteFlamType(FakeNoteData data, ThemeNoteType drumType)
+        {
+            if (data.EliteHandFlam &&
+                ThemeNoteModelFallbacks.GetEliteFusedFlamType(drumType, data.EliteFlatFlam,
+                    FakeTrackPlayer.FlamLayout) is { } fused &&
+                _noteGroups.Exists(pair => pair.NoteType == fused && !pair.StarPower))
+                return fused;
+            return drumType;
+        }
+
         private NoteGroup FindNoteGroup(ThemeNoteType type, bool starPower)
         {
             if (starPower)
@@ -222,6 +232,9 @@ namespace YARG.Settings.Preview
                     _ => selectedType
                 };
             }
+            var resolvedType = ResolveEliteFlamType(NoteRef, selectedType);
+            bool fusedEliteFlam = resolvedType != selectedType;
+            selectedType = resolvedType;
             var selectedGroup = FindNoteGroup(selectedType, useStarPower);
             if (selectedGroup != _currentNoteGroup)
             {
@@ -533,13 +546,14 @@ namespace YARG.Settings.Preview
                         _currentNoteGroup.PedalStrikeAligned ? 0f :
                             EliteDrumsRuntimeGeometry.GetVisualLeadOffset((float) FakeTrackPlayer.NOTE_SPEED, tickDuration));
                 }
-                if (info.EliteLayout != null && (NoteRef.EliteHandFlam || NoteRef.ElitePairPartner != null))
+                bool splitEliteFlam = NoteRef.EliteHandFlam && !fusedEliteFlam;
+                if (info.EliteLayout != null && (fusedEliteFlam || splitEliteFlam || NoteRef.ElitePairPartner != null))
                 {
                     transform.localScale = transform.localScale.WithX(1f);
                     float center = transform.localPosition.x;
                     float laneWidth = info.EliteLayout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
                     var ownGeometry = Geometry(_currentNoteGroup);
-                    if (NoteRef.EliteHandFlam)
+                    if (splitEliteFlam)
                     {
                         if (!_flamCompanions.TryGetValue(_currentNoteGroup, out var companion))
                         {
@@ -561,10 +575,11 @@ namespace YARG.Settings.Preview
                         companion.SetColorWithEmission(color, color);
                         companion.SetMetalColor(metalColor);
                     }
-                    else if (NoteRef.ElitePairPartner.EliteDescriptor is { } partner)
+                    else if (NoteRef.ElitePairPartner?.EliteDescriptor is { } partner)
                     {
                         bool partnerStar = NoteRef.ElitePairPartner.ForceStarPower ?? FakeTrackPlayer.ForceStarPowerNotes;
-                        var other = FindNoteGroup(EliteModelType(partner.ModelType), partnerStar);
+                        var partnerType = ResolveEliteFlamType(NoteRef.ElitePairPartner, EliteModelType(partner.ModelType));
+                        var other = FindNoteGroup(partnerType, partnerStar);
                         bool cymbal = elite.Role is EliteDrumsColorRole.HatIndifferent or EliteDrumsColorRole.HatOpen
                             or EliteDrumsColorRole.HatClosed or EliteDrumsColorRole.LeftCrash
                             or EliteDrumsColorRole.Ride or EliteDrumsColorRole.RightCrash;
@@ -573,6 +588,11 @@ namespace YARG.Settings.Preview
                             right ? null : _currentNoteGroup.transform,
                             Geometry(right ? _currentNoteGroup : other), right ? _currentNoteGroup.transform : null,
                             info.LaneCount, center, laneWidth, center, false);
+                    }
+                    else if (fusedEliteFlam)
+                    {
+                        EliteDrumsRuntimeGeometry.FitFusedFlam(ownGeometry, _currentNoteGroup.transform,
+                            info.LaneCount, center, laneWidth, center);
                     }
                 }
             }

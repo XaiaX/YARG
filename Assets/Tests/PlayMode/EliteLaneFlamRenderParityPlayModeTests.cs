@@ -62,6 +62,59 @@ namespace YARG.Tests.PlayMode
                 .Any(r => r.gameObject.activeInHierarchy), Is.True, "The note must render, not merely select a group.");
         }
 
+        private static void AssertFusedFlam(Component element, string expected)
+        {
+            var note = element.GetComponentsInChildren(Production("YARG.Themes.ThemeNote")).Single();
+            Assert.That(note.GetType().GetProperty("NoteType").GetValue(note).ToString(), Is.EqualTo(expected));
+            AssertSplitGroups(element, 0);
+        }
+
+        [UnityTest]
+        public IEnumerator FusedFlamsPreserveDepthAndHeightAndUseTheProportionalLaneOffset()
+        {
+            int index = 0;
+            var chartNotes = (from dynamics in new[] { DrumNoteType.Ghost, DrumNoteType.Neutral, DrumNoteType.Accent }
+                from shape in new[] { "single", "flat", "V" }
+                select new EliteDrumNote(EliteDrumPad.Snare, dynamics, EliteDrumsHatState.Indifferent,
+                    EliteDrumsHatPedalType.Stomp, shape == "V", DrumNoteFlags.None, NoteFlags.None,
+                    EliteDrumsChannelFlag.None, 1d + index * .25d, (uint) (960 + index++ * 240), false,
+                    isFlatFlam: shape == "flat")).ToArray();
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(PreparedElitePlayerFixture.CreateChart(chartNotes), Profile(), EliteDrumsLayoutPreset.Compact);
+            var player = Fixture.Player;
+            var layout = (EliteDrumsResolvedLayout) player.GetType().GetProperty("Layout").GetValue(player);
+            float laneWidth = layout.GetLaneWidth(2f);
+            float laneCenter = layout.GetSourceX("snare", 2f, false);
+
+            Bounds Measure(EliteDrumNote note)
+            {
+                var element = Spawn(note);
+                var points = element.GetComponentsInChildren<MeshFilter>()
+                    .Where(filter => filter.GetComponent<MeshRenderer>().enabled)
+                    .SelectMany(filter => filter.sharedMesh.vertices.Select(vertex =>
+                        player.transform.InverseTransformPoint(filter.transform.TransformPoint(vertex)))).ToArray();
+                Assert.That(points, Is.Not.Empty);
+                var bounds = new Bounds(points[0], Vector3.zero);
+                foreach (var point in points) bounds.Encapsulate(point);
+                return bounds;
+            }
+
+            var notes = Playable.Notes;
+            for (int i = 0; i < notes.Count; i += 3)
+            {
+                var single = Measure(notes[i]);
+                for (int shape = 1; shape <= 2; shape++)
+                {
+                    var flam = Measure(notes[i + shape]);
+                    Assert.That(flam.size.x, Is.EqualTo(single.size.x * 1.5f).Within(.0001f), "In-game width");
+                    Assert.That(flam.size.y, Is.EqualTo(single.size.y).Within(.0001f), "In-game height");
+                    Assert.That(flam.size.z, Is.EqualTo(single.size.z).Within(.0001f), "In-game depth");
+                    float expected = laneCenter / (1f - laneWidth * .5f) * (1f - flam.extents.x);
+                    Assert.That(flam.center.x, Is.EqualTo(expected).Within(.0001f), "In-game offset");
+                }
+            }
+        }
+
         [UnityTest]
         public IEnumerator SourceMembershipSuppressesOnlyHandLaneMemberAndDoesNotLeakToAnotherPreparedChart()
         {
@@ -77,8 +130,9 @@ namespace YARG.Tests.PlayMode
                     "A same-pad note inside the time bounds but absent from MemberSources is not a lane member.");
                 Assert.That(notes[0].DrumFlags, Is.EqualTo(DrumNoteFlags.None));
                 Assert.That(notes[1].DrumFlags, Is.EqualTo(DrumNoteFlags.None));
-                AssertSplitGroups(Spawn(notes[0]), withLane ? 0 : 2);
-                AssertSplitGroups(Spawn(notes[1]), 2);
+                string fused = flat ? "EliteFlatFlam" : "EliteVFlam";
+                AssertFusedFlam(Spawn(notes[0]), withLane ? "Normal" : fused);
+                AssertFusedFlam(Spawn(notes[1]), fused);
                 foreach (var kick in notes.Skip(2))
                 {
                     bool laneMember = withLane && ReferenceEquals(kick, notes[2]);

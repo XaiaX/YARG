@@ -27,8 +27,12 @@ namespace YARG.Tests.EditMode
             Assert.That(accent.transform.parent.name, Is.EqualTo("Elite Lane Notes"));
             var top = accent.GetComponentsInChildren<MeshFilter>().Single(f => f.name == "Top");
             var materials = top.GetComponent<MeshRenderer>().sharedMaterials;
-            Assert.That(materials.Select(m => m.name), Is.EquivalentTo(new[]
-                { "CymbalMiddle", "CymbalMetal", "EliteHiHatDark" }));
+            Assert.That(materials.Select(m => m.name), Does.Contain(
+                type == "ClosedHiHatAccent" ? "CymbalMiddle" : "EliteCymbalMiddleInvertedLayers"));
+            Assert.That(materials.Select(m => m.name), Does.Contain("EliteAccentHOPOGlow"));
+            Assert.That(accent.GetComponentsInChildren<MeshFilter>().Single(f => f.name == "Thorns")
+                .GetComponent<MeshRenderer>().sharedMaterials.Select(m => m.name),
+                Is.EquivalentTo(new[] { "CymbalMetal", "EliteHiHatDark" }));
             for (int i = 0; i < materials.Length; i++)
                 Assert.That(top.sharedMesh.GetIndexCount(i), Is.GreaterThan(0), materials[i].name);
         }
