@@ -177,9 +177,8 @@ namespace YARG.Gameplay.Visuals
                 {
                     var mesh = filter.sharedMesh;
                     if (mesh == null || !mesh.isReadable) continue;
-                    // Animated tops may export a third dark submesh; it is not
-                    // the stationary base used to place cymbal flam contacts.
-                    if (filter.GetComponentInParent<CymbalSpinAnimation>(true) != null) continue;
+                    // Use the lower rotor's contact mesh in its rest pose.
+                    if (CymbalSpinAnimation.ExcludesBaseContact(filter)) continue;
                     if (filter.transform.name == "Upper Cymbal" ||
                         filter.transform.parent != null && filter.transform.parent.name == "Upper Cymbal") continue;
                     var matrix = EliteDrumsGeometryCache.RelativeMatrix(model, filter.transform);

@@ -51,6 +51,7 @@ namespace YARG.Gameplay
         public const double MAXIMUM_REWIND_WINDOW = 20;
 
         public const float TRACK_SPACING_X = 100f;
+        private static readonly int FlamGlowPhase = Shader.PropertyToID("_YargFlamGlowPhase");
 
 
         public bool IsSeekingReplay;
@@ -316,6 +317,7 @@ namespace YARG.Gameplay
                     $"songLength={SongLength}");
             }
             YargLogger.LogInfo("Exiting song");
+            Shader.SetGlobalFloat(FlamGlowPhase, 0f);
 
             if (Navigator.Instance != null)
             {
@@ -420,6 +422,7 @@ namespace YARG.Gameplay
                 ApplySongSpeed();
             using (TargetedPerformance.Measure(TargetedOperation.GameplayBeatEvents))
                 BeatEventHandler.Update(_songRunner.SongTime, _songRunner.VisualTime);
+            Shader.SetGlobalFloat(FlamGlowPhase, 1f + (float)BeatEventHandler.Visual.QuarterNote.CurrentPercentage);
             using (TargetedPerformance.Measure(TargetedOperation.GameplayCrowdEvents))
                 CrowdEventHandler.Update(_songRunner.SongTime);
 

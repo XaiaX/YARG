@@ -69,8 +69,27 @@ namespace YARG.Tests.PlayMode
             AssertSplitGroups(element, 0);
         }
 
+        private static void AssertFlatFlamInsetTint(Component element)
+        {
+            var model = element.GetComponentsInChildren(Production("YARG.Themes.ThemeNote")).Single();
+            var group = model.transform.parent.GetComponent(Production("YARG.Gameplay.Visuals.NoteGroup"));
+            var renderer = model.GetComponentsInChildren<MeshRenderer>()
+                .Single(r => r.name is "Gem surface" or "Ghost surface");
+            var setMetalColor = group.GetType().GetMethod("SetMetalColor");
+            var materials = renderer.sharedMaterials;
+            var originalColor = materials[1].color;
+            foreach (var color in new[] { new Color(.91f, .66f, .24f, 1f), Color.white, originalColor })
+            {
+                setMetalColor.Invoke(group, new object[] { color });
+                var inset = color * new Color(.73f, .73f, .73f, 1f);
+                Assert.That(Vector4.Distance(materials[1].color, color), Is.LessThan(.00001f));
+                Assert.That(Vector4.Distance(materials[3].color, inset), Is.LessThan(.00001f));
+                Assert.That(Vector4.Distance(materials[3].GetColor("_EmissionColor"), inset), Is.LessThan(.00001f));
+            }
+        }
+
         [UnityTest]
-        public IEnumerator FusedFlamsPreserveDepthAndHeightAndUseTheProportionalLaneOffset()
+        public IEnumerator FusedFlamsUseTheAuthoredDimensionsAndProportionalLaneOffset()
         {
             int index = 0;
             var chartNotes = (from dynamics in new[] { DrumNoteType.Ghost, DrumNoteType.Neutral, DrumNoteType.Accent }
@@ -89,6 +108,7 @@ namespace YARG.Tests.PlayMode
             Bounds Measure(EliteDrumNote note)
             {
                 var element = Spawn(note);
+                if (note.IsFlatFlam) AssertFlatFlamInsetTint(element);
                 var points = element.GetComponentsInChildren<MeshFilter>()
                     .Where(filter => filter.GetComponent<MeshRenderer>().enabled)
                     .SelectMany(filter => filter.sharedMesh.vertices.Select(vertex =>
@@ -107,7 +127,9 @@ namespace YARG.Tests.PlayMode
                 {
                     var flam = Measure(notes[i + shape]);
                     Assert.That(flam.size.x, Is.EqualTo(single.size.x * 1.5f).Within(.0001f), "In-game width");
-                    Assert.That(flam.size.y, Is.EqualTo(single.size.y).Within(.0001f), "In-game height");
+                    bool tallerFrame = shape == 2 && !notes[i].IsAccent;
+                    float height = single.size.y * (tallerFrame ? 1.10f : 1f);
+                    Assert.That(flam.size.y, Is.EqualTo(height).Within(.0001f), "In-game height");
                     Assert.That(flam.size.z, Is.EqualTo(single.size.z).Within(.0001f), "In-game depth");
                     float expected = laneCenter / (1f - laneWidth * .5f) * (1f - flam.extents.x);
                     Assert.That(flam.center.x, Is.EqualTo(expected).Within(.0001f), "In-game offset");

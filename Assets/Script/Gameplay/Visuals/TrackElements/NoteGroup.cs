@@ -88,6 +88,12 @@ namespace YARG.Gameplay.Visuals
             if (modular != null) modular.Configure(count);
         }
 
+        public void ConfigureKickLanes(int count)
+        {
+            var modular = GetComponentInChildren<ModularKickVisual>(true);
+            if (modular != null) modular.Configure(count);
+        }
+
         public void Initialize()
         {
             using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.NoteGroupInitialize,
@@ -186,8 +192,11 @@ namespace YARG.Gameplay.Visuals
 
             foreach (var info in _coloredMetalMaterialCache)
             {
-                info.MaterialCache.color = metalColor;
-                info.MaterialCache.SetColor(_emissionColor, metalColor);
+                float multiplier = info.ColorMultiplier;
+                var tint = new Color(metalColor.r * multiplier, metalColor.g * multiplier,
+                    metalColor.b * multiplier, metalColor.a);
+                info.MaterialCache.color = tint;
+                info.MaterialCache.SetColor(_emissionColor, tint);
             }
         }
 

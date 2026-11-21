@@ -1,3 +1,4 @@
+// pattern: Imperative Shell
 using System;
 using System.Reflection;
 using System.Linq;
@@ -9,6 +10,58 @@ namespace YARG.Tests.EditMode
 {
     public sealed class ModularPedalVisualTests
     {
+        [TestCase("HatStomp", 2)]
+        [TestCase("HatStomp", 3)]
+        [TestCase("HatSplash", 2)]
+        [TestCase("HatSplash", 3)]
+        public void ContinuousFootHasMirroredEndsAndTheAuthoredFaceMaterials(string name, int count)
+        {
+            const float TOLERANCE = .0001f;
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Prefabs/Gameplay/Visual/EliteDrums/HiHats/" + name + ".prefab");
+            var instance = UnityEngine.Object.Instantiate(prefab);
+            try
+            {
+                var modular = Type.GetType("YARG.Gameplay.Visuals.ModularPedalVisual, Assembly-CSharp", true);
+                modular.GetMethod("Configure").Invoke(instance.GetComponentInChildren(modular), new object[] { count });
+                var foot = instance.GetComponentsInChildren<MeshFilter>().Single(filter => filter.name == "Base");
+                var toRoot = instance.transform.worldToLocalMatrix * foot.transform.localToWorldMatrix;
+                var vertices = foot.sharedMesh.vertices.Select(point => toRoot.MultiplyPoint3x4(point)).ToArray();
+                var toe = vertices.Where(point => Mathf.Abs(point.z + .0905f) < TOLERANCE).ToArray();
+                Assert.That(toe, Is.Not.Empty);
+                float plateauHalfWidth = count == 3 ? .2f : 0;
+                Assert.That(toe.Min(point => point.x), Is.EqualTo(-plateauHalfWidth).Within(TOLERANCE));
+                Assert.That(toe.Max(point => point.x), Is.EqualTo(plateauHalfWidth).Within(TOLERANCE));
+                Assert.That(toe.Max(point => point.y) - toe.Min(point => point.y), Is.GreaterThan(.016f));
+
+                var shoulder = vertices.Where(point => point.x >= plateauHalfWidth - TOLERANCE &&
+                        Mathf.Abs(point.y + .006f) < TOLERANCE)
+                    .OrderBy(point => point.x)
+                    .GroupBy(point => Mathf.RoundToInt(point.x / TOLERANCE))
+                    .Select(slice => slice.OrderBy(point => point.z).First()).ToArray();
+                var slopes = shoulder.Zip(shoulder.Skip(1), (inner, outer) =>
+                    (outer.z - inner.z) / (outer.x - inner.x)).ToArray();
+                Assert.That(slopes.Length, Is.GreaterThan(2));
+                for (int i = 1; i < slopes.Length; i++)
+                    Assert.That(slopes[i], Is.GreaterThanOrEqualTo(slopes[i - 1] - TOLERANCE),
+                        "The front edge should keep a convex arc from the toe to the outer end.");
+
+                var materials = foot.GetComponent<MeshRenderer>().sharedMaterials;
+                Assert.That(materials.Select(material => material.name), Is.EqualTo(name == "HatSplash"
+                    ? new[] { "ElitePedalMetal", "EliteHiHatDark", "EliteAccentHOPOGlow" }
+                    : new[] { "ElitePedalMetal", "ElitePedalInsetMetal" }));
+                Assert.That(foot.sharedMesh.subMeshCount, Is.EqualTo(materials.Length));
+
+                int slopeSlot = name == "HatSplash" ? 2 : 1;
+                var slope = foot.sharedMesh.GetTriangles(slopeSlot).Select(index => vertices[index])
+                    .Where(point => Mathf.Abs(point.x) <= plateauHalfWidth + TOLERANCE && point.z > -.082f && point.z < -.061f)
+                    .ToArray();
+                Assert.That(slope, Is.Not.Empty, "The bevel is inset from the front wall.");
+                Assert.That(slope.Max(point => point.y) - slope.Min(point => point.y), Is.GreaterThan(.007f));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(instance); }
+        }
+
         [TestCase("HatStomp")]
         [TestCase("HatSplash")]
         public void AuthoredCapsCoverOuterGlowEdgesAndUseDrumMetalTexture(string name)

@@ -39,6 +39,13 @@ using Object = UnityEngine.Object;
 
 namespace YARG.Settings
 {
+    public enum PedalBeamEffect
+    {
+        Original = 0,
+        GemFlow = 1,
+        SustainShimmer = 2,
+    }
+
     public enum SongLengthLabelMode
     {
         RangeLabels,
@@ -843,6 +850,13 @@ namespace YARG.Settings
             public SliderSetting EliteHiHatHeldOpacity { get; } = new(33, 0, 100);
             public SliderSetting EliteHiHatWaitingGlow { get; } = new(35, 0, 200);
             public SliderSetting EliteHiHatHeldGlow { get; } = new(70, 0, 200);
+            public DropdownSetting<PedalBeamEffect> ElitePedalBeamEffect { get; } = new(PedalBeamEffect.GemFlow,
+                value => Shader.SetGlobalFloat("_YargElitePedalBeamEffect", (float) value))
+            {
+                PedalBeamEffect.Original,
+                PedalBeamEffect.GemFlow,
+                PedalBeamEffect.SustainShimmer,
+            };
             // Compatibility input for the one-time profile migration; no longer a global control.
             public DropdownSetting<DrumFlamLayout> EliteFlamLayout { get; } = new(DrumFlamLayout.V)
             {

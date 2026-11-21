@@ -406,6 +406,10 @@ namespace YARG.Settings.Preview
                 width = 1f;
             }
             transform.localScale = new Vector3(width, highwayPreset.NoteHeight, 1f);
+            if (info.LaneCount > 0 && FakeTrackPlayer.SelectedGameMode == GameMode.EliteDrums &&
+                selectedType is ThemeNoteType.Kick or ThemeNoteType.KickAccent or ThemeNoteType.KickGhost or
+                    ThemeNoteType.KickFlam or ThemeNoteType.KickFlamAccent or ThemeNoteType.KickFlamGhost)
+                _currentNoteGroup.ConfigureKickLanes(info.LaneCount);
             if (NoteRef.ClassicHandFlam && !NoteRef.CenterNote && info.LaneCount > 0 &&
                 FakeTrackPlayer.SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)
             {

@@ -171,11 +171,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::YARG.Gameplay.Visuals.ModularPedalVisual
   _sections:
-  - {fileID: 1292738273660617691}
   - {fileID: 5701175394965964368}
   _sectionWidth: 0.4
   _leftEnd: {fileID: 6763947528110220086}
   _rightEnd: {fileID: 4195146786176038462}
+  _foot: {fileID: 1292738273660617691}
+  _feetBySpan:
+  - {fileID: 6773056719040696690, guid: f9278994c8394429182b8953ee7b32b9, type: 2}
+  - {fileID: -362457825582026397, guid: f9278994c8394429182b8953ee7b32b9, type: 2}
+  - {fileID: -2927105875376507737, guid: f9278994c8394429182b8953ee7b32b9, type: 2}
 --- !u!1 &5680580773350537473
 GameObject:
   m_ObjectHideFlags: 0
@@ -396,7 +400,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6580181580816498737}
-  m_Mesh: {fileID: 3909233067320746374, guid: 35f1f54faafec44ad81d85abbc609cec, type: 3}
+  m_Mesh: {fileID: 6773056719040696690, guid: f9278994c8394429182b8953ee7b32b9, type: 2}
 --- !u!23 &2835021352396987302
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -423,6 +427,8 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: a2600b3475b494b659a0ff7ff7f8c111, type: 2}
+  - {fileID: 2100000, guid: 4ba0ab55591e04c3888d5976c9cf56f3, type: 2}
+  - {fileID: 2100000, guid: e8e75353115ac4503a6db3cf113ebe10, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

@@ -23,7 +23,209 @@ namespace YARG.Tests.EditMode
             var scripts = theme.GetComponentsInChildren<MonoBehaviour>(true);
             Assert.That(scripts.All(s => s != null), Is.True, "Removing rocking must not leave missing scripts.");
             Assert.That(scripts.Count(s => s.GetType().Name == "HiHatBeatAnimation"), Is.Zero);
-            Assert.That(theme.GetComponentsInChildren(Spin, true).Length, Is.EqualTo(3));
+            Assert.That(theme.GetComponentsInChildren(Spin, true).Length, Is.EqualTo(6));
+        }
+
+        [TestCase("ClosedHiHatAccent")]
+        [TestCase("CymbalAccent")]
+        [TestCase("OpenHiHatAccent")]
+        public void AccentBaseUsesFivePetalsAndAnIndependentEightBeatRotor(string name)
+        {
+            var model = UnityEngine.Object.Instantiate(EliteModel(name).gameObject);
+            try
+            {
+                var spins = model.GetComponentsInChildren(Spin, true)
+                    .OrderBy(spin => new SerializedObject(spin).FindProperty("_beatsPerRevolution").floatValue).ToArray();
+                Assert.That(spins.Length, Is.EqualTo(2));
+                var crown = (Transform) Spin.GetProperty("Rotor").GetValue(spins[0]);
+                var lower = (Transform) Spin.GetProperty("Rotor").GetValue(spins[1]);
+                Spin.GetMethod("ApplyBeatPhase").Invoke(spins[0], new object[] { 1d });
+                Spin.GetMethod("ApplyBeatPhase").Invoke(spins[1], new object[] { 1d });
+                Assert.That(Quaternion.Angle(crown.localRotation, Quaternion.AngleAxis(-90f, Vector3.forward)), Is.LessThan(.001f));
+                Assert.That(Quaternion.Angle(lower.localRotation, Quaternion.AngleAxis(-45f, Vector3.forward)), Is.LessThan(.001f));
+                var filters = lower.GetComponentsInChildren<MeshFilter>(true);
+                Assert.That(filters.Single(filter => filter.name == "Thorns").sharedMesh.triangles.Length / 3, Is.EqualTo(150));
+                Assert.That(new SerializedObject(spins[1]).FindProperty("_contactSurface").objectReferenceValue,
+                    Is.SameAs(filters.Single(filter => filter.name == "Base")));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(model); }
+        }
+
+        [TestCase("Kick", 704, 1088)]
+        [TestCase("KickAccent", 960, 1536)]
+        [TestCase("KickGhost", 704, 1088)]
+        public void EliteKickBarUsesTheBakedMeshForTheSelectedFretCount(string name, int compact, int full)
+        {
+            var noteType = Production("YARG.Themes.ThemeNote");
+            var instance = UnityEngine.Object.Instantiate(EliteModel(name).gameObject);
+            try
+            {
+                var modularType = Type.GetType("YARG.Gameplay.Visuals.ModularKickVisual, Assembly-CSharp");
+                Assert.That(modularType, Is.Not.Null, "The bar needs an authored mesh for each fret count.");
+                var modular = instance.GetComponentInChildren(modularType, true);
+                Assert.That(modular, Is.Not.Null);
+                var filter = modular.GetComponent<MeshFilter>();
+                foreach (var (count, triangles) in new[] { (5, compact), (8, full), (5, compact) })
+                {
+                    modularType.GetMethod("Configure").Invoke(modular, new object[] { count });
+                    Assert.That(AssetDatabase.Contains(filter.sharedMesh), Is.True);
+                    Assert.That(filter.sharedMesh.triangles.Length / 3, Is.EqualTo(triangles));
+                    Assert.That(filter.sharedMesh.bounds.size.x, Is.EqualTo(2f).Within(.0001f));
+                }
+                var note = instance.GetComponent(noteType);
+                var serialized = new SerializedObject(note);
+                var color = serialized.FindProperty("_coloredMaterials").GetArrayElementAtIndex(0);
+                var metal = serialized.FindProperty("_coloredMetalMaterials").GetArrayElementAtIndex(0);
+                Assert.That(color.FindPropertyRelative("Mesh").objectReferenceValue, Is.SameAs(filter.GetComponent<MeshRenderer>()));
+                Assert.That(metal.FindPropertyRelative("Mesh").objectReferenceValue, Is.SameAs(filter.GetComponent<MeshRenderer>()));
+                Assert.That(color.FindPropertyRelative("MaterialIndex").intValue, Is.Not.EqualTo(metal.FindPropertyRelative("MaterialIndex").intValue));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(instance); }
+        }
+
+        [TestCase("Kick")]
+        [TestCase("KickAccent")]
+        [TestCase("KickGhost")]
+        public void KickEmittersHaveValidNormalsOnAllVisibleFaces(string name)
+        {
+            var mesh = EliteModel(name).GetComponentsInChildren<MeshFilter>(true).Single().sharedMesh;
+            var points = mesh.vertices;
+            var normals = mesh.normals;
+            var metal = mesh.GetTriangles(1);
+            for (int i = 0; i < metal.Length; i += 3)
+            {
+                int a = metal[i], b = metal[i + 1], c = metal[i + 2];
+                if (Mathf.Abs(points[a].x) < .95f) continue;
+                var area = Vector3.Cross(points[b] - points[a], points[c] - points[a]);
+                Assert.That(area.sqrMagnitude, Is.GreaterThan(0f));
+                Assert.That(normals[a].sqrMagnitude, Is.GreaterThan(.9f));
+                Assert.That(normals[b].sqrMagnitude, Is.GreaterThan(.9f));
+                Assert.That(normals[c].sqrMagnitude, Is.GreaterThan(.9f));
+            }
+        }
+
+        [TestCase("Kick", .0285f)]
+        [TestCase("KickGhost", .02565f)]
+        public void ChromeKickRingsUseTheNarrowerCollar(string name, float width)
+        {
+            var mesh = EliteModel(name).GetComponentsInChildren<MeshFilter>(true).Single().sharedMesh;
+            var points = mesh.vertices;
+            var collar = mesh.GetTriangles(1).Select(index => points[index])
+                .Where(point => Mathf.Abs(point.x + .6f) < .05f).ToArray();
+            Assert.That(collar, Is.Not.Empty);
+            Assert.That(collar.Max(point => point.x) - collar.Min(point => point.x), Is.EqualTo(width).Within(.0001f));
+        }
+
+        [Test]
+        public void AccentKickCollarsAreWiderAndTaller()
+        {
+            var mesh = EliteModel("KickAccent").GetComponentsInChildren<MeshFilter>(true).Single().sharedMesh;
+            var points = mesh.vertices;
+            var collar = mesh.GetTriangles(2).Select(index => points[index])
+                .Where(point => Mathf.Abs(point.x + .6f) < .05f).ToArray();
+            Assert.That(collar, Is.Not.Empty);
+            Assert.That(collar.Max(point => point.x) - collar.Min(point => point.x), Is.EqualTo(.045315f).Within(.0001f));
+            Assert.That(collar.Max(point => point.y) - collar.Min(point => point.y), Is.EqualTo(.0860548f).Within(.0001f));
+        }
+
+        [Test]
+        public void GhostKickGlowCoversACentered45DegreeArc()
+        {
+            var mesh = EliteModel("KickGhost").GetComponentsInChildren<MeshFilter>(true).Single().sharedMesh;
+            var points = mesh.vertices;
+            var dark = mesh.GetTriangles(2).Select(index => points[index]).ToArray();
+            var bright = mesh.GetTriangles(0).Select(index => points[index]).ToArray();
+            Assert.That(dark.Min(point => point.x), Is.EqualTo(bright.Min(point => point.x)).Within(.0001f));
+            Assert.That(dark.Max(point => point.x), Is.EqualTo(bright.Max(point => point.x)).Within(.0001f));
+            Assert.That(dark.Max(point => point.y), Is.EqualTo(bright.Min(point => point.y)).Within(.0001f));
+            float bottom = dark.Min(point => point.y);
+            float top = bright.Max(point => point.y);
+            float seam = bright.Min(point => point.y);
+            float near = dark.Min(point => point.z);
+            float far = dark.Max(point => point.z);
+            var seamAngles = dark.Where(point => Mathf.Abs(point.y - seam) < .00001f)
+                .Select(point => Mathf.Atan2((point.z - (near + far) * .5f) / (far - near),
+                    (point.y - (top + bottom) * .5f) / (top - bottom)) * Mathf.Rad2Deg).ToArray();
+            Assert.That(seamAngles.Min(), Is.EqualTo(-22.5f).Within(.01f));
+            Assert.That(seamAngles.Max(), Is.EqualTo(22.5f).Within(.01f));
+            Assert.That(dark.Min(point => point.z), Is.LessThan(bright.Min(point => point.z)));
+            Assert.That(dark.Max(point => point.z), Is.GreaterThan(bright.Max(point => point.z)));
+        }
+
+        [TestCase("KickFlam", 1)]
+        [TestCase("KickFlamGhost", 1)]
+        [TestCase("KickFlamAccent", 2)]
+        public void SplitKickFlamCollarsStayCenteredOnTheFretSeams(string name, int collarSlot)
+        {
+            var note = UnityEngine.Object.Instantiate(EliteModel(name).gameObject);
+            try
+            {
+                var modularType = Production("YARG.Gameplay.Visuals.ModularKickVisual");
+                var modular = note.GetComponentsInChildren(modularType, true).Single();
+                var filters = note.GetComponentsInChildren<MeshFilter>(true);
+                foreach (int count in Enumerable.Range(1, 10).Append(5))
+                {
+                    modularType.GetMethod("Configure").Invoke(modular, new object[] { count });
+                    float InNote(MeshFilter filter, Vector3 point) =>
+                        note.transform.InverseTransformPoint(filter.transform.TransformPoint(point)).x;
+                    var beamSpans = filters.Select(filter =>
+                    {
+                        var xs = filter.sharedMesh.vertices.Select(point => InNote(filter, point)).ToArray();
+                        return (Left: xs.Min(), Right: xs.Max());
+                    }).ToArray();
+                    float left = beamSpans.Min(span => span.Left);
+                    float right = beamSpans.Max(span => span.Right);
+                    var seams = Enumerable.Range(1, count - 1)
+                        .Select(column => Mathf.Lerp(left, right, column / (float)count)).ToArray();
+                    for (int i = 0; i < filters.Length; i++)
+                    {
+                        var span = beamSpans[i];
+                        var expected = seams.Where(seam => span.Left < seam && seam < span.Right).ToArray();
+                        var mesh = filters[i].sharedMesh;
+                        var points = mesh.vertices;
+                        var collars = mesh.GetTriangles(collarSlot).Select(index => points[index])
+                            .Where(point => Mathf.Abs(point.x) < .95f)
+                            .Select(point => InNote(filters[i], point)).ToArray();
+                        foreach (var seam in expected)
+                        {
+                            var ring = collars.Where(x => Mathf.Abs(x - seam) < .025f).ToArray();
+                            Assert.That(ring, Is.Not.Empty, $"No ring at {seam} on a {count}-fret highway.");
+                            Assert.That((ring.Min() + ring.Max()) * .5f, Is.EqualTo(seam).Within(.0002f));
+                        }
+                        Assert.That(collars.All(x => expected.Any(seam => Mathf.Abs(x - seam) < .025f)));
+                    }
+                }
+            }
+            finally { UnityEngine.Object.DestroyImmediate(note); }
+        }
+
+        [TestCase("KickFlamAccent")]
+        [TestCase("DedicatedLaneKickFlamAccent")]
+        public void EachEliteAccentFlamBeamHasTheDarkEdgedGlowingCollars(string name)
+        {
+            var note = EliteModel(name);
+            foreach (var binding in new[] { "_coloredMaterials", "_coloredKick2Materials" })
+            {
+                var entries = new SerializedObject(note).FindProperty(binding);
+                Assert.That(entries.arraySize, Is.EqualTo(1));
+                var renderer = (MeshRenderer)entries.GetArrayElementAtIndex(0)
+                    .FindPropertyRelative("Mesh").objectReferenceValue;
+                var mesh = renderer.GetComponent<MeshFilter>().sharedMesh;
+                int glow = Array.FindIndex(renderer.sharedMaterials, material => material.name == "EliteAccentHOPOGlow");
+                int edge = Array.FindIndex(renderer.sharedMaterials, material => material.name == "EliteHiHatDark");
+                Assert.That(glow, Is.GreaterThanOrEqualTo(0));
+                Assert.That(edge, Is.GreaterThanOrEqualTo(0));
+                Assert.That(mesh.GetIndexCount(glow), Is.GreaterThan(0));
+                Assert.That(mesh.GetIndexCount(edge), Is.GreaterThan(0));
+            }
+        }
+
+        private static Component EliteModel(string name)
+        {
+            var noteType = Production("YARG.Themes.ThemeNote");
+            var theme = AssetDatabase.LoadAssetAtPath<GameObject>(THEME);
+            return theme.transform.Find("Elite Lane Notes").GetComponentsInChildren(noteType, true)
+                .First(note => noteType.GetProperty("NoteType").GetValue(note).ToString() == name);
         }
 
         [Test]

@@ -4,6 +4,7 @@ using System.Collections;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace YARG.Tests.EditMode
 {
@@ -67,6 +68,42 @@ namespace YARG.Tests.EditMode
             var fields = ((IEnumerable)experimental.GetType().GetProperty("Settings").GetValue(experimental))
                 .Cast<object>().Select(field => field.GetType().GetProperty("FieldName")?.GetValue(field)).ToArray();
             foreach (string name in Names) Assert.That(fields, Does.Contain(name));
+        }
+
+        [TestCase(0)]
+        [TestCase(2)]
+        public void PedalEffectDropdownRestoresTheChosenShaderEffect(int savedEffect)
+        {
+            var original = Container();
+            const string NAME = "ElitePedalBeamEffect";
+            const string SHADER_PROPERTY = "_YargElitePedalBeamEffect";
+            var setting = Setting(original, NAME);
+            var values = ((IEnumerable) setting).Cast<object>().ToArray();
+            Assert.That(values.Select(value => value.ToString()),
+                Is.EqualTo(new[] { "Original", "GemFlow", "SustainShimmer" }));
+            Assert.That(setting.GetType().GetProperty("Value").GetValue(setting), Is.EqualTo(values[1]));
+            var tabs = (IEnumerable) Production("YARG.Settings.SettingsManager").GetField("AllSettingsTabs").GetValue(null);
+            var experimental = tabs.Cast<object>().Single(tab => (string) tab.GetType().GetProperty("Name").GetValue(tab) == "Experimental");
+            var fields = (IEnumerable) experimental.GetType().GetProperty("Settings").GetValue(experimental);
+            Assert.That(fields.Cast<object>().Select(field => field.GetType().GetProperty("FieldName")?.GetValue(field)), Does.Contain(NAME));
+
+            float previous = Shader.GetGlobalFloat(SHADER_PROPERTY);
+            try
+            {
+                setting.GetType().GetMethod("SetValueWithoutNotify").Invoke(setting, new[] { values[savedEffect] });
+                var manager = Production("YARG.Settings.SettingsManager");
+                var optionsType = Production("Newtonsoft.Json.JsonSerializerSettings");
+                var options = manager.GetField("JsonSettings", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+                var convert = Production("Newtonsoft.Json.JsonConvert");
+                var json = convert.GetMethod("SerializeObject", new[] { typeof(object), optionsType })
+                    .Invoke(null, new[] { original, options });
+                var restored = convert.GetMethod("DeserializeObject", new[] { typeof(string), typeof(Type), optionsType })
+                    .Invoke(null, new[] { json, original.GetType(), options });
+                var restoredSetting = Setting(restored, NAME);
+                restoredSetting.GetType().GetMethod("ForceInvokeCallback").Invoke(restoredSetting, null);
+                Assert.That(Shader.GetGlobalFloat(SHADER_PROPERTY), Is.EqualTo((float)savedEffect));
+            }
+            finally { Shader.SetGlobalFloat(SHADER_PROPERTY, previous); }
         }
 
         [Test]

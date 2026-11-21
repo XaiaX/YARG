@@ -180,6 +180,7 @@ namespace YARG.Gameplay.Visuals
             foreach (var filter in filters)
             {
                 writer.Write(filter.transform.name == "Base");
+                writer.Write(CymbalSpinAnimation.ExcludesBaseContact(filter));
                 writer.Write(filter.transform.name == "Upper Cymbal");
                 writer.Write(filter.transform.parent != null && filter.transform.parent.name == "Upper Cymbal");
                 var matrix = RelativeMatrix(model, filter.transform);

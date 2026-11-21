@@ -12,10 +12,14 @@ namespace YARG.Gameplay.Visuals
         [SerializeField] private float _sectionWidth = 0.4f;
         [SerializeField] private Transform _leftEnd;
         [SerializeField] private Transform _rightEnd;
+        [SerializeField] private MeshFilter _foot;
+        [SerializeField, Tooltip("Authored continuous feet, from one section to the widest supported span.")]
+        private Mesh[] _feetBySpan;
 
         private Mesh[] _sources;
         private Vector3 _leftEndRest;
         private Vector3 _rightEndRest;
+        private Vector3 _footRestScale;
         private readonly Dictionary<int, Mesh[]> _meshes = new();
 
         public void Configure(int count)
@@ -27,6 +31,12 @@ namespace YARG.Gameplay.Visuals
             {
                 if (_leftEnd != null) _leftEndRest = _leftEnd.localPosition;
                 if (_rightEnd != null) _rightEndRest = _rightEnd.localPosition;
+                if (_foot != null)
+                {
+                    if (_feetBySpan == null || _feetBySpan.Length == 0 || Array.Exists(_feetBySpan, mesh => mesh == null))
+                        throw new InvalidOperationException("The pedal foot requires a mesh for each authored span.");
+                    _footRestScale = _foot.transform.localScale;
+                }
                 _sources = new Mesh[_sections.Length];
                 for (int i = 0; i < _sections.Length; i++)
                 {
@@ -59,6 +69,16 @@ namespace YARG.Gameplay.Visuals
                 _meshes.Add(count, meshes);
             }
             for (int i = 0; i < _sections.Length; i++) _sections[i].sharedMesh = meshes[i];
+            if (_foot != null)
+            {
+                // Elite clips the pedal to at most three lanes. A wider caller can use the widest
+                // authored shape scaled to fit, while the regular beam still repeats at section width.
+                int authoredSpan = Math.Min(count, _feetBySpan.Length);
+                var scale = _footRestScale;
+                scale.x *= count / (float) authoredSpan;
+                _foot.sharedMesh = _feetBySpan[authoredSpan - 1];
+                _foot.transform.localScale = scale;
+            }
             float endOffset = (count - 1) * _sectionWidth * 0.5f;
             if (_leftEnd != null) _leftEnd.localPosition = _leftEndRest + Vector3.left * endOffset;
             if (_rightEnd != null) _rightEnd.localPosition = _rightEndRest + Vector3.right * endOffset;

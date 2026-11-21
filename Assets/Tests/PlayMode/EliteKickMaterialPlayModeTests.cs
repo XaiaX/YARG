@@ -85,13 +85,8 @@ namespace YARG.Tests.PlayMode
             {
                 beam.gameObject.layer = 31;
                 camera.cullingMask = 1 << 31;
-                var crossSection = beam.GetComponent<MeshFilter>().sharedMesh.vertices
-                    .Select(v => beam.transform.TransformPoint(v))
-                    .Where(v => Mathf.Abs(v.x - beam.bounds.center.x) < .02f).ToArray();
-                Assert.That(crossSection, Is.Not.Empty);
-                var aim = new Vector3(beam.bounds.center.x,
-                    (crossSection.Min(v => v.y) + crossSection.Max(v => v.y)) * .5f,
-                    (crossSection.Min(v => v.z) + crossSection.Max(v => v.z)) * .5f);
+                // Sample the colored upper half away from the center collar and end caps.
+                var aim = beam.transform.TransformPoint(new Vector3(.46f, .032f, .04f));
                 camera.transform.position = aim + Vector3.back;
                 camera.transform.LookAt(aim);
                 camera.orthographic = true;

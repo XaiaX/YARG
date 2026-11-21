@@ -29,6 +29,7 @@ Shader "YARG/HiHatSustain"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Assets/Art/Shaders/highways.hlsl"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Hashes.hlsl"
+            #include "Assets/Art/Shaders/Gameplay/HiHatShimmer.hlsl"
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
             CBUFFER_START(UnityPerMaterial)
@@ -76,33 +77,6 @@ Shader "YARG/HiHatSustain"
                 output.z = input.positionOS.z;
                 return output;
             }
-            // pattern: Functional Core
-            // Independent local flashes, reconstructed solely from chart UVs and
-            // explicit song time. No shared frame clock regenerates the whole field.
-            float TransientShimmer(float2 uv, float time)
-            {
-                float2 grid = uv * float2(18, 48);
-                float2 cell = floor(grid);
-                float3 seed;
-                Hash_Tchou_2_3_float(cell, seed);
-                float rate = lerp(2.1, 3.4, seed.x);
-                float clock = time * rate + seed.y * 11;
-                float age = frac(clock) / rate;
-                float3 event;
-                Hash_Tchou_3_3_float(float3(cell, floor(clock)), event);
-                float lifetime = lerp(.06, .105, event.z);
-                float flash = smoothstep(0, .008, age) * (1 - smoothstep(.018, lifetime, age));
-                float2 center = .3 + event.xy * .4;
-                float2 radius = float2(.15, .065);
-                // Derivatives of unwrapped coordinates avoid seams at cell edges.
-                // Fade under minification instead of producing subpixel flicker.
-                float2 footprint = max(fwidth(grid), .0001);
-                float2 aa = min(footprint * .5, radius * .5);
-                float2 shape = 1 - smoothstep(radius * .25, radius + aa, abs(frac(grid) - center));
-                float energy = saturate(radius.x / footprint.x) * saturate(radius.y / footprint.y);
-                return shape.x * shape.y * energy * flash;
-            }
-
             half4 frag(Varyings input) : SV_Target
             {
                 float held = saturate(input.fade.y);
@@ -130,7 +104,7 @@ Shader "YARG/HiHatSustain"
                 float diffuse = 1 - smoothstep(.58, 1, across);
                 half profile = diffuse * silhouette.r * sqrt(saturate(silhouette.a));
                 float edge = smoothstep(0, .07, input.uv.x) * smoothstep(0, .07, 1 - input.uv.x);
-                float glint = TransientShimmer(float2(abs(lateral), input.uv.y), _VisualTime) * _PatternStrength * activity;
+                float glint = YargHiHatTransientShimmer(float2(abs(lateral), input.uv.y), _VisualTime) * _PatternStrength * activity;
                 half3 body = input.color.rgb * lerp(_GlowLevels.x, _GlowLevels.y, held);
                 half3 sparkle = lerp(input.color.rgb, half3(1, 1, 1), .65) * glint;
                 // Parabolic wavefronts bow away from the base. Four spatial

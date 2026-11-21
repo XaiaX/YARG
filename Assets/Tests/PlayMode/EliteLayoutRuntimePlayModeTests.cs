@@ -855,7 +855,7 @@ namespace YARG.Tests.PlayMode
                 EliteDrumPad.HatPedal, DrumNoteType.Neutral, EliteDrumsHatState.Indifferent, type,
                 false, DrumNoteFlags.None, NoteFlags.None, EliteDrumsChannelFlag.None, time, tick, false);
 
-            foreach (int layoutKind in new[] { 0, 1, 2, 3, 4 })
+            foreach (int layoutKind in new[] { 0, 1, 2, 3, 4, 5 })
             foreach (bool lefty in new[] { false, true })
             {
                 var layout = EliteDrumsLayoutPreset.Compact;
@@ -870,6 +870,8 @@ namespace YARG.Tests.PlayMode
                     layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
                     layout.Slots[9] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick2);
                 }
+                else if (layoutKind == 5)
+                    layout = EliteDrumsLayoutPreset.Full;
                 if (layoutKind is 3 or 4)
                 {
                     layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Pedal edge test");
@@ -937,7 +939,7 @@ namespace YARG.Tests.PlayMode
                 string kickMode = resolvedLayout.GetType().GetProperty("KickMode").GetValue(resolvedLayout).ToString();
                 string expectedKickMode = layoutKind switch
                 {
-                    0 or 3 or 4 => "Bars",
+                    0 or 3 or 4 or 5 => "Bars",
                     1 => "Combined",
                     _ => "Split",
                 };
@@ -951,6 +953,15 @@ namespace YARG.Tests.PlayMode
                         .Single(e => ReferenceEquals(e.GetType().GetProperty("NoteRef").GetValue(e), kick));
                     var kickRenderers = kickElement.GetComponentsInChildren<Renderer>()
                         .Where(renderer => renderer.gameObject.activeInHierarchy).ToArray();
+                    var modular = kickRenderers.SingleOrDefault(renderer => renderer.name == "Modular kick beam");
+                    if (kickMode == "Bars")
+                    {
+                        Assert.That(modular, Is.Not.Null);
+                        var mesh = modular.GetComponent<MeshFilter>().sharedMesh;
+                        int expectedTriangles = laneCount == 5 ? 704 : 1088;
+                        Assert.That(mesh.triangles.Length / 3, Is.EqualTo(expectedTriangles));
+                    }
+                    else Assert.That(modular, Is.Null);
                     float kickWidth = kickRenderers.Max(renderer => renderer.bounds.max.x) -
                         kickRenderers.Min(renderer => renderer.bounds.min.x);
                     Assert.That(kickWidth / Mathf.Abs(player.transform.lossyScale.x),

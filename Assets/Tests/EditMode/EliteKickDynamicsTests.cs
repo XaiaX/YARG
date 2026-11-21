@@ -136,11 +136,18 @@ namespace YARG.Tests.EditMode
             {
                 Assert.That(notes.ContainsKey(name), Is.True, name);
                 var root = ((Component)notes[name]).transform;
+                int beams = name.Contains("Flam") ? 2 : 1;
                 var meshes = root.GetComponentsInChildren<MeshFilter>(true);
-                Assert.That(meshes.Length, Is.GreaterThanOrEqualTo(name.Contains("Flam") ? 4 : 3), name);
-                if (name.Contains("Accent"))
-                    Assert.That(((IEnumerable)Property(notes[name], "ColoredMetalMaterials")).Cast<object>().Count(),
-                        Is.GreaterThanOrEqualTo(name.Contains("Flam") ? 4 : 3));
+                Assert.That(meshes.Length, Is.EqualTo(beams), name);
+                var metal = ((IEnumerable)Property(notes[name], "ColoredMetalMaterials")).Cast<object>().ToArray();
+                Assert.That(metal.Length, Is.EqualTo(beams), name);
+                foreach (var entry in metal)
+                {
+                    var renderer = (MeshRenderer)entry.GetType().GetField("Mesh").GetValue(entry);
+                    var slot = (int)entry.GetType().GetField("MaterialIndex").GetValue(entry);
+                    Assert.That(renderer.sharedMaterials[slot].name, Is.EqualTo("KickNoteMetal"), name);
+                    Assert.That(renderer.GetComponent<MeshFilter>().sharedMesh.GetIndexCount(slot), Is.GreaterThan(0), name);
+                }
             }
         }
     }

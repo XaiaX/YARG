@@ -71,13 +71,23 @@ namespace YARG.Tests.PlayMode
                 Field(elementType, "NoteGroups").SetValue(element, Array.CreateInstance(groupType, 0));
                 Field(elementType, "StarPowerNoteGroups").SetValue(element, Array.CreateInstance(groupType, 0));
                 elementType.GetProperty("NoteRef").SetValue(element, Hat(6));
-                var model = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(
-                    "Assets/Prefabs/Gameplay/Visual/EliteDrums/HiHats/" + modelName + ".prefab"), owner.transform);
+                var theme = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Gameplay/Visual/Themes/RectangularTheme.prefab");
+                var noteType = Production("YARG.Themes.ThemeNote");
+                var source = theme.transform.Find("Elite Lane Notes").GetComponentsInChildren(noteType, true)
+                    .Single(note => noteType.GetProperty("NoteType").GetValue(note).ToString() == modelName);
+                var model = UnityEngine.Object.Instantiate(source.gameObject, owner.transform);
                 var spinType = Production("YARG.Gameplay.Visuals.CymbalSpinAnimation");
-                var spin = model.GetComponentInChildren(spinType, true);
-                spinType.GetMethod("BindOwner", INSTANCE).Invoke(spin, new object[] { element });
-                var rotor = (Transform)spinType.GetProperty("Rotor").GetValue(spin);
-                var stationary = model.GetComponentsInChildren<Transform>(true).Where(t => !t.IsChildOf(rotor))
+                Component[] OrderedSpins(GameObject target) => target.GetComponentsInChildren(spinType, true)
+                    .OrderBy(spin => new SerializedObject(spin).FindProperty("_beatsPerRevolution").floatValue).ToArray();
+                Transform Rotor(Component spin) => (Transform)spinType.GetProperty("Rotor").GetValue(spin);
+                var spins = OrderedSpins(model);
+                Assert.That(spins.Length, Is.EqualTo(2));
+                foreach (var spin in spins)
+                    spinType.GetMethod("BindOwner", INSTANCE).Invoke(spin, new object[] { element });
+                var rotor = Rotor(spins[0]);
+                var lowerRotor = Rotor(spins[1]);
+                var stationary = model.GetComponentsInChildren<Transform>(true)
+                    .Where(t => !t.IsChildOf(rotor) && !t.IsChildOf(lowerRotor))
                     .Select(t => (t, t.localPosition, t.localRotation, t.localScale)).ToArray();
                 owner.SetActive(true); element.enabled = false; model.SetActive(true);
                 var player = playerObject.AddComponent(Production("YARG.Gameplay.Player.EliteDrumsPlayer"));
@@ -88,28 +98,35 @@ namespace YARG.Tests.PlayMode
                 void Angle(Transform target, float degrees) => Assert.That(Quaternion.Angle(target.localRotation,
                     Quaternion.AngleAxis(degrees, Vector3.forward)), Is.LessThan(.05f));
 
-                Clock(1); yield return null; yield return null; Angle(rotor, -90);
-                yield return null; Angle(rotor, -90); // Pause.
-                Clock(2.25); yield return null; yield return null; Angle(rotor, -225);
-                Clock(-.5); yield return null; yield return null; Angle(rotor, -315);
+                void Check(float crown, float lower)
+                {
+                    Angle(rotor, crown);
+                    Angle(lowerRotor, lower);
+                }
+                Clock(1); yield return null; yield return null; Check(-90, -45);
+                yield return null; Check(-90, -45); // Pause.
+                Clock(2.25); yield return null; yield return null; Check(-225, -112.5f);
+                Clock(-.5); yield return null; yield return null; Check(-315, -337.5f);
                 profile.LeftyFlip = true;
-                Clock(1); yield return null; yield return null; Angle(rotor, 90);
+                Clock(1); yield return null; yield return null; Check(90, 45);
 
                 clone = UnityEngine.Object.Instantiate(owner); // Copy while actively rotated.
                 var cloneElement = (Behaviour)clone.GetComponent(elementType); cloneElement.enabled = false;
-                var cloneSpin = clone.GetComponentInChildren(spinType, true);
-                var cloneRotor = (Transform)spinType.GetProperty("Rotor").GetValue(cloneSpin);
-                Assert.That(new SerializedObject(cloneSpin).FindProperty("_noteElement").objectReferenceValue, Is.SameAs(cloneElement));
+                var clonedSpins = OrderedSpins(clone);
+                foreach (var spin in clonedSpins)
+                    Assert.That(new SerializedObject(spin).FindProperty("_noteElement").objectReferenceValue, Is.SameAs(cloneElement));
                 Field(elementType, "<Player>k__BackingField").SetValue(cloneElement, player);
                 elementType.GetProperty("NoteRef").SetValue(cloneElement, Hat(8));
-                yield return null; yield return null; Angle(cloneRotor, 90);
+                yield return null; yield return null;
+                Angle(Rotor(clonedSpins[0]), 90);
+                Angle(Rotor(clonedSpins[1]), 45);
 
-                owner.SetActive(false); Angle(rotor, 0);
+                owner.SetActive(false); Check(0, 0);
                 elementType.GetProperty("NoteRef").SetValue(element, Hat(9));
                 owner.SetActive(true);
-                yield return null; yield return null; Angle(rotor, 90);
+                yield return null; yield return null; Check(90, 45);
                 elementType.GetProperty("NoteRef").SetValue(element, null);
-                yield return null; yield return null; Angle(rotor, 0);
+                yield return null; yield return null; Check(0, 0);
                 foreach (var (t, position, rotation, scale) in stationary)
                 {
                     Assert.That(Vector3.Distance(t.localPosition, position), Is.LessThan(1e-7f), t.name + " position");

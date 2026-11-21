@@ -319,6 +319,7 @@ namespace YARG.Settings
                 nameof(Settings.EliteHiHatHeldOpacity),
                 nameof(Settings.EliteHiHatWaitingGlow),
                 nameof(Settings.EliteHiHatHeldGlow),
+                nameof(Settings.ElitePedalBeamEffect),
                 nameof(Settings.RawMidiLogging),
                 new HeaderMetadata("Accessibility"),
                 nameof(Settings.DisablePartyVocalsCountIns),

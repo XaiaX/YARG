@@ -16,6 +16,7 @@ namespace YARG.Gameplay.Visuals
         [SerializeField] private float _beatsPerRevolution = CymbalSpinMotion.DEFAULT_BEATS_PER_REVOLUTION;
         [Tooltip("Full-spin envelope in this assembly's local space, authored once for fitting.")]
         [SerializeField] private Bounds _sweptBounds;
+        [SerializeField] private MeshFilter _contactSurface;
 
         // Set while assembling the note template. Unity remaps this reference to
         // each pooled clone, including its inactive SP and split-flam models.
@@ -25,6 +26,12 @@ namespace YARG.Gameplay.Visuals
 
         public Transform Rotor => _rotor;
         public Bounds SweptLocalBounds => _sweptBounds;
+
+        internal static bool ExcludesBaseContact(MeshFilter filter)
+        {
+            var spin = filter.GetComponentInParent<CymbalSpinAnimation>(true);
+            return spin != null && spin._contactSurface != filter;
+        }
 
         private void OnEnable()
         {

@@ -130,7 +130,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6448027490011712166}
-  m_Mesh: {fileID: 3909233067320746374, guid: c3b9190e181a4425e9b657231ce9989a, type: 3}
+  m_Mesh: {fileID: 4300000, guid: f9278994c8394429182b8953ee7b32b9, type: 2}
 --- !u!23 &4011619339623461710
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -157,6 +157,7 @@ MeshRenderer:
   m_RendererPriority: 0
   m_Materials:
   - {fileID: 2100000, guid: a2600b3475b494b659a0ff7ff7f8c111, type: 2}
+  - {fileID: 2100000, guid: 22c36048d46e54693aaa7d331bdc9e41, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -441,8 +442,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::YARG.Gameplay.Visuals.ModularPedalVisual
   _sections:
-  - {fileID: 8137430703672298909}
   - {fileID: 3230891760349932178}
   _sectionWidth: 0.4
   _leftEnd: {fileID: 6752554620341113032}
   _rightEnd: {fileID: 1043030133690365074}
+  _foot: {fileID: 8137430703672298909}
+  _feetBySpan:
+  - {fileID: 4300000, guid: f9278994c8394429182b8953ee7b32b9, type: 2}
+  - {fileID: 1161403014071515130, guid: f9278994c8394429182b8953ee7b32b9, type: 2}
+  - {fileID: 8032638653602425648, guid: f9278994c8394429182b8953ee7b32b9, type: 2}

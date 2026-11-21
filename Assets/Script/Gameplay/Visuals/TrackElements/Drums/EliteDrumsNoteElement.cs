@@ -567,6 +567,13 @@ namespace YARG.Gameplay.Visuals
                     if (StarPowerNoteGroups[group] != NoteGroups[group])
                         StarPowerNoteGroups[group].ConfigurePedalSections(sections);
                 }
+                else if (Player.UsesKickBars)
+                {
+                    int laneCount = Player.Layout.Lanes.Count;
+                    NoteGroups[group].ConfigureKickLanes(laneCount);
+                    if (StarPowerNoteGroups[group] != NoteGroups[group])
+                        StarPowerNoteGroups[group].ConfigureKickLanes(laneCount);
+                }
                 FitFootWidth(group, width, center);
             }
             else if (EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)

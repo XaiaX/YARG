@@ -199,6 +199,7 @@ MeshRenderer:
   - {fileID: 2100000, guid: 14d0ffb96ace14f5faed41d6ca5f87f4, type: 2}
   - {fileID: 2100000, guid: 4d4a54b04f5b07c45a8de58f3bae1527, type: 2}
   - {fileID: 2100000, guid: d893825fbac224b53b5867967988c7ef, type: 2}
+  - {fileID: 2100000, guid: 93b33994e461a4a9d8b428edfe88ff8c, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -486,6 +487,16 @@ MonoBehaviour:
     EmissionMultiplier: 0
     EmissionAddition: 0
     ColorMultiplier: 0
+  - Mesh: {fileID: 6098726607968629335}
+    MaterialIndex: 3
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+    ColorMultiplier: 0.73
+  - Mesh: {fileID: 6534571214878245842}
+    MaterialIndex: 3
+    EmissionMultiplier: 0
+    EmissionAddition: 0
+    ColorMultiplier: 0.73
   _coloredSecondaryMaterials: []
   _pedalStrikeAligned: 0
   _coloredKick2Materials: []
@@ -740,6 +751,7 @@ MeshRenderer:
   - {fileID: 2100000, guid: 14d0ffb96ace14f5faed41d6ca5f87f4, type: 2}
   - {fileID: 2100000, guid: 4d4a54b04f5b07c45a8de58f3bae1527, type: 2}
   - {fileID: 2100000, guid: 8426482e1a8c14583b8a3dd760bfe2ff, type: 2}
+  - {fileID: 2100000, guid: 93b33994e461a4a9d8b428edfe88ff8c, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

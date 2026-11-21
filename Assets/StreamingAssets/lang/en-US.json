@@ -2346,6 +2346,15 @@
 				"Name": "Hi-Hat Sustain Held Glow (%)",
 				"Description": "Temporary tuning: color brightness while held. The beat pulse and shimmer remain active."
 			},
+			"ElitePedalBeamEffect": {
+				"Name": "Hi-Hat Pedal Beam Effect",
+				"Description": "Changes the glow animation on Rectangular Elite Drums stomp and splash notes.",
+				"Dropdown": {
+					"Original": "Original Glow",
+					"GemFlow": "Gem Flow",
+					"SustainShimmer": "Sustain Shimmer"
+				}
+			},
 			"EliteHiHatClosureForgiveness": {
 				"Name": "Hi-Hat Closure Forgiveness",
 				"Description": "Pairs Closed Hi-Hat hits with Stomp or a bound Hi-Hat Position CC crossing within 30 ms. Adds 30 ms of judging feedback delay in new native Elite sessions."
