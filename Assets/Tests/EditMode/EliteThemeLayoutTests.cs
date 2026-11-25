@@ -38,7 +38,10 @@ namespace YARG.Tests.EditMode
             var five = Models(comp, "FiveLaneDrums");
             var parent = root.transform.Find("Elite Lane Notes");
             Assert.That(parent, Is.Not.Null);
-            Assert.That(elite.Count, Is.EqualTo(27));
+            Assert.That(elite.Count, Is.EqualTo(33));
+            foreach (string flam in new[] { "EliteFlatFlam", "EliteVFlam" })
+            foreach (string dynamicSuffix in new[] { "", "Ghost", "Accent" })
+                Assert.That(elite.Contains(NoteType(flam + dynamicSuffix)), Is.True, flam + dynamicSuffix);
             foreach (DictionaryEntry entry in elite)
             {
                 var model = (GameObject) entry.Value;
