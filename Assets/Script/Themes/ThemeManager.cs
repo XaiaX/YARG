@@ -50,6 +50,13 @@ namespace YARG.Themes
 
         public GameObject CreateNotePrefabFromTheme(ThemePreset preset, VisualStyle style,
             GameObject noModelPrefab, string cacheVariant = "")
+            => CreateNotePrefab(preset, style, noModelPrefab, cacheVariant, false);
+
+        internal GameObject CreateEliteNotePrefab(ThemePreset preset, GameObject noModelPrefab, bool useVolumeCymbals)
+            => CreateNotePrefab(preset, VisualStyle.EliteDrums, noModelPrefab, "NativeElite", useVolumeCymbals);
+
+        private GameObject CreateNotePrefab(ThemePreset preset, VisualStyle style, GameObject noModelPrefab,
+            string cacheVariant, bool useVolumeCymbals)
         {
             // Get the theme container
             var container = GetThemeContainer(preset, style);
@@ -59,7 +66,9 @@ namespace YARG.Themes
             }
 
             // Distinct typed native Elite notes must never share the legacy DrumNote pool prefab.
-            var prefabKey = (style, NOTE_PREFAB_NAME + cacheVariant);
+            var themeComp = container.GetThemeComponent();
+            bool volumeCymbals = useVolumeCymbals && themeComp.HasEliteVolumeCymbals;
+            var prefabKey = (style, NOTE_PREFAB_NAME + cacheVariant + (volumeCymbals ? "VolumeCymbals" : ""));
 
             // Try to get and return a cached version, otherwise we'll have to create it
             var cached = container.PrefabCache.GetValueOrDefault(prefabKey);
@@ -73,7 +82,6 @@ namespace YARG.Themes
             var prefabCreator = gameObject.GetComponent<IThemeNoteCreator>();
 
             // Get theme models
-            var themeComp = container.GetThemeComponent();
             var regular = themeComp.GetNoteModelsForVisualStyle(style, false);
             var starPower = themeComp.GetNoteModelsForVisualStyle(style, true);
 
@@ -115,6 +123,7 @@ namespace YARG.Themes
             }
 
             // Set the models
+            if (volumeCymbals) themeComp.ApplyEliteVolumeCymbals(regular, starPower);
             prefabCreator.SetThemeModels(regular, starPower);
 
             // Disable and return

@@ -89,8 +89,14 @@ namespace YARG.Tests.PlayMode
             menu.GetType().GetMethod("InitializeForProfileWithCommit").Invoke(menu, new object[]
             {
                 initial, ColorProfile.Default, false, commit, (Action)(() => { }), isCurrent,
-                acceptLayout, acceptColor, acceptLeftyFlip, YARG.Core.DrumFlamLayout.Parallel, false
+                acceptLayout, acceptColor, acceptLeftyFlip, YARG.Core.DrumFlamLayout.Parallel, false, true,
+                YARG.Core.DrumOpenHatGlow.WholeSurface, YARG.Core.DrumOpenHatPulseCadence.Eighth
             });
+            Assert.That(menu.GetType().GetField("_useVolumeCymbals", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu), Is.True);
+            Assert.That(menu.GetType().GetField("_openHatGlow", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu),
+                Is.EqualTo(YARG.Core.DrumOpenHatGlow.WholeSurface));
+            Assert.That(menu.GetType().GetField("_openHatPulseCadence", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu),
+                Is.EqualTo(YARG.Core.DrumOpenHatPulseCadence.Eighth));
             Assert.That(menu.GetType().GetField("_flamLayout", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu).ToString(), Is.EqualTo("Parallel"),
                 "Profile-bound layout editing keeps the caller's flam appearance.");
         }

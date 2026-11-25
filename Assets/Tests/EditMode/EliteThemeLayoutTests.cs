@@ -91,6 +91,12 @@ namespace YARG.Tests.EditMode
                 var elite = Models(comp, "EliteDrums");
                 Assert.That(elite.Count, Is.EqualTo(five.Count));
                 foreach (DictionaryEntry entry in five) Assert.That(elite[entry.Key], Is.SameAs(entry.Value));
+
+                var stars = Models(comp, "EliteDrums", true);
+                var expectedStars = Models(comp, "FiveLaneDrums", true);
+                comp.GetType().GetMethod("ApplyEliteVolumeCymbals").Invoke(comp, new object[] { elite, stars });
+                CollectionAssert.AreEquivalent(five, elite);
+                CollectionAssert.AreEquivalent(expectedStars, stars);
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

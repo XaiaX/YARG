@@ -69,6 +69,59 @@ namespace YARG.Tests.PlayMode
             AssertSplitGroups(element, 0);
         }
 
+        private Bounds Measure(EliteDrumNote note)
+        {
+            var element = Spawn(note);
+            var points = element.GetComponentsInChildren<MeshFilter>()
+                .Where(filter => filter.GetComponent<MeshRenderer>().enabled)
+                .SelectMany(filter => filter.sharedMesh.vertices.Select(vertex =>
+                    Fixture.Player.transform.InverseTransformPoint(filter.transform.TransformPoint(vertex)))).ToArray();
+            Assert.That(points, Is.Not.Empty);
+            var bounds = new Bounds(points[0], Vector3.zero);
+            foreach (var point in points) bounds.Encapsulate(point);
+            if (note.IsFlatFlam) AssertFlatFlamInsetTint(element);
+            return bounds;
+        }
+
+        private static readonly bool[] HandedLayouts = { false, true };
+
+        [UnityTest]
+        public IEnumerator LooseFlamsKeepTheirSizeAndOffsetDuringRollWidening(
+            [ValueSource(nameof(HandedLayouts))] bool lefty)
+        {
+            var tom = new[] { SourceNote(EliteDrumPad.Tom3, 4, 0, false), SourceNote(EliteDrumPad.Tom3, 5, 1, false) };
+            var crash = new[] { SourceNote(EliteDrumPad.RightCrash, 4.03125, 2, false),
+                SourceNote(EliteDrumPad.RightCrash, 5.03125, 3, false) };
+            var flams = new[] { SourceNote(EliteDrumPad.Tom3, .5, 4, true), SourceNote(EliteDrumPad.Tom3, .75, 5, false),
+                SourceNote(EliteDrumPad.Tom3, 3.875, 6, true), SourceNote(EliteDrumPad.Tom3, 3.9375, 7, false) };
+            var song = PreparedElitePlayerFixture.CreateChart(flams.Concat(tom).Concat(crash).OrderBy(n => n.Time).ToArray());
+            var tier = song.AuthoredDrumSources.Tiers.Values.Single();
+            var difficulty = (InstrumentDifficulty<EliteDrumNote>)tier.GetType().GetField("_elite", INSTANCE).GetValue(tier);
+            difficulty.SetEliteDrumNativeAuthoredLaneRecords(new[] {
+                new EliteDrumNativeAuthoredLaneRecord(0, PhraseType.EliteDrums_Tom3Lane, tom[0].Tick,
+                    tom[1].Tick, tom.Select(n => n.SourceDefinition)),
+                new EliteDrumNativeAuthoredLaneRecord(1, PhraseType.EliteDrums_RightCrashLane, crash[0].Tick,
+                    crash[1].Tick, crash.Select(n => n.SourceDefinition)) });
+            var profile = Profile();
+            profile.LeftyFlip = lefty;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(song, profile, EliteDrumsLayoutPreset.Compact);
+            var notes = Playable.Notes.Take(4).ToArray();
+            for (int i = 0; i < 2; i++)
+            {
+                var original = Measure(notes[i]);
+                var moving = Measure(notes[i + 2]);
+                object[] args = { notes[i + 2], 0f, 0f };
+                Assert.That(Fixture.Player.GetType().GetMethod("TryGetArrivalColumn", INSTANCE)
+                    .Invoke(Fixture.Player, args), Is.True);
+                Assert.That((float)args[2], Is.GreaterThan(.4f));
+                Assert.That(Vector3.Distance(original.size, moving.size), Is.LessThan(.0001f));
+                float edgeOffset = ((float)args[2] - .4f) * .5f * (lefty ? 1f : -1f);
+                float expected = ((float)args[1] + edgeOffset) / .8f * (1f - moving.extents.x);
+                Assert.That(moving.center.x, Is.EqualTo(expected).Within(.0001f));
+            }
+        }
+
         private static void AssertFlatFlamInsetTint(Component element)
         {
             var model = element.GetComponentsInChildren(Production("YARG.Themes.ThemeNote")).Single();
@@ -104,20 +157,6 @@ namespace YARG.Tests.PlayMode
             var layout = (EliteDrumsResolvedLayout) player.GetType().GetProperty("Layout").GetValue(player);
             float laneWidth = layout.GetLaneWidth(2f);
             float laneCenter = layout.GetSourceX("snare", 2f, false);
-
-            Bounds Measure(EliteDrumNote note)
-            {
-                var element = Spawn(note);
-                if (note.IsFlatFlam) AssertFlatFlamInsetTint(element);
-                var points = element.GetComponentsInChildren<MeshFilter>()
-                    .Where(filter => filter.GetComponent<MeshRenderer>().enabled)
-                    .SelectMany(filter => filter.sharedMesh.vertices.Select(vertex =>
-                        player.transform.InverseTransformPoint(filter.transform.TransformPoint(vertex)))).ToArray();
-                Assert.That(points, Is.Not.Empty);
-                var bounds = new Bounds(points[0], Vector3.zero);
-                foreach (var point in points) bounds.Encapsulate(point);
-                return bounds;
-            }
 
             var notes = Playable.Notes;
             for (int i = 0; i < notes.Count; i += 3)

@@ -120,6 +120,7 @@ namespace YARG.PerformanceTesting
                         break;
                     case nameof(YargProfile.LeftyFlip):
                     case nameof(YargProfile.UseCymbalModels):
+                    case nameof(YargProfile.UseVolumeCymbals):
                     case nameof(YargProfile.KeepOriginalCymbalColors):
                     case nameof(YargProfile.OneFretHiHatSustains):
                     case nameof(YargProfile.HideHiHatSustains):
@@ -131,6 +132,7 @@ namespace YARG.PerformanceTesting
                         {
                             case nameof(YargProfile.LeftyFlip): profile.LeftyFlip = enabled; break;
                             case nameof(YargProfile.UseCymbalModels): profile.UseCymbalModels = enabled; break;
+                            case nameof(YargProfile.UseVolumeCymbals): profile.UseVolumeCymbals = enabled; break;
                             case nameof(YargProfile.KeepOriginalCymbalColors): profile.KeepOriginalCymbalColors = enabled; break;
                             case nameof(YargProfile.OneFretHiHatSustains): profile.OneFretHiHatSustains = enabled; break;
                             case nameof(YargProfile.HideHiHatSustains): profile.HideHiHatSustains = enabled; break;

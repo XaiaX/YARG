@@ -237,11 +237,25 @@ namespace YARG.Gameplay.Visuals
 
             internal void Extents(float factor, float angle, out float min, out float max, bool alternateLayout = false)
             {
-                min = float.PositiveInfinity;
-                max = float.NegativeInfinity;
                 var matrix = Matrix4x4.Rotate(Quaternion.AngleAxis(alternateLayout ? -angle : angle,
                     alternateLayout ? Vector3.forward : Vector3.up)) *
                     Matrix4x4.TRS(Position, Rotation, new Vector3(Scale.x * factor, Scale.y, Scale.z));
+                GetXExtents(matrix, out min, out max);
+            }
+
+            internal void EncapsulatePlacedX(Transform model, ref float min, ref float max)
+            {
+                if (_corners.Length == 0) return;
+                var matrix = Matrix4x4.TRS(model.localPosition, model.localRotation, model.localScale);
+                GetXExtents(matrix, out float left, out float right);
+                min = Mathf.Min(min, left);
+                max = Mathf.Max(max, right);
+            }
+
+            private void GetXExtents(Matrix4x4 matrix, out float min, out float max)
+            {
+                min = float.PositiveInfinity;
+                max = float.NegativeInfinity;
                 foreach (var corner in _corners)
                 {
                     float x = matrix.MultiplyPoint3x4(corner).x;
@@ -548,13 +562,35 @@ namespace YARG.Gameplay.Visuals
         {
             center = width = 0f;
             if (laneCount <= 0 || !float.IsFinite(highwayWidth) || highwayWidth <= 0f) return 0;
-            int column = Mathf.Clamp(visualColumn, 0, laneCount - 1);
-            int first = Mathf.Max(0, column - 1);
-            int last = Mathf.Min(laneCount - 1, column + 1);
-            int sections = last - first + 1;
+            var (first, end) = GetPedalColumnRange(visualColumn, laneCount);
+            int sections = end - first;
             float laneWidth = highwayWidth / laneCount;
-            center = (first + last + 1) * 0.5f * laneWidth - highwayWidth * 0.5f;
+            center = (first + end) * 0.5f * laneWidth - highwayWidth * 0.5f;
             width = sections * laneWidth;
+            return sections;
+        }
+
+        internal static (int First, int End) GetPedalColumnRange(int visualColumn, int laneCount)
+        {
+            int column = Mathf.Clamp(visualColumn, 0, laneCount - 1);
+            return (Mathf.Max(0, column - 1), Mathf.Min(laneCount, column + 2));
+        }
+
+        internal static int GetArrivalPedalRegion(EliteDrumsPlayer player, EliteDrumNote note,
+            out float center, out float width)
+        {
+            int column = player.GetVisualPosition((int)EliteDrumNote.EliteDrumPad.HiHat);
+            int count = player.Layout.Lanes.Count;
+            int sections = GetPedalRegion(column, count, TrackPlayer.TRACK_WIDTH, out center, out width);
+            var boundaries = player.TryGetKickBoundaries(note);
+            if (boundaries != null)
+            {
+                var (first, end) = GetPedalColumnRange(column, count);
+                float left = boundaries[first];
+                float right = boundaries[end];
+                center = ((left + right) * .5f - .5f) * TrackPlayer.TRACK_WIDTH;
+                width = (right - left) * TrackPlayer.TRACK_WIDTH;
+            }
             return sections;
         }
 
@@ -580,30 +616,28 @@ namespace YARG.Gameplay.Visuals
             }
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
             {
-                GetPedalRegion(position, layout.Lanes.Count, TrackPlayer.TRACK_WIDTH, out center, out width);
+                GetArrivalPedalRegion(player, note, out center, out width);
                 return;
             }
 
             bool cymbal = EliteDrumsPlayer.IsCymbal(note.Pad);
             string source = EliteDrumsPlayer.GetLayoutSource(note.Pad);
-            if (!layout.SourceToLane.TryGetValue(source, out int laneIndex)) return;
-            var lane = layout.Lanes[laneIndex];
-            center = layout.GetLaneX(laneIndex, TrackPlayer.TRACK_WIDTH, player.Player.Profile.LeftyFlip);
-            if (lane.Kind != EliteDrumsLayoutSlotKind.Ordinary || lane.EffectiveIds.Count != 2) return;
-            bool paired = false;
-            foreach (var member in note.ParentOrSelf.AllNotes)
+            bool mapped = layout.SourceToLane.TryGetValue(source, out int laneIndex);
+            bool lefty = player.Player.Profile.LeftyFlip;
+            if (mapped) center = layout.GetLaneX(laneIndex, TrackPlayer.TRACK_WIDTH, lefty);
+            bool shared = mapped && layout.Lanes[laneIndex].Kind == EliteDrumsLayoutSlotKind.Ordinary
+                && layout.Lanes[laneIndex].EffectiveIds.Count == 2;
+            bool paired = shared && GetCollisionPartner(player, note) != null;
+            if (player.TryGetArrivalColumn(note, out float arrivalCenter, out float arrivalWidth))
             {
-                if (member.Pad == note.Pad || member.IsInvisibleTerminator ||
-                    EliteDrumsPlayer.IsCymbal(member.Pad) == cymbal) continue;
-                if (layout.SourceToLane.TryGetValue(EliteDrumsPlayer.GetLayoutSource(member.Pad),
-                    out int memberLane) && memberLane == laneIndex)
-                {
-                    paired = true;
-                    break;
-                }
+                // Only actual collisions use smaller heads. Across the transition
+                // a lone hand keeps its normal footprint against its own side.
+                float shift = shared && !paired ? Mathf.Max(0f, arrivalWidth - width) * .5f : 0f;
+                float roadLimit = (TrackPlayer.TRACK_WIDTH - width) * .5f;
+                center = Mathf.Clamp(arrivalCenter + (cymbal != lefty ? shift : -shift), -roadLimit, roadLimit);
             }
-            if (!paired) return;
-            GetPairRegion(center, width, cymbal, player.Player.Profile.LeftyFlip, offset, out center, out width);
+            if (paired)
+                GetPairRegion(center, width, cymbal, lefty, offset, out center, out width);
         }
 
         public static void GetPairRegion(float laneCenter, float columnWidth, bool cymbal, bool lefty,

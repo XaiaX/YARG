@@ -82,6 +82,10 @@ namespace YARG.Gameplay.Visuals
         private Color _color;
 
         private bool _isFullWidth = false;
+        private EliteDrumsRollLayout.PathPoint[] _rollPath;
+        private ShapedRollMesh _shapedRoll;
+
+        internal void SetRollPath(EliteDrumsRollLayout.PathPoint[] path) => _rollPath = path;
 
         public void SetAppearance(Instrument instrument, int index, float lateralPosition, int subdivisions, Color color)
         {
@@ -256,6 +260,12 @@ namespace YARG.Gameplay.Visuals
             {
                 ResetEmissionState();
             }
+
+            if (_rollPath != null)
+            {
+                _shapedRoll ??= new ShapedRollMesh(transform, _meshRenderer);
+                _shapedRoll.Build(_rollPath, _zLength);
+            }
         }
 
         protected override void UpdateElement()
@@ -264,8 +274,12 @@ namespace YARG.Gameplay.Visuals
 
         protected override void HideElement()
         {
+            _shapedRoll?.Hide();
+            _rollPath = null;
             ToggleFullWidth(false);
         }
+
+        protected override void GameplayDestroy() => _shapedRoll?.Dispose();
 
         private void RenderLength()
         {

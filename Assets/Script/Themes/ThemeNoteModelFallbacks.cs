@@ -11,17 +11,30 @@ namespace YARG.Themes
         internal static readonly ThemeNoteType[] EliteFusedFlamTypes =
         {
             ThemeNoteType.EliteFlatFlam, ThemeNoteType.EliteFlatFlamGhost, ThemeNoteType.EliteFlatFlamAccent,
-            ThemeNoteType.EliteVFlam, ThemeNoteType.EliteVFlamGhost, ThemeNoteType.EliteVFlamAccent
+            ThemeNoteType.EliteVFlam, ThemeNoteType.EliteVFlamGhost, ThemeNoteType.EliteVFlamAccent,
+            ThemeNoteType.CymbalFlam, ThemeNoteType.CymbalFlamGhost, ThemeNoteType.CymbalFlamAccent,
+            ThemeNoteType.OpenHiHatFlam, ThemeNoteType.OpenHiHatFlamGhost, ThemeNoteType.OpenHiHatFlamAccent,
+            ThemeNoteType.ClosedHiHatFlam, ThemeNoteType.ClosedHiHatFlamGhost, ThemeNoteType.ClosedHiHatFlamAccent
         };
 
-        internal static ThemeNoteType? GetEliteFusedFlamType(ThemeNoteType drumType, bool flat, DrumFlamLayout layout)
+        internal static ThemeNoteType? GetEliteFusedFlamType(ThemeNoteType single, bool flat,
+            DrumFlamLayout layout, bool useVolumeCymbals)
         {
-            if (!flat && layout != DrumFlamLayout.V) return null;
-            return drumType switch
+            bool useDrumFlam = flat || layout == DrumFlamLayout.V;
+            return single switch
             {
-                ThemeNoteType.Normal => flat ? ThemeNoteType.EliteFlatFlam : ThemeNoteType.EliteVFlam,
-                ThemeNoteType.Ghost => flat ? ThemeNoteType.EliteFlatFlamGhost : ThemeNoteType.EliteVFlamGhost,
-                ThemeNoteType.Accent => flat ? ThemeNoteType.EliteFlatFlamAccent : ThemeNoteType.EliteVFlamAccent,
+                ThemeNoteType.Normal when useDrumFlam => flat ? ThemeNoteType.EliteFlatFlam : ThemeNoteType.EliteVFlam,
+                ThemeNoteType.Ghost when useDrumFlam => flat ? ThemeNoteType.EliteFlatFlamGhost : ThemeNoteType.EliteVFlamGhost,
+                ThemeNoteType.Accent when useDrumFlam => flat ? ThemeNoteType.EliteFlatFlamAccent : ThemeNoteType.EliteVFlamAccent,
+                ThemeNoteType.Cymbal when useVolumeCymbals => ThemeNoteType.CymbalFlam,
+                ThemeNoteType.CymbalGhost when useVolumeCymbals => ThemeNoteType.CymbalFlamGhost,
+                ThemeNoteType.CymbalAccent when useVolumeCymbals => ThemeNoteType.CymbalFlamAccent,
+                ThemeNoteType.OpenHiHat when useVolumeCymbals => ThemeNoteType.OpenHiHatFlam,
+                ThemeNoteType.OpenHiHatGhost when useVolumeCymbals => ThemeNoteType.OpenHiHatFlamGhost,
+                ThemeNoteType.OpenHiHatAccent when useVolumeCymbals => ThemeNoteType.OpenHiHatFlamAccent,
+                ThemeNoteType.ClosedHiHat when useVolumeCymbals => ThemeNoteType.ClosedHiHatFlam,
+                ThemeNoteType.ClosedHiHatGhost when useVolumeCymbals => ThemeNoteType.ClosedHiHatFlamGhost,
+                ThemeNoteType.ClosedHiHatAccent when useVolumeCymbals => ThemeNoteType.ClosedHiHatFlamAccent,
                 _ => null
             };
         }

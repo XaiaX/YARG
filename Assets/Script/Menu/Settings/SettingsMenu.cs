@@ -340,11 +340,15 @@ namespace YARG.Menu.Settings
                 ? settingNav.BaseSettingVisual
                 : selected.GetComponent<BaseSettingVisual>();
 
-            // If we're not selecting a setting (for example, buttons or headers) skip
+            // Action rows have no setting description. Experimental actions can still choose a preview.
             if (settingVisual == null)
             {
                 _settingName.text = string.Empty;
                 _settingDescription.text = string.Empty;
+                if (CurrentTab is ExperimentalTab experimental && selected is SettingsButton button)
+                {
+                    experimental.OnSettingSelected(button.RefreshIdentity);
+                }
                 return;
             }
 

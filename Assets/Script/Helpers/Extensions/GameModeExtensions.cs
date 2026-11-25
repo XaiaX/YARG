@@ -77,6 +77,9 @@ namespace YARG.Helpers.Extensions
                     (ProfileSettingStrings.DRUM_STAR_POWER_ACTIVATION_TYPE, null),
                     (ProfileSettingStrings.DRUM_FLAM_LAYOUT, null),
                     (ProfileSettingStrings.USE_CYMBAL_MODELS, "USE CYMBAL MODELS IN 5-LANE"),
+                    (ProfileSettingStrings.USE_VOLUME_CYMBALS, null),
+                    (ProfileSettingStrings.OPEN_HAT_GLOW, null),
+                    (ProfileSettingStrings.OPEN_HAT_PULSE_CADENCE, null),
                 },
                 GameMode.FourLaneDrums => new()
                 {

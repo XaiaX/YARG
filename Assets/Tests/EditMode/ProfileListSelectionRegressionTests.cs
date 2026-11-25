@@ -290,6 +290,69 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void ExperimentalCymbalToggleBelongsToSelectedMidiDrumkitProfile()
+        {
+            var type = _sidebar.GetType();
+            var current = _testProfiles[0];
+            var experimental = _testProfiles[1];
+            current.GameMode = experimental.GameMode = GameMode.EliteDrums;
+            current.UseVolumeCymbals = false;
+
+            void Show(YargProfile profile)
+            {
+                Field(type, "_profile").SetValue(_sidebar, profile);
+                Invoke(_sidebar, "EnableSettingsForGameMode");
+            }
+
+            Show(experimental);
+            var toggle = (Toggle)Field(type, "_volumeCymbalsToggle").GetValue(_sidebar);
+            var content = (GameObject)Field(type, "_sidebarContent").GetValue(_sidebar);
+            var row = DirectRow(content.transform, toggle).gameObject;
+            var glow = (Selectable)Field(type, "_openHatGlowDropdown").GetValue(_sidebar);
+            var value = glow.GetType().GetProperty("value");
+            var cadence = (Selectable)Field(type, "_openHatPulseCadenceDropdown").GetValue(_sidebar);
+            var cadenceOptions = (IList)cadence.GetType().GetProperty("options").GetValue(cadence);
+            Assert.That(cadenceOptions.Count, Is.EqualTo(3));
+            Assert.That(value.GetValue(cadence), Is.EqualTo((int)DrumOpenHatPulseCadence.Auto));
+            value.SetValue(cadence, (int)DrumOpenHatPulseCadence.Eighth);
+            Assert.That(experimental.OpenHatPulseCadence, Is.EqualTo(DrumOpenHatPulseCadence.Eighth));
+            Assert.That(glow.interactable, Is.True);
+            value.SetValue(glow, (int)DrumOpenHatGlow.CircularSweep);
+            Assert.That(experimental.OpenHatGlow, Is.EqualTo(DrumOpenHatGlow.CircularSweep));
+            value.SetValue(glow, (int)DrumOpenHatGlow.StaticShadow);
+            Assert.That(cadence.interactable, Is.True, "Cymbal flams still follow this cadence with a static well.");
+            value.SetValue(glow, (int)DrumOpenHatGlow.PulsingShadow);
+            Assert.That(cadence.interactable, Is.True);
+            Assert.That(toggle.isOn, Is.True);
+            Assert.That(row.activeSelf, Is.True);
+            Show(current);
+            Assert.That(toggle.isOn, Is.False);
+            Assert.That(glow.interactable, Is.False);
+            Assert.That(value.GetValue(cadence), Is.EqualTo((int)DrumOpenHatPulseCadence.Auto));
+            Assert.That(cadence.interactable, Is.False);
+            Assert.That(value.GetValue(glow), Is.EqualTo((int)DrumOpenHatGlow.PulsingShadow));
+            toggle.isOn = true;
+            Assert.That(glow.interactable, Is.True);
+            value.SetValue(glow, (int)DrumOpenHatGlow.Static);
+            Assert.That(cadence.interactable, Is.True);
+            Assert.That(current.UseVolumeCymbals, Is.True);
+            Show(experimental);
+            Assert.That(value.GetValue(glow), Is.EqualTo((int)DrumOpenHatGlow.PulsingShadow));
+            Assert.That(current.OpenHatGlow, Is.EqualTo(DrumOpenHatGlow.Static));
+            Assert.That(value.GetValue(cadence), Is.EqualTo((int)DrumOpenHatPulseCadence.Eighth));
+            Assert.That(cadence.interactable, Is.True);
+            toggle.isOn = false;
+            Assert.That(experimental.UseVolumeCymbals, Is.False);
+            Assert.That(current.UseVolumeCymbals, Is.True);
+            Assert.That(experimental.UseCymbalModels, Is.True, "The original toggle must be independent.");
+            current.GameMode = GameMode.FiveLaneDrums;
+            Show(current);
+            Assert.That(row.activeSelf, Is.False);
+            Assert.That(DirectRow(content.transform, glow).gameObject.activeSelf, Is.False);
+            Assert.That(DirectRow(content.transform, cadence).gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
         public void ProfileSelectorAndConfigureVisibilityMatchesEveryGameMode()
         {
             var sidebarContent = (GameObject)Field(_sidebar.GetType(), "_sidebarContent").GetValue(_sidebar);

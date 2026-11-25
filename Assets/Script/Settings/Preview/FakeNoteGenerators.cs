@@ -5,11 +5,14 @@ using YARG.Core.Game;
 using YARG.Core.Chart;
 using YARG.Core.Engine.Keys;
 using YARG.Themes;
+using EliteRole = YARG.Core.Game.EliteDrumsColorRole;
 
 // pattern: Functional Core
 
 namespace YARG.Settings.Preview
 {
+    internal enum EliteGlowPreview { None, OpenHats, CymbalFlams, Pedals }
+
     public interface IFakeNoteRandom
     {
         int Range(int minInclusive, int maxExclusive);
@@ -49,15 +52,20 @@ namespace YARG.Settings.Preview
     public sealed class EliteDrumsFakeNoteGenerator : IFakeNoteGenerator
     {
         private int _index;
-        private EliteDrumsColorRole? _lastPedalCompanion;
-        private EliteDrumsColorRole? _lastCymbalCompanion;
-        private const int ROLE_COUNT = (int) EliteDrumsColorRole.Wildcard + 1;
-        private const int FLAM_COUNT = 16;
-        private const int PEDAL_COMBINATION_COUNT = 4;
-        private const int CYMBAL_PAIR_COUNT = 3;
-        private const int CYCLE_LENGTH = ROLE_COUNT * 3 + FLAM_COUNT + PEDAL_COMBINATION_COUNT + CYMBAL_PAIR_COUNT;
         private readonly EliteDrumsLayoutKickMode _kickMode;
-        public const int NOTE_COUNT = CYCLE_LENGTH * 2;
+        internal EliteGlowPreview GlowPreview { get; set; }
+        private static readonly EliteDrumsColorRole[] CymbalRoles =
+        {
+            EliteDrumsColorRole.HatIndifferent, EliteDrumsColorRole.HatClosed, EliteDrumsColorRole.HatOpen,
+            EliteDrumsColorRole.LeftCrash, EliteDrumsColorRole.Ride, EliteDrumsColorRole.RightCrash
+        };
+        private static readonly ThemeNoteType[] GlowDynamics = { ThemeNoteType.Normal, ThemeNoteType.Ghost, ThemeNoteType.Accent };
+        private static readonly ThemeNoteType[] Dynamics = { ThemeNoteType.Ghost, ThemeNoteType.Normal, ThemeNoteType.Accent };
+        private static readonly EliteRole[] DrumRoles = { EliteRole.Snare, EliteRole.Tom1, EliteRole.Tom2, EliteRole.Tom3 };
+        private static readonly EliteRole[] HatRoles = { EliteRole.HatClosed, EliteRole.HatIndifferent, EliteRole.HatOpen };
+        private static readonly EliteRole[] CrashAndRideRoles = { EliteRole.LeftCrash, EliteRole.Ride, EliteRole.RightCrash };
+        private static readonly Sample[][] Beats = BuildSequence();
+        public static int CycleLength => Beats.Length;
         public bool HasNext => true;
 
         public EliteDrumsFakeNoteGenerator() : this(EliteDrumsLayoutKickMode.Bars)
@@ -148,81 +156,137 @@ namespace YARG.Settings.Preview
             NoteType = descriptor.ModelType, EliteDescriptor = descriptor
         };
 
+        private readonly struct Sample
+        {
+            public readonly EliteRole Role;
+            public readonly ThemeNoteType Strength;
+            public readonly bool HandFlam;
+            public readonly bool FlatFlam;
+
+            public Sample(EliteRole role, ThemeNoteType strength = ThemeNoteType.Normal,
+                bool handFlam = false, bool flatFlam = false)
+            {
+                Role = role;
+                Strength = strength;
+                HandFlam = handFlam;
+                FlatFlam = flatFlam;
+            }
+
+            public FakeNoteData At(double time, EliteDrumsLayoutKickMode kickMode)
+            {
+                var note = CreateRoleNote(time, DescribeForKickLayout(Role, Strength, kickMode));
+                note.EliteHandFlam = HandFlam;
+                note.EliteFlatFlam = FlatFlam;
+                return note;
+            }
+        }
+
+        internal static int VariationCount(EliteRole role) => role switch
+        {
+            EliteRole.Stomp or EliteRole.Splash or EliteRole.Wildcard => 1,
+            EliteRole.Kick or EliteRole.DoubleKick or EliteRole.KickFlam => Dynamics.Length,
+            _ => 3 * Dynamics.Length
+        };
+
+        private static Sample Variation(EliteRole role, int index)
+        {
+            if (VariationCount(role) == 1) return new Sample(role);
+            int form = index / Dynamics.Length;
+            return new Sample(role, Dynamics[index % Dynamics.Length], handFlam: form > 0, flatFlam: form == 2);
+        }
+
+        internal FakeNoteData CreateColorVariation(double time, EliteRole role, int index) =>
+            Variation(role, index).At(time, _kickMode);
+
+        private static Sample[][] BuildSequence()
+        {
+            var beats = new List<Sample[]>();
+            void AddVariations(EliteRole role)
+            {
+                for (int i = 0; i < VariationCount(role); i++)
+                    beats.Add(new[] { Variation(role, i) });
+            }
+
+            AddVariations(EliteRole.Snare);
+            foreach (var hat in HatRoles) AddVariations(hat);
+            AddVariations(EliteRole.Stomp);
+            AddVariations(EliteRole.Splash);
+            AddVariations(EliteRole.Kick);
+            AddVariations(EliteRole.DoubleKick);
+            AddVariations(EliteRole.KickFlam);
+            foreach (var strength in Dynamics)
+            {
+                var kick = new Sample(EliteRole.Kick, strength);
+                beats.Add(new[] { kick, new Sample(EliteRole.Stomp) });
+                beats.Add(new[] { kick, new Sample(EliteRole.Splash) });
+            }
+
+            AddVariations(EliteRole.Tom1);
+            AddVariations(EliteRole.Tom2);
+            AddVariations(EliteRole.Tom3);
+            foreach (var cymbal in CrashAndRideRoles) AddVariations(cymbal);
+            AddVariations(EliteRole.Wildcard);
+
+            int collisionBeat = 0, kickIndex = 0, pedalIndex = 0;
+            void AddDrumPairs(EliteRole cymbal, bool includePedal)
+            {
+                foreach (var drum in DrumRoles)
+                {
+                    collisionBeat++;
+                    var chord = new List<Sample> { new(cymbal), new(drum) };
+                    if (collisionBeat % 2 == 0)
+                        chord.Add(new Sample(EliteRole.Kick, Dynamics[kickIndex++ % Dynamics.Length]));
+                    if (includePedal && collisionBeat % 3 == 0)
+                        chord.Add(new Sample(pedalIndex++ % 2 == 0 ? EliteRole.Stomp : EliteRole.Splash));
+                    beats.Add(chord.ToArray());
+                }
+            }
+
+            foreach (var hat in HatRoles) AddDrumPairs(hat, false);
+            foreach (var cymbal in CrashAndRideRoles) AddDrumPairs(cymbal, true);
+
+            // These three chords also exercise the profile's cymbal merge/expansion rules.
+            for (int i = 0; i < CrashAndRideRoles.Length; i++)
+                for (int j = i + 1; j < CrashAndRideRoles.Length; j++)
+                    beats.Add(new[] { new Sample(CrashAndRideRoles[i]), new Sample(CrashAndRideRoles[j]) });
+            return beats.ToArray();
+        }
+
         public FakeNoteData CreateNote(double time, IFakeNoteRandom random)
         {
-            int index = _index++ % CYCLE_LENGTH;
-            _lastPedalCompanion = null;
-            _lastCymbalCompanion = null;
-            if (index >= CYCLE_LENGTH - CYMBAL_PAIR_COUNT)
+            if (GlowPreview != EliteGlowPreview.None)
+                return CreateGlowPreviewNote(time);
+
+            var note = Beats[_index][0].At(time, _kickMode);
+            note.ElitePreviewBeat = _index;
+            _index = (_index + 1) % Beats.Length;
+            return note;
+        }
+
+        private FakeNoteData CreateGlowPreviewNote(double time)
+        {
+            if (GlowPreview == EliteGlowPreview.Pedals)
             {
-                int pair = index - (CYCLE_LENGTH - CYMBAL_PAIR_COUNT);
-                _lastCymbalCompanion = pair == 0 ? EliteDrumsColorRole.Ride : EliteDrumsColorRole.RightCrash;
-                return CreateRoleNote(time, Describe(pair == 2 ? EliteDrumsColorRole.Ride : EliteDrumsColorRole.LeftCrash));
+                var pedal = _index == 0 ? EliteDrumsColorRole.Stomp : EliteDrumsColorRole.Splash;
+                _index = 1 - _index;
+                return CreateRoleNote(time, DescribeForKickLayout(pedal, ThemeNoteType.Normal, _kickMode));
             }
-            if (index >= ROLE_COUNT * 3 + FLAM_COUNT)
-            {
-                int pedalCombination = index - ROLE_COUNT * 3 - FLAM_COUNT;
-                EliteDrumsColorRole kickRole = pedalCombination < 2
-                    ? EliteDrumsColorRole.Kick : EliteDrumsColorRole.DoubleKick;
-                _lastPedalCompanion = pedalCombination % 2 == 0
-                    ? EliteDrumsColorRole.Stomp : EliteDrumsColorRole.Splash;
-                var kick = DescribeForKickLayout(kickRole, ThemeNoteType.Normal, _kickMode);
-                return CreateRoleNote(time, kick);
-            }
-            if (index >= ROLE_COUNT * 3)
-            {
-                var flamRole = ((index - ROLE_COUNT * 3) / 2) switch
-                {
-                    0 => EliteDrumsColorRole.Snare,
-                    1 => EliteDrumsColorRole.Tom1,
-                    2 => EliteDrumsColorRole.Tom2,
-                    3 => EliteDrumsColorRole.Tom3,
-                    4 => EliteDrumsColorRole.HatIndifferent,
-                    5 => EliteDrumsColorRole.LeftCrash,
-                    6 => EliteDrumsColorRole.Ride,
-                    _ => EliteDrumsColorRole.RightCrash
-                };
-                var appearance = Describe(flamRole);
-                var flam = CreateRoleNote(time, appearance);
-                flam.EliteHandFlam = true;
-                flam.EliteFlatFlam = (index - ROLE_COUNT * 3) % 2 == 1;
-                return flam;
-            }
-            if (index >= 10 && index <= 18)
-            {
-                int sample = index - 10;
-                var kickStrength = sample < 2 || sample == 6 ? ThemeNoteType.Ghost
-                    : sample is 4 or 5 or 8 ? ThemeNoteType.Accent : ThemeNoteType.Normal;
-                var kickRole = sample >= 6 ? EliteDrumsColorRole.KickFlam : sample % 2 == 0
-                    ? EliteDrumsColorRole.Kick : EliteDrumsColorRole.DoubleKick;
-                return CreateRoleNote(time, DescribeForKickLayout(kickRole, kickStrength, _kickMode));
-            }
-            // Keep all non-kick samples in their original relative order. The nine kick
-            // samples now form one comparison block in the first strength pass.
-            int nonKickIndex = index < 10 ? index : index - 9;
-            int nonKickRoleCount = ROLE_COUNT - 3;
-            var dynamics = (nonKickIndex / nonKickRoleCount) switch
-            {
-                1 => ThemeNoteType.Accent, 2 => ThemeNoteType.Ghost, _ => ThemeNoteType.Normal
-            };
-            int roleIndex = nonKickIndex % nonKickRoleCount;
-            if (roleIndex >= 10) roleIndex += 3;
-            var role = roleIndex switch
-            {
-                1 => EliteDrumsColorRole.HatClosed,
-                2 => EliteDrumsColorRole.HatIndifferent,
-                3 => EliteDrumsColorRole.HatOpen,
-                _ => (EliteDrumsColorRole)roleIndex
-            };
-            if (role == EliteDrumsColorRole.HandFlam) role = EliteDrumsColorRole.Snare;
-            return CreateRoleNote(time, DescribeForKickLayout(role, dynamics, _kickMode));
+
+            bool openOnly = GlowPreview == EliteGlowPreview.OpenHats;
+            int forms = openOnly ? 3 : 2;
+            int form = _index % forms;
+            var role = openOnly ? EliteDrumsColorRole.HatOpen : CymbalRoles[_index / (forms * GlowDynamics.Length)];
+            var strength = GlowDynamics[(_index / forms) % GlowDynamics.Length];
+            var note = CreateRoleNote(time, Describe(role, strength));
+            note.EliteHandFlam = !openOnly || form != 0;
+            note.EliteFlatFlam = form == forms - 1;
+            _index = (_index + 1) % (forms * GlowDynamics.Length * (openOnly ? 1 : CymbalRoles.Length));
+            return note;
         }
 
         public FakeNoteData CreateSpotlightNote(double time, FakeNoteSpotlight spotlight,
             IFakeNoteRandom random)
         {
-            _lastPedalCompanion = null;
-            _lastCymbalCompanion = null;
             var role = spotlight.CenterNote ? EliteDrumsColorRole.Kick :
                 (EliteDrumsColorRole)Math.Clamp(spotlight.Fret - 1, 0, (int)EliteDrumsColorRole.Wildcard);
             if (role == EliteDrumsColorRole.HandFlam) role = EliteDrumsColorRole.Snare;
@@ -232,38 +296,16 @@ namespace YARG.Settings.Preview
         public FakeNoteData CreateTypeSpotlightNote(double time, ThemeNoteType noteType,
             IFakeNoteRandom random)
         {
-            _lastPedalCompanion = null;
-            _lastCymbalCompanion = null;
             return CreateRoleNote(time, Describe(EliteDrumsColorRole.Snare, noteType));
         }
 
         public IEnumerable<FakeNoteData> CreateChordNotes(double time, FakeNoteData baseNote,
             IFakeNoteRandom random)
         {
-            if (baseNote.EliteDescriptor is not { } descriptor) yield break;
-            if (baseNote.EliteHandFlam) yield break;
-            if (_lastCymbalCompanion is { } cymbalRole)
-            {
-                yield return CreateRoleNote(time, Describe(cymbalRole));
-            }
-            else if (descriptor.Role is EliteDrumsColorRole.Tom1 or EliteDrumsColorRole.Tom2 or EliteDrumsColorRole.Tom3)
-            {
-                var role = descriptor.Role switch
-                {
-                    EliteDrumsColorRole.Tom1 => EliteDrumsColorRole.LeftCrash,
-                    EliteDrumsColorRole.Tom2 => EliteDrumsColorRole.Ride,
-                    _ => EliteDrumsColorRole.RightCrash
-                };
-                var dynamics = descriptor.ModelType is ThemeNoteType.Accent ? ThemeNoteType.Accent :
-                    descriptor.ModelType is ThemeNoteType.Ghost ? ThemeNoteType.Ghost : ThemeNoteType.Normal;
-                yield return CreateRoleNote(time, Describe(role, dynamics));
-            }
-            else if (_lastPedalCompanion is { } pedalRole
-                && descriptor.Role is EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick)
-            {
-                yield return CreateRoleNote(time, DescribeForKickLayout(pedalRole,
-                    ThemeNoteType.Normal, _kickMode));
-            }
+            if (baseNote.ElitePreviewBeat < 0) yield break;
+            var beat = Beats[baseNote.ElitePreviewBeat];
+            for (int i = 1; i < beat.Length; i++)
+                yield return beat[i].At(time, _kickMode);
         }
 
         /// <summary>Adapts synthetic cymbal notes through gameplay's shared playable projection.</summary>

@@ -280,6 +280,11 @@ namespace YARG.Settings.Preview
         public DrumFlamLayout FlamLayout { get; set; } = DrumFlamLayout.V;
         public bool KeepOriginalCymbalColors { get; set; }
         public bool UseCymbalModels { get; set; } = true;
+        public bool UseVolumeCymbals { get; set; } = YargProfile.DEFAULT_USE_VOLUME_CYMBALS;
+        internal EliteGlowPreview GlowPreview { get; set; }
+        public DrumOpenHatGlow OpenHatGlow { get; set; } = DrumOpenHatGlowExtensions.DEFAULT_MODE;
+        public DrumOpenHatPulseCadence OpenHatPulseCadence { get; set; }
+        public float OpenHatPulsesPerQuarter => OpenHatPulsePlan.Preview.PulsesPerQuarter(OpenHatPulseCadence, 0);
         // Simultaneous resolved drum/cymbal collision pairs are always separated.
 
         // Deferred until five-lane keys has a dedicated color-profile subsection.
@@ -331,11 +336,14 @@ namespace YARG.Settings.Preview
         private SettingsMenu _settingsMenu;
         private GameObject _notePrefab;
 
+        private GameObject CreatePreviewNotePrefab(ThemePreset theme, VisualStyle style) =>
+            FakeNote.CreateFakeNoteForProfile(theme, style, UseVolumeCymbals);
+
         private void Start()
         {
             if (_initialized) return;
             Initialize(ThemePreset.Default, _notePool,
-                (theme, style) => FakeNote.CreateFakeNoteFromTheme(theme, style),
+                CreatePreviewNotePrefab,
                 PresetsTab.GetLastSelectedPreset(CustomContentManager.CameraSettings),
                 ColorProfileOverride ?? PresetsTab.GetLastSelectedPreset(CustomContentManager.ColorProfiles),
                 PresetsTab.GetLastSelectedPreset(CustomContentManager.EnginePresets),
@@ -381,7 +389,7 @@ namespace YARG.Settings.Preview
                     elite.EliteLayout = EliteDrumsLayoutResolver.Resolve(layoutPreset);
                 }
                 elite.Generator = new EliteDrumsFakeNoteGenerator(
-                    elite.EliteLayout?.KickMode ?? EliteDrumsLayoutKickMode.Bars);
+                    elite.EliteLayout?.KickMode ?? EliteDrumsLayoutKickMode.Bars) { GlowPreview = GlowPreview };
                 elite.NoteColorProvider = (colors, note) => colors.EliteDrums.GetNoteColor(
                     GetEliteColorRole(note)).ToUnityColor();
                 elite.NoteStarPowerColorProvider = (colors, note) => colors.EliteDrums.GetNoteStarPowerColor(
@@ -659,11 +667,32 @@ namespace YARG.Settings.Preview
             }
         }
 
-        /// <summary>
-        /// Clears all active spotlight modes so a new one starts fresh.
-        /// </summary>
         private ElitePreviewDescriptor? _eliteSpotlight;
+        private EliteDrumsColorRole? _eliteColorSpotlight;
+        private int _eliteColorSample;
         private bool _eliteSpotlightStarPower;
+
+        /// <summary>Shows each playable appearance for the edited color twice in succession.</summary>
+        public void SpotlightEliteColor(EliteDrumsColorRole role, bool starPower)
+        {
+            if (CurrentGameModeInfo.Generator is not EliteDrumsFakeNoteGenerator generator) return;
+            if (AllowIncompleteEliteLayoutPreview &&
+                !IsEliteNoteRepresented(generator.CreateColorVariation(0, role, 0), CurrentGameModeInfo.EliteLayout))
+                return;
+
+            // Dragging the picker extends the spotlight without restarting it on the ghost.
+            if (_spotlightRemaining == 0 || _eliteColorSpotlight != role || _eliteSpotlightStarPower != starPower)
+            {
+                ClearSpotlights();
+                _eliteColorSpotlight = role;
+                _eliteSpotlightStarPower = starPower;
+                _eliteColorSample = 0;
+            }
+            // Keep the usual inspection time even for a single pedal model, and finish on a complete pass.
+            int passLength = 2 * EliteDrumsFakeNoteGenerator.VariationCount(role);
+            int passes = (_eliteColorSample + SPOTLIGHT_NOTE_COUNT + passLength - 1) / passLength;
+            _spotlightRemaining = passes * passLength - _eliteColorSample;
+        }
 
         /// <summary>Shows a specific Elite color role with independently selectable model geometry.</summary>
         public void SpotlightEliteRole(EliteDrumsColorRole role, bool starPower,
@@ -685,6 +714,7 @@ namespace YARG.Settings.Preview
         private void ClearSpotlights()
         {
             _eliteSpotlight = null;
+            _eliteColorSpotlight = null;
             _spotlightRemaining = 0;
             _spotlightTypeRemaining = 0;
             _spotlightMissRemaining = 0;
@@ -764,6 +794,13 @@ namespace YARG.Settings.Preview
 
         private FakeNoteData CreateSpotlightNote(double time)
         {
+            if (_eliteColorSpotlight is { } role && CurrentGameModeInfo.Generator is EliteDrumsFakeNoteGenerator generator)
+            {
+                var variation = generator.CreateColorVariation(time, role, _eliteColorSample / 2);
+                _eliteColorSample = (_eliteColorSample + 1) % (2 * EliteDrumsFakeNoteGenerator.VariationCount(role));
+                variation.ForceStarPower = _eliteSpotlightStarPower;
+                return variation;
+            }
             if (_eliteSpotlight.HasValue)
             {
                 var eliteNote = EliteDrumsFakeNoteGenerator.CreateRoleNote(time, _eliteSpotlight.Value);
@@ -965,13 +1002,6 @@ namespace YARG.Settings.Preview
                     note = CurrentGameModeInfo.Generator.CreateNote(spawnTime, _random);
                 }
 
-                if (SelectedGameMode == GameMode.EliteDrums
-                    && !IsEliteNoteRepresented(note, CurrentGameModeInfo.EliteLayout))
-                {
-                    _nextSpawnTime = PreviewTime;
-                    return;
-                }
-
                 if (spotlightMiss)
                 {
                     _spotlightMissRemaining--;
@@ -992,23 +1022,11 @@ namespace YARG.Settings.Preview
                     foreach (var chordNote in CurrentGameModeInfo.Generator.CreateChordNotes(
                         spawnTime, note, _random))
                     {
-                        if (SelectedGameMode == GameMode.EliteDrums
-                            && !IsEliteNoteRepresented(chordNote, CurrentGameModeInfo.EliteLayout))
-                            continue;
                         ApplyLeftyToFret(chordNote);
                         notesToSpawn.Add(chordNote);
                     }
                 }
 
-                // A filtered-out pedal companion must not leave an isolated half bar.
-                if (note.EliteDescriptor is { IsBar: true } kickDescriptor &&
-                    kickDescriptor.Role is EliteDrumsColorRole.Kick or EliteDrumsColorRole.DoubleKick &&
-                    !notesToSpawn.Exists(extra => extra.EliteDescriptor is { } descriptor &&
-                        descriptor.Role is EliteDrumsColorRole.Stomp or EliteDrumsColorRole.Splash))
-                {
-                    note.EliteDescriptor = new ElitePreviewDescriptor(kickDescriptor.Role, kickDescriptor.Fret,
-                        kickDescriptor.ModelType, true, 1f, 0f, kickDescriptor.DedicatedLaneSource);
-                }
                 ApplyLeftyToFret(note);
                 notesToSpawn.Add(note);
                 if (SelectedGameMode == GameMode.EliteDrums)
@@ -1016,6 +1034,7 @@ namespace YARG.Settings.Preview
                     EliteDrumsFakeNoteGenerator.ProjectCymbalNotes(notesToSpawn,
                         _eliteProjectionLayout);
                     notesToSpawn.RemoveAll(candidate => !IsEliteNoteRepresented(candidate, CurrentGameModeInfo.EliteLayout));
+                    if (notesToSpawn.Count == 0) _nextSpawnTime = PreviewTime;
                 }
                 MarkEliteOffsetPairs(notesToSpawn, CurrentGameModeInfo.EliteLayout);
                 if (SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)

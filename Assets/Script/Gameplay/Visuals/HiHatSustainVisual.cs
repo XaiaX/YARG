@@ -24,6 +24,8 @@ namespace YARG.Gameplay.Visuals
         private HiHatSustainExpansion _carriedExpansion;
         private int[] _runEnds;
         private bool[] _pedalOrigins;
+        private (Vector2 Head, Vector3 Tail)[] _rollOffsets;
+        private float _headUV;
         private readonly List<double> _rows = new();
         private readonly List<Color> _colors = new();
         private readonly List<int> _triangles = new();
@@ -46,6 +48,7 @@ namespace YARG.Gameplay.Visuals
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             _width = width;
             _sync = null;
+            _rollOffsets = null;
             _indices.Clear();
             _carriedExpansion = default;
             var sustains = engine.HiHatSustains;
@@ -93,6 +96,46 @@ namespace YARG.Gameplay.Visuals
             float half = headWidth / _width / 2;
             _material.SetVector("_HeadRange", new Vector4(Mathf.Clamp01(relative - half),
                 Mathf.Clamp01(relative + half), _width, fretWidth));
+        }
+
+        internal void ConfigureRollHeads(EliteDrumsPlayer player)
+        {
+            _rollOffsets = null;
+            var range = _material.GetVector("_HeadRange");
+            _headUV = (range.x + range.y) * .5f;
+            float localAxis = (_headUV - .5f) * _width;
+            float baseCenter = transform.localPosition.x;
+            int column = player.GetVisualPosition((int)EliteDrumNote.EliteDrumPad.HiHat);
+            var sustains = _engine.HiHatSustains;
+            for (int i = 0; i < sustains.Count; i++)
+            {
+                var generator = sustains[i].Generators[0];
+                var edges = player.TryGetKickBoundaries(generator);
+                bool slotted = player.TryGetRollSlot(generator, out float headCenter, out float headWidth);
+                if (edges == null && !slotted) continue;
+                if (!slotted)
+                {
+                    EliteDrumsRuntimeGeometry.GetRegion(player, generator, false, out headCenter, out headWidth);
+                }
+                // The shader's waiting head spans one fret. Store each mesh
+                // edge's X offset at the waiting head and at full expansion.
+                float scaleDelta = headWidth / range.w - 1f;
+                float shift = headCenter - baseCenter - localAxis;
+                var head = new Vector2(shift + (-_width / 2f - localAxis) * scaleDelta,
+                    shift + (_width / 2f - localAxis) * scaleDelta);
+                var tail = Vector3.zero;
+                if (edges != null)
+                {
+                    int reach = player.Player.Profile.OneFretHiHatSustains ? 0 : 1;
+                    float left = (edges[Mathf.Max(0, column - reach)] - .5f) * TrackPlayer.TRACK_WIDTH;
+                    float right = (edges[Mathf.Min(edges.Length - 1, column + reach + 1)] - .5f) * TrackPlayer.TRACK_WIDTH;
+                    float hat = ((edges[column] + edges[column + 1]) * .5f - .5f) * TrackPlayer.TRACK_WIDTH;
+                    tail = new Vector3(left - (baseCenter - _width / 2f), hat - (baseCenter + localAxis),
+                        right - (baseCenter + _width / 2f));
+                }
+                _rollOffsets ??= new (Vector2, Vector3)[sustains.Count];
+                _rollOffsets[i] = (head, tail);
+            }
         }
 
         public void NotifyActivation(EliteHiHatSustain sustain, double time)
@@ -238,10 +281,22 @@ namespace YARG.Gameplay.Visuals
             // The highway bends vertices across X. Subdivide broad pedal tails so
             // their triangles follow that surface instead of cutting beneath it.
             int sections = Math.Max(1, Mathf.CeilToInt(_width / .06f));
+            var (head, tail) = _rollOffsets?[index] ?? default;
+            // Put a mesh column exactly on the bend between unequal neighbors.
+            // Interpolating across that bend would move the wave axis off the fret.
+            int axisSection = Mathf.RoundToInt(_headUV * sections);
             for (int i = 0; i <= sections; i++)
             {
-                float side = (float)i / sections - .5f;
-                foreach (double time in _rows) Add(side, time);
+                float u = (float)i / sections;
+                if (tail != Vector3.zero && axisSection > 0 && axisSection < sections)
+                    u = i <= axisSection ? _headUV * i / axisSection :
+                        Mathf.Lerp(_headUV, 1, (float)(i - axisSection) / (sections - axisSection));
+                // Unequal neighboring fret widths put the hi-hat off-center
+                // in its pedal footprint. Keep the wave axis on its receptor.
+                float tailOffset = u < _headUV ? Mathf.Lerp(tail.x, tail.y, Mathf.InverseLerp(0, _headUV, u))
+                    : Mathf.Lerp(tail.y, tail.z, Mathf.InverseLerp(_headUV, 1, u));
+                float remainingOffset = (Mathf.Lerp(head.x, head.y, u) - tailOffset) * (1f - expansion);
+                foreach (double time in _rows) Add(u - .5f, tailOffset, remainingOffset, time);
                 if (i == 0) continue;
                 for (int row = 0; row < _rows.Count - 1; row++)
                 {
@@ -263,10 +318,13 @@ namespace YARG.Gameplay.Visuals
                 return tempo.Tick / (double)_sync.Resolution + (chartTime - tempo.Time) / tempo.SecondsPerBeat;
             }
 
-            void Add(float side, double time)
+            void Add(float side, float tailOffset, float remainingOffset, double time)
             {
+                float along = (float)((time - sustain.StartTime) / duration);
                 float z = TrackPlayer.STRIKE_LINE_POS + (float)(time - now) * speed;
-                _vertices.Add(new Vector3(side * _width, 0, z));
+                // The ringing tail opens from its own gem to the arrival-time
+                // pedal footprint. A splash starts at the full footprint.
+                _vertices.Add(new Vector3(side * _width + tailOffset + remainingOffset * (1f - along), 0, z));
                 _uv.Add(new Vector2(side + .5f, (float)time));
                 // Leave this unclamped: per-pixel clamping keeps the body opaque
                 // until the actual fade boundary, even with only two mesh rows.
@@ -277,7 +335,6 @@ namespace YARG.Gameplay.Visuals
                     (float)(sustain.EndTime - time) * speed, (float)(time - front) * speed));
                 // Full authored endpoints keep the waiting flare stable when the
                 // visible geometry is clipped or its held front follows the fret.
-                float along = (float)((time - sustain.StartTime) / duration);
                 _envelopes.Add(new Vector3(expansion, ending, along));
                 _colors.Add(color);
             }

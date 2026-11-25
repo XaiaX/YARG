@@ -152,6 +152,86 @@ namespace YARG.Tests.EditMode
             Assert.That(dark.Max(point => point.z), Is.GreaterThan(bright.Max(point => point.z)));
         }
 
+        [TestCase("Kick", 1)]
+        [TestCase("KickGhost", 1)]
+        [TestCase("KickAccent", 2)]
+        [TestCase("KickFlam", 1)]
+        [TestCase("KickFlamGhost", 1)]
+        [TestCase("KickFlamAccent", 2)]
+        public void DeformedKickPlacesRigidCollarsAtImpactAndRestoresBakedMeshes(string name, int collarSlot)
+        {
+            var note = UnityEngine.Object.Instantiate(EliteModel(name).gameObject);
+            try
+            {
+                var modular = note.GetComponentInChildren(Production("YARG.Gameplay.Visuals.ModularKickVisual"), true);
+                var place = modular.GetType().GetMethod("ConfigureAtBoundaries", BindingFlags.NonPublic | BindingFlags.Instance);
+                var filters = note.GetComponentsInChildren<MeshFilter>(true);
+                void Configure(float[] edges) => place.Invoke(modular, new object[] { 5, edges });
+                float X(MeshFilter filter, Vector3 point) => note.transform.InverseTransformPoint(filter.transform.TransformPoint(point)).x;
+                float[] CollarXs(MeshFilter filter)
+                {
+                    var mesh = filter.sharedMesh;
+                    var vertices = mesh.vertices;
+                    return mesh.GetTriangles(collarSlot).Select(i => vertices[i]).Where(v => Mathf.Abs(v.x) < .95f)
+                        .Select(v => X(filter, v)).ToArray();
+                }
+                Configure(null);
+                var originals = filters.Select(filter => filter.sharedMesh).ToArray();
+                var spans = filters.Select(filter =>
+                {
+                    var xs = filter.sharedMesh.vertices.Select(v => X(filter, v)).ToArray();
+                    return (min: xs.Min(), max: xs.Max());
+                }).ToArray();
+                float left = spans.Min(s => s.min), right = spans.Max(s => s.max);
+                var originalCollars = CollarXs(filters[0]);
+                float first = originalCollars.Min();
+                float originalWidth = originalCollars.Where(x => x < first + .09f).Max() - first;
+                var edges = new[] { 0f, .10f, .22f, .50f, .75f, 1f };
+                Mesh[] deformed = null;
+                foreach (var layout in new[] { edges, edges.Reverse().Select(edge => 1f - edge).ToArray() })
+                {
+                    Configure(layout);
+                    for (int i = 0; i < filters.Length; i++)
+                    {
+                        var xs = CollarXs(filters[i]);
+                        var expected = layout.Skip(1).Take(4).Select(edge => Mathf.Lerp(left, right, edge))
+                            .Where(edge => edge > spans[i].min && edge < spans[i].max).ToArray();
+                        Assert.That(xs.All(x => expected.Any(seam => Mathf.Abs(x - seam) < .045f)), Is.True);
+                        foreach (var seam in expected)
+                        {
+                            var ring = xs.Where(x => Mathf.Abs(x - seam) < .045f).ToArray();
+                            Assert.That(ring, Is.Not.Empty);
+                            Assert.That((ring.Min() + ring.Max()) * .5f, Is.EqualTo(seam).Within(.0002f));
+                            Assert.That(ring.Max() - ring.Min(), Is.EqualTo(originalWidth).Within(.0002f));
+                        }
+                        var all = filters[i].sharedMesh.vertices.Select(v => X(filters[i], v)).ToArray();
+                        Assert.That(all.Min(), Is.EqualTo(spans[i].min).Within(.0002f));
+                        Assert.That(all.Max(), Is.EqualTo(spans[i].max).Within(.0002f));
+                    }
+                    var current = filters.Select(filter => filter.sharedMesh).ToArray();
+                    if (deformed != null) Assert.That(current, Is.EqualTo(deformed));
+                    deformed = current;
+                }
+                if (filters.Length == 2)
+                {
+                    var ordered = spans.OrderBy(span => span.min).ToArray();
+                    float gapStart = Mathf.InverseLerp(left, right, ordered[0].max);
+                    float gapEnd = Mathf.InverseLerp(left, right, ordered[1].min);
+                    Configure(new[] { 0f, .1f, gapStart - .0001f, gapEnd + .0001f, .9f, 1f });
+                    for (int i = 0; i < filters.Length; i++)
+                    {
+                        var xs = filters[i].sharedMesh.vertices.Select(point => X(filters[i], point)).ToArray();
+                        Assert.That(xs.Min(), Is.EqualTo(spans[i].min).Within(.0002f));
+                        Assert.That(xs.Max(), Is.EqualTo(spans[i].max).Within(.0002f),
+                            "A collar entering the end of a split beam must leave the gap clear.");
+                    }
+                }
+                Configure(null);
+                Assert.That(filters.Select(filter => filter.sharedMesh), Is.EqualTo(originals));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(note); }
+        }
+
         [TestCase("KickFlam", 1)]
         [TestCase("KickFlamGhost", 1)]
         [TestCase("KickFlamAccent", 2)]

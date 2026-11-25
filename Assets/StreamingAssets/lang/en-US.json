@@ -124,6 +124,19 @@
 			"Bucket": "Bucket",
 			"Parallel": "Parallel"
 		},
+		"DrumOpenHatPulseCadence": {
+			"Auto": "Auto",
+			"Quarter": "1/4",
+			"Eighth": "1/8"
+		},
+		"DrumOpenHatGlow": {
+			"Static": "Static",
+			"Radial": "Radial Pulse",
+			"WholeSurface": "Whole-Surface Pulse",
+			"CircularSweep": "Circular Sweep",
+			"StaticShadow": "Static Drop Shadow",
+			"PulsingShadow": "Pulsing Drop Shadow"
+		},
 		"StarPowerActivationType": {
 			"Freestyle": "Freestyle",
 			"RightmostLane": "Rightmost Lane",
@@ -646,6 +659,9 @@
 			"BotDelete": "Deleting this bot is permanent.",
 			"ConfigureEliteDrumsLayout": "ELITE DRUMS HIGHWAY",
 			"FlamLayout": "FLAM LAYOUT",
+			"ExperimentalCymbals": "EXPERIMENTAL CYMBAL MODELS",
+			"OpenHatGlow": "OPEN HI-HAT GLOW",
+			"OpenHatPulseCadence": "OPEN HI-HAT / CYMBAL FLAM PULSE CADENCE",
             "Microphones": "MICROPHONES",
             "MicrophoneConfiguration": "MICROPHONE CONFIGURATION",
             "MicrophoneConnected": "Connected",
@@ -1378,6 +1394,7 @@
 			"OpenPersistentDataPath": "Open Persistent Data Path",
 			"RemoveRemoteContent": "Remove Cached Content",
 			"OpenAsioControlPanel": "Open ASIO Control Panel",
+			"ResetOpenHatGlow": "Reset Open Hi-Hat Glow to Defaults",
 			"ShowMaestroPairingPin": "Show Maestro Pairing PIN",
 			"SkipToMaestroOff": "Skip to Maestro (Off)",
 			"SkipToMaestroOn": "Skip to Maestro (On)"
@@ -2346,6 +2363,38 @@
 				"Name": "Hi-Hat Sustain Held Glow (%)",
 				"Description": "Temporary tuning: color brightness while held. The beat pulse and shimmer remain active."
 			},
+			"EliteOpenHatGhostGlow": {
+				"Name": "Open Hi-Hat Ghost Glow (%)",
+				"Description": "Peak brightness of the exposed well on experimental ghost open hats. Static glow stays at this level."
+			},
+			"EliteOpenHatNeutralGlow": {
+				"Name": "Open Hi-Hat Neutral Glow (%)",
+				"Description": "Peak brightness of the exposed well on experimental neutral open hats. Static glow stays at this level."
+			},
+			"EliteOpenHatAccentGlow": {
+				"Name": "Open Hi-Hat Accent Glow (%)",
+				"Description": "Peak brightness of the exposed well on experimental accented open hats. Static glow stays at this level."
+			},
+			"EliteOpenHatGlowMinimum": {
+				"Name": "Open Hi-Hat Pulse Minimum (%)",
+				"Description": "Brightness at the dimmest part of each pulse, capped at the note’s peak. In Pulsing Drop Shadow this sets the minimum on the exposed part of the well."
+			},
+			"EliteOpenHatShadowMinimum": {
+				"Name": "Open Hi-Hat Shadow Minimum (%)",
+				"Description": "Brightness in the deepest shade at the dimmest part of Pulsing Drop Shadow. Uses the same scale as the exposed pulse minimum and caps at the shaded peak."
+			},
+			"EliteOpenHatShadowPeak": {
+				"Name": "Open Hi-Hat Shadow Peak (% of Exposed Peak)",
+				"Description": "Brightness in the deepest shade at the brightest part of Pulsing Drop Shadow, as a percentage of the Ghost, Neutral or Accent glow. At 100% the shade and the exposed crescent reach the same peak."
+			},
+			"EliteCymbalFlamGlowMinimum": {
+				"Name": "Cymbal Flam Pulse Minimum (%)",
+				"Description": "Dimmest brightness of the colored bell surface. Flat flams pulse together. Regular flams alternate which bell peaks on each pulse, so each bell cycles at half speed. The minimum is capped at the maximum."
+			},
+			"EliteCymbalFlamGlowMaximum": {
+				"Name": "Cymbal Flam Pulse Maximum (%)",
+				"Description": "Brightest part of the cymbal flam pulse. At 100% the bell reaches its original brightness. Equal endpoints hold it steady."
+			},
 			"ElitePedalBeamEffect": {
 				"Name": "Hi-Hat Pedal Beam Effect",
 				"Description": "Changes the glow animation on Rectangular Elite Drums stomp and splash notes.",
@@ -2354,6 +2403,52 @@
 					"GemFlow": "Gem Flow",
 					"SustainShimmer": "Sustain Shimmer"
 				}
+			},
+			"EliteFretBoundaryDotSpacing": {
+				"Name": "Fret Boundary Dot Spacing",
+				"Description": "Sets the spacing between Elite Drums fret boundary dot rows. Smaller fractions put the rows closer together.",
+				"Dropdown": {
+					"Eighth": "1/8",
+					"Sixteenth": "1/16",
+					"ThirtySecond": "1/32",
+					"SixtyFourth": "1/64",
+					"HundredTwentyEighth": "1/128"
+				}
+			},
+			"AlwaysShowEliteFretBoundaryDots": {
+				"Name": "Always Show Fret Boundary Dots",
+				"Description": "Adds dots along the internal fret boundaries throughout Elite Drums gameplay, including when all frets are at their usual widths."
+			},
+			"ColorEliteHeldFretCenters": {
+				"Name": "Use Fret-Colored Center Dots",
+				"Description": "While widened frets hold their width, mark each split with a dot in its fret color. Colored dots skip any fret occupied by a note head on that row."
+			},
+			"ColorEliteAllFretCenters": {
+				"Name": "Use Fret-Colored Center Dots on All Frets",
+				"Description": "During fret movement and whenever Always Show Fret Boundary Dots is enabled, put dots at the center of each fret in its assigned color. A colored dot skips its row when a note head occupies that fret."
+			},
+			"EliteDoubleKickWarningStyle": {
+				"Name": "2× Kick Warning",
+				"Description": "Highlights both edges of the Elite Drums highway before a passage of charted 2× kicks.",
+				"Dropdown": {
+					"Off": "Off",
+					"EdgeRails": "Amber Rails",
+					"BeaterFlames": "Beater Flames",
+					"EmberTrails": "Ember Trails",
+					"EmberTrailsAndFlames": "Ember Trails + Beater Flames"
+				}
+			},
+			"EliteDoubleKickWarningThroughMeasures": {
+				"Name": "Keep 2× Warning Through Kick Measures",
+				"Description": "On keeps the warning visible through the last consecutive measure containing a 2× kick. Off shows the lead-up and ends at the first 2× kick."
+			},
+			"StaggerEliteKickSparkAnimation": {
+				"Name": "Stagger 2× Kick Sparks",
+				"Description": "Give each mirrored pair in Ember Trails its own flicker timing. Turn off to make every pair change frames together."
+			},
+			"EliteDoubleKickFlamesRequireFullMultiplier": {
+				"Name": "Require Full Multiplier for Combined Beater Flames",
+				"Description": "In Ember Trails + Beater Flames, light the beaters only while your streak earns the full multiplier. The approaching embers appear at every multiplier."
 			},
 			"EliteHiHatClosureForgiveness": {
 				"Name": "Hi-Hat Closure Forgiveness",

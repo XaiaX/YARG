@@ -7,6 +7,8 @@ namespace YARG.Settings.Types
     {
         public override string AddressableName => "Setting/Slider";
 
+        private readonly float _defaultValue;
+
         public float Min { get; private set; }
         public float Max { get; private set; }
 
@@ -16,8 +18,11 @@ namespace YARG.Settings.Types
             Min = min;
             Max = max;
 
+            _defaultValue = value;
             _value = value;
         }
+
+        public void ResetToDefault() => Value = _defaultValue;
 
         protected override void SetValue(float value)
         {

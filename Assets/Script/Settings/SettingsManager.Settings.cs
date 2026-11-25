@@ -46,6 +46,24 @@ namespace YARG.Settings
         SustainShimmer = 2,
     }
 
+    public enum DoubleKickWarningStyle
+    {
+        Off = 0,
+        EdgeRails = 1,
+        BeaterFlames = 2,
+        EmberTrails = 3,
+        EmberTrailsAndFlames = 4
+    }
+
+    public enum FretBoundaryDotSubdivision
+    {
+        Eighth = 8,
+        Sixteenth = 16,
+        ThirtySecond = 32,
+        SixtyFourth = 64,
+        HundredTwentyEighth = 128
+    }
+
     public enum SongLengthLabelMode
     {
         RangeLabels,
@@ -129,6 +147,9 @@ namespace YARG.Settings
 
     public static partial class SettingsManager
     {
+        internal const FretBoundaryDotSubdivision DEFAULT_FRET_BOUNDARY_DOT_SPACING =
+            FretBoundaryDotSubdivision.ThirtySecond;
+
         public class SettingContainer
         {
             /// <summary>
@@ -836,9 +857,33 @@ namespace YARG.Settings
             public ToggleSetting MaestroGoDirectlyToSummary { get; } = new(false);
             public ToggleSetting SuppressReplayAnalysisDialogs { get; } = new(false);
             public ToggleSetting EnableEliteDrumsDowncharts { get; } = new(false);
+            public DropdownSetting<DoubleKickWarningStyle> EliteDoubleKickWarningStyle { get; } =
+                new(DoubleKickWarningStyle.EdgeRails)
+                {
+                    DoubleKickWarningStyle.Off,
+                    DoubleKickWarningStyle.EdgeRails,
+                    DoubleKickWarningStyle.BeaterFlames,
+                    DoubleKickWarningStyle.EmberTrails,
+                    DoubleKickWarningStyle.EmberTrailsAndFlames
+                };
+            public ToggleSetting EliteDoubleKickFlamesRequireFullMultiplier { get; } = new(true);
+            public ToggleSetting StaggerEliteKickSparkAnimation { get; } = new(true);
+            public ToggleSetting EliteDoubleKickWarningThroughMeasures { get; } = new(true);
             public ToggleSetting EliteHiHatClosureForgiveness { get; } = new(false);
             public ToggleSetting LenientHiHatArticulation { get; } = new(false);
             public ToggleSetting AlternateGhostScoring { get; } = new(false);
+            public DropdownSetting<FretBoundaryDotSubdivision> EliteFretBoundaryDotSpacing { get; } =
+                new(DEFAULT_FRET_BOUNDARY_DOT_SPACING)
+                {
+                    FretBoundaryDotSubdivision.Eighth,
+                    FretBoundaryDotSubdivision.Sixteenth,
+                    FretBoundaryDotSubdivision.ThirtySecond,
+                    FretBoundaryDotSubdivision.SixtyFourth,
+                    FretBoundaryDotSubdivision.HundredTwentyEighth
+                };
+            public ToggleSetting AlwaysShowEliteFretBoundaryDots { get; } = new(false);
+            public ToggleSetting ColorEliteHeldFretCenters { get; } = new(false);
+            public ToggleSetting ColorEliteAllFretCenters { get; } = new(false);
             public DropdownSetting<DrumPanningPreference> PreferredDrumPanning { get; } =
                 new(DrumPanningPreference.DontChange, value => GlobalAudioHandler.PreferredDrumPanning = value)
                 {
@@ -850,6 +895,39 @@ namespace YARG.Settings
             public SliderSetting EliteHiHatHeldOpacity { get; } = new(33, 0, 100);
             public SliderSetting EliteHiHatWaitingGlow { get; } = new(35, 0, 200);
             public SliderSetting EliteHiHatHeldGlow { get; } = new(70, 0, 200);
+            private const string OPEN_HAT_GLOW = "_YargOpenHatGlowAdjustments";
+            private const string OPEN_HAT_SHADOW = "_YargOpenHatShadowAdjustments";
+            public SliderSetting EliteOpenHatGhostGlow { get; } = GlowSlider(OPEN_HAT_GLOW, 0, 40, 26);
+            public SliderSetting EliteOpenHatNeutralGlow { get; } = GlowSlider(OPEN_HAT_GLOW, 1, 60, 47);
+            public SliderSetting EliteOpenHatAccentGlow { get; } = GlowSlider(OPEN_HAT_GLOW, 2, 80, 72);
+            public SliderSetting EliteOpenHatGlowMinimum { get; } = GlowSlider(OPEN_HAT_GLOW, 3, 5, 12);
+            public SliderSetting EliteOpenHatShadowMinimum { get; } = GlowSlider(OPEN_HAT_SHADOW, 0, 0.5f, 12);
+            public SliderSetting EliteOpenHatShadowPeak { get; } = GlowSlider(OPEN_HAT_SHADOW, 1, 10, 50, 100);
+
+            private const string CYMBAL_FLAM_GLOW = "_YargCymbalFlamGlowAdjustments";
+            public SliderSetting EliteCymbalFlamGlowMinimum { get; } = GlowSlider(CYMBAL_FLAM_GLOW, 0, 35, 35, 100);
+            public SliderSetting EliteCymbalFlamGlowMaximum { get; } = GlowSlider(CYMBAL_FLAM_GLOW, 1, 100, 100);
+
+            public void ResetOpenHatGlow()
+            {
+                EliteOpenHatGhostGlow.ResetToDefault();
+                EliteOpenHatNeutralGlow.ResetToDefault();
+                EliteOpenHatAccentGlow.ResetToDefault();
+                EliteOpenHatGlowMinimum.ResetToDefault();
+                EliteOpenHatShadowMinimum.ResetToDefault();
+                EliteOpenHatShadowPeak.ResetToDefault();
+            }
+
+            // Zero adjustment reproduces the authored material even before settings load.
+            private static SliderSetting GlowSlider(string property, int channel, float defaultPercent,
+                float authoredPercent, float maximum = 200) =>
+                new(defaultPercent, 0, maximum, value =>
+                {
+                    var gains = Shader.GetGlobalVector(property);
+                    gains[channel] = (float.IsNaN(value) ? defaultPercent : value) / authoredPercent - 1f;
+                    Shader.SetGlobalVector(property, gains);
+                });
+
             public DropdownSetting<PedalBeamEffect> ElitePedalBeamEffect { get; } = new(PedalBeamEffect.GemFlow,
                 value => Shader.SetGlobalFloat("_YargElitePedalBeamEffect", (float) value))
             {

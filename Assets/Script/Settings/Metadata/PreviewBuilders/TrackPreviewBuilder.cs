@@ -5,6 +5,7 @@ using Object = UnityEngine.Object;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 using YARG.Core;
+using YARG.Core.Game;
 using YARG.Helpers;
 using YARG.Helpers.Extensions;
 using YARG.Settings.Preview;
@@ -24,6 +25,11 @@ namespace YARG.Settings.Metadata
         public GameMode? StartingGameMode { get; set; }
         public YARG.Core.Game.EliteDrumsLayoutPreset EliteLayoutOverride { get; set; }
         public bool AllowIncompleteEliteLayoutPreview { get; set; }
+        // Standalone settings previews showcase the joined cymbal flams. Profile previews set their own choice.
+        public bool UseVolumeCymbals { get; set; } = YargProfile.DEFAULT_USE_VOLUME_CYMBALS;
+        internal EliteGlowPreview GlowPreview { get; set; }
+        public DrumOpenHatGlow OpenHatGlow { get; set; } = DrumOpenHatGlowExtensions.DEFAULT_MODE;
+        public DrumOpenHatPulseCadence OpenHatPulseCadence { get; set; }
         public YARG.Core.Game.ColorProfile ColorProfileOverride { get; set; }
 
         private readonly bool _forceShowHitWindow;
@@ -177,8 +183,14 @@ namespace YARG.Settings.Metadata
         }
 
         /// <summary>
-        /// Forwards to <see cref="FakeTrackPlayer.SpotlightMiss"/>.
+        /// Shows all applicable forms of the edited Elite note color.
         /// </summary>
+        public void SpotlightEliteColor(YARG.Core.Game.EliteDrumsColorRole role, bool starPower)
+        {
+            if (_currentTrackPreview != null)
+                _currentTrackPreview.SpotlightEliteColor(role, starPower);
+        }
+
         public void SpotlightEliteRole(YARG.Core.Game.EliteDrumsColorRole role, bool starPower,
             ElitePreviewDescriptor? descriptor = null)
         {
@@ -234,6 +246,10 @@ namespace YARG.Settings.Metadata
             trackPreview.LeftyFlip = LeftyFlip;
             trackPreview.FlamLayout = FlamLayout;
             trackPreview.KeepOriginalCymbalColors = KeepOriginalCymbalColors;
+            trackPreview.UseVolumeCymbals = UseVolumeCymbals;
+            trackPreview.GlowPreview = GlowPreview;
+            trackPreview.OpenHatGlow = OpenHatGlow;
+            trackPreview.OpenHatPulseCadence = OpenHatPulseCadence;
 
             // If null, just use the default value and skip setting it
             if (StartingGameMode is not null)

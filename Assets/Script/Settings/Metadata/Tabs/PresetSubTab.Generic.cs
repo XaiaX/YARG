@@ -1681,12 +1681,7 @@ namespace YARG.Settings.Metadata
         }
 
         /// <summary>
-        /// Spotlights the preview lane for a color-profile field: the next
-        /// <see cref="Preview.FakeTrackPlayer.SPOTLIGHT_NOTE_COUNT"/> preview notes all
-        /// come from that lane (cymbal vs. drum variant per the field, star power
-        /// colors for star power fields). Does nothing for non-lane fields
-        /// (Metal, Miss) and for double kick, which has no renderable form in the
-        /// fake preview (it needs the dedicated-lane layout).
+        /// Spotlights the edited note color. Elite roles cycle through their applicable dynamics and flam forms.
         /// </summary>
         private void SpotlightFieldLane(string fieldName)
         {
@@ -1696,8 +1691,7 @@ namespace YARG.Settings.Metadata
             if (_subSection == nameof(ColorProfile.EliteDrums)
                 && TryGetEliteNoteRole(fieldName, out var eliteRole, out var eliteStarPower))
             {
-                tpb.SpotlightEliteRole(eliteRole, eliteStarPower,
-                    YARG.Settings.Preview.EliteDrumsFakeNoteGenerator.Describe(eliteRole));
+                tpb.SpotlightEliteColor(eliteRole, eliteStarPower);
                 return;
             }
 

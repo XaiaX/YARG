@@ -1,6 +1,7 @@
 ﻿// pattern: Imperative Shell
 using System;
 using UnityEngine;
+using YARG.Core;
 using YARG.Themes;
 
 using YARG.Core.Diagnostics;
@@ -73,6 +74,52 @@ namespace YARG.Gameplay.Visuals
         [SerializeField]
         private ThemeNote _themeNote;
 
+        private (DrumOpenHatGlow style, float pulsesPerQuarter, bool preview, bool leftyFlip)? _appliedHatGlow;
+        private static readonly int _pulsesPerBeat = Shader.PropertyToID("_PulsesPerBeat");
+        private static readonly int _useLidShadow = Shader.PropertyToID("_UseLidShadow");
+        private static readonly int _sweepDirection = Shader.PropertyToID("_SweepDirection");
+        private static readonly int _wholeSurface = Shader.PropertyToID("_WholeSurface");
+        private static readonly int _previewBeatRate = Shader.PropertyToID("_PreviewBeatRate");
+        private static MaterialPropertyBlock _pulseProperties;
+        private static readonly int _cymbalFlamPulse = Shader.PropertyToID("_CymbalFlamPulse");
+        private Vector4? _appliedFlamPulse;
+
+        private void ConfigureCymbalFlamPulse(float rate, bool preview, bool leftyFlip)
+        {
+            var marker = _themeNote.FlatFlamMarker;
+            if (marker == null || _coloredMaterialCache == null) return;
+            bool flat = marker.activeSelf;
+            // Alternating bells trade the peak once per selected pulse.
+            float bellRate = flat ? rate : rate * .5f;
+            var pulse = new Vector4(bellRate, flat ? 0f : (leftyFlip ? -1f : 1f), preview ? 2f : 0f, 0f);
+            if (_appliedFlamPulse == pulse) return;
+            // Only the textured cymbal surface declares this property. The well, metal and HOPO trim keep their own materials.
+            foreach (var info in _coloredMaterialCache)
+            {
+                if (info.MaterialCache.HasProperty(_cymbalFlamPulse))
+                    info.MaterialCache.SetVector(_cymbalFlamPulse, pulse);
+            }
+            _appliedFlamPulse = pulse;
+        }
+
+        internal void ConfigureOpenHatGlow(DrumOpenHatGlow style, float pulsesPerQuarter, bool preview, bool leftyFlip)
+        {
+            ConfigureCymbalFlamPulse(pulsesPerQuarter, preview, leftyFlip);
+            var pulse = _themeNote.OpenHatPulse;
+            if (pulse == null || _appliedHatGlow == (style, pulsesPerQuarter, preview, leftyFlip)) return;
+            _pulseProperties ??= new MaterialPropertyBlock();
+            pulse.GetPropertyBlock(_pulseProperties);
+            // Static still draws the well at its adjustable peak brightness.
+            _pulseProperties.SetFloat(_pulsesPerBeat, style.UsesPulseCadence() ? pulsesPerQuarter : 0f);
+            _pulseProperties.SetFloat(_wholeSurface, style is DrumOpenHatGlow.WholeSurface or DrumOpenHatGlow.PulsingShadow ? 1f : 0f);
+            bool hasLidShadow = style is DrumOpenHatGlow.StaticShadow or DrumOpenHatGlow.PulsingShadow;
+            _pulseProperties.SetFloat(_useLidShadow, hasLidShadow ? 1f : 0f);
+            _pulseProperties.SetFloat(_sweepDirection, style == DrumOpenHatGlow.CircularSweep ? (leftyFlip ? -1f : 1f) : 0f);
+            _pulseProperties.SetFloat(_previewBeatRate, preview ? 2f : 0f);
+            pulse.SetPropertyBlock(_pulseProperties);
+            _appliedHatGlow = (style, pulsesPerQuarter, preview, leftyFlip);
+        }
+
         private MaterialInfo[] _coloredMaterialCache;
         private MaterialInfo[] _coloredMaterialNoStarPowerCache;
         private MaterialInfo[] _coloredMetalMaterialCache;
@@ -82,16 +129,24 @@ namespace YARG.Gameplay.Visuals
 
         public bool PedalStrikeAligned => _themeNote != null && _themeNote.PedalStrikeAligned;
 
+        internal void SetFlatFlamMarker(bool flat)
+        {
+            var marker = _themeNote.FlatFlamMarker;
+            if (marker != null && marker.activeSelf != flat) marker.SetActive(flat);
+        }
+
         public void ConfigurePedalSections(int count)
         {
             var modular = GetComponentInChildren<ModularPedalVisual>(true);
             if (modular != null) modular.Configure(count);
         }
 
-        public void ConfigureKickLanes(int count)
+        public void ConfigureKickLanes(int count) => ConfigureKickLanes(count, null);
+
+        public void ConfigureKickLanes(int count, float[] boundaries)
         {
             var modular = GetComponentInChildren<ModularKickVisual>(true);
-            if (modular != null) modular.Configure(count);
+            if (modular != null) modular.ConfigureAtBoundaries(count, boundaries);
         }
 
         public void Initialize()
@@ -99,6 +154,7 @@ namespace YARG.Gameplay.Visuals
             using var timing = TargetedPerformance.MeasureWithContext(TargetedOperation.NoteGroupInitialize,
                 TargetedPerformance.Enabled ? (int)_themeNote.NoteType : 0);
             if (_coloredMaterialCache == null) TargetedPerformance.Current?.RecordFirstNoteGroupInitialization();
+            _appliedFlamPulse = null;
             _coloredMaterialCache = ReadMaterials(_themeNote.ColorSlots);
             _coloredMaterialNoStarPowerCache = ReadMaterials(_themeNote.NoStarPowerColorSlots);
             _coloredMetalMaterialCache = ReadMaterials(_themeNote.MetalColorSlots);

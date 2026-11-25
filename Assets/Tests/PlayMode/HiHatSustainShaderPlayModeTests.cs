@@ -21,8 +21,8 @@ namespace YARG.Tests.PlayMode
         [UnitySetUp]
         public IEnumerator SetUp()
         {
-            _oldHighways = Shader.GetGlobalInt("_YargHighwaysN");
-            Shader.SetGlobalInt("_YargHighwaysN", 0);
+            _oldHighways = Shader.GetGlobalInteger("_YargHighwaysN");
+            Shader.SetGlobalInteger("_YargHighwaysN", 0);
             _root = new GameObject("Hi-hat shader pixel test");
             var surface = new GameObject("Sustain surface");
             surface.transform.SetParent(_root.transform, false);
@@ -490,7 +490,7 @@ namespace YARG.Tests.PlayMode
         [UnityTearDown]
         public IEnumerator TearDown()
         {
-            Shader.SetGlobalInt("_YargHighwaysN", _oldHighways);
+            Shader.SetGlobalInteger("_YargHighwaysN", _oldHighways);
             if (_camera != null) _camera.targetTexture = null;
             if (_root != null) UnityEngine.Object.Destroy(_root);
             if (_mesh != null) UnityEngine.Object.Destroy(_mesh);

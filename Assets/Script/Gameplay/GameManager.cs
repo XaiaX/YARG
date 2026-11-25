@@ -422,7 +422,8 @@ namespace YARG.Gameplay
                 ApplySongSpeed();
             using (TargetedPerformance.Measure(TargetedOperation.GameplayBeatEvents))
                 BeatEventHandler.Update(_songRunner.SongTime, _songRunner.VisualTime);
-            Shader.SetGlobalFloat(FlamGlowPhase, 1f + (float)BeatEventHandler.Visual.QuarterNote.CurrentPercentage);
+            // At the slowest Auto cadence an alternating cymbal bell spans eight quarter notes.
+            Shader.SetGlobalFloat(FlamGlowPhase, 1f + (float)(BeatEventHandler.Visual.QuarterNote.CurrentProgress % 8d));
             using (TargetedPerformance.Measure(TargetedOperation.GameplayCrowdEvents))
                 CrowdEventHandler.Update(_songRunner.SongTime);
 

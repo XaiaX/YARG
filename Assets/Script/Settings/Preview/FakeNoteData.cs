@@ -38,6 +38,7 @@ namespace YARG.Settings.Preview
     {
         // pattern: Functional Core
         public double Time;
+        internal int ElitePreviewBeat = -1;
         public ElitePreviewDescriptor? EliteDescriptor;
         // The shared Core projection retains authored color identity independently
         // of the playable destination used by EliteDescriptor.

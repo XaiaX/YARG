@@ -40,6 +40,9 @@ namespace YARG.Gameplay.Visuals
         private readonly Dictionary<int, Fret> _frets = new();
         private readonly List<(Fret Fret, int PrimaryColorIndex, int SecondaryColorIndex)> _fretColorBindings = new();
         private readonly List<KickFret> _kickFrets = new();
+        private Transform[] _columnFrets;
+        private float[] _columnEdges;
+        private bool _resized;
 
         private readonly List<int> _activeFrets  = new();
         private readonly List<int> _pulsingFrets = new();
@@ -113,6 +116,9 @@ namespace YARG.Gameplay.Visuals
             _activeFrets.Clear();
             _pulsingFrets.Clear();
             var fretsByPosition = new Dictionary<int, Fret>();
+            _columnFrets = new Transform[laneCount];
+            _columnEdges = new float[laneCount + 1];
+            _resized = false;
             foreach (var (noteType, highwayOrderingInfo) in highwayOrdering)
             {
                 // Several authored kit pieces can share one physical highway fret.
@@ -134,6 +140,7 @@ namespace YARG.Gameplay.Visuals
                 fret.transform.localScale = new Vector3(scale, 1f, 1f);
 
                 var fretComp = fret.GetComponent<Fret>();
+                _columnFrets[highwayOrderingInfo.Position] = fret.transform;
 
                 if (dualHalfFrets)
                 {
@@ -266,6 +273,28 @@ namespace YARG.Gameplay.Visuals
             {
                 kickFret.Initialize(fretColorProvider.GetFretColor(0));
             }
+        }
+
+        // One transform per physical fret. All pad aliases, hit flashes and held
+        // animations inherit the same geometry without changing their input binding.
+        internal void SetColumnEdges(float[] edges)
+        {
+            if (_columnFrets == null || (edges == null && !_resized)) return;
+            int count = _columnFrets.Length;
+            for (int i = 0; i < count; i++)
+            {
+                float left = edges == null ? (float)i / count : edges[i];
+                float right = edges == null ? (float)(i + 1) / count : edges[i + 1];
+                var fret = _columnFrets[i];
+                if (fret != null && (!_resized || left != _columnEdges[i] || right != _columnEdges[i + 1]))
+                {
+                    fret.localPosition = fret.localPosition.WithX(((left + right) * .5f - .5f) * _trackWidth);
+                    fret.localScale = fret.localScale.WithX((right - left) * _trackWidth * WIDTH_DENOMINATOR / WIDTH_NUMERATOR);
+                }
+                _columnEdges[i] = left;
+            }
+            _columnEdges[count] = 1f;
+            _resized = edges != null;
         }
 
         public void SetPressed(int index, bool pressed)

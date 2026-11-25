@@ -211,6 +211,8 @@ namespace YARG.Gameplay.Player
 
         public override BaseEngine BaseEngine => Engine;
 
+        protected int CurrentMaxMultiplier => Engine.BaseParameters.MaxMultiplier * (Engine.BaseStats.IsStarPowerActive ? 2 : 1);
+
         protected List<TNote> Notes { get; set; }
 
         protected int NoteIndex { get; set; }
@@ -493,11 +495,7 @@ namespace YARG.Gameplay.Player
 
             var stats = Engine.BaseStats;
 
-            int maxMultiplier = Engine.BaseParameters.MaxMultiplier;
-            if (stats.IsStarPowerActive)
-            {
-                maxMultiplier *= 2;
-            }
+            int maxMultiplier = CurrentMaxMultiplier;
 
             double currentStarPowerAmount = Engine.GetStarPowerBarAmount();
 

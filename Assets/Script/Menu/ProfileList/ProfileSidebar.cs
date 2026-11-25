@@ -7,6 +7,7 @@ using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using YARG.Assets.Script.Helpers;
 using YARG.Core;
 using YARG.Core.Game;
 using YARG.Input.Bindings;
@@ -91,6 +92,9 @@ namespace YARG.Menu.ProfileList
         private TMP_Dropdown _openLaneDisplayTypeDropdown;
         [SerializeField]
         private Toggle _useCymbalModelsToggle;
+        private Toggle _volumeCymbalsToggle;
+        private TMP_Dropdown _openHatGlowDropdown;
+        private TMP_Dropdown _openHatPulseCadenceDropdown;
         [SerializeField]
         private TMP_Dropdown _starPowerActivationTypeDropdown;
         [SerializeField]
@@ -405,8 +409,81 @@ namespace YARG.Menu.ProfileList
             _microphoneSetup.Show(BindingsContainer.GetBindingsForProfile(_profile), _profileView, _saveProfilesAction);
         }
 
+        private void RefreshVolumeCymbalsToggle()
+        {
+            if (_volumeCymbalsToggle == null)
+            {
+                var template = _sidebarContent.transform.Find(ProfileSettingStrings.USE_CYMBAL_MODELS);
+                var row = Instantiate(template, template.parent);
+                row.name = ProfileSettingStrings.USE_VOLUME_CYMBALS;
+                row.SetSiblingIndex(template.GetSiblingIndex() + 1);
+                var label = row.Find("Option Name").GetComponent<TextMeshProUGUI>();
+                SetConfigurationLabel(label, "Menu.ProfileList.ExperimentalCymbals");
+                _volumeCymbalsToggle = row.GetComponentInChildren<Toggle>(true);
+                // Replace the template's serialized callback before binding this row.
+                _volumeCymbalsToggle.onValueChanged = new Toggle.ToggleEvent();
+                _volumeCymbalsToggle.onValueChanged.AddListener(on =>
+                {
+                    _profile.UseVolumeCymbals = on;
+                    UpdateOpenHatGlowAvailability();
+                });
+            }
+            _volumeCymbalsToggle.SetIsOnWithoutNotify(_profile.UseVolumeCymbals);
+        }
+
+        private void RefreshOpenHatGlowDropdown()
+        {
+            if (_openHatGlowDropdown == null)
+            {
+                var template = _sidebarContent.transform.Find(ProfileSettingStrings.DRUM_FLAM_LAYOUT);
+                var row = Instantiate(template, template.parent);
+                row.name = ProfileSettingStrings.OPEN_HAT_GLOW;
+                row.SetSiblingIndex(_sidebarContent.transform.Find(ProfileSettingStrings.USE_VOLUME_CYMBALS).GetSiblingIndex() + 1);
+                SetConfigurationLabel(row.Find("Option Name").GetComponent<TextMeshProUGUI>(), "Menu.ProfileList.OpenHatGlow");
+                _openHatGlowDropdown = row.GetComponentInChildren<TMP_Dropdown>(true);
+                _openHatGlowDropdown.onValueChanged = new TMP_Dropdown.DropdownEvent();
+                _openHatGlowDropdown.onValueChanged.AddListener(index =>
+                {
+                    _profile.OpenHatGlow = (DrumOpenHatGlow)index;
+                    UpdateOpenHatGlowAvailability();
+                });
+
+                var cadenceRow = Instantiate(template, template.parent);
+                cadenceRow.name = ProfileSettingStrings.OPEN_HAT_PULSE_CADENCE;
+                cadenceRow.SetSiblingIndex(row.GetSiblingIndex() + 1);
+                SetConfigurationLabel(cadenceRow.Find("Option Name").GetComponent<TextMeshProUGUI>(), "Menu.ProfileList.OpenHatPulseCadence");
+                _openHatPulseCadenceDropdown = cadenceRow.GetComponentInChildren<TMP_Dropdown>(true);
+                _openHatPulseCadenceDropdown.onValueChanged = new TMP_Dropdown.DropdownEvent();
+                _openHatPulseCadenceDropdown.onValueChanged.AddListener(index =>
+                    _profile.OpenHatPulseCadence = (DrumOpenHatPulseCadence)index);
+            }
+            _openHatGlowDropdown.ClearOptions();
+            _openHatGlowDropdown.AddOptions(Enum.GetValues(typeof(DrumOpenHatGlow)).Cast<DrumOpenHatGlow>()
+                .Select(mode => Localize.Key("Enum.DrumOpenHatGlow", mode)).ToList());
+            _openHatGlowDropdown.SetValueWithoutNotify((int)_profile.OpenHatGlow);
+            _openHatPulseCadenceDropdown.ClearOptions();
+            _openHatPulseCadenceDropdown.AddOptions(Enum.GetValues(typeof(DrumOpenHatPulseCadence)).Cast<DrumOpenHatPulseCadence>()
+                .Select(mode => Localize.Key("Enum.DrumOpenHatPulseCadence", mode)).ToList());
+            _openHatPulseCadenceDropdown.SetValueWithoutNotify((int)_profile.OpenHatPulseCadence);
+            UpdateOpenHatGlowAvailability();
+        }
+
+        private void UpdateOpenHatGlowAvailability()
+        {
+            if (_openHatGlowDropdown == null) return;
+            bool available = _profile.UseVolumeCymbals && _profile.UseCymbalModels;
+            _openHatGlowDropdown.interactable = available;
+            _openHatPulseCadenceDropdown.interactable = available;
+        }
+
         private void EnableSettingsForGameMode()
         {
+            if (_profile.GameMode == GameMode.EliteDrums)
+            {
+                RefreshVolumeCymbalsToggle();
+                RefreshOpenHatGlowDropdown();
+            }
+
             // The passed dictionary is empty because we don't currently have any conditionalized profile settings (we used to, but they've all been
             // superseded by the highway ordering interface). You can still populate this dictionary to conditionalize certain settings behind certain
             // values of other settings ("hide setting X if setting Y has value Z", etc.).
@@ -572,7 +649,8 @@ namespace YARG.Menu.ProfileList
 
                     RefreshEliteLayoutDropdown();
                     return true;
-                }, SaveColorProfile, SaveLeftyFlip, profile.FlamLayout, profile.KeepOriginalCymbalColors);
+                }, SaveColorProfile, SaveLeftyFlip, profile.FlamLayout, profile.KeepOriginalCymbalColors,
+                profile.UseVolumeCymbals, profile.OpenHatGlow, profile.OpenHatPulseCadence);
         }
 
         private void RefreshEliteLayoutDropdown()
@@ -677,6 +755,7 @@ namespace YARG.Menu.ProfileList
         public void ChangeUseCymbalModels()
         {
             _profile.UseCymbalModels = _useCymbalModelsToggle.isOn;
+            UpdateOpenHatGlowAvailability();
         }
 
         public void ChangeEngine()

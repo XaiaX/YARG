@@ -70,6 +70,14 @@ namespace YARG.Settings
                     (int) (alternate.Value<bool>() ? DrumFlamLayout.Bucket : DrumFlamLayout.V);
             }
             settings.Remove("AlternateEliteFlamLayout");
+
+            // Earlier pulsing shadows shared the exposed minimum, including custom settings.
+            const string shadowMinimum = nameof(SettingsManager.SettingContainer.EliteOpenHatShadowMinimum);
+            if (!settings.ContainsKey(shadowMinimum) &&
+                settings.TryGetValue(nameof(SettingsManager.SettingContainer.EliteOpenHatGlowMinimum), out var oldMinimum))
+            {
+                settings[shadowMinimum] = oldMinimum.DeepClone();
+            }
             SetCurrentSchemaVersion(settings);
             return settings;
         }

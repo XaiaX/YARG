@@ -70,6 +70,9 @@ namespace YARG.Menu.HighwayConfiguration
         private ColorProfile _previewColorProfile;
         private TrackPreviewBuilder _previewBuilder;
         private bool _keepOriginalCymbalColors;
+        private bool _useVolumeCymbals = YargProfile.DEFAULT_USE_VOLUME_CYMBALS;
+        private DrumOpenHatGlow _openHatGlow = DrumOpenHatGlowExtensions.DEFAULT_MODE;
+        private DrumOpenHatPulseCadence _openHatPulseCadence;
         private static readonly Color COMBINED_CYMBAL_ACTION_COLOR = new Color32(0xC5, 0xAA, 0xF4, 0xFF);
         [SerializeField] private TMP_Dropdown _previewOptions;
         [SerializeField] private Toggle _leftyFlipToggle;
@@ -724,6 +727,9 @@ namespace YARG.Menu.HighwayConfiguration
             _acceptProfileLeftyFlip = null;
             _flamLayout = DrumFlamLayout.V;
             _keepOriginalCymbalColors = false;
+            _useVolumeCymbals = YargProfile.DEFAULT_USE_VOLUME_CYMBALS;
+            _openHatGlow = DrumOpenHatGlowExtensions.DEFAULT_MODE;
+            _openHatPulseCadence = DrumOpenHatPulseCadence.Auto;
             _lastAcceptedProfileLayout = null;
             _commitDraft = null;
         }
@@ -733,23 +739,24 @@ namespace YARG.Menu.HighwayConfiguration
             Func<EliteDrumsLayoutPreset, bool> acceptLayout, Func<ColorProfile, bool> acceptColor,
             Func<bool, bool> acceptLeftyFlip, DrumFlamLayout flamLayout = DrumFlamLayout.V, bool keepOriginalCymbalColors = false) =>
             InitializeForProfileCore(layout, previewColor, leftyFlip, save, null, closed, isProfileCurrent,
-                acceptLayout, acceptColor, acceptLeftyFlip, flamLayout, keepOriginalCymbalColors);
+                acceptLayout, acceptColor, acceptLeftyFlip, flamLayout, keepOriginalCymbalColors, YargProfile.DEFAULT_USE_VOLUME_CYMBALS, DrumOpenHatGlowExtensions.DEFAULT_MODE, DrumOpenHatPulseCadence.Auto);
 
         public void InitializeForProfileWithCommit(EliteDrumsLayoutPreset layout, ColorProfile previewColor,
             bool leftyFlip, Func<EliteDrumsLayoutPreset, EliteDrumsLayoutPreset> commit, Action closed,
             Func<bool> isProfileCurrent, Func<EliteDrumsLayoutPreset, bool> acceptLayout,
             Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip,
-            DrumFlamLayout flamLayout = DrumFlamLayout.V, bool keepOriginalCymbalColors = false) =>
+            DrumFlamLayout flamLayout = DrumFlamLayout.V, bool keepOriginalCymbalColors = false,
+            bool useVolumeCymbals = YargProfile.DEFAULT_USE_VOLUME_CYMBALS, DrumOpenHatGlow openHatGlow = DrumOpenHatGlowExtensions.DEFAULT_MODE, DrumOpenHatPulseCadence openHatPulseCadence = DrumOpenHatPulseCadence.Auto) =>
             InitializeForProfileCore(layout, previewColor, leftyFlip, null,
                 commit ?? throw new ArgumentNullException(nameof(commit)), closed, isProfileCurrent,
-                acceptLayout, acceptColor, acceptLeftyFlip, flamLayout, keepOriginalCymbalColors);
+                acceptLayout, acceptColor, acceptLeftyFlip, flamLayout, keepOriginalCymbalColors, useVolumeCymbals, openHatGlow, openHatPulseCadence);
 
         private void InitializeForProfileCore(EliteDrumsLayoutPreset layout, ColorProfile previewColor,
             bool leftyFlip, Action<EliteDrumsLayoutPreset> save,
             Func<EliteDrumsLayoutPreset, EliteDrumsLayoutPreset> commit, Action closed,
             Func<bool> isProfileCurrent, Func<EliteDrumsLayoutPreset, bool> acceptLayout,
             Func<ColorProfile, bool> acceptColor, Func<bool, bool> acceptLeftyFlip, DrumFlamLayout flamLayout,
-            bool keepOriginalCymbalColors)
+            bool keepOriginalCymbalColors, bool useVolumeCymbals, DrumOpenHatGlow openHatGlow, DrumOpenHatPulseCadence openHatPulseCadence)
         {
             var current = isProfileCurrent ?? throw new ArgumentNullException(nameof(isProfileCurrent));
             var layoutAccepted = acceptLayout ?? throw new ArgumentNullException(nameof(acceptLayout));
@@ -762,7 +769,7 @@ namespace YARG.Menu.HighwayConfiguration
             if (_initialized && IsDirty)
             {
                 RequestDiscard(() => InitializeForProfileCore(layout, previewColor, leftyFlip, save, commit,
-                    closed, current, layoutAccepted, colorAccepted, leftyAccepted, flamLayout, keepOriginalCymbalColors));
+                    closed, current, layoutAccepted, colorAccepted, leftyAccepted, flamLayout, keepOriginalCymbalColors, useVolumeCymbals, openHatGlow, openHatPulseCadence));
                 return;
             }
 
@@ -779,6 +786,9 @@ namespace YARG.Menu.HighwayConfiguration
             _leftyFlip = leftyFlip;
             _flamLayout = flamLayout;
             _keepOriginalCymbalColors = keepOriginalCymbalColors;
+            _useVolumeCymbals = useVolumeCymbals;
+            _openHatGlow = openHatGlow;
+            _openHatPulseCadence = openHatPulseCadence;
             _commitDraft = commit;
             InitializeCore(layout, save, closed);
             _lastAcceptedProfileLayout = layout.Copy();
@@ -1403,6 +1413,9 @@ namespace YARG.Menu.HighwayConfiguration
                 AllowIncompleteEliteLayoutPreview = true,
                 ColorProfileOverride = _previewColorProfile,
                 KeepOriginalCymbalColors = _keepOriginalCymbalColors,
+                UseVolumeCymbals = _useVolumeCymbals,
+                OpenHatGlow = _openHatGlow,
+                OpenHatPulseCadence = _openHatPulseCadence,
                 ForceStarPowerNotes = _forceStarPowerNotes,
                 ForceStarPower = _forceStarPower,
                 ForceGroove = _forceGroove,

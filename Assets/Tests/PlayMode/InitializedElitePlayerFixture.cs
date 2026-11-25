@@ -20,10 +20,12 @@ namespace YARG.Tests.PlayMode
         private const BindingFlags FLAGS = PreparedElitePlayerFixture.INSTANCE;
         private readonly List<GameObject> _objects = new();
         private object _session;
+        private object _secondSession;
         private EngineManager _engines;
         private int _highwayCount;
         internal double PlayerInitializationMilliseconds { get; private set; }
         internal Component Player { get; private set; }
+        internal Component SecondPlayer { get; private set; }
         internal Component Manager { get; private set; }
         internal SongChart Chart { get; private set; }
         internal object Session => _session;
@@ -34,18 +36,20 @@ namespace YARG.Tests.PlayMode
         private GameObject Own(GameObject value) { _objects.Add(value); return value; }
 
         internal IEnumerator Initialize(SongChart chart, YargProfile profile, EliteDrumsLayoutPreset layout,
-            bool legacyTheme = false, bool noFail = false, bool noStarPowerOverlap = false)
+            bool legacyTheme = false, bool noFail = false, bool noStarPowerOverlap = false,
+            YargProfile secondProfile = null, bool enableLanes = true)
         {
             _highwayCount = (int) Type("YARG.Gameplay.Player.TrackPlayer").GetField("HighwayCount").GetValue(null);
             Chart = chart;
             Assert.That(EliteDrumsLayoutValidator.Validate(layout).IsRuntimeSupported, Is.True,
                 "The fixture must test its requested layout rather than the runtime fallback.");
             _session = PreparedElitePlayerFixture.PrepareSession(profile, chart, Instrument.EliteDrums);
-            if (noStarPowerOverlap)
+            if (noStarPowerOverlap || !enableLanes)
             {
                 var property = _session.GetType().GetProperty("EnginePreset");
                 var preset = (EnginePreset)((EnginePreset)property.GetValue(_session)).CopyWithNewName("Cache overlap coverage");
-                preset.Drums.NoStarPowerOverlap = true;
+                preset.Drums.NoStarPowerOverlap = noStarPowerOverlap;
+                preset.Drums.EnableLanes = enableLanes;
                 property.SetValue(_session, preset);
             }
             _session.GetType().GetProperty("EliteDrumsLayout").SetValue(_session, layout);
@@ -57,6 +61,13 @@ namespace YARG.Tests.PlayMode
             var manager = Manager;
             var roster = (IList) Activator.CreateInstance(typeof(List<>).MakeGenericType(_session.GetType()));
             roster.Add(_session);
+            if (secondProfile != null)
+            {
+                _secondSession = PreparedElitePlayerFixture.PrepareSession(secondProfile, chart, Instrument.EliteDrums);
+                _secondSession.GetType().GetProperty("EliteDrumsLayout").SetValue(_secondSession, layout);
+                secondProfile.ReplayEliteDrumsLayout = layout.Copy();
+                roster.Add(_secondSession);
+            }
             manager.GetType().GetMethod("InitializeRuntime").Invoke(manager, new object[]
             {
                 null, null, chart, roster, _engines,
@@ -66,12 +77,7 @@ namespace YARG.Tests.PlayMode
             managerObject.SetActive(true);
             var themeManager = Own(new GameObject("ThemeManager")).AddComponent(Type("YARG.Themes.ThemeManager"));
             Own(new GameObject("Visuals"));
-            var viewPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Gameplay/HUD/TrackView.prefab");
-            bool active = viewPrefab.activeSelf;
-            viewPrefab.SetActive(false);
-            Component view;
-            try { view = Own(Object.Instantiate(viewPrefab)).GetComponentInChildren(Type("YARG.Gameplay.HUD.TrackView"), true); }
-            finally { viewPrefab.SetActive(active); }
+            var view = CreateView();
             yield return null;
             if (legacyTheme)
             {
@@ -90,17 +96,11 @@ namespace YARG.Tests.PlayMode
                 containers.Add(preset, container);
                 _session.GetType().GetProperty("ThemePreset").SetValue(_session, preset);
             }
-            var playerObject = PreparedElitePlayerFixture.ClonePlayer(Own, out var player);
-            Player = player;
             chart.SyncTrack.GenerateBeatlines(10d, true);
-            playerObject.SetActive(true);
-            var initializationClock = System.Diagnostics.Stopwatch.StartNew();
-            player.GetType().GetMethod("Initialize", FLAGS, null, new[]
-            {
-                typeof(int), Type("YARG.Player.YargPlayer"), typeof(SongChart),
-                Type("YARG.Gameplay.HUD.TrackView"), typeof(StemMixer), typeof(int?)
-            }, null).Invoke(player, new object[] { 0, _session, chart, view, null, null });
+            var initializationClock = new System.Diagnostics.Stopwatch();
+            InitializeHighway(0, _session, view, initializationClock);
             PlayerInitializationMilliseconds = initializationClock.Elapsed.TotalMilliseconds;
+            if (_secondSession != null) InitializeHighway(1, _secondSession, CreateView());
             if (noFail)
             {
                 _engines.InitializeHappiness(true);
@@ -109,18 +109,42 @@ namespace YARG.Tests.PlayMode
             yield return null;
         }
 
+        private Component CreateView()
+        {
+            var viewPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Gameplay/HUD/TrackView.prefab");
+            bool active = viewPrefab.activeSelf;
+            viewPrefab.SetActive(false);
+            try { return Own(Object.Instantiate(viewPrefab)).GetComponentInChildren(Type("YARG.Gameplay.HUD.TrackView"), true); }
+            finally { viewPrefab.SetActive(active); }
+        }
+
+        private void InitializeHighway(int index, object session, Component view, System.Diagnostics.Stopwatch clock = null)
+        {
+            var playerObject = PreparedElitePlayerFixture.ClonePlayer(Own, out var player);
+            if (index == 0) Player = player;
+            else SecondPlayer = player;
+            playerObject.SetActive(true);
+            clock?.Restart();
+            player.GetType().GetMethod("Initialize", FLAGS, null, new[]
+            {
+                typeof(int), Type("YARG.Player.YargPlayer"), typeof(SongChart),
+                Type("YARG.Gameplay.HUD.TrackView"), typeof(StemMixer), typeof(int?)
+            }, null).Invoke(player, new object[] { index, session, Chart, view, null, null });
+        }
+
         internal IEnumerator Dispose()
         {
-            if (Player != null)
+            foreach (var player in new[] { Player, SecondPlayer })
             {
+                if (player == null) continue;
                 var field = Type("YARG.Gameplay.Player.BasePlayer").GetField("EngineContainer", FLAGS);
-                var container = field.GetValue(Player);
+                var container = field.GetValue(player);
                 if (container != null)
                 {
                     foreach (var method in _engines.GetType().GetMethods())
                         if (method.Name == "Unregister" && method.GetParameters().Length == 1)
                         { method.Invoke(_engines, new[] { container }); break; }
-                    field.SetValue(Player, null);
+                    field.SetValue(player, null);
                 }
             }
             _engines?.Reset();
@@ -129,8 +153,11 @@ namespace YARG.Tests.PlayMode
             _objects.Clear();
             yield return null;
             (_session as IDisposable)?.Dispose();
+            (_secondSession as IDisposable)?.Dispose();
             _session = null;
+            _secondSession = null;
             Player = null;
+            SecondPlayer = null;
             Type("YARG.Gameplay.Player.TrackPlayer").GetField("HighwayCount").SetValue(null, _highwayCount);
         }
     }

@@ -16,7 +16,8 @@ namespace YARG.Tests.PlayMode
     public sealed class EliteCymbalMergePreviewPlayModeTests
     {
         private const BindingFlags INSTANCE = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        private const int PREVIOUS_SAMPLE_COUNT = 17 * 3 + 16 + 4;
+        private static int CymbalPairStart => (int)Production("YARG.Settings.Preview.EliteDrumsFakeNoteGenerator")
+            .GetProperty("CycleLength").GetValue(null) - PAIRS.Length;
         private static readonly string[][] PAIRS =
         {
             new[] { "left-crash", "ride" },
@@ -60,7 +61,7 @@ namespace YARG.Tests.PlayMode
             var pairs = new HashSet<string>();
             var strengths = new HashSet<string>();
             bool handFlam = false, pedalChord = false;
-            for (int index = 0; index < PREVIOUS_SAMPLE_COUNT + 3; index++)
+            for (int index = 0; index < CymbalPairStart + 3; index++)
             {
                 Call(pool, "ReturnAllObjects");
                 Call(player, "Advance", .21d);
@@ -87,7 +88,41 @@ namespace YARG.Tests.PlayMode
             Call(player, "Advance", .21d);
             Assert.That(((IList)Get(pool, "AllSpawned")).Cast<Component>().Select(Role),
                 Is.EqualTo(new[] { EliteDrumsColorRole.Snare }),
-                "Ordered merge choices must not duplicate the three unordered chord samples in the 74-sample cycle.");
+                "Ordered merge choices must not duplicate the three unordered chord samples in the kit tour.");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator CollisionTourUsesTheEditedSlotsAndKeepsAssignedCompanionsInADraft()
+        {
+            foreach (bool omitCrash in new[] { false, true })
+            {
+                var draft = EliteDrumsLayoutPreset.Compact;
+                draft.Slots[0] = EliteDrumsLayoutSlot.Ordinary("snare", omitCrash ? null : "left-crash");
+                draft.Slots[2] = EliteDrumsLayoutSlot.Ordinary("tom1", null);
+                var (player, pool) = _preview.CreatePreparedPlayer(draft, GameMode.EliteDrums, true);
+                var generator = Get(Get(player, "CurrentGameModeInfo"), "Generator");
+                // Locate the authored left-crash + snare beat independently of whether the draft can render it.
+                var reader = Activator.CreateInstance(generator.GetType());
+                int beat = 0;
+                for (; beat < CymbalPairStart; beat++)
+                {
+                    var primary = Call(reader, "CreateNote", (double)beat, null);
+                    if ((EliteDrumsColorRole)Get(Get(primary, "EliteDescriptor"), "Role") != EliteDrumsColorRole.LeftCrash)
+                        continue;
+                    var extras = (IEnumerable)Call(reader, "CreateChordNotes", (double)beat, primary, null);
+                    if (extras.Cast<object>().Any(n => (EliteDrumsColorRole)Get(Get(n, "EliteDescriptor"), "Role")
+                        == EliteDrumsColorRole.Snare)) break;
+                }
+                Assert.That(beat, Is.LessThan(CymbalPairStart));
+                generator.GetType().GetField("_index", INSTANCE).SetValue(generator, beat);
+                Call(player, "Advance", .21d);
+                var chord = ((IList)Get(pool, "AllSpawned")).Cast<Component>().ToArray();
+                Assert.That(chord.Select(Role), Is.EquivalentTo(omitCrash
+                    ? new[] { EliteDrumsColorRole.Snare }
+                    : new[] { EliteDrumsColorRole.LeftCrash, EliteDrumsColorRole.Snare }));
+                Assert.That(chord.Select(n => (bool)Get(Data(n), "OffsetElitePair")), Is.All.EqualTo(!omitCrash));
+            }
             yield return null;
         }
 
@@ -115,7 +150,7 @@ namespace YARG.Tests.PlayMode
                     else
                     {
                         Call(player, "ClearSpotlights");
-                        generator.GetType().GetField("_index", INSTANCE).SetValue(generator, PREVIOUS_SAMPLE_COUNT + sample);
+                        generator.GetType().GetField("_index", INSTANCE).SetValue(generator, CymbalPairStart + sample);
                     }
                     Call(player, "Advance", .21d);
                     var notes = ((IList)Get(pool, "AllSpawned")).Cast<Component>().ToArray();
@@ -177,7 +212,7 @@ namespace YARG.Tests.PlayMode
                 Call(player, "RefreshColors", colors);
                 var info = Get(player, "CurrentGameModeInfo");
                 var generator = info.GetType().GetField("Generator").GetValue(info);
-                generator.GetType().GetField("_index", INSTANCE).SetValue(generator, PREVIOUS_SAMPLE_COUNT + pairIndex);
+                generator.GetType().GetField("_index", INSTANCE).SetValue(generator, CymbalPairStart + pairIndex);
                 Call(player, "Advance", .21d);
                 var notes = ((IList)Get(pool, "AllSpawned")).Cast<Component>().ToArray();
                 Assert.That(notes, Has.Length.EqualTo(2), "An expanded pair retains both scoring obligations.");
@@ -230,7 +265,7 @@ namespace YARG.Tests.PlayMode
                 foreach (int sample in new[] { 0, 1, 2 })
                 {
                     Call(pool, "ReturnAllObjects");
-                    generator.GetType().GetField("_index", INSTANCE).SetValue(generator, PREVIOUS_SAMPLE_COUNT + sample);
+                    generator.GetType().GetField("_index", INSTANCE).SetValue(generator, CymbalPairStart + sample);
                     Call(player, "Advance", .21d);
                     var notes = ((IList)Get(pool, "AllSpawned")).Cast<Component>().ToArray();
                     Assert.That(notes, Has.Length.EqualTo(2));
@@ -243,7 +278,7 @@ namespace YARG.Tests.PlayMode
                     if (incomplete.Slots[index].Cymbal == missing) incomplete.Slots[index] = new EliteDrumsLayoutSlot();
                 var partial = _preview.CreatePreparedPlayer(incomplete, GameMode.EliteDrums, true);
                 var partialGenerator = Get(Get(partial.player, "CurrentGameModeInfo"), "Generator");
-                partialGenerator.GetType().GetField("_index", INSTANCE).SetValue(partialGenerator, PREVIOUS_SAMPLE_COUNT + selected);
+                partialGenerator.GetType().GetField("_index", INSTANCE).SetValue(partialGenerator, CymbalPairStart + selected);
                 Call(partial.player, "Advance", .21d);
                 Assert.That(((IList)Get(partial.pool, "AllSpawned")).Count, Is.EqualTo(1),
                     "A partial draft omits the temporarily unassigned destination after shared projection.");
@@ -260,7 +295,7 @@ namespace YARG.Tests.PlayMode
             {
                 var (player, pool) = _preview.CreatePreparedPlayer(MergedLayout(pair));
                 var generator = Get(Get(player, "CurrentGameModeInfo"), "Generator");
-                generator.GetType().GetField("_index", INSTANCE).SetValue(generator, PREVIOUS_SAMPLE_COUNT + pair);
+                generator.GetType().GetField("_index", INSTANCE).SetValue(generator, CymbalPairStart + pair);
                 Call(player, "Advance", .21d);
                 var destination = pair == 2 ? EliteDrumsColorRole.LeftCrash : EliteDrumsColorRole.HatIndifferent;
                 var moved = ((IList)Get(pool, "AllSpawned")).Cast<Component>().Single(note => Role(note) == destination);

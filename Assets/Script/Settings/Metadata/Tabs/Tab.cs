@@ -15,7 +15,7 @@ namespace YARG.Settings.Metadata
 
         public virtual bool ShowSearchBar => false;
 
-        protected readonly IPreviewBuilder PreviewBuilder;
+        protected virtual IPreviewBuilder PreviewBuilder { get; }
 
         protected Tab(string name, string icon = "Generic", IPreviewBuilder previewBuilder = null)
         {

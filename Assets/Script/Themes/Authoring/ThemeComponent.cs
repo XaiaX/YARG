@@ -30,6 +30,10 @@ namespace YARG.Themes
         private GameObject _fiveLaneNotes;
         [SerializeField]
         private GameObject _eliteLaneNotes;
+        [SerializeField, Tooltip("Optional Elite cymbal and hi-hat models for each articulation and dynamic.")]
+        private ThemeNote[] _eliteVolumeCymbals = Array.Empty<ThemeNote>();
+        [SerializeField, Tooltip("Optional fused flams for the experimental Elite cymbals.")]
+        private ThemeNote[] _eliteVolumeCymbalFlams = Array.Empty<ThemeNote>();
         [SerializeField]
         private GameObject _proKeysNotes;
 
@@ -54,6 +58,33 @@ namespace YARG.Themes
         private GameObject _kickFret;
 
         public const string THEME_META_NAME = "theme_meta";
+
+        internal bool HasEliteVolumeCymbals => _eliteLaneNotes != null && _eliteVolumeCymbals is { Length: > 0 };
+
+        public void ApplyEliteVolumeCymbals(Dictionary<ThemeNoteType, GameObject> regular,
+            Dictionary<ThemeNoteType, GameObject> starPower)
+        {
+            if (!HasEliteVolumeCymbals) return;
+            foreach (var model in _eliteVolumeCymbals)
+            {
+                if (model == null || model.NoteType is not (
+                    ThemeNoteType.Cymbal      or ThemeNoteType.CymbalGhost      or ThemeNoteType.CymbalAccent or
+                    ThemeNoteType.OpenHiHat   or ThemeNoteType.OpenHiHatGhost   or ThemeNoteType.OpenHiHatAccent or
+                    ThemeNoteType.ClosedHiHat or ThemeNoteType.ClosedHiHatGhost or ThemeNoteType.ClosedHiHatAccent))
+                    continue;
+                regular[model.NoteType] = model.gameObject;
+                // NoteGroup recolors this model's metal and playing surface during Star Power.
+                starPower.Remove(model.NoteType);
+            }
+            if (_eliteVolumeCymbalFlams == null) return;
+            foreach (var model in _eliteVolumeCymbalFlams)
+            {
+                if (model == null || model.NoteType is < ThemeNoteType.CymbalFlam or > ThemeNoteType.ClosedHiHatFlamAccent)
+                    continue;
+                regular[model.NoteType] = model.gameObject;
+                starPower.Remove(model.NoteType);
+            }
+        }
 
         public Dictionary<ThemeNoteType, GameObject> GetNoteModelsForVisualStyle(VisualStyle style, bool starPower)
         {

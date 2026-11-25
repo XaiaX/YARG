@@ -11,7 +11,7 @@ namespace YARG.Tests.EditMode
     public sealed class EliteDrumsFakeNoteGeneratorSequenceTests
     {
         private const BindingFlags STATIC = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-        private const int CYCLE_LENGTH = 74;
+        private const int CYCLE_LENGTH = 135;
 
         private static Type Production(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name)).First(type => type != null);
@@ -49,146 +49,113 @@ namespace YARG.Tests.EditMode
             return result;
         }
 
-        [TestCase("Bars")]
-        [TestCase("Combined")]
-        [TestCase("Split")]
-        public void RealGeneratorPedalSamplesHaveOnlyTheApprovedKickAndPedalCombinations(string kickMode)
+        [Test]
+        public void OpensWithEverySnareFormInDynamicOrder()
         {
-            var samples = Sequence(kickMode);
-            string[] expected =
+            var samples = Sequence("Bars").Take(9).ToArray();
+            Assert.That(samples.Select(s => Role(s.Primary)), Is.All.EqualTo("Snare"));
+            Assert.That(samples.Select(s => Dynamics(s.Primary)),
+                Is.EqualTo(new[] { "Ghost", "Normal", "Accent", "Ghost", "Normal", "Accent", "Ghost", "Normal", "Accent" }));
+            for (int i = 0; i < samples.Length; i++)
             {
-                "Kick", "DoubleKick", "KickFlam", "Stomp", "Splash",
-                "Kick+Stomp", "Kick+Splash", "DoubleKick+Stomp", "DoubleKick+Splash"
-            };
-            var pedalRoles = new[] { "Kick", "DoubleKick", "KickFlam", "Stomp", "Splash" };
-            var actual = new List<string>();
-            foreach (int index in new[] { 12, 13, 17, 19, 20 })
-            {
-                var (note, companions) = samples[index];
-                string role = Role(note);
-                Assert.That(role, Is.EqualTo(pedalRoles[Array.IndexOf(new[] { 12, 13, 17, 19, 20 }, index)]));
-                Assert.That(companions, Is.Empty, "A stacked kick flam is one preview note, matching gameplay.");
-                actual.Add(role);
+                Assert.That(Read(samples[i].Primary, "EliteHandFlam"), Is.EqualTo(i >= 3));
+                Assert.That(Read(samples[i].Primary, "EliteFlatFlam"), Is.EqualTo(i >= 6));
+                Assert.That(samples[i].Companions, Is.Empty);
             }
-            foreach (int index in new[] { 67, 68, 69, 70 })
-            {
-                var (note, companions) = samples[index];
-                string role = Role(note);
-                Assert.That(companions, Has.Length.EqualTo(1));
-                Assert.That(Role(companions[0]), Is.EqualTo(index % 2 == 1 ? "Stomp" : "Splash"));
-                actual.Add($"{role}+{Role(companions[0])}");
-            }
-            Assert.That(actual, Is.EqualTo(expected), "Pedal examples must occur once in the exact requested order.");
-
         }
 
         [TestCase("Bars")]
         [TestCase("Combined")]
         [TestCase("Split")]
-        // Retain this historical test identity while the complete cycle grows to 74 samples.
-        public void TwoCompleteCyclesPreserveOriginalRolesDynamicsAndWrapAfter63Samples(string mode)
+        public void KitTourAndCollisionChordsRepeatInOrder(string mode)
         {
             var (type, generator, create, chord) = NewGenerator(mode);
-            Assert.That(type.GetField("NOTE_COUNT").GetRawConstantValue(), Is.EqualTo(CYCLE_LENGTH * 2));
-            string[] roles = { "Snare", "HatClosed", "HatIndifferent", "HatOpen", "LeftCrash", "Ride",
-                "RightCrash", "Tom1", "Tom2", "Tom3", "Kick", "DoubleKick", "KickFlam", "Stomp",
-                "Splash", "Snare", "Wildcard" };
-            string[] flams = { "Snare", "Tom1", "Tom2", "Tom3", "HatIndifferent", "LeftCrash", "Ride", "RightCrash" };
-            var signatures = new List<string>();
+            Assert.That(type.GetProperty("CycleLength").GetValue(null), Is.EqualTo(CYCLE_LENGTH));
+            string kickPrefix = mode == "Bars" ? "Kick" : "DedicatedLaneKick";
+            string[] strengths = { "Ghost", "", "Accent" };
+            string[] drums = { "Snare", "Tom1", "Tom2", "Tom3" };
+            string[] hats = { "HatClosed", "HatIndifferent", "HatOpen" };
+            string[] cymbals = { "LeftCrash", "Ride", "RightCrash" };
+            int beat = 0;
+
             string Signature(object note)
             {
-                var descriptor = Read(note, "EliteDescriptor");
-                return string.Join("/", Role(note), Dynamics(note), Property(descriptor, "Width"),
-                    Property(descriptor, "Offset"), Property(descriptor, "DedicatedLaneSource"));
+                string form = (bool)Read(note, "EliteFlatFlam") ? "/flat" :
+                    (bool)Read(note, "EliteHandFlam") ? "/flam" : "";
+                return Role(note) + "/" + Dynamics(note) + form;
             }
-            for (int i = 0; i < CYCLE_LENGTH * 2; i++)
-            {
-                Assert.That(type.GetProperty("HasNext").GetValue(generator), Is.True, $"Before sample {i}");
-                var note = create.Invoke(generator, new object[] { (double)i, null });
-                var companions = ((IEnumerable)chord.Invoke(generator, new object[] { (double)i, note, null }))
-                    .Cast<object>().ToArray();
-                int index = i % CYCLE_LENGTH;
-                if (index < 51)
-                {
-                    if (index >= 10 && index <= 18)
-                    {
-                        int sample = index - 10;
-                        string role = sample >= 6 ? "KickFlam" : sample % 2 == 0 ? "Kick" : "DoubleKick";
-                        string suffix = sample < 2 || sample == 6 ? "Ghost" : sample is 4 or 5 or 8 ? "Accent" : "";
-                        string expected = (mode == "Bars" ? "" : "DedicatedLane") +
-                            (sample >= 6 ? "KickFlam" : "Kick") + suffix;
-                        Assert.That(Role(note), Is.EqualTo(role));
-                        Assert.That(Dynamics(note), Is.EqualTo(expected));
-                        Assert.That(companions, Is.Empty);
-                    }
-                    else
-                    {
-                        int nonKickIndex = index < 10 ? index : index - 9;
-                        int roleIndex = nonKickIndex % 14;
-                        if (roleIndex >= 10) roleIndex += 3;
-                        Assert.That(Role(note), Is.EqualTo(roles[roleIndex]), $"Retained role {i}");
-                        string dynamics = nonKickIndex / 14 == 1 ? "Accent" : nonKickIndex / 14 == 2 ? "Ghost" : "Normal";
-                        string expectedModel = roleIndex == 2 || (roleIndex >= 4 && roleIndex <= 6)
-                            ? dynamics == "Normal" ? "Cymbal" : "Cymbal" + dynamics
-                            : roleIndex == 3 ? "OpenHiHat" + (dynamics == "Normal" ? "" : dynamics)
-                            : roleIndex == 1 ? "ClosedHiHat" + (dynamics == "Normal" ? "" : dynamics)
-                            : roleIndex == 13 ? "HatStomp" : roleIndex == 14 ? "HatSplash"
-                            : roleIndex == 16 ? "Wildcard" : dynamics;
-                        Assert.That(Dynamics(note), Is.EqualTo(expectedModel), $"Retained dynamics {i}");
-                    }
-                }
-                else if (index < 67)
-                {
-                    Assert.That(Role(note), Is.EqualTo(flams[(index - 51) / 2]));
-                    Assert.That(Property(Read(note, "EliteDescriptor"), "Width"), Is.EqualTo(1f));
-                    Assert.That(Read(note, "EliteHandFlam"), Is.True);
-                    Assert.That(Read(note, "EliteFlatFlam"), Is.EqualTo((index - 51) % 2 == 1),
-                        "Every role must show a regular hand flam followed by a flat hand flam.");
-                    Assert.That(companions, Is.Empty, "One source descriptor owns two physical gems without a delayed source.");
-                }
-                else if (index >= 71)
-                {
-                    Assert.That(Role(note), Is.EqualTo(index == 73 ? "Ride" : "LeftCrash"));
-                    Assert.That(companions, Has.Length.EqualTo(1));
-                    Assert.That(Role(companions[0]), Is.EqualTo(index == 71 ? "Ride" : "RightCrash"));
-                }
-                string signature = Signature(note) + "/" + Read(note, "EliteHandFlam") + "/" +
-                    Read(note, "EliteFlatFlam") + ":" + string.Join(",", companions.Select(Signature));
-                if (i < CYCLE_LENGTH) signatures.Add(signature);
-                else Assert.That(signature, Is.EqualTo(signatures[index]), $"Full cycle wrap {i}");
-            }
-            Assert.That(type.GetProperty("HasNext").GetValue(generator), Is.True,
-                "The preview generator repeats indefinitely; NOTE_COUNT is two cycles, not a stop condition.");
-            var thirdCycle = create.Invoke(generator, new object[] { (double)(CYCLE_LENGTH * 2), null });
-            Assert.That(Signature(thirdCycle) + "/" + Read(thirdCycle, "EliteHandFlam") + "/" +
-                Read(thirdCycle, "EliteFlatFlam"), Is.EqualTo(signatures[0].Split(':')[0]),
-                "The third cycle must restart at Snare.");
-        }
 
-        [TestCase("Bars")]
-        [TestCase("Combined")]
-        [TestCase("Split")]
-        public void StandaloneAndSimultaneousPedalKickDescriptorsStayFullWidth(string mode)
-        {
-            var samples = Sequence(mode);
-            foreach (int index in new[] { 10, 11, 12, 13, 14, 15, 16, 17, 18 })
+            void Expect(params string[] gems)
             {
-                var (note, companions) = samples[index];
-                Assert.That(companions, Is.Empty);
-                var descriptor = Read(note, "EliteDescriptor");
-                Assert.That(Property(descriptor, "Width"), Is.EqualTo(1f), $"Standalone {Role(note)} at {index}");
-                Assert.That(Property(descriptor, "Offset"), Is.EqualTo(0f));
+                double time = .2d * beat++;
+                var note = create.Invoke(generator, new object[] { time, null });
+                var extras = ((IEnumerable)chord.Invoke(generator, new[] { (object)time, note, null })).Cast<object>();
+                var notes = new[] { note }.Concat(extras).ToArray();
+                Assert.That(notes.Select(Signature), Is.EqualTo(gems), $"Beat {beat}");
+                foreach (var data in notes)
+                {
+                    Assert.That(Read(data, "Time"), Is.EqualTo(time));
+                    if (Role(data) is "Kick" or "DoubleKick" or "KickFlam")
+                    {
+                        var descriptor = Read(data, "EliteDescriptor");
+                        Assert.That(Property(descriptor, "Width"), Is.EqualTo(1f));
+                        Assert.That(Property(descriptor, "Offset"), Is.EqualTo(0f));
+                        Assert.That(Property(descriptor, "DedicatedLaneSource"), Is.EqualTo(mode switch
+                        {
+                            "Bars" => null, "Combined" => "kick", _ => Role(data) == "DoubleKick" ? "kick2" : "kick1"
+                        }));
+                    }
+                }
             }
-            for (int index = 67; index < 71; index++)
+
+            string Model(string role, string strength) => role switch
             {
-                var (note, companions) = samples[index];
-                Assert.That(companions, Has.Length.EqualTo(1));
-                Assert.That(Read(companions[0], "Time"), Is.EqualTo(Read(note, "Time")),
-                    "The paired example must retain its simultaneous pedal companion.");
-                Assert.That(Role(companions[0]), Is.EqualTo(index % 2 == 1 ? "Stomp" : "Splash"));
-                var descriptor = Read(note, "EliteDescriptor");
-                Assert.That(Property(descriptor, "Width"), Is.EqualTo(1f));
-                Assert.That(Property(descriptor, "Offset"), Is.EqualTo(0f));
+                "HatClosed" => "ClosedHiHat" + strength, "HatOpen" => "OpenHiHat" + strength,
+                "HatIndifferent" or "LeftCrash" or "Ride" or "RightCrash" => "Cymbal" + strength,
+                _ => strength == "" ? "Normal" : strength
+            };
+
+            void Hand(string role)
+            {
+                foreach (string form in new[] { "", "/flam", "/flat" })
+                foreach (string strength in strengths)
+                    Expect(role + "/" + Model(role, strength) + form);
+            }
+
+            for (int lap = 0; lap < 2; lap++)
+            {
+                Hand("Snare");
+                foreach (string hat in hats) Hand(hat);
+                Expect("Stomp/HatStomp");
+                Expect("Splash/HatSplash");
+                foreach (string kick in new[] { "Kick", "DoubleKick", "KickFlam" })
+                foreach (string strength in strengths)
+                    Expect(kick + "/" + kickPrefix + (kick == "KickFlam" ? "Flam" : "") + strength);
+                foreach (string strength in strengths)
+                {
+                    Expect("Kick/" + kickPrefix + strength, "Stomp/HatStomp");
+                    Expect("Kick/" + kickPrefix + strength, "Splash/HatSplash");
+                }
+                foreach (string tom in drums.Skip(1)) Hand(tom);
+                foreach (string cymbal in cymbals) Hand(cymbal);
+                Expect("Wildcard/Wildcard");
+
+                int pair = 0;
+                foreach (string cymbal in hats.Concat(cymbals))
+                foreach (string drum in drums)
+                {
+                    pair++;
+                    var expected = new List<string> { cymbal + "/" + Model(cymbal, ""), drum + "/Normal" };
+                    if (pair % 2 == 0)
+                        expected.Add("Kick/" + kickPrefix + strengths[(pair / 2 - 1) % 3]);
+                    if (pair is 15 or 21) expected.Add("Stomp/HatStomp");
+                    if (pair is 18 or 24) expected.Add("Splash/HatSplash");
+                    Expect(expected.ToArray());
+                }
+                Expect("LeftCrash/Cymbal", "Ride/Cymbal");
+                Expect("LeftCrash/Cymbal", "RightCrash/Cymbal");
+                Expect("Ride/Cymbal", "RightCrash/Cymbal");
+                Assert.That(beat, Is.EqualTo(CYCLE_LENGTH * (lap + 1)));
             }
         }
 
@@ -250,12 +217,12 @@ namespace YARG.Tests.EditMode
                         pairedPedals++;
                         Assert.That((bool)represented.Invoke(null, new[] { extra, layout }), Is.False);
                         Assert.That((bool)represented.Invoke(null, new[] { note, layout }), Is.True,
-                            "Missing hi-hat filters the companion without dropping its bar kick primary.");
+                            "A missing pedal lane still leaves the accompanying kick or cymbal visible.");
                     }
                 }
             }
-            Assert.That(standalonePedals, Is.EqualTo(6));
-            Assert.That(pairedPedals, Is.EqualTo(4));
+            Assert.That(standalonePedals, Is.EqualTo(2));
+            Assert.That(pairedPedals, Is.EqualTo(10));
         }
     }
 }

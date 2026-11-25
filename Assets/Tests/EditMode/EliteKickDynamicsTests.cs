@@ -38,11 +38,11 @@ namespace YARG.Tests.EditMode
         [TestCase("Bars")]
         [TestCase("Combined")]
         [TestCase("Split")]
-        public void PreviewKickBlockAlternatesFeetThenShowsThreeFlams(string mode)
+        public void PreviewShowsThreeDynamicsForEachKickInputThenFlams(string mode)
         {
             var type = Production("YARG.Settings.Preview.EliteDrumsFakeNoteGenerator");
             var generator = Activator.CreateInstance(type, new object[] { Enum.Parse(typeof(EliteDrumsLayoutKickMode), mode) });
-            int count = (int)type.GetField("NOTE_COUNT").GetRawConstantValue() / 2;
+            int count = (int)type.GetProperty("CycleLength").GetValue(null);
             var kicks = new List<string>();
             var indices = new List<int>();
             for (int i = 0; i < count; i++)
@@ -57,8 +57,8 @@ namespace YARG.Tests.EditMode
                 kicks.Add(role + "/" + model);
                 indices.Add(i);
             }
-            Assert.That(kicks, Is.EqualTo(new[] { "Kick/KickGhost", "DoubleKick/KickGhost", "Kick/Kick",
-                "DoubleKick/Kick", "Kick/KickAccent", "DoubleKick/KickAccent", "KickFlam/KickFlamGhost",
+            Assert.That(kicks, Is.EqualTo(new[] { "Kick/KickGhost", "Kick/Kick", "Kick/KickAccent",
+                "DoubleKick/KickGhost", "DoubleKick/Kick", "DoubleKick/KickAccent", "KickFlam/KickFlamGhost",
                 "KickFlam/KickFlam", "KickFlam/KickFlamAccent" }));
             Assert.That(indices.Last() - indices.First(), Is.EqualTo(8), "Kick comparison must be contiguous.");
         }

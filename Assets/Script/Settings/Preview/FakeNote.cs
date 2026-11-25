@@ -141,7 +141,7 @@ namespace YARG.Settings.Preview
         {
             if (data.EliteHandFlam &&
                 ThemeNoteModelFallbacks.GetEliteFusedFlamType(drumType, data.EliteFlatFlam,
-                    FakeTrackPlayer.FlamLayout) is { } fused &&
+                    FakeTrackPlayer.FlamLayout, FakeTrackPlayer.UseVolumeCymbals) is { } fused &&
                 _noteGroups.Exists(pair => pair.NoteType == fused && !pair.StarPower))
                 return fused;
             return drumType;
@@ -236,6 +236,7 @@ namespace YARG.Settings.Preview
             bool fusedEliteFlam = resolvedType != selectedType;
             selectedType = resolvedType;
             var selectedGroup = FindNoteGroup(selectedType, useStarPower);
+            selectedGroup.SetFlatFlamMarker(NoteRef.EliteHandFlam && NoteRef.EliteFlatFlam);
             if (selectedGroup != _currentNoteGroup)
             {
                 _currentNoteGroup.SetActive(false);
@@ -309,6 +310,7 @@ namespace YARG.Settings.Preview
             }
 
             _currentNoteGroup.SetColorWithEmission(color, color);
+            _currentNoteGroup.ConfigureOpenHatGlow(FakeTrackPlayer.OpenHatGlow, FakeTrackPlayer.OpenHatPulsesPerQuarter, preview: true, leftyFlip: FakeTrackPlayer.LeftyFlip);
             if (NoteRef.EliteDescriptor == null && NoteRef.CenterNote &&
                 FakeTrackPlayer.SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums &&
                 (selectedType is ThemeNoteType.KickFlam or ThemeNoteType.DedicatedLaneKickFlam) && _currentNoteGroup.HasKickFlamColors)
@@ -432,6 +434,7 @@ namespace YARG.Settings.Preview
                 companion.Initialize();
                 if (stripEmission >= 0f) companion.OverrideZeroEmission(stripEmission);
                 companion.SetColorWithEmission(color, color);
+                companion.ConfigureOpenHatGlow(FakeTrackPlayer.OpenHatGlow, FakeTrackPlayer.OpenHatPulsesPerQuarter, preview: true, leftyFlip: FakeTrackPlayer.LeftyFlip);
                 companion.SetMetalColor(metalColor);
             }
             if (NoteRef.EliteDescriptor == null && NoteRef.CenterNote && selectedType == ThemeNoteType.KickFlam &&
@@ -577,6 +580,7 @@ namespace YARG.Settings.Preview
                         companion.SetActive(true);
                         companion.Initialize();
                         companion.SetColorWithEmission(color, color);
+                        companion.ConfigureOpenHatGlow(FakeTrackPlayer.OpenHatGlow, FakeTrackPlayer.OpenHatPulsesPerQuarter, preview: true, leftyFlip: FakeTrackPlayer.LeftyFlip);
                         companion.SetMetalColor(metalColor);
                     }
                     else if (NoteRef.ElitePairPartner?.EliteDescriptor is { } partner)
@@ -695,14 +699,20 @@ namespace YARG.Settings.Preview
             }
         }
 
-        public static GameObject CreateFakeNoteFromTheme(ThemePreset themePreset, VisualStyle style)
+        public static GameObject CreateFakeNoteFromTheme(ThemePreset themePreset, VisualStyle style) =>
+            CreateFakeNoteForProfile(themePreset, style, YargProfile.DEFAULT_USE_VOLUME_CYMBALS);
+
+        internal static GameObject CreateFakeNoteForProfile(ThemePreset themePreset, VisualStyle style, bool useVolumeCymbals)
         {
             var themeContainer = ThemeManager.Instance.GetThemeContainer(themePreset, style);
             var component = themeContainer.GetThemeComponent();
             var regular = component.GetNoteModelsForVisualStyle(style, false);
             var stars = component.GetNoteModelsForVisualStyle(style, true);
             if (style == VisualStyle.EliteDrums)
+            {
                 (regular, stars) = ThemeNoteModelFallbacks.ResolveEliteModels(regular, stars);
+                if (useVolumeCymbals) component.ApplyEliteVolumeCymbals(regular, stars);
+            }
             else if (style is VisualStyle.FourLaneDrums or VisualStyle.FiveLaneDrums)
                 (regular, stars) = ThemeNoteModelFallbacks.ResolveClassicDrumModels(regular, stars);
             var prefab = CreateFakeNoteFromModels(regular, stars);

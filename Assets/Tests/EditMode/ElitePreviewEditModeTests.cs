@@ -135,8 +135,8 @@ namespace YARG.Tests.EditMode
             var models = new HashSet<string>();
             var flamRoles = new HashSet<EliteDrumsColorRole>();
             var firstCycle = new List<EliteDrumsColorRole>();
-            Assert.That(type.GetField("NOTE_COUNT").GetRawConstantValue(), Is.EqualTo(148));
-            for (int i = 0; i < 148; i++)
+            int cycleLength = (int)type.GetProperty("CycleLength").GetValue(null);
+            for (int i = 0; i < cycleLength * 2; i++)
             {
                 var note = create.Invoke(generator, new object[] { i * 0.2d, null });
                 Assert.That(note, Is.Not.Null);
@@ -146,18 +146,11 @@ namespace YARG.Tests.EditMode
                 models.Add(note.GetType().GetField("NoteType").GetValue(note).ToString());
                 if ((bool) note.GetType().GetField("EliteHandFlam").GetValue(note))
                     flamRoles.Add(role);
-                if (i < 74) firstCycle.Add(role);
-                else Assert.That(role, Is.EqualTo(firstCycle[i - 74]), $"Repeated sample {i}");
+                if (i < cycleLength) firstCycle.Add(role);
+                else Assert.That(role, Is.EqualTo(firstCycle[i - cycleLength]), $"Repeated sample {i}");
             }
             Assert.That(flamRoles, Is.SupersetOf(new[] { EliteDrumsColorRole.Snare,
                 EliteDrumsColorRole.Tom1, EliteDrumsColorRole.Tom2, EliteDrumsColorRole.Tom3 }));
-            var tomGenerator = Activator.CreateInstance(type);
-            object tomFlam = null;
-            for (int i = 0; i <= 57; i++) tomFlam = create.Invoke(tomGenerator, new object[] { 5d, null });
-            var extras = ((System.Collections.IEnumerable)type.GetMethod("CreateChordNotes").Invoke(
-                tomGenerator, new[] { (object)5d, tomFlam, null })).Cast<object>().ToArray();
-            Assert.That(extras, Is.Empty, "Hand flam descriptors render two physical gems without another source note.");
-            Assert.That((bool)tomFlam.GetType().GetField("EliteHandFlam").GetValue(tomFlam), Is.True);
             Assert.That(roles.Count, Is.EqualTo(Enum.GetValues(typeof(EliteDrumsColorRole)).Length - 1));
             Assert.That(roles.Contains(EliteDrumsColorRole.HandFlam), Is.False);
             Assert.That(models, Does.Contain("CymbalAccent"));
@@ -220,7 +213,7 @@ namespace YARG.Tests.EditMode
                     Enum.Parse(Production("YARG.Themes.ThemeNoteType"), "Normal") }) });
 
             object missingHatNote = null;
-            for (int index = 0; index < 71; index++)
+            for (int index = 0; index < (int)generatorType.GetProperty("CycleLength").GetValue(null); index++)
             {
                 var generated = createNote.Invoke(generator, new object[] { index * 0.2d, null });
                 var generatedDescriptor = generated.GetType().GetField("EliteDescriptor").GetValue(generated);

@@ -28,6 +28,7 @@ namespace YARG.Gameplay.Player
     /// <summary>Plays native Elite notes without downcharting them; only the presentation is five-lane.</summary>
     public sealed class EliteDrumsPlayer : TrackPlayer<EliteDrumsEngine, EliteDrumNote>
     {
+        private const float LANE_WIDTH_FRACTION = 0.97f;
         private const int FIXED_LANE_COUNT = 5;
         public const int SECOND_KICK_RECEPTOR = 100;
         public EliteDrumsResolvedLayout Layout { get; private set; }
@@ -35,6 +36,15 @@ namespace YARG.Gameplay.Player
         public int GetReceptorKey(EliteDrumNote note) =>
             IsFootPad(note.Pad) && note.IsDoubleKick && Layout.KickMode == EliteDrumsLayoutKickMode.Split
                 ? SECOND_KICK_RECEPTOR : note.Pad;
+
+        private OpenHatPulsePlan _openHatPulsePlan = OpenHatPulsePlan.Preview;
+        private EliteDoubleKickWarningPlan _doubleKickWarning = EliteDoubleKickWarningPlan.Empty;
+        private EliteDoubleKickWarningVisual _doubleKickVisual;
+        private readonly List<(double Start, double End)> _visibleKickWindows = new();
+        private readonly List<(double Time, bool IsKick)> _visibleKickMarkers = new();
+        private uint _openHatVisualTick;
+        internal float OpenHatPulsesPerQuarter =>
+            _openHatPulsePlan.PulsesPerQuarter(Player.Profile.OpenHatPulseCadence, _openHatVisualTick);
 
         public bool UsesKickBars => Layout.KickMode == EliteDrumsLayoutKickMode.Bars;
         public bool UsesHistoricalPedalBars { get; private set; }
@@ -125,6 +135,12 @@ namespace YARG.Gameplay.Player
         private EliteDrumsLayoutPreset _cymbalLayout;
         private IReadOnlyList<EliteDrumsPlayableLaneSegment> _playableLaneSegments =
             Array.Empty<EliteDrumsPlayableLaneSegment>();
+        private EliteDrumsRollLayout _rollLayout;
+        private EliteFretBoundaryDotVisual _fretBoundaryDots;
+        private FretBoundaryDotSubdivision _fretBoundaryDotSpacing;
+        private bool _alwaysShowFretBoundaryDots;
+        private bool _colorHeldFretCenters;
+        private bool _colorAllFretCenters;
         private int? _mergedAction;
         private int? _mergedKeeperAction;
 
@@ -146,8 +162,8 @@ namespace YARG.Gameplay.Player
             // Keep the template outside the active highway; it is only a source for
             // ThemeManager's cloned themed prefab and is destroyed after pool prewarm.
             modelFreePrefab.AddComponent<EliteDrumsNoteElement>();
-            var themed = ThemeManager.Instance.CreateNotePrefabFromTheme(Player.ThemePreset,
-                VisualStyle.EliteDrums, modelFreePrefab, "NativeElite");
+            var themed = ThemeManager.Instance.CreateEliteNotePrefab(Player.ThemePreset, modelFreePrefab,
+                Player.Profile.UseCymbalModels && Player.Profile.UseVolumeCymbals);
             // ThemeContainer's cached prefab can serve multiple players. Each
             // player's preparation owns an isolated source and current-song cache.
             _noteTemplate = Instantiate(themed, transform);
@@ -202,10 +218,13 @@ namespace YARG.Gameplay.Player
             // direct/practice sessions, and before scores and visual geometry are built.
             var engine = new EliteDrumsEngine(NoteTrack, SyncTrack, EngineParams,
                 Player.Profile.IsBot, true, Player.Profile.EffectiveAutoHiHatPedal, cymbalLayout: _cymbalLayout);
+            _doubleKickWarning = PrepareDoubleKickWarning();
             _playableLaneSegments = EngineParams.EliteCymbalMergePolicy >= EliteDrumsCymbalProjection.PHYSICAL_UNION_POLICY &&
                 EliteDrumsCymbalPairs.TryGet(_cymbalLayout, out _)
                 ? EliteDrumsPlayableLaneSegments.ResolvePhysical(NoteTrack)
                 : EliteDrumsPlayableLaneSegments.Resolve(NoteTrack);
+            // Practice slices recreate the engine after the fret layout is already resolved.
+            if (Layout != null) PrepareRollLayout();
             EngineContainer = GameManager.EngineManager.Register(engine, NoteTrack, Chart, Player.RockMeterPreset);
             HitWindow = EngineParams.HitWindow;
             engine.OnNoteHit += OnNoteHit;
@@ -253,6 +272,7 @@ namespace YARG.Gameplay.Player
                 _ordering.Add(SECOND_KICK_RECEPTOR, new HighwayOrderingInfo(
                     ApplyLefty(Layout.SourceToLane["kick2"]), ColorProfile.EliteDrumsFretColorAdapter.EncodeSlot(
                         Layout.Lanes[Layout.SourceToLane["kick2"]].SavedColumn)));
+            PrepareRollLayout();
             _fretArray.UseKickFrets = UsesKickBars;
             var colors = Player.ColorProfile.EliteDrums;
             var kickPrefab = ThemeManager.Instance.CreateKickFretPrefabFromTheme(Player.ThemePreset,
@@ -273,6 +293,7 @@ namespace YARG.Gameplay.Player
             _kickFretFlash.Initialize(colors.GetParticleColor((int) ColorProfile.EliteDrumsFret.Kick).ToUnityColor());
             NoteTrack.SetDrumActivationFlags(Player.Profile.StarPowerActivationType);
             Notes = NoteTrack.Notes;
+            _openHatVisualTick = 0;
             TrackEffect.ConfigureEliteDrumFills(Notes, _trackEffects,
                 note => UsesKickBars && IsFootPad(note.Pad) ? -1f : GetVisualPosition(note), LaneCount);
             BRELanes = new LaneElement[LaneCount];
@@ -311,6 +332,7 @@ namespace YARG.Gameplay.Player
             // the full fret width defines the narrow, waiting sustain.
             float coreWidth = column * (Player.Profile.OneFretHiHatSustains ? 1 : .25f);
             _hiHatSustainVisual.ConfigureEnvelopes(SyncTrack, headCenter, coreWidth, column);
+            _hiHatSustainVisual.ConfigureRollHeads(this);
             _hiHatSustainVisual.SetColors(color, Player.ColorProfile.EliteDrums
                 .GetNoteStarPowerColor(EliteDrumsColorRole.HatOpen).ToUnityColor());
             SetHiHatSustained(false);
@@ -318,6 +340,9 @@ namespace YARG.Gameplay.Player
 
         protected override void UpdateVisuals(double visualTime)
         {
+            UpdateDoubleKickWarning(visualTime);
+            UpdateRollFrets(visualTime);
+            UpdateOpenHatCadence(visualTime);
             base.UpdateVisuals(visualTime);
             UpdateHiHatSustains(visualTime);
             if (Engine.IsCodaActive)
@@ -328,6 +353,70 @@ namespace YARG.Gameplay.Player
                         CodaSection.GetNormalizedTimeSinceLastHit(visualTime, _breLaneLastHit[lane]));
                 }
             }
+        }
+
+        private EliteDoubleKickWarningPlan PrepareDoubleKickWarning()
+        {
+            var playback = Player.ResolvedDrumPlayback;
+            bool includesExtraKicks = playback != null ? playback.ExtraKickPolicy == DrumExtraKickPolicy.Include
+                : Player.Profile.CurrentDifficulty == Difficulty.ExpertPlus;
+            if (!includesExtraKicks) return EliteDoubleKickWarningPlan.Empty;
+
+            AuthoredDrumSourceTier source = null;
+            if (playback != null)
+                Chart.AuthoredDrumSources.TryGetTier(playback.SourceFormat, playback.SourceDifficulty, out source);
+            else if (Chart.EliteDrums.TryGetDifficulty(Difficulty.ExpertPlus, out var native) &&
+                native.Notes.Exists(note => !note.IsInvisibleTerminator))
+                Chart.AuthoredDrumSources.TryGetTier(DrumSourceFormat.Elite, Difficulty.Expert, out source);
+            return EliteDoubleKickWarningPlan.FromChart(NoteTrack, SyncTrack, source?.PairedKickTicks);
+        }
+
+        private void UpdateDoubleKickWarning(double visualTime)
+        {
+            var settings = SettingsManager.Settings;
+            var style = settings?.EliteDoubleKickWarningStyle.Value ?? DoubleKickWarningStyle.EdgeRails;
+            bool through = settings?.EliteDoubleKickWarningThroughMeasures.Value ?? true;
+            bool combined = style == DoubleKickWarningStyle.EmberTrailsAndFlames;
+            _visibleKickWindows.Clear();
+            if (style != DoubleKickWarningStyle.Off && style != DoubleKickWarningStyle.BeaterFlames && NoteSpeed > 0)
+            {
+                double horizon = visualTime + (ZeroFadePosition - STRIKE_LINE_POS) / NoteSpeed;
+                _doubleKickWarning.GetVisibleWindows(visualTime, horizon, through, _visibleKickWindows);
+            }
+
+            bool flames = (style == DoubleKickWarningStyle.BeaterFlames ||
+                (combined && (!(settings?.EliteDoubleKickFlamesRequireFullMultiplier.Value ?? true) ||
+                    Engine.BaseStats.ScoreMultiplier == CurrentMaxMultiplier))) &&
+                _doubleKickWarning.IsActive(visualTime, through);
+            if (!flames && _visibleKickWindows.Count == 0)
+            {
+                _doubleKickVisual?.Hide();
+                return;
+            }
+
+            if (_doubleKickVisual == null)
+            {
+                var root = new GameObject("Elite double kick warning") { layer = gameObject.layer };
+                root.transform.SetParent(transform, false);
+                _doubleKickVisual = root.AddComponent<EliteDoubleKickWarningVisual>();
+            }
+            _visibleKickMarkers.Clear();
+            if (combined || style == DoubleKickWarningStyle.EmberTrails)
+                _doubleKickWarning.GetEmberMarkers(_visibleKickWindows, _visibleKickMarkers);
+            float pulse = flames ? _doubleKickWarning.BeaterKickPulse(visualTime, through) : 0;
+            _doubleKickVisual.Show(visualTime, NoteSpeed, ZeroFadePosition, _visibleKickWindows,
+                style == DoubleKickWarningStyle.EdgeRails, _visibleKickMarkers,
+                settings?.StaggerEliteKickSparkAnimation.Value ?? true, flames, pulse);
+        }
+
+        private void UpdateOpenHatCadence(double visualTime)
+        {
+            if (!_openHatPulsePlan.HasTempoSections) return;
+            float previous = OpenHatPulsesPerQuarter;
+            _openHatVisualTick = SyncTrack.TimeToTick(Math.Max(0, visualTime));
+            if (OpenHatPulsesPerQuarter == previous) return;
+            foreach (var element in NotePool.AllSpawned)
+                if (element is EliteDrumsNoteElement gem) gem.RefreshOpenHatGlow();
         }
 
         private void UpdateHiHatSustains(double visualTime)
@@ -439,35 +528,152 @@ namespace YARG.Gameplay.Player
         // those flags to TrackPlayer would draw a second, cross-pad-truncated strip.
         protected override bool ShouldSpawnNativeLane(EliteDrumNote note) => false;
 
-        protected override void OnNoteSpawned(EliteDrumNote parentNote)
+        private void PrepareRollLayout()
         {
-            // Pedal-down duration describes hat state, not a rendered roll lane.
-            if (!Engine.BaseParameters.EnableLanes)
-            {
-                return;
-            }
+            var cadence = Player.Profile.OpenHatPulseCadence;
+            _openHatPulsePlan = cadence == DrumOpenHatPulseCadence.Auto && SyncTrack != null
+                ? OpenHatPulsePlan.FromChart(NoteTrack.Notes, SyncTrack) : OpenHatPulsePlan.Preview;
+            _rollLayout = new EliteDrumsRollLayout(GetRollStrips(), NoteTrack.Notes, LaneCount, Player.Profile.LeftyFlip,
+                GetReceptorKey, note => EliteDrumsRuntimeGeometry.GetCollisionPartner(this, note), GetVisualPosition,
+                SyncTrack, GetCenterDotFootprint);
+            _fretBoundaryDotSpacing = 0;
+            UpdateFretBoundaryDotRows();
+        }
 
-            // The engine and renderer share projected membership, so a strip never
-            // promises cadence credit on a different physical cymbal.
+        private IEnumerable<EliteDrumsRollLayout.Strip> GetRollStrips()
+        {
+            if (!EngineParams.EnableLanes) yield break;
             foreach (var segment in _playableLaneSegments)
             {
                 int pad = segment.Pad;
-                if (pad == (int)EliteDrumPad.HatPedal || segment.EndTime <= segment.StartTime ||
-                    !ReferenceEquals(segment.Members[0].ParentOrSelf, parentNote)) continue;
+                // Pedal-down duration describes hat state, not a rendered roll lane.
+                if (pad == (int) EliteDrumPad.HatPedal || segment.EndTime <= segment.StartTime) continue;
                 foreach (int receptor in GetNativeAuthoredLaneReceptors(pad, Layout.KickMode))
+                    yield return new EliteDrumsRollLayout.Strip(segment, receptor, GetVisualPosition(receptor),
+                        IsFootPad(pad) && UsesKickBars);
+            }
+        }
+
+        private void UpdateRollFrets(double visualTime)
+        {
+            _fretArray.SetColumnEdges(_rollLayout?.Sample(visualTime));
+            UpdateFretBoundaryDotRows();
+            _fretBoundaryDots?.Render(visualTime, NoteSpeed, ZeroFadePosition + NOTE_SPAWN_OFFSET);
+        }
+
+        private void UpdateFretBoundaryDotRows()
+        {
+            if (_rollLayout == null) return;
+            var settings = SettingsManager.Settings;
+            bool alwaysShow = settings?.AlwaysShowEliteFretBoundaryDots.Value ?? false;
+            bool colorHeldCenters = settings?.ColorEliteHeldFretCenters.Value ?? false;
+            bool colorAllCenters = settings?.ColorEliteAllFretCenters.Value ?? false;
+            if (_fretBoundaryDots == null)
+            {
+                if (!_rollLayout.HasExpansion && !alwaysShow) return;
+                var root = new GameObject("Elite fret boundary dots") { layer = gameObject.layer };
+                root.transform.SetParent(transform, false);
+                _fretBoundaryDots = root.AddComponent<EliteFretBoundaryDotVisual>();
+            }
+            var spacing = settings?.EliteFretBoundaryDotSpacing.Value ??
+                SettingsManager.DEFAULT_FRET_BOUNDARY_DOT_SPACING;
+            spacing = spacing is FretBoundaryDotSubdivision.Eighth or FretBoundaryDotSubdivision.Sixteenth
+                or FretBoundaryDotSubdivision.ThirtySecond or FretBoundaryDotSubdivision.SixtyFourth
+                or FretBoundaryDotSubdivision.HundredTwentyEighth
+                ? spacing : SettingsManager.DEFAULT_FRET_BOUNDARY_DOT_SPACING;
+            if (spacing == _fretBoundaryDotSpacing && alwaysShow == _alwaysShowFretBoundaryDots &&
+                colorHeldCenters == _colorHeldFretCenters && colorAllCenters == _colorAllFretCenters) return;
+            _fretBoundaryDotSpacing = spacing;
+            _alwaysShowFretBoundaryDots = alwaysShow;
+            _colorHeldFretCenters = colorHeldCenters;
+            _colorAllFretCenters = colorAllCenters;
+            Color32[] fretTints = null;
+            if (colorHeldCenters || colorAllCenters)
+            {
+                fretTints = new Color32[LaneCount];
+                for (int column = 0; column < LaneCount; column++)
                 {
-                    if (!LanePool.CanSpawnAmount(1)) BeforeNativeLaneAllocation(1);
-                    var lane = TakeNativeLane();
-                    if (lane == null) continue;
-                    var position = _ordering.TryGetValue(receptor, out var info) ? info.Position : LaneCount / 2;
-                    lane.SetTimeRange(segment.StartTime, segment.EndTime);
-                    lane.SetIndexRange(position, position);
-                    lane.SetAppearance(Instrument.FiveLaneDrums, position, position, LaneCount,
-                        GetLaneColor(Player.ColorProfile.EliteDrums, segment.Members[0]).ToUnityColor(),
-                        GetLaneScale());
-                    lane.ToggleFullWidth(IsFootPad(pad) && UsesKickBars);
-                    lane.EnableFromPool();
+                    var color = GetFretSlotColor(column);
+                    fretTints[column] = new Color32(color.R, color.G, color.B, 255);
                 }
+            }
+            _fretBoundaryDots.SetRows(_rollLayout, (int)spacing, alwaysShow, colorHeldCenters, colorAllCenters, fretTints);
+        }
+
+        private int GetCenterDotFootprint(EliteDrumNote note)
+        {
+            if (note.Pad == (int)EliteDrumPad.Wildcard || (IsFootPad(note.Pad) && UsesKickBars))
+                return (1 << LaneCount) - 1;
+            if (!_ordering.TryGetValue(GetReceptorKey(note), out var receptor)) return 0;
+            if (note.Pad != (int)EliteDrumPad.HatPedal) return 1 << receptor.Position;
+
+            var (first, end) = EliteDrumsRuntimeGeometry.GetPedalColumnRange(receptor.Position, LaneCount);
+            return ((1 << (end - first)) - 1) << first;
+        }
+
+        internal bool TryGetArrivalColumn(EliteDrumNote note, out float center, out float width)
+        {
+            var edges = _rollLayout?.Sample(note.Time);
+            if (edges == null || !_ordering.TryGetValue(GetReceptorKey(note), out var column))
+            {
+                center = width = 0;
+                return false;
+            }
+            int i = column.Position;
+            center = ((edges[i] + edges[i + 1]) * .5f - .5f) * TRACK_WIDTH;
+            width = (edges[i + 1] - edges[i]) * TRACK_WIDTH;
+            return true;
+        }
+
+        // Borrowed until the next layout sample. Both kick variants copy the seam
+        // positions they need into their meshes during ConfigureKickLanes.
+        internal float[] TryGetKickBoundaries(EliteDrumNote note) => _rollLayout?.Sample(note.Time);
+
+        internal bool TryGetRollSlot(EliteDrumNote note, out float center, out float width)
+        {
+            if (_rollLayout != null && _rollLayout.TryGetSlot(note, out var slot))
+            {
+                center = slot.Center;
+                width = slot.Width;
+                return true;
+            }
+
+            // A full-size head on a donor fret can cross the seam into a simultaneous
+            // hand note next door. Fit it to its arrival fret only for that chord.
+            var chord = note.ParentOrSelf;
+            if (chord.ChildNotes.Count > 0 && EliteDrumsNoteElement.IsHandFlamPad(note.Pad) &&
+                TryGetArrivalColumn(note, out center, out width) &&
+                width < Layout.GetLaneWidth(TRACK_WIDTH) - .00001f)
+            {
+                int column = GetVisualPosition(note);
+                foreach (var other in chord.AllNotes)
+                {
+                    if (!other.IsInvisibleTerminator && EliteDrumsNoteElement.IsHandFlamPad(other.Pad) &&
+                        Math.Abs(GetVisualPosition(other) - column) == 1)
+                        return true;
+                }
+            }
+            center = width = 0f;
+            return false;
+        }
+
+        protected override void OnNoteSpawned(EliteDrumNote parentNote)
+        {
+            if (_rollLayout == null || !_rollLayout.TryGetStarts(parentNote, out var starts)) return;
+            foreach (var strip in starts)
+            {
+                if (!LanePool.CanSpawnAmount(1)) BeforeNativeLaneAllocation(1);
+                var lane = TakeNativeLane();
+                if (lane == null) continue;
+                var segment = strip.Segment;
+                lane.SetTimeRange(segment.StartTime, segment.EndTime);
+                lane.SetIndexRange(strip.Column, strip.Column);
+                lane.SetAppearance(Instrument.FiveLaneDrums, strip.Column, strip.Center,
+                    GetLaneColor(Player.ColorProfile.EliteDrums, segment.Members[0]).ToUnityColor(),
+                    strip.Width * LANE_WIDTH_FRACTION);
+                lane.ToggleFullWidth(strip.FullWidth);
+                lane.SetRollPath(strip.Path);
+                lane.EnableFromPool();
             }
         }
 
@@ -497,13 +703,15 @@ namespace YARG.Gameplay.Player
         {
             lane.SetIndexRange(laneIndex, laneIndex);
             lane.SetAppearance(Instrument.FiveLaneDrums, laneIndex, laneIndex, LaneCount,
-                Player.ColorProfile.EliteDrums.GetSlotFretColor(
-                    Layout.Lanes[ApplyLefty(laneIndex)].SavedColumn).ToUnityColor(), GetLaneScale());
+                GetFretSlotColor(laneIndex).ToUnityColor(), GetLaneScale());
         }
+
+        private System.Drawing.Color GetFretSlotColor(int column) =>
+            Player.ColorProfile.EliteDrums.GetSlotFretColor(Layout.Lanes[ApplyLefty(column)].SavedColumn);
 
         // The lane mesh is one unit wide. Fit its outer borders inside the real
         // compacted column width, leaving a small gap between neighboring strips.
-        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / LaneCount * 0.97f;
+        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / LaneCount * LANE_WIDTH_FRACTION;
 
         protected override void RescaleLanesForBRE()
         {
@@ -746,9 +954,11 @@ namespace YARG.Gameplay.Player
         protected override void ResetVisuals()
         {
             base.ResetVisuals();
+            _doubleKickVisual?.Hide();
             Array.Fill(_breLaneLastHit, double.NegativeInfinity);
             _pendingOverhitAction = null;
             _pendingWildcardHit = false;
+            _fretBoundaryDots?.Clear();
             // Replay seeking rebuilds hit history before resetting the visuals.
             _hiHatSustainVisual?.Clear(resetActivationTimes: false);
             SetHiHatSustained(false);

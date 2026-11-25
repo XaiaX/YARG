@@ -13,7 +13,7 @@ using static YARG.Core.Chart.EliteDrumNote;
 
 namespace YARG.Tests.PlayMode
 {
-    public sealed class EliteCymbalLaneUnionPlayModeTests : EliteFlamRuntimeTestBase
+    public sealed partial class EliteCymbalLaneUnionPlayModeTests : EliteFlamRuntimeTestBase
     {
         [UnityTest]
         public IEnumerator OverlappingMergedRollsRenderOnePhysicalStrip()
@@ -105,6 +105,122 @@ namespace YARG.Tests.PlayMode
                     "Adjacent lane borders must leave a visible gap instead of overlapping coplanar faces.");
                 yield return Fixture.Dispose();
                 Fixture = null;
+            }
+        }
+
+        private static readonly string[] SharedFretCases =
+        {
+            "compact-pair", "compact-pair-lefty", "compact-triple", "compact-triple-lefty",
+            "compact-triple-chord", "compact-triple-chord-lefty", "full"
+        };
+
+        [UnityTest]
+        public IEnumerator AuthoredRollsAndAlternatingGemsUseTheSameColumns(
+            [ValueSource(nameof(SharedFretCases))] string scenario)
+        {
+            bool full = scenario == "full";
+            bool lefty = scenario.EndsWith("-lefty", StringComparison.Ordinal);
+            bool ridePresent = !scenario.Contains("pair");
+            bool extraChord = scenario.Contains("chord");
+            var layout = full ? EliteDrumsLayoutPreset.Full : EliteDrumsLayoutPreset.Compact;
+            var pads = ridePresent ? new[] { EliteDrumPad.Ride, EliteDrumPad.Tom3, EliteDrumPad.RightCrash }
+                : new[] { EliteDrumPad.Tom3, EliteDrumPad.RightCrash };
+            var phrases = ridePresent
+                ? new[] { PhraseType.EliteDrums_RideLane, PhraseType.EliteDrums_Tom3Lane, PhraseType.EliteDrums_RightCrashLane }
+                : new[] { PhraseType.EliteDrums_Tom3Lane, PhraseType.EliteDrums_RightCrashLane };
+            // Lefty cases stagger the endpoints as well. Each member must keep its slot
+            // for the entire roll, including its first and last note.
+            var streams = pads.Select((pad, index) => Stream(pad.ToString(), pad,
+                .125d + (lefty ? index / 64d : 0d), .21875d + .09375d * index,
+                .625d + (lefty ? index / 64d : 0d))).ToArray();
+            var heads = streams.SelectMany(stream => stream);
+            if (extraChord) heads = heads.Concat(Stream("loose tom", EliteDrumPad.Tom2, streams[0][1].Time));
+            var chartNotes = heads.GroupBy(note => note.Tick)
+                .OrderBy(group => group.Key).Select(group =>
+                {
+                    var parent = group.First();
+                    foreach (var child in group.Skip(1)) parent.AddChildNote(child);
+                    return parent;
+                }).ToArray();
+            var song = PreparedElitePlayerFixture.CreateChart(chartNotes);
+            var tier = song.AuthoredDrumSources.Tiers.Values.Single();
+            var authored = (InstrumentDifficulty<EliteDrumNote>)tier.GetType().GetField("_elite", INSTANCE).GetValue(tier);
+            authored.SetEliteDrumNativeAuthoredLaneRecords(streams.Select((notes, i) =>
+                new EliteDrumNativeAuthoredLaneRecord(i, phrases[i], notes[0].Tick, notes[^1].Tick,
+                    notes.Select(note => note.SourceDefinition))).ToArray());
+            var profile = Profile();
+            profile.LeftyFlip = lefty;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(song, profile, layout, noFail: true);
+            var player = Fixture.Player;
+            foreach (var parent in Playable.Notes)
+            {
+                player.GetType().GetMethod("OnNoteSpawned", INSTANCE).Invoke(player, new object[] { parent });
+                foreach (var note in parent.AllNotes)
+                    player.GetType().GetMethod("SpawnNote", INSTANCE).Invoke(player, new object[] { note });
+            }
+            yield return null;
+
+            var strips = SpawnedLanes().OrderBy(lane => lane.transform.localPosition.x).ToArray();
+            Assert.That(strips, Has.Length.EqualTo(pads.Length));
+            var physicalOrder = full ? new[] { EliteDrumPad.Tom3, EliteDrumPad.Ride, EliteDrumPad.RightCrash } : pads.ToArray();
+            if (lefty) Array.Reverse(physicalOrder);
+            var stripBounds = strips.Select(lane => BakedBounds(lane, player.transform)).ToArray();
+            for (int i = 0; i < strips.Length; i++)
+            {
+                var strip = strips[i];
+                var members = streams[Array.IndexOf(pads, physicalOrder[i])];
+                Assert.That(strip.GetType().GetProperty("ElementTime").GetValue(strip), Is.EqualTo(members[0].Time));
+                Assert.That(strip.GetType().GetField("EndTime").GetValue(strip), Is.EqualTo(members[^1].Time));
+                if (i > 0)
+                    Assert.That(stripBounds[i].min.x, Is.GreaterThan(stripBounds[i - 1].max.x),
+                        "Each simultaneously active strip must have its own visible space.");
+            }
+
+            var elements = player.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement"))
+                .Where(element => element.GetType().GetProperty("NoteRef").GetValue(element) != null).ToArray();
+            Assert.That(elements, Has.Length.EqualTo(pads.Length * 3 + (extraChord ? 1 : 0)));
+            foreach (var element in elements)
+            {
+                var note = (EliteDrumNote)element.GetType().GetProperty("NoteRef").GetValue(element);
+                var renderers = element.GetComponentsInChildren<MeshRenderer>().Where(renderer => renderer.enabled).ToArray();
+                Assert.That(renderers, Is.Not.Empty);
+                var bounds = renderers[0].bounds;
+                foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+                float left = player.transform.InverseTransformPoint(bounds.min).x;
+                float right = player.transform.InverseTransformPoint(bounds.max).x;
+                var pad = (EliteDrumPad)note.Pad;
+                int slot = Array.IndexOf(physicalOrder, pad == EliteDrumPad.Tom2 ? EliteDrumPad.Ride : pad);
+                float expected = strips[slot].transform.localPosition.x;
+                if (extraChord)
+                {
+                    // The stray Tom 2 opens a second fret. Read its actual boundaries at
+                    // this head's arrival, since both strips change shape during the return.
+                    player.GetType().GetMethod("UpdateRollFrets", INSTANCE).Invoke(player, new object[] { note.Time });
+                    var fret = Receptor(player, pad).transform;
+                    float width = .4f * fret.localScale.x;
+                    bool cymbal = pad == EliteDrumPad.Ride || pad == EliteDrumPad.RightCrash;
+                    bool split = pad != EliteDrumPad.Ride || note.Tick == streams[0][1].Tick;
+                    float shift = split ? width / 4f : Mathf.Max(0f, width - .4f) / 2f;
+                    expected = fret.localPosition.x + (cymbal != lefty ? shift : -shift);
+                    if (split)
+                        Assert.That(right - left, Is.LessThanOrEqualTo(width / 2f + .002f),
+                            "Each paired gem must fit inside its half of the moving fret.");
+                }
+                Assert.That((left + right) / 2f, Is.EqualTo(expected).Within(.015f),
+                    $"At {note.Time}, {(EliteDrumPad)note.Pad} must follow its strip on {scenario}.");
+            }
+            // Each strip starts on its receptor, or on its own half if two roll lanes share it.
+            for (int i = 0; i < strips.Length; i++)
+            {
+                var pad = physicalOrder[i];
+                var first = streams[Array.IndexOf(pads, pad)][0];
+                player.GetType().GetMethod("UpdateRollFrets", INSTANCE).Invoke(player, new object[] { first.Time });
+                var fret = Receptor(player, pad).transform;
+                float expected = fret.localPosition.x;
+                if (!full && pad != EliteDrumPad.Ride)
+                    expected += ((pad == EliteDrumPad.RightCrash) != lefty ? 1f : -1f) * .1f * fret.localScale.x;
+                Assert.That(strips[i].transform.localPosition.x, Is.EqualTo(expected).Within(.005f));
             }
         }
 

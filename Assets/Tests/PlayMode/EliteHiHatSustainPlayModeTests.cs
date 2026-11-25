@@ -278,6 +278,68 @@ namespace YARG.Tests.PlayMode
         }
 
         private static readonly double[] VisualClockOffsets = { -.1, .1 };
+        private static readonly bool[] PackedSustainWidths = { false, true };
+
+        [UnityTest]
+        public IEnumerator WaitingOpenHatHeadFollowsItsPackedRollSlot(
+            [ValueSource(nameof(PackedSustainWidths))] bool narrow)
+        {
+            var hats = new[] { Open(.25, 400), Open(.75, 400) };
+            EliteDrumNote Source(EliteDrumPad pad, double time) => new(pad, DrumNoteType.Neutral,
+                EliteDrumsHatState.Indifferent, EliteDrumsHatPedalType.Stomp, false, DrumNoteFlags.None,
+                NoteFlags.None, EliteDrumsChannelFlag.None, time, (uint)(time * 960), false,
+                new EliteDrumSourceDefinition(pad.ToString(), (int)(time * 960), (int)pad, (uint)(time * 960), 0, time));
+            var toms = new[] { Source(EliteDrumPad.Tom1, .1875), Source(EliteDrumPad.Tom1, .6875) };
+            var crashes = new[] { Source(EliteDrumPad.LeftCrash, .21875), Source(EliteDrumPad.LeftCrash, .71875) };
+            var song = PreparedElitePlayerFixture.CreateChart(hats.Concat(toms).Concat(crashes).OrderBy(n => n.Time).ToArray());
+            var tier = song.AuthoredDrumSources.Tiers.Values.Single();
+            var authored = (InstrumentDifficulty<EliteDrumNote>)tier.GetType().GetField("_elite", INSTANCE).GetValue(tier);
+            EliteDrumNativeAuthoredLaneRecord Roll(int id, PhraseType phrase, EliteDrumNote[] notes) =>
+                new(id, phrase, notes[0].Tick, notes[^1].Tick, notes.Select(n => n.SourceDefinition));
+            authored.SetEliteDrumNativeAuthoredLaneRecords(new[] {
+                Roll(0, PhraseType.EliteDrums_HiHatLane, hats), Roll(1, PhraseType.EliteDrums_Tom1Lane, toms),
+                Roll(2, PhraseType.EliteDrums_LeftCrashLane, crashes) });
+            var profile = Profile();
+            profile.OneFretHiHatSustains = narrow;
+            profile.LeftyFlip = narrow;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(song, profile, YARG.Core.Game.EliteDrumsLayoutPreset.Compact, noFail: true);
+            var visual = Visual();
+            var mesh = visual.GetComponent<MeshFilter>().sharedMesh;
+            var range = visual.GetComponent<MeshRenderer>().sharedMaterial.GetVector("_HeadRange");
+            (float center, float width, float span) VisibleHead(float time)
+            {
+                var vertices = mesh.vertices;
+                var row = mesh.uv.Select((uv, i) => (uv, i)).Where(p => Math.Abs(p.uv.y - time) < .00001f)
+                    .OrderBy(p => p.uv.x).ToArray();
+                float x = visual.transform.localPosition.x;
+                float PositionAt(float u)
+                {
+                    var before = row.Last(p => p.uv.x <= u);
+                    var after = row.First(p => p.uv.x >= u);
+                    return x + Mathf.Lerp(vertices[before.i].x, vertices[after.i].x,
+                        Mathf.InverseLerp(before.uv.x, after.uv.x, u));
+                }
+                float axis = (range.x + range.y) * .5f;
+                float half = range.w / range.z * .5f;
+                return (PositionAt(axis), PositionAt(axis + half) - PositionAt(axis - half),
+                    PositionAt(1f) - PositionAt(0f));
+            }
+            Render(visual, .20);
+            var waiting = VisibleHead(.25f);
+            // The neighboring pair expands its column to .64. Each of the
+            // other four columns donates .06, giving the hat a .34-wide fret.
+            float expectedCenter = .49f * (profile.LeftyFlip ? 1f : -1f);
+            Assert.That(waiting.center, Is.EqualTo(expectedCenter).Within(.0001f));
+            Assert.That(waiting.width, Is.EqualTo(.4f).Within(.0001f), "A lone hat keeps its normal gem width.");
+
+            Press(Fixture.Player, EliteDrumsAction.EliteOpenHiHat, .25);
+            ((EliteDrumsEngine)Engine(Fixture.Player)).Update(.40);
+            Render(visual, .40);
+            var expanded = VisibleHead(.40f);
+            Assert.That(expanded.center, Is.EqualTo(expectedCenter).Within(.0001f));
+            Assert.That(expanded.span, Is.EqualTo(narrow ? .34f : .34f * 2 + .64f).Within(.0001f));
+        }
 
         [UnityTest]
         public IEnumerator ExpansionUsesElapsedInputTimeDespiteADifferentVisualClock(

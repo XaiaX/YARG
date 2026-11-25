@@ -31,6 +31,9 @@ namespace YARG.Assets.Script.Helpers
         public const string MIDI_TEST                               = "MIDI Test";
         public const string ELITE_DRUMS_LAYOUT_SELECT                = "Elite Drums Layout";
         public const string USE_CYMBAL_MODELS                       = "Use Cymbal Models";
+        public const string USE_VOLUME_CYMBALS                      = "Experimental Cymbals";
+        public const string OPEN_HAT_PULSE_CADENCE                   = "Open Hi-Hat Pulse Cadence";
+        public const string OPEN_HAT_GLOW                           = "Open Hi-Hat Glow";
         public const string DRUM_STAR_POWER_ACTIVATION_TYPE         = "Star Power Activation Type";
         public const string DRUM_FLAM_LAYOUT                        = "Flam Layout";
     }

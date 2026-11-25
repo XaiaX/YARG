@@ -76,6 +76,16 @@ namespace YARG.Themes
         EliteVFlam = 47,
         EliteVFlamGhost = 48,
         EliteVFlamAccent = 49,
+
+        CymbalFlam = 50,
+        CymbalFlamGhost = 51,
+        CymbalFlamAccent = 52,
+        OpenHiHatFlam = 53,
+        OpenHiHatFlamGhost = 54,
+        OpenHiHatFlamAccent = 55,
+        ClosedHiHatFlam = 56,
+        ClosedHiHatFlamGhost = 57,
+        ClosedHiHatFlamAccent = 58,
     }
 
     public class ThemeNote : MonoBehaviour
@@ -109,6 +119,13 @@ namespace YARG.Themes
         [SerializeField]
         [Tooltip("Swap the two kick colors for lefty mode on horizontally split flam models.")]
         private bool _kickFlamSwapForLefty;
+
+        [field: SerializeField]
+        public MeshRenderer OpenHatPulse { get; private set; }
+
+        [SerializeField, Tooltip("Front base stripe displayed for a flat cymbal flam.")]
+        private GameObject _flatFlamMarker;
+        internal GameObject FlatFlamMarker => _flatFlamMarker;
 
         public IEnumerable<MeshEmissionMaterialIndex> ColoredKick2Materials => _coloredKick2Materials;
         public float KickFlamOpacity => _kickFlamOpacity;

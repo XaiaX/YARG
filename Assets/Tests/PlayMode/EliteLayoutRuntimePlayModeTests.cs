@@ -214,11 +214,12 @@ namespace YARG.Tests.PlayMode
             Assert.That(effectParticle.GetComponent<ParticleSystem>().isPlaying, Is.True,
                 "The selected receptor's effect must actually play.");
         }
-        private static YargProfile Profile(bool lefty, DrumFlamLayout flamLayout = DrumFlamLayout.V) => new YargProfile
+        private static YargProfile Profile(bool lefty, DrumFlamLayout flamLayout = DrumFlamLayout.V,
+            bool useVolumeCymbals = YargProfile.DEFAULT_USE_VOLUME_CYMBALS) => new YargProfile
         {
             GameMode = GameMode.EliteDrums, CurrentInstrument = Instrument.EliteDrums,
             PreferredInstrument = Instrument.EliteDrums, CurrentDifficulty = Difficulty.Hard,
-            UseCymbalModels = true, LeftyFlip = lefty, FlamLayout = flamLayout
+            UseCymbalModels = true, UseVolumeCymbals = useVolumeCymbals, LeftyFlip = lefty, FlamLayout = flamLayout
         };
 
         [UnityTest]
@@ -310,7 +311,8 @@ namespace YARG.Tests.PlayMode
                 Debug.Log($"Elite cache pass={pass} initMs={timer.Elapsed.TotalMilliseconds:F3} " +
                     $"measurements={measurements} pairComputations={computations} cpu={SystemInfo.processorType}");
                 Assert.That(measurements, Is.GreaterThan(0));
-                Assert.That(computations, Is.GreaterThan(0));
+                Assert.That(computations, Is.Zero,
+                    "The fused flam and two reserved fret halves need no pair contact fitting.");
                 foreach (var note in GetPlayableNotes().SelectMany(n => n.ChildNotes.Prepend(n)))
                 {
                     SpawnCoverageNote(_fixture.Player, note);
@@ -359,7 +361,7 @@ namespace YARG.Tests.PlayMode
                         int fingerprintsBefore = Count("MeshFingerprints");
                         double signatureBefore = Time("SignatureMilliseconds");
                         double measurementBefore = Time("MeasurementMilliseconds"), pairBefore = Time("PairMilliseconds");
-                        var profile = Profile(false, Enum.Parse<DrumFlamLayout>(layout));
+                        var profile = Profile(false, Enum.Parse<DrumFlamLayout>(layout), useVolumeCymbals: false);
                         Assert.That(profile.Id, Is.Not.EqualTo(previousProfile), "The warm load must use a different profile identity.");
                         previousProfile = profile.Id;
                         yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(notes),
@@ -542,7 +544,7 @@ namespace YARG.Tests.PlayMode
                         true, DrumNoteFlags.None, NoteFlags.None, EliteDrumsChannelFlag.None, 8d, 7680, false);
                     _fixture = new InitializedElitePlayerFixture();
                     yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(source),
-                        Profile(item.lefty, DrumFlamLayout.Parallel), PairCoverageLayout(item.columns));
+                        Profile(item.lefty, DrumFlamLayout.Parallel, useVolumeCymbals: false), PairCoverageLayout(item.columns));
                     var note = GetPlayableNotes()[0];
                     note.ClearFlag(NoteFlags.StarPower);
                     SpawnCoverageNote(_fixture.Player, note);
@@ -776,17 +778,19 @@ namespace YARG.Tests.PlayMode
                         layout.Slots[3] = EliteDrumsLayoutSlot.Ordinary("snare", "left-crash");
                     }
 
-                    var standalone = Note(EliteDrumPad.Snare, false, 1d, 480);
-                    var standaloneCrash = Note(EliteDrumPad.LeftCrash, false, 1d, 480);
-                    var chordSnare = Note(EliteDrumPad.Snare, false, 2d, 960);
-                    var chordCrash = Note(EliteDrumPad.LeftCrash, false, 2d, 960);
+                    var standalone = Note(EliteDrumPad.Snare, false, 1d, 960);
+                    var standaloneCrash = Note(EliteDrumPad.LeftCrash, false, 1.5d, 1440);
+                    var chordSnare = Note(EliteDrumPad.Snare, false, 5d, 4800);
+                    var chordCrash = Note(EliteDrumPad.LeftCrash, false, 5d, 4800);
                     chordSnare.AddChildNote(chordCrash);
                     _fixture = new InitializedElitePlayerFixture();
                     yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(standalone, standaloneCrash, chordSnare),
                         Profile(lefty), layout, legacyTheme);
                     var player = _fixture.Player;
                     var spawn = player.GetType().GetMethod("SpawnNote", PreparedElitePlayerFixture.INSTANCE);
-                    foreach (var note in new[] { standalone, standaloneCrash, chordSnare, chordCrash })
+                    var heads = GetPlayableNotes().SelectMany(n => n.ChildNotes.Prepend(n)).ToArray();
+                    Assert.That(heads, Has.Length.EqualTo(4));
+                    foreach (var note in heads)
                         spawn.Invoke(player, new object[] { note });
 
                     var runtimeLayout = (EliteDrumsResolvedLayout) player.GetType().GetProperty("Layout").GetValue(player);
@@ -800,7 +804,7 @@ namespace YARG.Tests.PlayMode
                     float[] authoredWidths = { ThemeGroupWidth((Component) templateGroups.GetValue(0)),
                         ThemeGroupWidth((Component) templateGroups.GetValue(1)) };
                     float parentScale = Mathf.Abs(player.transform.lossyScale.x);
-                    foreach (var note in new[] { standalone, standaloneCrash, chordSnare, chordCrash })
+                    foreach (var note in heads)
                     {
                         var element = player.GetComponentsInChildren(Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement"), true)
                             .Single(e => ReferenceEquals(e.GetType().GetProperty("NoteRef").GetValue(e), note));
@@ -817,18 +821,15 @@ namespace YARG.Tests.PlayMode
                         float laneCenter = runtimeLayout.GetLaneX(lane, highwayWidth, lefty);
                         float expectedWidth = laneWidth;
                         float expectedCenter = laneCenter;
-                        if (ReferenceEquals(note, chordSnare) || ReferenceEquals(note, chordCrash))
+                        if (note.ParentOrSelf.ChildNotes.Count != 0)
                         {
                             int columns = runtimeLayout.Lanes.Count;
                             expectedWidth = laneWidth * (columns - 1f) / columns;
-                            float drumWidth = authoredWidths[0] * expectedWidth / (highwayWidth / 5f);
-                            float crashWidth = authoredWidths[1] * expectedWidth / (highwayWidth / 5f);
-                            float halfPair = (drumWidth + crashWidth) / 2f;
-                            float midpoint = laneCenter / (highwayWidth / 2f - laneWidth / 2f) *
-                                (highwayWidth / 2f - halfPair);
+                            float donorWidth = (highwayWidth - 2f * expectedWidth) / (columns - 1);
+                            int displayLane = lefty ? columns - 1 - lane : lane;
+                            float leftEdge = -highwayWidth / 2f + displayLane * donorWidth;
                             bool rightSide = (note.Pad == (int) EliteDrumPad.LeftCrash) != lefty;
-                            float ownWidth = note.Pad == (int) EliteDrumPad.LeftCrash ? crashWidth : drumWidth;
-                            expectedCenter = midpoint + (rightSide ? 1f : -1f) * (halfPair - ownWidth / 2f);
+                            expectedCenter = leftEdge + (rightSide ? 1.5f : .5f) * expectedWidth;
                         }
                         bool cymbalModel = note.Pad == (int) EliteDrumPad.LeftCrash;
                         float authoredWidth = authoredWidths[cymbalModel ? 1 : 0];
@@ -1228,14 +1229,15 @@ namespace YARG.Tests.PlayMode
                     var snare = Note(EliteDrumPad.Snare, false, 10d, 4800);
                     var crash = Note(EliteDrumPad.RightCrash, false, 10d, 4800);
                     snare.AddChildNote(crash);
-                    var profile = Profile(lefty, Enum.Parse<DrumFlamLayout>(flamLayout));
+                    // This matrix verifies the selectable two-piece cymbal flams in each layout.
+                    var profile = Profile(lefty, Enum.Parse<DrumFlamLayout>(flamLayout), useVolumeCymbals: false);
                     profile.UseCymbalModels = cymbalModels;
                     _fixture = new InitializedElitePlayerFixture();
                     yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(snare), profile, layout);
                     var player = _fixture.Player;
                     var resolved = (EliteDrumsResolvedLayout)player.GetType().GetProperty("Layout").GetValue(player);
                     Assert.That(resolved.Lanes.Count, Is.EqualTo(columns));
-                    var (preview, previewPool) = previewFixture.CreatePreparedPlayer(layout);
+                    var (preview, previewPool) = previewFixture.CreatePreparedPlayer(layout, useVolumeCymbals: profile.UseVolumeCymbals);
                     preview.GetType().GetProperty("LeftyFlip").SetValue(preview, lefty);
                     preview.GetType().GetProperty("UseCymbalModels").SetValue(preview, cymbalModels);
                     preview.GetType().GetProperty("FlamLayout").SetValue(preview, profile.FlamLayout);
@@ -1751,7 +1753,7 @@ namespace YARG.Tests.PlayMode
             }
         }
 
-        private static (float min, float max) ActiveMeshBounds(Component root, Transform highway)
+        internal static (float min, float max) ActiveMeshBounds(Component root, Transform highway)
         {
             float min = float.PositiveInfinity;
             float max = float.NegativeInfinity;

@@ -273,6 +273,57 @@ namespace YARG.Tests.EditMode
         private static object Layout(string name) => Enum.Parse(AppDomain.CurrentDomain.GetAssemblies()
             .Select(a => a.GetType("YARG.Core.DrumFlamLayout")).First(t => t != null), name);
 
+        [TestCase(false, .12f)] // Small ghost
+        [TestCase(false, .64f)] // Wide, fused flam
+        [TestCase(true, .30f)]  // Two angled models from a custom theme
+        public void RollSlotContainsNormalAndStarModels(bool split, float modelWidth)
+        {
+            var root = new GameObject("Pooled Elite roll gem");
+            root.SetActive(false);
+            try
+            {
+                var elementType = Geometry.Assembly.GetType("YARG.Gameplay.Visuals.EliteDrumsNoteElement");
+                var groupType = Geometry.Assembly.GetType("YARG.Gameplay.Visuals.NoteGroup");
+                var element = root.AddComponent(elementType);
+                root.transform.localScale = new Vector3(1f, 1.3f, 1f);
+                string[] fields = split ? new[] { "_splitGemGroups", "_splitStarGemGroups" } :
+                    new[] { "NoteGroups", "StarPowerNoteGroups" };
+                foreach (string field in fields)
+                {
+                    var groups = Array.CreateInstance(groupType, split ? 2 : 1);
+                    for (int i = 0; i < groups.Length; i++)
+                    {
+                        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                        var model = cube.transform;
+                        model.SetParent(root.transform, false);
+                        model.localScale = new Vector3(modelWidth, .1f, .2f);
+                        model.localPosition = new Vector3(split ? .24f * (i == 0 ? -1 : 1) : .04f, 0, 0);
+                        if (split) model.localRotation = Quaternion.Euler(0, i == 0 ? 25 : -25, 0);
+                        // A different visible SP envelope must also fit.
+                        if (split && field == fields[1]) model.localPosition += Vector3.right * .08f;
+                        groups.SetValue(cube.AddComponent(groupType), i);
+                    }
+                    elementType.GetField(field, INSTANCE).SetValue(element, groups);
+                }
+                foreach (float slotCenter in new[] { .7f, -.7f })
+                {
+                    elementType.GetMethod("PlaceInRollSlot", INSTANCE).Invoke(element,
+                        new object[] { 0, split, .4f, slotCenter, .2f });
+                    var x = root.GetComponentsInChildren<MeshFilter>(true)
+                        .SelectMany(f => f.sharedMesh.vertices.Select(v => f.transform.TransformPoint(v).x)).ToArray();
+                    Assert.That((x.Min() + x.Max()) * .5f, Is.EqualTo(slotCenter).Within(.00001f));
+                    Assert.That(x.Max() - x.Min(), Is.EqualTo(modelWidth < .4f && !split
+                        ? modelWidth * .5f : .2f).Within(.00001f));
+                    Assert.That(root.transform.localScale.y, Is.EqualTo(1.3f));
+                    Assert.That(root.transform.localScale.z, Is.EqualTo(1f));
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
         [TestCase(true)]
         [TestCase(false)]
         public void AlternateFlamLayoutChangesOnlyRegularFlamRotation(bool regular)

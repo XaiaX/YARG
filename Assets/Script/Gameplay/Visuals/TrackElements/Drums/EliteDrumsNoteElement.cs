@@ -34,6 +34,14 @@ namespace YARG.Gameplay.Visuals
         private const int KICK_VARIANTS_START = 17;
         private const int COUNT = 27;
         private const int FUSED_FLAM_START = COUNT;
+        private static readonly ThemeNoteType[] BaseTypes =
+        {
+            ThemeNoteType.Normal, ThemeNoteType.Cymbal, ThemeNoteType.Kick, ThemeNoteType.Accent,
+            ThemeNoteType.Ghost, ThemeNoteType.CymbalAccent, ThemeNoteType.CymbalGhost, ThemeNoteType.DedicatedLaneKick,
+            ThemeNoteType.OpenHiHat, ThemeNoteType.OpenHiHatAccent, ThemeNoteType.OpenHiHatGhost,
+            ThemeNoteType.ClosedHiHat, ThemeNoteType.ClosedHiHatAccent, ThemeNoteType.ClosedHiHatGhost,
+            ThemeNoteType.Wildcard, ThemeNoteType.HatStomp, ThemeNoteType.HatSplash
+        };
         private static readonly ThemeNoteType[] FusedFlamTypes = ThemeNoteModelFallbacks.EliteFusedFlamTypes;
         [SerializeField] private Vector3 _normalStompScale;
         [SerializeField] private Vector3 _starStompScale;
@@ -59,6 +67,7 @@ namespace YARG.Gameplay.Visuals
         private const int SPLIT_STAR = 1;
         private readonly Dictionary<NoteGroup, EliteDrumsRuntimeGeometry.ModelGeometry> _geometry = new();
         private bool _lastCollisionPartnerStar;
+        private bool _hasRollSlot;
 
         private readonly Dictionary<EliteDrumsGeometryCache.PairKey, EliteDrumsRuntimeGeometry.PairPlacement>
             _preparedPlacements = new();
@@ -105,7 +114,8 @@ namespace YARG.Gameplay.Visuals
                 foreach (var note in parent.AllNotes)
                 {
                     if (note.IsInvisibleTerminator) continue;
-                    EliteDrumsRuntimeGeometry.GetRegion(player, note, false, out float center, out float width);
+                    bool hasRollSlot = GetFittingRegion(player, note, out float center, out float width,
+                        out _, out _);
                     var profile = player.Player.Profile;
                     int fused = GetFusedFlamGroup(note, profile);
                     if (fused < 0 && IsSplitFlam(note, true))
@@ -118,7 +128,7 @@ namespace YARG.Gameplay.Visuals
                                 player.Player.Profile.FlamLayout, IsCymbalGroup(group),
                                 player.Player.Profile.LeftyFlip);
                     }
-                    else if (EliteDrumsRuntimeGeometry.GetCollisionPartner(player, note) is { } partner)
+                    else if (!hasRollSlot && EliteDrumsRuntimeGeometry.GetCollisionPartner(player, note) is { } partner)
                     {
                         int group = fused >= 0 ? fused : GetGemGroup(note, profile.UseCymbalModels);
                         int otherGroup = SelectModelGroup(partner, profile);
@@ -132,10 +142,11 @@ namespace YARG.Gameplay.Visuals
                                 Geometry(right ? own : other, right ? group : otherGroup), null,
                                 player.Layout.Lanes.Count, center, width, 0f, false);
                     }
-                    else if (fused >= 0)
+                    else if (fused >= 0 || hasRollSlot)
                     {
-                        Geometry(0, fused);
-                        Geometry(1, fused);
+                        int group = fused >= 0 ? fused : GetGemGroup(note, profile.UseCymbalModels);
+                        Geometry(0, group);
+                        Geometry(1, group);
                     }
                 }
             }
@@ -149,6 +160,21 @@ namespace YARG.Gameplay.Visuals
             group is CYMBAL or CYMBAL_ACCENT or CYMBAL_GHOST or OPEN_HI_HAT or OPEN_HI_HAT_ACCENT
                 or OPEN_HI_HAT_GHOST or CLOSED_HI_HAT or CLOSED_HI_HAT_ACCENT or CLOSED_HI_HAT_GHOST;
 
+        private static bool GetFittingRegion(EliteDrumsPlayer player, EliteDrumNote note,
+            out float center, out float width, out float slotCenter, out float slotWidth)
+        {
+            if (player.TryGetRollSlot(note, out slotCenter, out slotWidth))
+            {
+                // Fit the complete glyph around a local origin before placing it in
+                // its strip. Highway-edge corrections belong to standalone flams.
+                center = 0f;
+                width = player.Layout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
+                return true;
+            }
+            EliteDrumsRuntimeGeometry.GetRegion(player, note, false, out center, out width);
+            return false;
+        }
+
         public override void SetThemeModels(Dictionary<ThemeNoteType, GameObject> models,
             Dictionary<ThemeNoteType, GameObject> starpowerModels)
         {
@@ -159,24 +185,8 @@ namespace YARG.Gameplay.Visuals
             _starGemScales = new Vector3[modelCount];
             _normalGemPositions = new Vector3[modelCount];
             _starGemPositions = new Vector3[modelCount];
-            AssignNoteGroup(models, starpowerModels, NORMAL, ThemeNoteType.Normal);
-            AssignNoteGroup(models, starpowerModels, CYMBAL, ThemeNoteType.Cymbal);
-            AssignNoteGroup(models, starpowerModels, KICK, ThemeNoteType.Kick);
-            AssignNoteGroup(models, starpowerModels, ACCENT, ThemeNoteType.Accent);
-            AssignNoteGroup(models, starpowerModels, GHOST, ThemeNoteType.Ghost);
-            AssignNoteGroup(models, starpowerModels, CYMBAL_ACCENT, ThemeNoteType.CymbalAccent);
-            AssignNoteGroup(models, starpowerModels, CYMBAL_GHOST, ThemeNoteType.CymbalGhost);
-            AssignNoteGroup(models, starpowerModels, DEDICATED_KICK, ThemeNoteType.DedicatedLaneKick);
-            AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT, ThemeNoteType.OpenHiHat);
-            AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT_ACCENT, ThemeNoteType.OpenHiHatAccent);
-            AssignNoteGroup(models, starpowerModels, OPEN_HI_HAT_GHOST, ThemeNoteType.OpenHiHatGhost);
-            AssignNoteGroup(models, starpowerModels, CLOSED_HI_HAT, ThemeNoteType.ClosedHiHat);
-            AssignNoteGroup(models, starpowerModels, CLOSED_HI_HAT_ACCENT, ThemeNoteType.ClosedHiHatAccent);
-            AssignNoteGroup(models, starpowerModels, CLOSED_HI_HAT_GHOST, ThemeNoteType.ClosedHiHatGhost);
-
-            AssignNoteGroup(models, starpowerModels, WILDCARD, ThemeNoteType.Wildcard);
-            AssignNoteGroup(models, starpowerModels, HAT_STOMP, ThemeNoteType.HatStomp);
-            AssignNoteGroup(models, starpowerModels, HAT_SPLASH, ThemeNoteType.HatSplash);
+            for (int i = 0; i < BaseTypes.Length; i++)
+                AssignNoteGroup(models, starpowerModels, i, BaseTypes[i]);
 
             for (int i = 0; i < EliteKickAppearance.OptionalTypes.Count; i++)
                 AssignNoteGroup(models, starpowerModels, KICK_VARIANTS_START + i, EliteKickAppearance.OptionalTypes[i]);
@@ -364,10 +374,10 @@ namespace YARG.Gameplay.Visuals
 
         private int GetFusedFlamGroup(EliteDrumNote note, YargProfile profile)
         {
-            if (!note.IsHandFlam || profile.UseCymbalModels && EliteDrumsPlayer.IsCymbal(note.Pad))
-                return -1;
-            var drumType = note.IsGhost ? ThemeNoteType.Ghost : note.IsAccent ? ThemeNoteType.Accent : ThemeNoteType.Normal;
-            if (ThemeNoteModelFallbacks.GetEliteFusedFlamType(drumType, note.IsFlatFlam, profile.FlamLayout) is not { } type)
+            if (!note.IsHandFlam) return -1;
+            var single = BaseTypes[GetSplitGroup(note, profile.UseCymbalModels)];
+            if (ThemeNoteModelFallbacks.GetEliteFusedFlamType(single, note.IsFlatFlam, profile.FlamLayout,
+                profile.UseVolumeCymbals) is not { } type)
                 return -1;
             int slot = FUSED_FLAM_START + System.Array.IndexOf(FusedFlamTypes, type);
             return slot < NoteGroups.Length && NoteGroups[slot] != null ? slot : -1;
@@ -485,6 +495,35 @@ namespace YARG.Gameplay.Visuals
             groupTransform.localPosition = new Vector3(targetCenter - transform.localPosition.x, position.y, position.z);
         }
 
+        private void PlaceInRollSlot(int group, bool splitFlam, float columnWidth, float center, float width)
+        {
+            float min = float.PositiveInfinity;
+            float max = float.NegativeInfinity;
+            for (int variant = 0; variant < 2; variant++)
+            {
+                if (splitFlam)
+                {
+                    Include(2 + variant, group * 2 + SPLIT_LEFT);
+                    Include(2 + variant, group * 2 + SPLIT_RIGHT);
+                }
+                else Include(variant, group);
+            }
+            // A small ghost keeps its authored size relative to a neutral.
+            // Only an oversized glyph (e.g. a fused or angled flam) needs more
+            // compression than the column itself. The root scales both halves
+            // together while preserving their depth, height and contact seam.
+            float scale = width / Mathf.Max(columnWidth, max - min);
+            float midpoint = min <= max ? (min + max) * .5f : 0f;
+            transform.localScale = transform.localScale.WithX(scale);
+            transform.localPosition = transform.localPosition.WithX(center - scale * midpoint);
+
+            void Include(int kind, int index)
+            {
+                var model = GeometryGroups(kind)[index].transform;
+                Geometry(kind, index).EncapsulatePlacedX(model, ref min, ref max);
+            }
+        }
+
         private void FitFootWidth(int groupIndex, float targetWidth, float targetCenter)
         {
             // Fit both variants: a later star-power swap must not restore the overlap.
@@ -547,7 +586,8 @@ namespace YARG.Gameplay.Visuals
             base.InitializeElement();
             ResetGemGroups();
             ResetStompGroups();
-            EliteDrumsRuntimeGeometry.GetRegion(Player, NoteRef, false, out float center, out float width);
+            _hasRollSlot = GetFittingRegion(Player, NoteRef, out float center, out float width,
+                out float slotCenter, out float slotWidth);
             transform.localPosition = new Vector3(center, 0, 0);
             bool kick = EliteDrumsPlayer.IsFootPad(NoteRef.Pad);
             var groups = IsStarPowerVisible ? StarPowerNoteGroups : NoteGroups;
@@ -562,7 +602,8 @@ namespace YARG.Gameplay.Visuals
             {
                 if (group is HAT_STOMP or HAT_SPLASH)
                 {
-                    int sections = Mathf.RoundToInt(width / Player.Layout.GetLaneWidth(TrackPlayer.TRACK_WIDTH));
+                    int sections = EliteDrumsRuntimeGeometry.GetPedalRegion(Player.GetVisualPosition(NoteRef),
+                        Player.Layout.Lanes.Count, TrackPlayer.TRACK_WIDTH, out _, out _);
                     NoteGroups[group].ConfigurePedalSections(sections);
                     if (StarPowerNoteGroups[group] != NoteGroups[group])
                         StarPowerNoteGroups[group].ConfigurePedalSections(sections);
@@ -570,20 +611,24 @@ namespace YARG.Gameplay.Visuals
                 else if (Player.UsesKickBars)
                 {
                     int laneCount = Player.Layout.Lanes.Count;
-                    NoteGroups[group].ConfigureKickLanes(laneCount);
+                    var boundaries = Player.TryGetKickBoundaries(NoteRef);
+                    NoteGroups[group].ConfigureKickLanes(laneCount, boundaries);
                     if (StarPowerNoteGroups[group] != NoteGroups[group])
-                        StarPowerNoteGroups[group].ConfigureKickLanes(laneCount);
+                        StarPowerNoteGroups[group].ConfigureKickLanes(laneCount, boundaries);
                 }
                 FitFootWidth(group, width, center);
             }
-            else if (EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
+            else if (!_hasRollSlot && EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
             {
                 FitCollision(group, partner, center, width);
             }
             else
                 FitGemWidth(group, width, center);
+            if (_hasRollSlot)
+                PlaceInRollSlot(group, splitFlam, width, slotCenter, slotWidth);
             if (!splitFlam)
             {
+                NoteGroup.SetFlatFlamMarker(NoteRef.IsFlatFlam);
                 NoteGroup.SetActive(true);
                 NoteGroup.Initialize();
             }
@@ -615,7 +660,7 @@ namespace YARG.Gameplay.Visuals
             UpdateColor();
             // The paired note is judged independently and can lose SP without this
             // note changing. Both envelopes must use the same currently visible models.
-            if (!UsesSplitFlam(NoteRef, Player.Player.Profile) &&
+            if (!_hasRollSlot && !UsesSplitFlam(NoteRef, Player.Player.Profile) &&
                 EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
             {
                 bool partnerStar = partner.IsStarPower &&
@@ -671,7 +716,8 @@ namespace YARG.Gameplay.Visuals
             else
             {
                 base.OnStarPowerUpdated();
-                if (EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
+                NoteGroup.SetFlatFlamMarker(NoteRef.IsFlatFlam);
+                if (!_hasRollSlot && EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
                 {
                     EliteDrumsRuntimeGeometry.GetRegion(Player, NoteRef, false, out float center, out float width);
                     FitCollision(SelectModelGroup(NoteRef, Player.Player.Profile), partner, center, width);
@@ -739,6 +785,24 @@ namespace YARG.Gameplay.Visuals
                 (int)(color.G * intensity), (int)(color.B * intensity));
         }
 
+        internal void RefreshOpenHatGlow()
+        {
+            if (NoteGroup == null || NoteRef == null || NoteRef.WasHit) return;
+            bool openHat = NoteRef.IsOpen && NoteRef.Pad == (int)EliteDrumNote.EliteDrumPad.HiHat;
+            if (!openHat && !NoteRef.IsFlam && !NoteRef.IsFlatFlam) return;
+
+            var profile = Player.Player.Profile;
+            float rate = Player.OpenHatPulsesPerQuarter;
+            NoteGroup.ConfigureOpenHatGlow(profile.OpenHatGlow, rate, preview: false, leftyFlip: LeftyFlip);
+            if (openHat && UsesSplitFlam(NoteRef, profile))
+            {
+                // For a split flam NoteGroup is the left half.
+                var groups = IsStarPowerVisible ? _splitStarGemGroups : _splitGemGroups;
+                groups[GetSplitGroup() * 2 + SPLIT_RIGHT].ConfigureOpenHatGlow(profile.OpenHatGlow, rate,
+                    preview: false, leftyFlip: LeftyFlip);
+            }
+        }
+
         private void UpdateColor()
         {
             if (NoteGroup == null || NoteRef.WasHit) return;
@@ -751,6 +815,7 @@ namespace YARG.Gameplay.Visuals
             float phase = activation ? (float)GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage : 0f;
             color = GetActivationColor(activation ? original : color, activation, phase);
             NoteGroup.SetColorWithEmission(color.ToUnityColor(), original.ToUnityColor());
+            RefreshOpenHatGlow();
             NoteGroup.SetMetalColor(metal.ToUnityColor());
             if (EliteDrumsPlayer.IsFootPad(NoteRef.Pad) && (NoteRef.IsFlam || NoteRef.IsFlatFlam)
                 && NoteGroup.HasKickFlamColors)

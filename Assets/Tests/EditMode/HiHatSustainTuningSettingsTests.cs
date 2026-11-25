@@ -14,7 +14,8 @@ namespace YARG.Tests.EditMode
         private static Type Production(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name)).First(type => type != null);
         private static readonly string[] Names = { "EliteHiHatWaitingOpacity", "EliteHiHatHeldOpacity",
-            "EliteHiHatWaitingGlow", "EliteHiHatHeldGlow" };
+            "EliteHiHatWaitingGlow", "EliteHiHatHeldGlow", "EliteOpenHatGhostGlow", "EliteOpenHatNeutralGlow",
+            "EliteOpenHatAccentGlow", "EliteOpenHatGlowMinimum", "EliteOpenHatShadowMinimum", "EliteOpenHatShadowPeak" };
         private static object Container() => Activator.CreateInstance(Production("YARG.Settings.SettingsManager")
             .GetNestedType("SettingContainer", BindingFlags.Public));
         private static object Setting(object container, string name)
@@ -50,6 +51,14 @@ namespace YARG.Tests.EditMode
         [TestCase("EliteHiHatHeldOpacity", 33f, 100f)]
         [TestCase("EliteHiHatWaitingGlow", 35f, 200f)]
         [TestCase("EliteHiHatHeldGlow", 70f, 200f)]
+        [TestCase("EliteOpenHatGhostGlow", 40f, 200f)]
+        [TestCase("EliteOpenHatNeutralGlow", 60f, 200f)]
+        [TestCase("EliteOpenHatAccentGlow", 80f, 200f)]
+        [TestCase("EliteOpenHatGlowMinimum", 5f, 200f)]
+        [TestCase("EliteOpenHatShadowMinimum", 0.5f, 200f)]
+        [TestCase("EliteOpenHatShadowPeak", 10f, 100f)]
+        [TestCase("EliteCymbalFlamGlowMinimum", 35f, 100f)]
+        [TestCase("EliteCymbalFlamGlowMaximum", 100f, 200f)]
         public void TemporarySlidersHaveDefaultsAndBoundedPercentages(string name, float expected, float maximum)
         {
             var setting = Setting(Container(), name);
@@ -61,13 +70,49 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
-        public void ExperimentalTabContainsAllFourTemporaryControls()
+        public void ExperimentalTabContainsHiHatTuningControls()
         {
             var tabs = (IEnumerable)Production("YARG.Settings.SettingsManager").GetField("AllSettingsTabs").GetValue(null);
             var experimental = tabs.Cast<object>().Single(tab => (string)tab.GetType().GetProperty("Name").GetValue(tab) == "Experimental");
             var fields = ((IEnumerable)experimental.GetType().GetProperty("Settings").GetValue(experimental))
                 .Cast<object>().Select(field => field.GetType().GetProperty("FieldName")?.GetValue(field)).ToArray();
             foreach (string name in Names) Assert.That(fields, Does.Contain(name));
+            var buttons = ((IEnumerable)experimental.GetType().GetProperty("Settings").GetValue(experimental))
+                .Cast<object>().SelectMany(row => row.GetType().GetProperty("Buttons")?.GetValue(row) as string[]
+                    ?? Array.Empty<string>());
+            Assert.That(buttons, Does.Contain("ResetOpenHatGlow"));
+        }
+
+        [Test]
+        public void ResetOpenHatGlowRestoresOnlyTheSixGlowControlsAndAppliesTheirShaderGains()
+        {
+            var container = Container();
+            foreach (var name in Names) Set(Setting(container, name), 18f);
+            var reset = container.GetType().GetMethod("ResetOpenHatGlow");
+            Assert.That(reset, Is.Not.Null);
+            const string glow = "_YargOpenHatGlowAdjustments";
+            const string shadow = "_YargOpenHatShadowAdjustments";
+            var oldGlow = Shader.GetGlobalVector(glow);
+            var oldShadow = Shader.GetGlobalVector(shadow);
+            try
+            {
+                Shader.SetGlobalVector(glow, Vector4.zero);
+                Shader.SetGlobalVector(shadow, Vector4.zero);
+                reset.Invoke(container, null);
+                Assert.That(Names.Select(name => Value(Setting(container, name))),
+                    Is.EqualTo(new[] { 18f, 18f, 18f, 18f, 40f, 60f, 80f, 5f, 0.5f, 10f }));
+                var gains = Shader.GetGlobalVector(glow);
+                var shade = Shader.GetGlobalVector(shadow);
+                Assert.That(new[] { gains.x, gains.y, gains.z, gains.w, shade.x, shade.y }, Is.EqualTo(new[]
+                {
+                    40f / 26 - 1, 60f / 47 - 1, 80f / 72 - 1, 5f / 12 - 1, 0.5f / 12 - 1, 10f / 50 - 1
+                }).Within(0.00001f));
+            }
+            finally
+            {
+                Shader.SetGlobalVector(glow, oldGlow);
+                Shader.SetGlobalVector(shadow, oldShadow);
+            }
         }
 
         [TestCase(0)]
@@ -106,11 +151,25 @@ namespace YARG.Tests.EditMode
             finally { Shader.SetGlobalFloat(SHADER_PROPERTY, previous); }
         }
 
+        [TestCase("{\"EliteOpenHatGlowMinimum\":9}", 9f)]
+        [TestCase("{\"EliteOpenHatGlowMinimum\":9,\"EliteOpenHatShadowMinimum\":2}", 2f)]
+        public void ExistingGlowFloorSeedsOnlyAMissingShadowFloor(string json, float expected)
+        {
+            var jobject = Production("Newtonsoft.Json.Linq.JObject");
+            var saved = jobject.GetMethod("Parse", new[] { typeof(string) }).Invoke(null, new object[] { json });
+            var migrate = Production("YARG.Settings.SettingsMigration")
+                .GetMethod("Migrate", BindingFlags.NonPublic | BindingFlags.Static);
+            var migrated = migrate.Invoke(null, new object[] { saved, false });
+            var settings = Production("YARG.Settings.SettingsManager").GetMethod("DeserializeSongSourceSettings")
+                .Invoke(null, new[] { migrated });
+            Assert.That(Value(Setting(settings, "EliteOpenHatShadowMinimum")), Is.EqualTo(expected));
+        }
+
         [Test]
         public void TuningValuesRoundTripThroughNormalSettingsSerialization()
         {
             var original = Container();
-            float[] values = { 31, 62, 81, 173 };
+            float[] values = { 31, 62, 81, 173, 58, 91, 120, 7, 2, 29 };
             for (int i = 0; i < Names.Length; i++) Set(Setting(original, Names[i]), values[i]);
             var manager = Production("YARG.Settings.SettingsManager");
             var optionsType = Production("Newtonsoft.Json.JsonSerializerSettings");

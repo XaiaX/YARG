@@ -146,14 +146,15 @@ namespace YARG.Tests.PlayMode
                     layout.Slots[8] = new EliteDrumsLayoutSlot();
                     layout.Slots[9] = new EliteDrumsLayoutSlot();
                 }
-                var (player, pool) = CreatePreparedPlayer(layout);
+                // Legacy cymbal flams expose the two independently fitted meshes.
+                var (player, pool) = CreatePreparedPlayer(layout, useVolumeCymbals: false);
                 foreach (bool lefty in new[] { false, true })
                 foreach (bool star in new[] { false, true })
                 foreach (bool flat in new[] { false, true })
                 {
                     Call(pool, "ReturnAllObjects");
                     player.GetType().GetProperty("LeftyFlip").SetValue(player, lefty);
-                    Call(player, "SpotlightNoteType", Enum.Parse(noteType, "Normal"), star);
+                    Call(player, "SpotlightNoteType", Enum.Parse(noteType, "Cymbal"), star);
                     Call(player, "Advance", 0.21d);
                     var note = (Component)((IList)Get(pool, "AllSpawned"))[0];
                     var data = Get(note, "NoteRef");
@@ -425,8 +426,8 @@ namespace YARG.Tests.PlayMode
         {
             foreach (var mode in new[] { GameMode.FourLaneDrums, GameMode.FiveLaneDrums, GameMode.EliteDrums })
             {
-                var first = CreatePreparedPlayer(mode == GameMode.EliteDrums ? EliteDrumsLayoutPreset.Full : null, mode);
-                var second = CreatePreparedPlayer(mode == GameMode.EliteDrums ? EliteDrumsLayoutPreset.Full : null, mode);
+                var first = CreatePreparedPlayer(mode == GameMode.EliteDrums ? EliteDrumsLayoutPreset.Full : null, mode, useVolumeCymbals: false);
+                var second = CreatePreparedPlayer(mode == GameMode.EliteDrums ? EliteDrumsLayoutPreset.Full : null, mode, useVolumeCymbals: false);
                 var layout = first.player.GetType().GetProperty("FlamLayout");
                 Assert.That(layout, Is.Not.Null, "Previews must receive an explicit profile layout instead of reading global settings.");
                 layout.SetValue(first.player, Enum.Parse(layout.PropertyType, "V"));
@@ -440,7 +441,8 @@ namespace YARG.Tests.PlayMode
                 Assert.That(layout.GetValue(second.player).ToString(), Is.EqualTo("Parallel"));
                 Component Flam((Component player, Component pool) owner)
                 {
-                    Call(owner.player, "SpotlightNoteType", Enum.Parse(Production("YARG.Themes.ThemeNoteType"), "Normal"), false);
+                    string type = mode == GameMode.EliteDrums ? "Cymbal" : "Normal";
+                    Call(owner.player, "SpotlightNoteType", Enum.Parse(Production("YARG.Themes.ThemeNoteType"), type), false);
                     Call(owner.player, "Advance", .21d);
                     var note = (Component)((IList)Get(owner.pool, "AllSpawned"))[0];
                     var data = Get(note, "NoteRef");
@@ -468,11 +470,13 @@ namespace YARG.Tests.PlayMode
         }
 
         internal (Component player, Component pool) CreatePreparedPlayer(EliteDrumsLayoutPreset layout,
-            GameMode mode = GameMode.EliteDrums, bool allowIncomplete = false)
+            GameMode mode = GameMode.EliteDrums, bool allowIncomplete = false,
+            bool useVolumeCymbals = YargProfile.DEFAULT_USE_VOLUME_CYMBALS)
         {
             var root = Own(new GameObject("Production fake preview player"));
             root.SetActive(false);
             var player = root.AddComponent(Production("YARG.Settings.Preview.FakeTrackPlayer"));
+            player.GetType().GetProperty("UseVolumeCymbals", INSTANCE).SetValue(player, useVolumeCymbals);
             player.GetType().GetProperty("SelectedGameMode", INSTANCE).SetValue(player, mode);
             player.GetType().GetProperty("EliteLayoutOverride", INSTANCE).SetValue(player, layout);
             player.GetType().GetProperty("AllowIncompleteEliteLayoutPreview", INSTANCE).SetValue(player, allowIncomplete);
@@ -490,8 +494,8 @@ namespace YARG.Tests.PlayMode
             var preset = presetType.GetField("Default", BindingFlags.Public | BindingFlags.Static).GetValue(null);
             var style = Enum.Parse(Production("YARG.Themes.VisualStyle"), "EliteDrums");
             var factoryType = typeof(Func<,,>).MakeGenericType(presetType, style.GetType(), typeof(GameObject));
-            var factory = Delegate.CreateDelegate(factoryType,
-                Production("YARG.Settings.Preview.FakeNote").GetMethod("CreateFakeNoteFromTheme", BindingFlags.Public | BindingFlags.Static));
+            var factory = Delegate.CreateDelegate(factoryType, player,
+                player.GetType().GetMethod("CreatePreviewNotePrefab", INSTANCE));
             var colorProfile = new ColorProfile("Fake preview geometry test");
             var infoType = player.GetType().GetNestedType("Info");
             var fretInitializerType = typeof(Action<,,>).MakeGenericType(infoType, presetType, style.GetType());
