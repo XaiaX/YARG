@@ -1,4 +1,6 @@
 ﻿using System.IO;
+using System.IO.Compression;
+using Newtonsoft.Json.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using YARG.Helpers;
@@ -92,21 +94,90 @@ namespace YARG.Menu.Settings
 
         public void ImportPreset()
         {
-            FileExplorerHelper.OpenChooseFile(null, "preset", path =>
+            FileExplorerHelper.OpenChooseFile(null, "preset", ImportSelectedFile);
+        }
+
+        private static CustomContent ReadImportDestination(string path)
+        {
+            using var archive = ZipFile.OpenRead(path);
+            var entry = archive.GetEntry("preset.json") ?? throw new InvalidDataException("Missing preset.json");
+            using var reader = new StreamReader(entry.Open());
+            var type = (string) JObject.Parse(reader.ReadToEnd()).GetValue("Type", System.StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(type)) throw new InvalidDataException("Missing preset type");
+            return PresetsTab.FindImportDestination(type) ??
+                throw new InvalidDataException(Localize.KeyFormat("Settings.PresetSetting.Dialog.ImportType.Unsupported", type));
+        }
+
+        private void ImportSelectedFile(string path)
+        {
+            if (_tab.SelectedContent is EliteDrumsLayoutPresetContainer layouts)
             {
-                var store = _tab.SelectedContent;
-                if (store is EliteDrumsLayoutPresetContainer layouts)
+                ImportEliteLayout(layouts, path);
+                return;
+            }
+            const string dialog = "Settings.PresetSetting.Dialog.ImportType";
+            CustomContent destination;
+            try { destination = ReadImportDestination(path); }
+            catch (System.Exception e)
+            {
+                DialogManager.Instance.ShowMessage(Localize.Key(dialog + ".Failed"), e.Message);
+                return;
+            }
+
+            if (destination == _tab.SelectedContent)
+            {
+                ImportInto(destination, path);
+                return;
+            }
+
+            string Label(CustomContent store) => Localize.Key("Settings.PresetType", store.GetType().Name);
+            PresetSubTab.ShowCompactConfirmation(Localize.Key(dialog + ".Title"),
+                Localize.KeyFormat(dialog + ".Message", Label(destination), Label(_tab.SelectedContent),
+                    Localize.Key(dialog + ".SelectedType", destination.PresetTypeStringName)),
+                "Menu.Common.Import", MenuData.Colors.ConfirmButton, () =>
                 {
-                    ImportEliteLayout(layouts, path);
-                    return;
-                }
-                var preset = store.ImportPreset(path);
-                if (preset is null) return;
+                    DialogManager.Instance.ClearDialog();
+                    ImportInto(destination, path);
+                }, panelSize: new Vector2(860f, 340f));
+        }
 
-                _tab.SelectedPreset = preset;
+        private void ImportInto(CustomContent store, string path)
+        {
+            if (store is ColorProfileContainer colors)
+            {
+                ImportColorProfile(colors, path);
+                return;
+            }
+            SelectImported(store, store.ImportPreset(path));
+        }
 
-                SettingsMenu.Instance.Refresh();
-            });
+        private void SelectImported(CustomContent store, BasePreset preset)
+        {
+            if (preset == null) return;
+            _tab.SelectedContent = store;
+            _tab.SelectedPreset = preset;
+            SettingsMenu.Instance.Refresh();
+        }
+
+        private void ImportColorProfile(ColorProfileContainer store, string path)
+        {
+            const string dialog = "Settings.PresetSetting.Dialog.ImportColor";
+            var imported = store.ImportWithConflictHandler(path, (existing, json) =>
+                PresetSubTab.ShowCompactConfirmation(Localize.Key(dialog + ".Title"),
+                    Localize.KeyFormat(dialog + ".Message", existing.Name), dialog + ".Overwrite",
+                    MenuData.Colors.CancelButton, () =>
+                    {
+                        DialogManager.Instance.ClearDialog();
+                        try
+                        {
+                            SelectImported(store, store.OverwriteImportedProfile(existing, json));
+                        }
+                        catch (System.Exception e)
+                        {
+                            DialogManager.Instance.ShowMessage(Localize.Key(dialog + ".Failed"), e.Message);
+                        }
+                    }, cancelColor: MenuData.Colors.BrightButton, armDelaySeconds: 2f, panelSize: new Vector2(860f, 340f)));
+            SelectImported(store, imported);
         }
 
         private void ImportEliteLayout(EliteDrumsLayoutPresetContainer store, string path)

@@ -61,6 +61,9 @@ namespace YARG.Settings.Metadata
         private PresetSubTab CurrentSubTab => _presetTabs
             .FirstOrDefault(i => i.CustomContent == SelectedContent);
 
+        internal static CustomContent FindImportDestination(string type) =>
+            _presetTabs.Select(tab => tab.CustomContent).FirstOrDefault(store => store.PresetTypeStringName == type);
+
         private CustomContent _selectedContent;
         public CustomContent SelectedContent
         {

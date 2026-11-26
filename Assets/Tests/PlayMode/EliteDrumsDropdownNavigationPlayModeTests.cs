@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -16,6 +18,74 @@ namespace YARG.Tests.PlayMode
 {
     public sealed partial class EliteDrumsLayoutMenuPlayModeTests
     {
+        [UnityTest]
+        public IEnumerator ImportConfirmationsGateControllerOverwriteAndAllowImmediateBack()
+        {
+#if UNITY_EDITOR
+            MountMenuServices();
+            var actions = _menuServicesRoot.AddComponent(Production("YARG.Menu.Settings.PresetActions"));
+            var tab = Activator.CreateInstance(Production("YARG.Settings.Metadata.PresetsTab"), "Presets", "Generic");
+            Call(actions, "Initialize", tab);
+            var selectFile = actions.GetType().GetMethod("ImportSelectedFile", BindingFlags.Instance | BindingFlags.NonPublic);
+            var manager = Production("YARG.Settings.Customization.CustomContentManager");
+            var colors = manager.GetField("ColorProfiles").GetValue(null);
+            var profiles = (IList)colors.GetType().BaseType.GetField("Content",
+                BindingFlags.Instance | BindingFlags.NonPublic).GetValue(colors);
+            var existing = new ColorProfile("Controller import test");
+            var navigator = _menuServicesRoot.GetComponent(Production("YARG.Menu.Navigation.Navigator"));
+            var stack = (ICollection)Field(navigator, "_schemeStack");
+            void Press(string action)
+            {
+                var scheme = stack.Cast<object>().First();
+                var entries = (IEnumerable)scheme.GetType().GetProperty("Entries").GetValue(scheme);
+                var entry = entries.Cast<object>().Single(item =>
+                    item.GetType().GetField("Action").GetValue(item).ToString() == action);
+                entry.GetType().GetMethod("Invoke", Type.EmptyTypes).Invoke(entry, null);
+            }
+
+            var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".preset");
+            try
+            {
+                using (var archive = ZipFile.Open(path, ZipArchiveMode.Create))
+                using (var writer = new StreamWriter(archive.CreateEntry("preset.json").Open()))
+                    writer.Write($"{{\"Type\":\"ColorProfile\",\"Id\":\"{existing.Id}\",\"Name\":\"Imported\"}}");
+                profiles.Add(existing);
+                int baseline = stack.Count;
+                selectFile.Invoke(actions, new object[] { path });
+                Press("Red");
+                Assert.That(stack.Count, Is.EqualTo(baseline));
+
+                selectFile.Invoke(actions, new object[] { path });
+                Press("Green");
+                Press("Green");
+                Assert.That(stack.Count, Is.EqualTo(baseline + 1));
+                Assert.That(_dialogRoot.GetComponentsInChildren<Button>().Last().interactable, Is.False);
+                Press("Red");
+                Assert.That(stack.Count, Is.EqualTo(baseline));
+                yield return null;
+
+                selectFile.Invoke(actions, new object[] { path });
+                Press("Green");
+                yield return null;
+                var overwrite = _dialogRoot.GetComponentsInChildren<Button>().Last();
+                Assert.That(overwrite.interactable, Is.False);
+                yield return new WaitForSeconds(2.1f);
+                Assert.That(overwrite.interactable, Is.True);
+                // Removing the temporary target makes a confirmed overwrite report a stale import.
+                profiles.Remove(existing);
+                Press("Green");
+                Assert.That(overwrite.gameObject.activeInHierarchy, Is.False);
+                Assert.That(stack.Count, Is.EqualTo(baseline + 1), "The import error dialog replaced the confirmation.");
+            }
+            finally
+            {
+                profiles.Remove(existing);
+                File.Delete(path);
+            }
+#endif
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator LayoutAndColorDropdownsNavigateDisplayedOrderAfterPointerHover()
         {

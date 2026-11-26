@@ -29,6 +29,8 @@ namespace YARG.Settings.Customization
         public string FullContentDirectory =>
             Path.Combine(CustomContentManager.CustomizationDirectory, ContentDirectory);
 
+        public virtual string PresetTypeStringName => null;
+
         public abstract IReadOnlyList<BasePreset> DefaultBasePresets { get; }
         public abstract IReadOnlyList<BasePreset> CustomBasePresets { get; }
 
@@ -102,7 +104,7 @@ namespace YARG.Settings.Customization
 
     public abstract class CustomContent<T> : CustomContent where T : BasePreset
     {
-        public abstract string PresetTypeStringName { get; }
+        public abstract override string PresetTypeStringName { get; }
 
         public abstract IReadOnlyList<T> DefaultPresets { get; }
         public override IReadOnlyList<BasePreset> DefaultBasePresets => DefaultPresets;
@@ -259,7 +261,7 @@ namespace YARG.Settings.Customization
             }
         }
 
-        private string SavePresetFile(T preset)
+        public virtual string SavePresetFile(T preset)
         {
             preset.Type = PresetTypeStringName;
             var text = JsonConvert.SerializeObject(preset, JsonSettings);
@@ -369,7 +371,9 @@ namespace YARG.Settings.Customization
         {
         }
 
-        public override BasePreset ImportPreset(string path)
+        public override BasePreset ImportPreset(string path) => ImportWithConflictHandler(path, null);
+
+        public BasePreset ImportWithConflictHandler(string path, Action<T, string> onConflict)
         {
             try
             {
@@ -379,7 +383,8 @@ namespace YARG.Settings.Customization
                 // Get the preset entry, and read it
                 var presetEntry = zip.GetEntry("preset.json");
                 using var reader = new StreamReader(presetEntry!.Open());
-                var preset = JsonConvert.DeserializeObject<T>(reader.ReadToEnd(), JsonSettings);
+                string json = reader.ReadToEnd();
+                var preset = JsonConvert.DeserializeObject<T>(json, JsonSettings);
 
                 if (preset.Type != PresetTypeStringName)
                 {
@@ -388,8 +393,13 @@ namespace YARG.Settings.Customization
                     return null;
                 }
 
-                if (HasPresetId(preset.Id))
+                if (GetPresetById(preset.Id) is { } existing)
                 {
+                    if (!existing.DefaultPreset && onConflict != null)
+                    {
+                        onConflict(existing, json);
+                        return null;
+                    }
                     DialogManager.Instance.ShowMessage("Cannot Import Preset",
                         "A preset with the same ID has already been imported!");
                     return null;
@@ -399,10 +409,7 @@ namespace YARG.Settings.Customization
                 SaveAdditionalFilesFromExport(zip, preset);
 
                 // Save the preset
-                AddPreset(preset);
-                SavePresetFile(preset);
-
-                return preset;
+                return AddImportedPreset(preset, json);
             }
             catch (Exception e)
             {
@@ -412,6 +419,13 @@ namespace YARG.Settings.Customization
                 YargLogger.LogException(e, "Failed to import preset.");
                 return null;
             }
+        }
+
+        protected virtual BasePreset AddImportedPreset(T preset, string json)
+        {
+            AddPreset(preset);
+            SavePresetFile(preset);
+            return preset;
         }
 
         protected virtual void SaveAdditionalFilesFromExport(ZipArchive archive, T preset)

@@ -201,6 +201,7 @@
 			"DontApply": "Don't Apply",
 			"Close": "Close",
 			"Confirm": "Confirm",
+			"Import": "Import",
 			"Continue": "Continue",
 			"Toggle": "Toggle",
 			"On": "On",
@@ -2605,6 +2606,25 @@
 					"Button": "Copy from note",
 					"Title": "Copy From Note",
 					"Message": "Apply base note color to all fret and particle fields?"
+				},
+				"ImportType": {
+					"Title": "Import into a different preset category?",
+					"Message": "You’ve selected {2}. Do you want to switch from {1} to {0} and import it there?",
+					"SelectedType": {
+						"ColorProfile": "a Color Profile",
+						"CameraPreset": "a Camera Preset",
+						"EnginePreset": "an Engine Preset",
+						"HighwayPreset": "a Highway Preset",
+						"RockMeterPreset": "a Rock Meter Preset"
+					},
+					"Unsupported": "This build cannot import the preset type “{0}”.",
+					"Failed": "Cannot import preset"
+				},
+				"ImportColor": {
+					"Title": "Overwrite color profile?",
+					"Message": "The imported profile has the same ID as “{0}”. Overwrite that profile with the colors from this file?",
+					"Overwrite": "Overwrite",
+					"Failed": "Could not overwrite color profile"
 				},
 				"DeletePreset": {
 					"Title": "Delete Preset",

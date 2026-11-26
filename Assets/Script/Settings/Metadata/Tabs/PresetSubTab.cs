@@ -104,7 +104,7 @@ namespace YARG.Settings.Metadata
         /// message bands to match. Used by the "Copy from note" and delete-preset
         /// confirmations.
         /// </summary>
-        public static void MakeDialogCompact(Dialog dialog)
+        public static void MakeDialogCompact(Dialog dialog, Vector2? panelSize = null)
         {
             if (dialog.transform.Find("Base") is not RectTransform baseRect)
             {
@@ -114,7 +114,7 @@ namespace YARG.Settings.Metadata
             baseRect.anchorMin = new Vector2(0.5f, 0.5f);
             baseRect.anchorMax = new Vector2(0.5f, 0.5f);
             baseRect.anchoredPosition = Vector2.zero;
-            baseRect.sizeDelta = new Vector2(760f, 280f);
+            baseRect.sizeDelta = panelSize ?? new Vector2(760f, 280f);
 
             // Title sits 50px below the top edge by default; pull it up.
             if (baseRect.Find("Title") is RectTransform titleRect)
@@ -151,7 +151,8 @@ namespace YARG.Settings.Metadata
         /// </param>
         public static ColoredButton ShowCompactConfirmation(string title, string message,
             string confirmKey, Color confirmColor, Action onConfirm, Color? cancelColor = null,
-            float armDelaySeconds = 0f, string cancelKey = "Menu.Common.Cancel", Action onCancel = null)
+            float armDelaySeconds = 0f, string cancelKey = "Menu.Common.Cancel", Action onCancel = null,
+            string alternateKey = null, Action onAlternate = null, Vector2? panelSize = null)
         {
             void Cancel()
             {
@@ -178,10 +179,13 @@ namespace YARG.Settings.Metadata
                     () => armed = true).Forget();
             }
 
-            MakeDialogCompact(dialog);
+            if (onAlternate != null)
+                dialog.AddDialogButton(alternateKey, MenuData.Colors.ConfirmButton, () => onAlternate());
+
+            MakeDialogCompact(dialog, panelSize);
 
             Navigator.Instance.PopScheme();
-            Navigator.Instance.PushSchemeImmediate(new NavigationScheme(new()
+            var entries = new System.Collections.Generic.List<NavigationScheme.Entry>
             {
                 new NavigationScheme.Entry(MenuAction.Green, "Menu.Common.Confirm", () =>
                 {
@@ -189,7 +193,10 @@ namespace YARG.Settings.Metadata
                     onConfirm();
                 }),
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Cancel", Cancel),
-            }, null));
+            };
+            if (onAlternate != null)
+                entries.Add(new NavigationScheme.Entry(MenuAction.Yellow, alternateKey, onAlternate));
+            Navigator.Instance.PushSchemeImmediate(new NavigationScheme(entries, null));
 
             return confirmButton;
         }

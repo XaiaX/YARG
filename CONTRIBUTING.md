@@ -14,6 +14,7 @@ A basic todo list can be accessed [here](https://yarg.youtrack.cloud/agiles/147-
 1. All content/assets **MUST** be originally made, have proper licensing, or be public domain. **NO RIPPING ASSETS FROM OTHER GAMES.** Your PR will immediately be denied.
 2. If you add source code from other libraries, or just add other libraries, **please check if the liceneses are compatible**. If they are not, your PR will also be denied.
 4. Please try to follow code styling. Most IDEs should be able to detect it from the `.editorconfig` file.
+5. Use source and test comments to explain decisions a future maintainer needs to understand. Keep workflow labels such as `// pattern: Imperative Shell` and temporary refactoring notes in your working notes.
 
 ## Feature Categorization
 New features and additions to YARG can be organized in one of six categories, please read below to see if what you plan to add is a fit for the game. If you're confused on what category a feature may fall into, feel free to ask in the Discord server!
