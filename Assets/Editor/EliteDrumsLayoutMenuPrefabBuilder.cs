@@ -499,6 +499,8 @@ namespace YARG.Editor
                 SetArray(menu, "_choices", choices);
                 SetArray(menu, "_choiceLabels", choiceLabels);
                 Set(menu, "_save", save);
+                Set(menu, "_sizingButtonPrefab", AssetDatabase.LoadAssetAtPath<GameObject>(MANAGEMENT_BUTTON_PATH).GetComponent<RectTransform>());
+                Set(menu, "_sizingSliderPrefab", AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Menu/Common/Slider.prefab").GetComponent<Slider>());
                 Set(menu, "_back", back);
                 Set(menu, "_openLayoutFolder", folderButton);
                 Set(menu, "_renameLayout", rename);

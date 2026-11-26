@@ -48,7 +48,7 @@ namespace YARG.Gameplay.Visuals
             }
 
             var cachedTransform = _meshRenderer.transform;
-            cachedTransform.localScale = cachedTransform.localScale.WithY(yScale);
+            cachedTransform.localScale = cachedTransform.localScale.WithX(Player.HighwayWidth).WithY(yScale);
 
             var material = _meshRenderer.material;
             var color = material.color;

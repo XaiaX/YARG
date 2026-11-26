@@ -90,8 +90,10 @@ namespace YARG.Tests.PlayMode
             {
                 initial, ColorProfile.Default, false, commit, (Action)(() => { }), isCurrent,
                 acceptLayout, acceptColor, acceptLeftyFlip, YARG.Core.DrumFlamLayout.Parallel, false, true,
-                YARG.Core.DrumOpenHatGlow.WholeSurface, YARG.Core.DrumOpenHatPulseCadence.Eighth
+                YARG.Core.DrumOpenHatGlow.WholeSurface, YARG.Core.DrumOpenHatPulseCadence.Eighth, true, EliteFretGradient.Diagonal
             });
+            Assert.That(menu.GetType().GetField("_fretGradient", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu), Is.EqualTo(EliteFretGradient.Diagonal));
+            Assert.That(menu.GetType().GetField("_automaticFretColors", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu), Is.True);
             Assert.That(menu.GetType().GetField("_useVolumeCymbals", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu), Is.True);
             Assert.That(menu.GetType().GetField("_openHatGlow", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(menu),
                 Is.EqualTo(YARG.Core.DrumOpenHatGlow.WholeSurface));
@@ -226,6 +228,83 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator FretSizingChangesSaveWithTheLayout()
+        {
+#if UNITY_EDITOR
+            IsolateBoundaryLayoutStore("eliteDrumsWidths");
+            var source = PersistBoundaryLayout((EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Sized"));
+            var menu = MountBoundaryMenu();
+            InitializeBoundaryProfile(menu, source);
+            ((Button)Field(menu, "_sizingButton")).onClick.Invoke();
+            var popup = (GameObject)Field(menu, "_sizingPopup");
+            var sliders = popup.GetComponentsInChildren<Slider>();
+            Assert.That(sliders, Has.Length.EqualTo(10));
+            sliders[1].value = 2f;
+            sliders[9].value = .5f;
+            var panel = popup.transform.Find("Fret widths panel");
+            var grow = panel.Find("GrowHighway").GetComponent<Toggle>();
+            var fit = panel.Find("FitGems").GetComponent<Toggle>();
+            grow.isOn = true;
+            Assert.That(fit.isOn, Is.False);
+            fit.isOn = true;
+            panel.Find("Reset Widths").GetComponentInChildren<Button>().onClick.Invoke();
+            var draft = (EliteDrumsLayoutPreset)menu.GetType().GetProperty("Draft").GetValue(menu);
+            for (int i = 0; i < sliders.Length; i++)
+            {
+                Assert.That(sliders[i].value, Is.EqualTo(1f));
+                Assert.That(draft.GetFretWeight(i), Is.EqualTo(1f));
+            }
+            Assert.That(draft.GrowHighway && draft.FitGemsToFret, Is.True);
+            Assert.That(source.GrowHighway || source.FitGemsToFret, Is.False);
+            sliders[1].value = 2f;
+            sliders[9].value = .5f;
+            Call(menu, "Back");
+            yield return null;
+            Call(menu, "Save");
+            var saved = (EliteDrumsLayoutPreset)_layoutContainerType.GetMethod("GetPresetById")
+                .Invoke(_layoutContainer, new object[] { source.Id });
+            Assert.That(saved.FretWeights[1], Is.EqualTo(2f));
+            Assert.That(saved.FretWeights[9], Is.EqualTo(.5f));
+            Assert.That(saved.GrowHighway && saved.FitGemsToFret, Is.True);
+            Assert.That(EliteDrumsLayoutResolver.Resolve(saved).TotalWeight, Is.EqualTo(6f));
+
+            Call(menu, "ShiftRight");
+            var shifted = (EliteDrumsLayoutPreset)menu.GetType().GetProperty("Draft").GetValue(menu);
+            Assert.That(shifted.FretWeights[2], Is.EqualTo(2f));
+            Assert.That(shifted.FretWeights[0], Is.EqualTo(.5f));
+            Call(menu, "ShiftLeft");
+            Assert.That((bool)menu.GetType().GetProperty("IsDirty").GetValue(menu), Is.False);
+#else
+            Assert.Ignore("Requires production prefabs.");
+            yield break;
+#endif
+        }
+
+        [UnityTest]
+        public IEnumerator SaveAndExitPersistsBeforeClosing()
+        {
+#if UNITY_EDITOR
+            IsolateBoundaryLayoutStore("eliteDrumsSaveExit");
+            var source = PersistBoundaryLayout((EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Editable"));
+            var menu = MountBoundaryMenu();
+            InitializeBoundaryProfile(menu, source);
+            Call(menu, "ShiftRight");
+            Call(menu, "RequestClose");
+            yield return null;
+            var buttons = BoundaryDialogButtons();
+            Assert.That(buttons.Length, Is.EqualTo(3));
+            InvokeBoundaryDialogButton(buttons[2]);
+            yield return null;
+            Assert.That(_root.activeSelf, Is.False);
+            var saved = (EliteDrumsLayoutPreset)_layoutContainerType.GetMethod("GetPresetById").Invoke(_layoutContainer, new object[] {source.Id});
+            Assert.That(saved.Slots[1].Drum, Is.EqualTo("snare"));
+#else
+            Assert.Ignore("Requires production prefabs.");
+            yield break;
+#endif
+        }
+
+        [UnityTest]
         public IEnumerator ProfilePreferencesSurviveDraftDiscard_ActualLeftyColorAndDiscardActions()
         {
 #if UNITY_EDITOR
@@ -305,6 +384,46 @@ namespace YARG.Tests.PlayMode
                 "Production Copy must persist exactly one layout file.");
             Assert.That(((EliteDrumsLayoutPreset)menu.GetType().GetProperty("Draft").GetValue(menu)).Id,
                 Is.EqualTo(custom.Id));
+#else
+            Assert.Ignore("Requires production prefabs from the Editor asset database.");
+            yield break;
+#endif
+        }
+
+        [UnityTest]
+        public IEnumerator SaveAsPersistsEditedLayoutUnderNewId()
+        {
+#if UNITY_EDITOR
+            IsolateBoundaryLayoutStore("eliteDrumsSaveAsBoundary");
+            var menu = MountBoundaryMenu();
+            var original = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Original");
+            PersistBoundaryLayout(original);
+            InitializeBoundaryProfile(menu, original);
+            Call(menu, "ShiftRight");
+            Assert.That(_boundaryLayoutWrites, Is.Zero);
+            ((Button)Field(menu, "_renameLayout")).onClick.Invoke();
+            yield return null;
+            var rename = _dialogRoot.GetComponentInChildren(Production("YARG.Menu.Dialogs.RenameDialog"), true);
+            Assert.That(rename, Is.Not.Null, "Copy must use the production name dialog.");
+            var input = rename.GetType().GetField("_inputField", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(rename);
+            input.GetType().GetProperty("text").SetValue(input, "Persisted profile copy");
+            var buttonContainer = (Transform)rename.GetType().GetMethod("get_DialogButtonContainer",
+                BindingFlags.Instance | BindingFlags.NonPublic).Invoke(rename, null);
+            var buttons = buttonContainer.GetComponentsInChildren(Production("YARG.Menu.ColoredButton"), true)
+                .Cast<Component>().ToArray();
+            Assert.That(buttons, Has.Length.EqualTo(2));
+            InvokeBoundaryDialogButton(buttons[1]);
+            yield return null;
+
+            var layouts = ((System.Collections.IEnumerable)_layoutContainerType.GetProperty("CustomPresets")
+                .GetValue(_layoutContainer)).Cast<EliteDrumsLayoutPreset>().ToArray();
+            Assert.That(layouts.Length, Is.EqualTo(2));
+            Assert.That(layouts.Single(l => l.Id == original.Id).Slots[0].Drum, Is.EqualTo("snare"));
+            var copy = layouts.Single(l => l.Id != original.Id);
+            Assert.That(copy.Name, Is.EqualTo("Persisted profile copy"));
+            Assert.That(copy.Slots[1].Drum, Is.EqualTo("snare"));
+            Assert.That(_boundaryProfileLayoutId, Is.EqualTo(copy.Id));
+            Assert.That((bool)menu.GetType().GetProperty("IsDirty").GetValue(menu), Is.False);
 #else
             Assert.Ignore("Requires production prefabs from the Editor asset database.");
             yield break;

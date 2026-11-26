@@ -1,5 +1,6 @@
 Shader "YARG/Elite Fret Boundary Dots"
 {
+    Properties { [HideInInspector] _Diamond ("Diamond", Float) = 0 }
     SubShader
     {
         // Between the highway surface (2950) and the translucent kick fill (2952).
@@ -19,6 +20,10 @@ Shader "YARG/Elite Fret Boundary Dots"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
             #include "Assets/Art/Shaders/highways.hlsl"
+
+            CBUFFER_START(UnityPerMaterial)
+                float _Diamond;
+            CBUFFER_END
 
             struct Varyings
             {
@@ -41,7 +46,9 @@ Shader "YARG/Elite Fret Boundary Dots"
 
             half4 frag(Varyings input) : SV_Target
             {
-                float distanceFromCenter = length(input.dotPosition);
+                float distanceFromCenter = _Diamond > .5
+                    ? 1.25 * abs(input.dotPosition.x) + abs(input.dotPosition.y)
+                    : length(input.dotPosition);
                 float edgeWidth = max(fwidth(distanceFromCenter), .001);
                 half opacity = .62 * (1.0 - smoothstep(1.0 - edgeWidth, 1.0, distanceFromCenter));
                 return half4(input.color, opacity);

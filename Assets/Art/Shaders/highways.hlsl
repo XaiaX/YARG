@@ -7,6 +7,7 @@ uniform float4x4 _YargCamInvViewMatrices[MAX_MATRICES];
 uniform float4x4 _YargCamProjMatrices[MAX_MATRICES];
 uniform float _YargCurveFactors[MAX_MATRICES];
 uniform float _YargHighwayOrigins[MAX_MATRICES];
+uniform float _YargHighwayWidths[MAX_MATRICES];
 uniform float _YargFadeParams[MAX_MATRICES * 2];
 
 // World position to highway index
@@ -106,6 +107,8 @@ inline float4 YargTransformWorldToHClip(float3 positionWS)
     if (R != 0)
     {
         R = sign(R) * MAX_R - R * ((MAX_R - MIN_R) / 3.0);
+        // Preserve the selected edge slope even on a four-times-wide Elite highway.
+        R *= _YargHighwayWidths[index] * 0.5;
         float d = abs(positionWS.x - t_x);
 
         // Handle the sin(d/R)/d discontinuity using Taylor series approximation

@@ -132,9 +132,15 @@ namespace YARG.Tests.PlayMode
         [UnityTest]
         public IEnumerator OrdinaryAndGhostSnarePreviewBoundsMatchLiveNativeEliteModels()
         {
-            foreach (bool full in new[] { false, true })
+            foreach (var (full, weighted) in new[] { (false, false), (true, false), (false, true) })
             {
                 var layout = full ? EliteDrumsLayoutPreset.Full : EliteDrumsLayoutPreset.Compact;
+                if (weighted)
+                {
+                    layout.FretWeights[0] = 2f;
+                    layout.FitGemsToFret = true;
+                    layout.GrowHighway = true;
+                }
                 if (full)
                 {
                     layout.Slots[8] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick1);
@@ -266,7 +272,7 @@ namespace YARG.Tests.PlayMode
                         .Invoke(null, new object[] { layout });
                     var sourceMap = Get(resolvedLayout, "SourceToLane");
                     var sourceMapIndexer = sourceMap.GetType().GetProperty("Item");
-                    float laneWidth = Convert.ToSingle(resolvedLayout.GetType().GetMethod("GetLaneWidth")
+                    float laneWidth = Convert.ToSingle(resolvedLayout.GetType().GetMethod("GetLaneWidth", new[] { typeof(float) })
                         .Invoke(resolvedLayout, new object[] { highwayWidth }));
                     foreach (var (role, source) in new[] { (kickRole, combined ? "kick" : "kick1"), (doubleKickRole, combined ? "kick" : "kick2") })
                 {
@@ -476,7 +482,7 @@ namespace YARG.Tests.PlayMode
                     .Invoke(null, new object[] { scenario.Layout });
                 var sourceMap = Get(resolved, "SourceToLane");
                 var sourceMapIndexer = sourceMap.GetType().GetProperty("Item");
-                float laneWidth = Convert.ToSingle(resolved.GetType().GetMethod("GetLaneWidth")
+                float laneWidth = Convert.ToSingle(resolved.GetType().GetMethod("GetLaneWidth", new[] { typeof(float) })
                     .Invoke(resolved, new object[] { highwayWidth }));
                 var modeType = Production("YARG.Core.Game.EliteDrumsLayoutKickMode");
                 var mode = Enum.Parse(modeType, scenario.Mode);

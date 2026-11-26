@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using YARG.Core.Diagnostics;
+using YARG.Core.Game;
 using YARG.Helpers.Extensions;
 using YARG.Themes;
 using Color = System.Drawing.Color;
@@ -37,6 +38,83 @@ namespace YARG.Gameplay.Visuals
         private readonly List<Material> _secondaryInnerMaterials = new();
 
         private AnimatorOverrideController _ownedSustainController;
+        private static readonly int _kitCymbal = Shader.PropertyToID("_EliteFretCymbal");
+        private static readonly int _kitX = Shader.PropertyToID("_EliteFretAxisX");
+        private static readonly int _kitZ = Shader.PropertyToID("_EliteFretAxisZ");
+        private static readonly int _kitExpansion = Shader.PropertyToID("_EliteFretExpansion");
+        private readonly List<Material> _splitMaterials = new();
+        private float _lastSplit;
+        private UnityEngine.Color _originalCymbal;
+        private float _cymbalDirection;
+
+        private void SetCymbalTint(UnityEngine.Color value)
+        {
+            if (_splitMaterials.Count == 0) return;
+            var tint = QualitySettings.activeColorSpace == ColorSpace.Linear ? value.linear : value;
+            foreach (var mat in _splitMaterials)
+                mat.SetVector(_kitCymbal, new Vector4(tint.r, tint.g, tint.b, _cymbalDirection));
+        }
+
+        internal void SetKitColors(UnityEngine.Color drum, UnityEngine.Color cymbal, bool lefty, bool paired, EliteFretGradient gradient)
+        {
+            _originalUnityTopColor = _originalUnityInnerColor = drum;
+            _originalEmissionColor = drum * 11.5f;
+            _splitMaterials.Clear();
+            _lastSplit = 0;
+            // Project mesh-local positions into fret space. Submeshes can have their
+            // own transforms and texture atlases, including on the pressed surface.
+            var bounds = new Bounds();
+            bool first = true;
+            foreach (var surface in ThemeBind.ColorSurfaces)
+            {
+                var mesh = surface.Mesh.GetComponent<MeshFilter>().sharedMesh;
+                var box = mesh.GetSubMesh(surface.MaterialIndex).bounds;
+                var matrix = transform.worldToLocalMatrix * surface.Mesh.localToWorldMatrix;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    var point = matrix.MultiplyPoint3x4(new Vector3(
+                        (corner & 1) == 0 ? box.min.x : box.max.x,
+                        (corner & 2) == 0 ? box.min.y : box.max.y,
+                        (corner & 4) == 0 ? box.min.z : box.max.z));
+                    if (first) { bounds = new Bounds(point, Vector3.zero); first = false; }
+                    else bounds.Encapsulate(point);
+                }
+            }
+            _originalCymbal = cymbal;
+            // The sign mirrors the pattern. Its magnitude selects the mask in EliteFretBlend.
+            int mask = gradient switch { EliteFretGradient.Vertical => 2, EliteFretGradient.Diagonal => 3, _ => 1 };
+            _cymbalDirection = lefty ? -mask : mask;
+            foreach (var surface in ThemeBind.ColorSurfaces)
+            {
+                var mat = surface.Mesh.materials[surface.MaterialIndex];
+                mat.color = drum;
+                if (mat.HasProperty(_emissionColor)) mat.SetColor(_emissionColor, _originalEmissionColor);
+                if (!mat.HasProperty(_kitCymbal)) continue;
+                if (!paired)
+                {
+                    mat.SetVector(_kitCymbal, Vector4.zero);
+                    continue;
+                }
+                var matrix = transform.worldToLocalMatrix * surface.Mesh.localToWorldMatrix;
+                var x = matrix.GetRow(0);
+                var z = matrix.GetRow(2);
+                x.w -= bounds.center.x;
+                z.w -= bounds.center.z;
+                mat.SetVector(_kitX, x / Mathf.Max(.0001f, bounds.size.x));
+                mat.SetVector(_kitZ, z / Mathf.Max(.0001f, bounds.size.z));
+                mat.SetFloat(_kitExpansion, 0);
+                _splitMaterials.Add(mat);
+            }
+            SetCymbalTint(cymbal);
+        }
+
+        internal void SetColorSplit(float amount)
+        {
+            if (amount == _lastSplit) return;
+            _lastSplit = amount;
+            foreach (var material in _splitMaterials) material.SetFloat(_kitExpansion, amount);
+        }
+
         private bool _hasPressedParam;
         private bool _hasSustainParam;
         private bool _hasOpenMissTrigger;
@@ -197,6 +275,7 @@ namespace YARG.Gameplay.Visuals
 
         public void WhitenFretColor()
         {
+            SetCymbalTint(UnityEngine.Color.white);
             foreach (var material in _topMaterials)
             {
                 material.color = UnityEngine.Color.white;
@@ -234,6 +313,7 @@ namespace YARG.Gameplay.Visuals
 
         public void RestoreFretColor()
         {
+            SetCymbalTint(_originalCymbal);
             foreach (var material in _topMaterials)
             {
                 material.color = _originalUnityTopColor;
@@ -423,6 +503,7 @@ namespace YARG.Gameplay.Visuals
 
         public void DimColor(bool fade = true)
         {
+            if (!fade) SetCymbalTint(_inactiveColor);
             _active = false;
             _fadeDirection = false;
             _colorChangeEnabled = true;
@@ -448,6 +529,7 @@ namespace YARG.Gameplay.Visuals
 
         public void ResetColor(bool fade = false)
         {
+            if (!fade) SetCymbalTint(_originalCymbal);
             _active = true;
             _fadeDirection = true;
             _colorChangeEnabled = false;
@@ -516,6 +598,8 @@ namespace YARG.Gameplay.Visuals
             _fadeAmount += Time.deltaTime / (_fadeDuration / rateAdjustment);
             var fadeIntensity = _pulseOrFade ? _fadeAmount : ((Mathf.Cos(Mathf.PI * _fadeAmount) / 2) * -1) + 1;
 
+            SetCymbalTint(UnityEngine.Color.Lerp(_inactiveColor, _originalCymbal,
+                _fadeDirection ? fadeIntensity : 1f - fadeIntensity));
             if (_fadeDirection)
             {
                 // Fading in
@@ -547,6 +631,7 @@ namespace YARG.Gameplay.Visuals
             {
                 _colorChangeEnabled = false;
                 _fadeAmount = 0.0f;
+                SetCymbalTint(_fadeDirection ? _originalCymbal : _inactiveColor);
 
                 if (_fadeDirection)
                 {

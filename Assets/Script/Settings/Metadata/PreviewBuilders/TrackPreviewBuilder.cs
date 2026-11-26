@@ -26,6 +26,8 @@ namespace YARG.Settings.Metadata
         public YARG.Core.Game.EliteDrumsLayoutPreset EliteLayoutOverride { get; set; }
         public bool AllowIncompleteEliteLayoutPreview { get; set; }
         // Standalone settings previews showcase the joined cymbal flams. Profile previews set their own choice.
+        public bool AutomaticFretColors { get; set; }
+        public EliteFretGradient FretGradient { get; set; }
         public bool UseVolumeCymbals { get; set; } = YargProfile.DEFAULT_USE_VOLUME_CYMBALS;
         internal EliteGlowPreview GlowPreview { get; set; }
         public DrumOpenHatGlow OpenHatGlow { get; set; } = DrumOpenHatGlowExtensions.DEFAULT_MODE;
@@ -246,6 +248,8 @@ namespace YARG.Settings.Metadata
             trackPreview.LeftyFlip = LeftyFlip;
             trackPreview.FlamLayout = FlamLayout;
             trackPreview.KeepOriginalCymbalColors = KeepOriginalCymbalColors;
+            trackPreview.AutomaticFretColors = AutomaticFretColors;
+            trackPreview.FretGradient = FretGradient;
             trackPreview.UseVolumeCymbals = UseVolumeCymbals;
             trackPreview.GlowPreview = GlowPreview;
             trackPreview.OpenHatGlow = OpenHatGlow;

@@ -113,6 +113,22 @@ namespace YARG
         private void Start()
         {
             SettingsManager.LoadSettings();
+            // Profiles are initially saved before global settings load. Null values survive
+            // that save so each existing Elite profile can inherit its old settings once.
+            bool migratedDots = false;
+            foreach (var profile in PlayerContainer.Profiles)
+            {
+                if (profile.AlwaysShowFretDots.HasValue && profile.ColoredFretDots.HasValue &&
+                    profile.ColoredHeldFretDots.HasValue && profile.FretDotSubdivision.HasValue) continue;
+                bool elite = profile.GameMode == YARG.Core.GameMode.EliteDrums;
+                var legacy = SettingsManager.Settings;
+                profile.AlwaysShowFretDots ??= elite && legacy.AlwaysShowEliteFretBoundaryDots.Value;
+                profile.ColoredFretDots ??= elite && legacy.ColorEliteAllFretCenters.Value;
+                profile.ColoredHeldFretDots ??= elite && legacy.ColorEliteHeldFretCenters.Value;
+                profile.FretDotSubdivision ??= elite ? (int)legacy.EliteFretBoundaryDotSpacing.Value : 32;
+                migratedDots = true;
+            }
+            if (migratedDots) PlayerContainer.SaveProfiles(false);
             ProfileFlamLayoutMigration.Apply(PlayerContainer.Profiles,
                 SettingsManager.Settings.EliteFlamLayout.Value, () => PlayerContainer.SaveProfiles(false));
             InputManager.Initialize();

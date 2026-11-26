@@ -206,14 +206,14 @@ namespace YARG.Tests.PlayMode
             yield return BuildElitePreview(null, 5);
             var pool = Field(_player, "_notePool");
             var themeNote = Production("YARG.Themes.ThemeNote");
-            foreach (var role in new[] { EliteDrumsColorRole.Snare, EliteDrumsColorRole.HatOpen,
+            foreach (var role in new[] { EliteDrumsColorRole.Snare, EliteDrumsColorRole.Tom2, EliteDrumsColorRole.HatOpen,
                 EliteDrumsColorRole.KickFlam, EliteDrumsColorRole.Splash })
             {
                 bool star = role == EliteDrumsColorRole.HatOpen;
                 Call(_builder, "SpotlightEliteColor", role, star);
                 string[] models = role switch
                 {
-                    EliteDrumsColorRole.Snare => new[] { "Ghost", "Normal", "Accent", "EliteVFlamGhost",
+                    EliteDrumsColorRole.Snare or EliteDrumsColorRole.Tom2 => new[] { "Ghost", "Normal", "Accent", "EliteVFlamGhost",
                         "EliteVFlam", "EliteVFlamAccent", "EliteFlatFlamGhost", "EliteFlatFlam", "EliteFlatFlamAccent" },
                     EliteDrumsColorRole.HatOpen => new[] { "OpenHiHatGhost", "OpenHiHat", "OpenHiHatAccent",
                         "OpenHiHatFlamGhost", "OpenHiHatFlam", "OpenHiHatFlamAccent",
@@ -221,6 +221,27 @@ namespace YARG.Tests.PlayMode
                     EliteDrumsColorRole.KickFlam => new[] { "KickFlamGhost", "KickFlam", "KickFlamAccent" },
                     _ => new[] { "HatSplash" }
                 };
+                if (role is EliteDrumsColorRole.Tom2 or EliteDrumsColorRole.HatOpen)
+                {
+                    var family = role == EliteDrumsColorRole.Tom2
+                        ? new[] { EliteDrumsColorRole.Tom1, EliteDrumsColorRole.Tom2, EliteDrumsColorRole.Tom3 }
+                        : new[] { EliteDrumsColorRole.HatIndifferent, EliteDrumsColorRole.LeftCrash, EliteDrumsColorRole.Ride, EliteDrumsColorRole.RightCrash };
+                    for (int beat = 0; beat < (star ? 9 : 8); beat++)
+                    {
+                        Call(_builder, "SpotlightEliteColor", role, star);
+                        Call(pool, "ReturnAllObjects");
+                        Call(_player, "Advance", .21d);
+                        var chord = ((IEnumerable)Get(pool, "AllSpawned")).Cast<Component>().Select(g => Get(g, "NoteRef")).ToArray();
+                        if (star)
+                            family[0] = (beat % 3) switch { 0 => EliteDrumsColorRole.HatClosed,
+                                1 => EliteDrumsColorRole.HatIndifferent, _ => EliteDrumsColorRole.HatOpen };
+                        Assert.That(chord.Select(data => Get(Get(data, "EliteDescriptor"), "Role")), Is.EquivalentTo(family));
+                        Assert.That(chord.Select(data => Get(data, "Time")).Distinct().Count(), Is.EqualTo(1));
+                        Assert.That(chord.Select(data => Get(data, "ForceStarPower")), Is.All.EqualTo(star));
+                        if (beat == 0 || (star && beat < 3))
+                            yield return AssertChordVisible(((IEnumerable)Get(pool, "AllSpawned")).Cast<Component>().ToArray());
+                    }
+                }
                 for (int i = 0; i < models.Length * 2; i++)
                 {
                     // Continuous color-picker edits must still let later dynamics and flams appear.
@@ -269,6 +290,11 @@ namespace YARG.Tests.PlayMode
                 Is.EquivalentTo(new[] { EliteDrumsColorRole.RightCrash, EliteDrumsColorRole.Tom3,
                     EliteDrumsColorRole.Kick, EliteDrumsColorRole.Splash }));
             Assert.That(chord.Count(n => (bool)Get(Get(n, "NoteRef"), "OffsetElitePair")), Is.EqualTo(lanes == 5 ? 2 : 0));
+            yield return AssertChordVisible(chord);
+        }
+
+        private IEnumerator AssertChordVisible(Component[] chord)
+        {
             foreach (var gem in chord)
             {
                 var data = Get(gem, "NoteRef");
@@ -276,7 +302,7 @@ namespace YARG.Tests.PlayMode
                 Call(gem, "RefreshPosition");
             }
             var targets = Production("YARG.Helpers.CameraPreviewTexture");
-            _captureTarget = (RenderTexture)CallStatic(targets, "CreateOwnedPreviewTexture", 1280, 720, "Elite collision");
+            _captureTarget ??= (RenderTexture)CallStatic(targets, "CreateOwnedPreviewTexture", 1280, 720, "Elite collision");
             CallStatic(targets, "SetOwnedPreviewTargets", _world.transform, _captureTarget);
             var camera = _world.GetComponentInChildren(Production("YARG.Gameplay.Visuals.HighwayCameraRendering")).GetComponent<Camera>();
             yield return WaitForRenderedFrame();
@@ -291,7 +317,7 @@ namespace YARG.Tests.PlayMode
                 foreach (var renderer in renderers) renderer.enabled = true;
                 Assert.That(Enumerable.Range(0, all.Length).Count(i => Math.Abs(all[i].r - omitted[i].r) > 8
                     || Math.Abs(all[i].g - omitted[i].g) > 8 || Math.Abs(all[i].b - omitted[i].b) > 8),
-                    Is.GreaterThan(20), $"{Get(Get(Get(gem, "NoteRef"), "EliteDescriptor"), "Role")} visible at {lanes} lanes");
+                    Is.GreaterThan(20), $"{Get(Get(Get(gem, "NoteRef"), "EliteDescriptor"), "Role")} visible in comparison chord");
             }
         }
 

@@ -37,6 +37,8 @@ namespace YARG.Settings.Preview
             public Dictionary<int, int> HighwayOrdering;
             public int LaneCount;
             public EliteDrumsResolvedLayout EliteLayout;
+            public float HighwayWidth => EliteLayout?.GrowHighway == true && LaneCount > 0
+                ? TrackPlayer.TRACK_WIDTH * EliteLayout.TotalWeight / 5f : TrackPlayer.TRACK_WIDTH;
             // When set, notes are positioned at these X coordinates by fret index
             // instead of the uniform lane formula. Used for piano-key spacing.
             public float[] NoteXPositions;
@@ -276,10 +278,26 @@ namespace YARG.Settings.Preview
         }
 
         public bool ForceStarPowerNotes { get; set; }
-        public bool LeftyFlip { get; set; }
+        private bool _leftyFlip;
+        public bool LeftyFlip
+        {
+            get => _leftyFlip;
+            set
+            {
+                if (_leftyFlip == value) return;
+                _leftyFlip = value;
+                var layout = CurrentGameModeInfo.EliteLayout;
+                if (!_initialized || layout == null || _fretArray == null) return;
+                _fretArray.MirrorPreviewColumns();
+                _fretArray.SetColumnEdges(layout.GetRestingEdges(value));
+                ApplyAutomaticFretColors(ColorProfile);
+            }
+        }
         public DrumFlamLayout FlamLayout { get; set; } = DrumFlamLayout.V;
         public bool KeepOriginalCymbalColors { get; set; }
         public bool UseCymbalModels { get; set; } = true;
+        public bool AutomaticFretColors { get; set; }
+        public EliteFretGradient FretGradient { get; set; }
         public bool UseVolumeCymbals { get; set; } = YargProfile.DEFAULT_USE_VOLUME_CYMBALS;
         internal EliteGlowPreview GlowPreview { get; set; }
         public DrumOpenHatGlow OpenHatGlow { get; set; } = DrumOpenHatGlowExtensions.DEFAULT_MODE;
@@ -370,6 +388,8 @@ namespace YARG.Settings.Preview
             if (notePool == null) throw new ArgumentNullException(nameof(notePool));
             _notePool = notePool;
             CameraPreset = cameraPreset;
+            if (SelectedGameMode == GameMode.EliteDrums)
+                colorProfile = ColorProfile.ForEliteLayout(colorProfile, EliteLayoutOverride);
             ColorProfile = colorProfile;
             HighwayPreset = highwayPreset;
             CurrentGameModeInfo = _gameModeInfos[SelectedGameMode];
@@ -451,6 +471,7 @@ namespace YARG.Settings.Preview
                 : VisualStyleHelpers.GetVisualStyle(SelectedGameMode, CurrentGameModeInfo.UseProKeys ? Instrument.ProKeys : Instrument.FiveFretGuitar);
 
             // Create frets and put them on the right layer
+            if (_fretArray != null) _fretArray.TrackWidth = CurrentGameModeInfo.HighwayWidth;
             if (initializeFrets != null)
             {
                 initializeFrets(CurrentGameModeInfo, theme, style);
@@ -477,11 +498,14 @@ namespace YARG.Settings.Preview
                     {
                         int savedColumn = resolved.Lanes[source.Value].SavedColumn;
                         int encoded = ColorProfile.EliteDrumsFretColorAdapter.EncodeSlot(savedColumn);
-                        ordering.Add(key++, new HighwayOrderingInfo(source.Value, encoded));
+                        int position = LeftyFlip ? resolved.Lanes.Count - 1 - source.Value : source.Value;
+                        ordering.Add(key++, new HighwayOrderingInfo(position, encoded));
                     }
                     _fretArray.UseKickFrets = resolved.KickMode == EliteDrumsLayoutKickMode.Bars;
                     _fretArray.Initialize(ordering, resolved.Lanes.Count, CurrentGameModeInfo.KickFretPrefab,
                         CreateEliteDrumsFretColorProvider(resolved, colorProfile.EliteDrums), theme, style);
+                    _fretArray.SetColumnEdges(resolved.GetRestingEdges(LeftyFlip));
+                    ApplyAutomaticFretColors(colorProfile);
                 }
                 else
                 {
@@ -512,9 +536,11 @@ namespace YARG.Settings.Preview
             {
                 _hitWindow.gameObject.SetActive(showHitWindow || ForceShowHitWindow);
                 _hitWindow.NoteSpeed = NOTE_SPEED;
+                _hitWindow.transform.localScale = _hitWindow.transform.localScale.WithX(CurrentGameModeInfo.HighwayWidth);
             }
             if (_trackMaterial != null)
             {
+                _trackMaterial.SetHighwayWidth(CurrentGameModeInfo.HighwayWidth);
                 _trackMaterial.StarpowerMode = ForceStarPower;
                 _trackMaterial.GrooveMode = ForceGroove;
             }
@@ -523,6 +549,7 @@ namespace YARG.Settings.Preview
                 var highwayRenderer = _cameraPositioner.GetComponent<HighwayCameraRendering>();
                 var camera = _cameraPositioner.GetComponent<Camera>();
                 highwayRenderer.AddPlayerParams(transform.position, camera, 0, 0, 0, 0, false);
+                highwayRenderer.SetHighwayWidth(0, CurrentGameModeInfo.HighwayWidth);
             }
 
             _initialized = true;
@@ -533,6 +560,8 @@ namespace YARG.Settings.Preview
         {
             if (colorProfile == null) throw new ArgumentNullException(nameof(colorProfile));
             ColorProfileOverride = colorProfile;
+            if (SelectedGameMode == GameMode.EliteDrums)
+                colorProfile = ColorProfile.ForEliteLayout(colorProfile, EliteLayoutOverride);
             ColorProfile = colorProfile;
             if (!_initialized) return;
 
@@ -545,6 +574,7 @@ namespace YARG.Settings.Preview
                 _fretArray.RecolorFrets(
                     CreateEliteDrumsFretColorProvider(CurrentGameModeInfo.EliteLayout, colorProfile.EliteDrums),
                     index => index);
+                ApplyAutomaticFretColors(colorProfile);
             }
             else if (_fretArray != null && CurrentGameModeInfo.FretColorProvider != null
                 && !(SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys))
@@ -558,6 +588,12 @@ namespace YARG.Settings.Preview
 
             if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
                 RecolorProKeysOverlay(colorProfile.ProKeys);
+        }
+
+        private void ApplyAutomaticFretColors(ColorProfile colors)
+        {
+            if (AutomaticFretColors && SelectedGameMode == GameMode.EliteDrums && CurrentGameModeInfo.EliteLayout != null)
+                _fretArray.ApplyAutomaticColors(CurrentGameModeInfo.EliteLayout, colors.EliteDrums, LeftyFlip, EliteLayoutOverride, FretGradient);
         }
 
         private void OnSettingChanged()
@@ -605,6 +641,8 @@ namespace YARG.Settings.Preview
             EnginePreset enginePreset, HighwayPreset highwayPreset)
         {
             CameraPreset = cameraPreset;
+            if (SelectedGameMode == GameMode.EliteDrums)
+                colorProfile = ColorProfile.ForEliteLayout(colorProfile, EliteLayoutOverride);
             ColorProfile = colorProfile;
             HighwayPreset = highwayPreset;
             // Settings previews also run in isolated UI/test contexts before settings load.
@@ -658,6 +696,7 @@ namespace YARG.Settings.Preview
                         : (Func<int, int>)(index => index);
                 }
                 _fretArray.RecolorFrets(fretColors, colorIndexRemap);
+                ApplyAutomaticFretColors(colorProfile);
             }
 
             if (SelectedGameMode == GameMode.ProKeys && !UseFiveLaneKeys)
@@ -689,7 +728,7 @@ namespace YARG.Settings.Preview
                 _eliteColorSample = 0;
             }
             // Keep the usual inspection time even for a single pedal model, and finish on a complete pass.
-            int passLength = 2 * EliteDrumsFakeNoteGenerator.VariationCount(role);
+            int passLength = EliteDrumsFakeNoteGenerator.ColorPassLength(role);
             int passes = (_eliteColorSample + SPOTLIGHT_NOTE_COUNT + passLength - 1) / passLength;
             _spotlightRemaining = passes * passLength - _eliteColorSample;
         }
@@ -792,12 +831,31 @@ namespace YARG.Settings.Preview
             _spotlightStarPowerRemaining = SPOTLIGHT_NOTE_COUNT;
         }
 
-        private FakeNoteData CreateSpotlightNote(double time)
+        private FakeNoteData CreateSpotlightNote(double time, List<FakeNoteData> chord)
         {
             if (_eliteColorSpotlight is { } role && CurrentGameModeInfo.Generator is EliteDrumsFakeNoteGenerator generator)
             {
-                var variation = generator.CreateColorVariation(time, role, _eliteColorSample / 2);
-                _eliteColorSample = (_eliteColorSample + 1) % (2 * EliteDrumsFakeNoteGenerator.VariationCount(role));
+                int sample = _eliteColorSample;
+                _eliteColorSample = (sample + 1) % EliteDrumsFakeNoteGenerator.ColorPassLength(role);
+                var family = EliteDrumsFakeNoteGenerator.ComparisonFamily(role);
+                int comparisonBeats = EliteDrumsFakeNoteGenerator.ComparisonBeats(role);
+                if (comparisonBeats > 0)
+                {
+                    if (sample < comparisonBeats)
+                    {
+                        FakeNoteData Neutral(EliteDrumsColorRole member)
+                        {
+                            var comparisonRole = EliteDrumsFakeNoteGenerator.ComparisonRole(member, sample);
+                            var data = EliteDrumsFakeNoteGenerator.CreateRoleNote(time, EliteDrumsFakeNoteGenerator.Describe(comparisonRole));
+                            data.ForceStarPower = _eliteSpotlightStarPower;
+                            return data;
+                        }
+                        for (int i = 1; i < family.Count; i++) chord.Add(Neutral(family[i]));
+                        return Neutral(family[0]);
+                    }
+                    sample -= comparisonBeats;
+                }
+                var variation = generator.CreateColorVariation(time, role, sample / 2);
                 variation.ForceStarPower = _eliteSpotlightStarPower;
                 return variation;
             }
@@ -981,6 +1039,7 @@ namespace YARG.Settings.Preview
                 bool spotlightType = _spotlightTypeRemaining > 0;
                 bool spotlight = _spotlightRemaining > 0;
                 bool spotlightMiss = _spotlightMissRemaining > 0;
+                var notesToSpawn = new List<FakeNoteData>();
                 FakeNoteData note;
                 if (spotlightType)
                 {
@@ -995,7 +1054,7 @@ namespace YARG.Settings.Preview
                 else if (spotlight)
                 {
                     _spotlightRemaining--;
-                    note = CreateSpotlightNote(spawnTime);
+                    note = CreateSpotlightNote(spawnTime, notesToSpawn);
                 }
                 else
                 {
@@ -1016,19 +1075,17 @@ namespace YARG.Settings.Preview
 
                 // Generate chord extras before lefty so fret comparisons
                 // are in the same (non-transformed) space.
-                var notesToSpawn = new List<FakeNoteData>();
                 if (!spotlight && !spotlightType)
                 {
                     foreach (var chordNote in CurrentGameModeInfo.Generator.CreateChordNotes(
                         spawnTime, note, _random))
                     {
-                        ApplyLeftyToFret(chordNote);
                         notesToSpawn.Add(chordNote);
                     }
                 }
 
-                ApplyLeftyToFret(note);
                 notesToSpawn.Add(note);
+                foreach (var member in notesToSpawn) ApplyLeftyToFret(member);
                 if (SelectedGameMode == GameMode.EliteDrums)
                 {
                     EliteDrumsFakeNoteGenerator.ProjectCymbalNotes(notesToSpawn,

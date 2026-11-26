@@ -434,7 +434,7 @@ namespace YARG.Tests.PlayMode
             var managementOrder = rows[2].Cast<Component>().Select(control => control.gameObject).ToArray();
             Assert.That(managementOrder, Is.EqualTo(new[]
             {
-                "_save", "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout"
+                "_save", "_renameLayout", "_copyLayout", "_deleteLayout", "_importLayout", "_exportLayout", "_sizingButton"
             }.Select(name => (Selectable)Field(menu, name))
                 .Where(control => control.IsInteractable() && control.gameObject.activeInHierarchy)
                 .Select(control => control.gameObject).ToArray()),
@@ -573,22 +573,31 @@ namespace YARG.Tests.PlayMode
                     Is.Not.SameAs(clearNavigation), "Controller navigation must skip disabled Clear.");
             }
             var labels = (Array)Field(menu, "_choiceLabels");
-            for (int i = choiceIds.Length; i < choices.Length; i++)
+            void AssertPickerRows(int count)
             {
-                Assert.That(choices[i].transform.parent.gameObject.activeSelf, Is.False,
-                    "Shrinking the picker must hide the entire option row, including its sibling label.");
-                Assert.That((string)((Component)labels.GetValue(i)).GetType().GetProperty("text").GetValue(labels.GetValue(i)), Is.Empty);
+                Assert.That(count, Is.LessThanOrEqualTo(choices.Length));
+                for (int i = 0; i < choices.Length; i++)
+                {
+                    bool visible = i < count;
+                    Assert.That(choices[i].transform.parent.gameObject.activeSelf, Is.EqualTo(visible), $"Row {i}");
+                    var label = (Component)labels.GetValue(i);
+                    var text = (string)label.GetType().GetProperty("text").GetValue(label);
+                    Assert.That(string.IsNullOrEmpty(text), Is.EqualTo(!visible), $"Label {i}");
+                }
             }
+
+            int cymbalCount = choiceIds.Length;
+            AssertPickerRows(cymbalCount);
             Call(menu, "CancelPopup");
             yield return null;
             Call(menu, "OpenCell", 0, true);
-            var grownChoiceIds = (string[])Field(menu, "_choiceIds");
-            Assert.That(grownChoiceIds.Length, Is.GreaterThan(choiceIds.Length));
-            for (int i = choiceIds.Length; i < grownChoiceIds.Length; i++)
-            {
-                Assert.That(choices[i].transform.parent.gameObject.activeSelf, Is.True);
-                Assert.That((string)((Component)labels.GetValue(i)).GetType().GetProperty("text").GetValue(labels.GetValue(i)), Is.Not.Empty);
-            }
+            int drumCount = ((string[])Field(menu, "_choiceIds")).Length;
+            Assert.That(drumCount, Is.Not.EqualTo(cymbalCount), "Resize coverage requires two different list sizes.");
+            AssertPickerRows(drumCount);
+            Call(menu, "CancelPopup");
+            yield return null;
+            Call(menu, "OpenCell", 0, false);
+            AssertPickerRows(cymbalCount);
             Call(menu, "CancelPopup");
             yield return null;
             Call(menu, "OpenCell", 1, false);
@@ -666,7 +675,7 @@ namespace YARG.Tests.PlayMode
             var buttons = ((Transform)message.GetType().GetMethod("get_DialogButtonContainer",
                 BindingFlags.Instance | BindingFlags.NonPublic).Invoke(message, null))
                 .GetComponentsInChildren(Production("YARG.Menu.ColoredButton"), true);
-            Assert.That(buttons, Has.Length.EqualTo(2));
+            Assert.That(buttons, Has.Length.EqualTo((bool)menuType.GetProperty("CanSave").GetValue(menu) ? 3 : 2));
             var discardButton = (Component)buttons.GetValue(1);
             var discardUiButton = discardButton.GetComponentInChildren<Button>();
             Assert.That(discardUiButton.interactable, Is.False, "Discard must be gated immediately on each opening.");

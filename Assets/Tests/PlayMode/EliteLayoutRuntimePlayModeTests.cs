@@ -716,6 +716,47 @@ namespace YARG.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator WeightedDrumLanesScaleHandGeometryInAllThreeDimensions()
+        {
+            var preset = EliteDrumsLayoutPreset.Compact;
+            preset.FretWeights[0] = 2f;
+            var snare = Note(EliteDrumPad.Snare);
+            var tom = Note(EliteDrumPad.Tom1, time: 2d, tick: 960);
+            _fixture = new InitializedElitePlayerFixture();
+            yield return _fixture.Initialize(PreparedElitePlayerFixture.CreateChart(snare, tom), Profile(false), preset);
+            var player = _fixture.Player;
+            Component reused = null;
+            Vector3 Size(EliteDrumNote note)
+            {
+                SpawnCoverageNote(player, note);
+                var element = FindCoverageElement(player, note);
+                if (reused != null) Assert.That(element, Is.SameAs(reused));
+                reused = element;
+                var meshes = element.GetComponentsInChildren<MeshRenderer>();
+                Assert.That(meshes, Is.Not.Empty);
+                var bounds = meshes[0].bounds;
+                foreach (var mesh in meshes) bounds.Encapsulate(mesh.bounds);
+                var scale = element.transform.localScale;
+                note.ActivateFlag(NoteFlags.StarPower);
+                element.GetType().GetMethod("OnStarPowerUpdated").Invoke(element, null);
+                Assert.That(element.transform.localScale, Is.EqualTo(scale));
+                ReturnCoverageElement(element);
+                return bounds.size;
+            }
+            var wide = Size(snare);
+            var kick = Note(EliteDrumPad.Kick);
+            SpawnCoverageNote(player, kick);
+            var beam = FindCoverageElement(player, kick);
+            Assert.That(beam, Is.SameAs(reused));
+            Assert.That(beam.transform.localScale.x, Is.EqualTo(1f).Within(.0001f));
+            Assert.That(beam.transform.localScale.z, Is.EqualTo(1f).Within(.0001f));
+            ReturnCoverageElement(beam);
+            var narrow = Size(tom);
+            for (int axis = 0; axis < 3; axis++)
+                Assert.That(wide[axis], Is.EqualTo(narrow[axis] * 2f).Within(.0001f));
+        }
+
+        [UnityTest]
         public IEnumerator ActualDedicatedKickModelsFitResolvedColumnsAndMirrorIdentity()
         {
             foreach (bool legacyTheme in new[] { false, true })

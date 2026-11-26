@@ -46,6 +46,10 @@ namespace YARG.Gameplay.Player
         internal float OpenHatPulsesPerQuarter =>
             _openHatPulsePlan.PulsesPerQuarter(Player.Profile.OpenHatPulseCadence, _openHatVisualTick);
 
+        private float _highwayWidth = TRACK_WIDTH;
+        public override float HighwayWidth => _highwayWidth;
+        public bool AppliesHighwayGrowth { get; private set; }
+
         public bool UsesKickBars => Layout.KickMode == EliteDrumsLayoutKickMode.Bars;
         public bool UsesHistoricalPedalBars { get; private set; }
 
@@ -254,6 +258,9 @@ namespace YARG.Gameplay.Player
         {
             Layout = EliteDrumsLayoutResolver.TryResolve(_cymbalLayout, out var selectedLayout)
                 ? selectedLayout : EliteDrumsLayoutResolver.Resolve(EliteDrumsLayoutPreset.Compact);
+            int activePlayers = GameManager.YargPlayers?.Count(p => !p.SittingOut) ?? GameManager.TotalPlayers;
+            AppliesHighwayGrowth = Layout.GrowHighway && activePlayers <= 1;
+            _highwayWidth = AppliesHighwayGrowth ? TRACK_WIDTH * Layout.TotalWeight / 5f : TRACK_WIDTH;
             var compact = EliteDrumsLayoutResolver.Resolve(EliteDrumsLayoutPreset.Compact);
             UsesHistoricalPedalBars = Layout.Lanes.Count == compact.Lanes.Count &&
                 Layout.Lanes.Select(lane => string.Join(",", lane.EffectiveIds))
@@ -273,6 +280,7 @@ namespace YARG.Gameplay.Player
                     ApplyLefty(Layout.SourceToLane["kick2"]), ColorProfile.EliteDrumsFretColorAdapter.EncodeSlot(
                         Layout.Lanes[Layout.SourceToLane["kick2"]].SavedColumn)));
             PrepareRollLayout();
+            _fretArray.TrackWidth = HighwayWidth;
             _fretArray.UseKickFrets = UsesKickBars;
             var colors = Player.ColorProfile.EliteDrums;
             var kickPrefab = ThemeManager.Instance.CreateKickFretPrefabFromTheme(Player.ThemePreset,
@@ -290,6 +298,9 @@ namespace YARG.Gameplay.Player
             _fretArray.Initialize(_ordering, LaneCount, kickPrefab,
                 new ColorProfile.EliteDrumsFretColorAdapter(colors, slotEffects), Player.ThemePreset,
                 VisualStyle.FiveLaneDrums);
+            _fretArray.SetColumnEdges(Layout.GetRestingEdges(Player.Profile.LeftyFlip));
+            if (Player.Profile.AutomaticFretColors)
+                _fretArray.ApplyAutomaticColors(Layout, colors, Player.Profile.LeftyFlip, _cymbalLayout, Player.Profile.FretGradient);
             _kickFretFlash.Initialize(colors.GetParticleColor((int) ColorProfile.EliteDrumsFret.Kick).ToUnityColor());
             NoteTrack.SetDrumActivationFlags(Player.Profile.StarPowerActivationType);
             Notes = NoteTrack.Notes;
@@ -316,18 +327,21 @@ namespace YARG.Gameplay.Player
 
         private void ConfigureHiHatSustainVisual(EliteDrumsEngine engine)
         {
-            float column = TRACK_WIDTH / LaneCount;
             int position = GetVisualPosition((int)EliteDrumPad.HiHat);
-            EliteDrumsRuntimeGeometry.GetPedalRegion(position, LaneCount, TRACK_WIDTH,
-                out float center, out float width);
+            float column = RestingWidth(position);
+            float headCenter = RestingCenter(position);
+            var (first, end) = EliteDrumsRuntimeGeometry.GetPedalColumnRange(position, LaneCount);
+            float left = RestingCenter(first) - RestingWidth(first) * .5f;
+            float right = RestingCenter(end - 1) + RestingWidth(end - 1) * .5f;
+            float center = (left + right) * .5f;
+            float width = right - left;
             if (Player.Profile.OneFretHiHatSustains)
             {
-                center = column * (position + .5f) - TRACK_WIDTH / 2;
+                center = headCenter;
                 width = column;
             }
             var color = Player.ColorProfile.EliteDrums.GetNoteColor(EliteDrumsColorRole.HatOpen).ToUnityColor();
             _hiHatSustainVisual.Configure(engine, center, width, color);
-            float headCenter = column * (position + .5f) - TRACK_WIDTH / 2;
             // Keep the actual hi-hat axis separate from the shifted pedal footprint;
             // the full fret width defines the narrow, waiting sustain.
             float coreWidth = column * (Player.Profile.OneFretHiHatSustains ? 1 : .25f);
@@ -535,7 +549,10 @@ namespace YARG.Gameplay.Player
                 ? OpenHatPulsePlan.FromChart(NoteTrack.Notes, SyncTrack) : OpenHatPulsePlan.Preview;
             _rollLayout = new EliteDrumsRollLayout(GetRollStrips(), NoteTrack.Notes, LaneCount, Player.Profile.LeftyFlip,
                 GetReceptorKey, note => EliteDrumsRuntimeGeometry.GetCollisionPartner(this, note), GetVisualPosition,
-                SyncTrack, GetCenterDotFootprint);
+                SyncTrack, GetCenterDotFootprint, Player.Profile.DynamicFretWidths, Player.Profile.ExpandFretsForFlams, UsesKickBars,
+                Layout.GetRestingEdges(Player.Profile.LeftyFlip), HighwayWidth, Layout.FitGemsToFret);
+            if (Player.Profile.AutomaticFretColors && (Player.Profile.ColoredHeldFretDots == true || Player.Profile.ColoredFretDots == true))
+                _rollLayout.PrepareDotCymbals(GetVisualPosition);
             _fretBoundaryDotSpacing = 0;
             UpdateFretBoundaryDotRows();
         }
@@ -557,6 +574,7 @@ namespace YARG.Gameplay.Player
         private void UpdateRollFrets(double visualTime)
         {
             _fretArray.SetColumnEdges(_rollLayout?.Sample(visualTime));
+            _fretArray.UpdateColorSplit(_rollLayout, visualTime);
             UpdateFretBoundaryDotRows();
             _fretBoundaryDots?.Render(visualTime, NoteSpeed, ZeroFadePosition + NOTE_SPAWN_OFFSET);
         }
@@ -564,19 +582,23 @@ namespace YARG.Gameplay.Player
         private void UpdateFretBoundaryDotRows()
         {
             if (_rollLayout == null) return;
-            var settings = SettingsManager.Settings;
-            bool alwaysShow = settings?.AlwaysShowEliteFretBoundaryDots.Value ?? false;
-            bool colorHeldCenters = settings?.ColorEliteHeldFretCenters.Value ?? false;
-            bool colorAllCenters = settings?.ColorEliteAllFretCenters.Value ?? false;
+            bool alwaysShow = Player.Profile.AlwaysShowFretDots == true;
+            bool colorHeldCenters = Player.Profile.ColoredHeldFretDots == true;
+            bool colorAllCenters = Player.Profile.ColoredFretDots == true;
             if (_fretBoundaryDots == null)
             {
                 if (!_rollLayout.HasExpansion && !alwaysShow) return;
                 var root = new GameObject("Elite fret boundary dots") { layer = gameObject.layer };
                 root.transform.SetParent(transform, false);
                 _fretBoundaryDots = root.AddComponent<EliteFretBoundaryDotVisual>();
+                _fretBoundaryDots.Diamond = Player.Profile.DiamondFretDots;
             }
-            var spacing = settings?.EliteFretBoundaryDotSpacing.Value ??
-                SettingsManager.DEFAULT_FRET_BOUNDARY_DOT_SPACING;
+            _fretBoundaryDots.SizeScale = Mathf.Clamp(Player.Profile.FretDotSizePercent, 25, 200) / 100f;
+            _fretBoundaryDots.MarkCollisionFrets = Player.Profile.MarkCollisionFrets;
+            _fretBoundaryDots.SmallScale = Player.Profile.SmallFretDotPercent == 0 ? 0f :
+                Player.Profile.DynamicFretWidths || Player.Profile.MarkCollisionFrets
+                    ? Mathf.Clamp(Player.Profile.SmallFretDotPercent, 6.25f, 200f) / 100f : _fretBoundaryDots.SizeScale;
+            var spacing = (FretBoundaryDotSubdivision)(Player.Profile.FretDotSubdivision ?? 32);
             spacing = spacing is FretBoundaryDotSubdivision.Eighth or FretBoundaryDotSubdivision.Sixteenth
                 or FretBoundaryDotSubdivision.ThirtySecond or FretBoundaryDotSubdivision.SixtyFourth
                 or FretBoundaryDotSubdivision.HundredTwentyEighth
@@ -597,6 +619,22 @@ namespace YARG.Gameplay.Player
                     fretTints[column] = new Color32(color.R, color.G, color.B, 255);
                 }
             }
+            if (fretTints != null && Player.Profile.AutomaticFretColors)
+            {
+                var pairs = new (Color32 Left, Color32 Right, bool Paired)[LaneCount];
+                for (int column = 0; column < LaneCount; column++)
+                {
+                    var tints = FretArray.GetLaneTints(Layout.Lanes[ApplyLefty(column)], Player.ColorProfile.EliteDrums, _cymbalLayout);
+                    pairs[column] = Player.Profile.LeftyFlip ? (tints.Cymbal, tints.Drum, tints.Paired)
+                        : (tints.Drum, tints.Cymbal, tints.Paired);
+                    fretTints[column] = Color.Lerp(tints.Drum, tints.Cymbal, .5f);
+                }
+                _fretBoundaryDots.SplitTints = pairs;
+                _fretBoundaryDots.CymbalOnLeft = Player.Profile.LeftyFlip;
+                _fretBoundaryDots.CymbalCueTint = note => Player.ColorProfile.EliteDrums.GetNoteColor(
+                    EliteDrumsColorRoles.GetHandRole(note, Player.Profile.KeepOriginalCymbalColors)).ToUnityColor();
+            }
+            else _fretBoundaryDots.SplitTints = null;
             _fretBoundaryDots.SetRows(_rollLayout, (int)spacing, alwaysShow, colorHeldCenters, colorAllCenters, fretTints);
         }
 
@@ -620,8 +658,8 @@ namespace YARG.Gameplay.Player
                 return false;
             }
             int i = column.Position;
-            center = ((edges[i] + edges[i + 1]) * .5f - .5f) * TRACK_WIDTH;
-            width = (edges[i + 1] - edges[i]) * TRACK_WIDTH;
+            center = ((edges[i] + edges[i + 1]) * .5f - .5f) * HighwayWidth;
+            width = (edges[i + 1] - edges[i]) * HighwayWidth;
             return true;
         }
 
@@ -643,7 +681,7 @@ namespace YARG.Gameplay.Player
             var chord = note.ParentOrSelf;
             if (chord.ChildNotes.Count > 0 && EliteDrumsNoteElement.IsHandFlamPad(note.Pad) &&
                 TryGetArrivalColumn(note, out center, out width) &&
-                width < Layout.GetLaneWidth(TRACK_WIDTH) - .00001f)
+                width < RestingWidth(GetVisualPosition(note)) - .00001f)
             {
                 int column = GetVisualPosition(note);
                 foreach (var other in chord.AllNotes)
@@ -670,7 +708,7 @@ namespace YARG.Gameplay.Player
                 lane.SetIndexRange(strip.Column, strip.Column);
                 lane.SetAppearance(Instrument.FiveLaneDrums, strip.Column, strip.Center,
                     GetLaneColor(Player.ColorProfile.EliteDrums, segment.Members[0]).ToUnityColor(),
-                    strip.Width * LANE_WIDTH_FRACTION);
+                    GetLaneScale(strip.Width));
                 lane.ToggleFullWidth(strip.FullWidth);
                 lane.SetRollPath(strip.Path);
                 lane.EnableFromPool();
@@ -695,15 +733,15 @@ namespace YARG.Gameplay.Player
             var info = _ordering.TryGetValue(GetReceptorKey(note), out var ordering) ? ordering :
                 new HighwayOrderingInfo(LaneCount / 2, 0);
             lane.SetIndexRange(info.Position, info.Position);
-            lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, info.Position, LaneCount,
-                GetLaneColor(Player.ColorProfile.EliteDrums, note).ToUnityColor(), GetLaneScale());
+            lane.SetAppearance(Instrument.FiveLaneDrums, info.Position, RestingCenter(info.Position),
+                GetLaneColor(Player.ColorProfile.EliteDrums, note).ToUnityColor(), GetLaneScale(RestingWidth(info.Position)));
         }
 
         protected override void InitializeBRELane(LaneElement lane, int laneIndex)
         {
             lane.SetIndexRange(laneIndex, laneIndex);
-            lane.SetAppearance(Instrument.FiveLaneDrums, laneIndex, laneIndex, LaneCount,
-                GetFretSlotColor(laneIndex).ToUnityColor(), GetLaneScale());
+            lane.SetAppearance(Instrument.FiveLaneDrums, laneIndex, RestingCenter(laneIndex),
+                GetFretSlotColor(laneIndex).ToUnityColor(), GetLaneScale(RestingWidth(laneIndex)));
         }
 
         private System.Drawing.Color GetFretSlotColor(int column) =>
@@ -711,7 +749,10 @@ namespace YARG.Gameplay.Player
 
         // The lane mesh is one unit wide. Fit its outer borders inside the real
         // compacted column width, leaving a small gap between neighboring strips.
-        private float GetLaneScale() => TrackPlayer.TRACK_WIDTH / LaneCount * LANE_WIDTH_FRACTION;
+        private static float GetLaneScale(float width) => width * LANE_WIDTH_FRACTION;
+
+        private float RestingWidth(int column) => Layout.GetLaneWidth(ApplyLefty(column), HighwayWidth);
+        private float RestingCenter(int column) => Layout.GetLaneX(ApplyLefty(column), HighwayWidth, Player.Profile.LeftyFlip);
 
         protected override void RescaleLanesForBRE()
         {

@@ -18,18 +18,10 @@ namespace YARG.Tests.EditMode
         [TestCase(8)]
         public void EliteLaneScaleFitsItsActualColumn(int columns)
         {
-            var go = new UnityEngine.GameObject("Elite lane scale regression");
-            go.SetActive(false);
-            try
-            {
-                var player = go.AddComponent(PLAYER_TYPE);
-                PLAYER_TYPE.GetProperty("LaneCount").SetValue(player, columns);
-                float actual = (float) PLAYER_TYPE.GetMethod("GetLaneScale", BindingFlags.Instance | BindingFlags.NonPublic)
-                    .Invoke(player, null);
-                // Compact layouts use their real column width, including the border gap.
-                Assert.That(actual, Is.EqualTo(2f / columns * 0.97f).Within(0.00001f));
-            }
-            finally { UnityEngine.Object.DestroyImmediate(go); }
+            float columnWidth = 2f / columns;
+            float actual = (float)PLAYER_TYPE.GetMethod("GetLaneScale", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { columnWidth });
+            Assert.That(actual, Is.EqualTo(columnWidth * 0.97f).Within(0.00001f));
         }
 
         [Test]

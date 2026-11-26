@@ -59,6 +59,8 @@ namespace YARG.Gameplay.Visuals
         private VocalTrack _vocalTrack;
 
         private readonly float[] _curveFactors = new float[MAX_MATRICES];
+        private readonly float[] _highwayWidths = new float[MAX_MATRICES];
+        private static readonly int HighwayWidthsId = Shader.PropertyToID("_YargHighwayWidths");
         private readonly float[] _highwayOrigins = new float[MAX_MATRICES];
         private readonly float[] _zeroFadePositions = new float[MAX_MATRICES];
         private readonly float[] _fadeSize = new float[MAX_MATRICES];
@@ -376,9 +378,17 @@ namespace YARG.Gameplay.Visuals
             _cameras.Add(trackCamera);
             _raisedRotations.Add(raisedRotation);
             _highwayPositions.Add(position);
+            _highwayWidths[index] = TrackPlayer.TRACK_WIDTH;
             _highwayOrigins[index] = position.x;
             UpdateCurveFactor(curveFactor, index);
             UpdateFadeParams(index, zeroFadePosition, fadeSize);
+            _needsCameraReset = true;
+        }
+
+        public void SetHighwayWidth(int index, float width)
+        {
+            if (Mathf.Approximately(_highwayWidths[index], width)) return;
+            _highwayWidths[index] = width;
             _needsCameraReset = true;
         }
 
@@ -412,6 +422,7 @@ namespace YARG.Gameplay.Visuals
             var cameraData = trackPlayer.TrackCamera.GetUniversalAdditionalCameraData();
             cameraData.renderType = CameraRenderType.Overlay;
             AddPlayerParams(trackPlayer.transform.position, trackPlayer.TrackCamera, trackPlayer.Player.CameraPreset.CurveFactor, trackPlayer.ZeroFadePosition, trackPlayer.FadeSize, trackPlayer.Player.CameraPreset.Rotation);
+            SetHighwayWidth(_cameras.Count - 1, trackPlayer.HighwayWidth);
         }
 
         internal bool WarmHitLighting(IEnumerable<EffectLight> effects)
@@ -599,6 +610,7 @@ namespace YARG.Gameplay.Visuals
             Shader.SetGlobalMatrixArray(YargHighwayCamProjMatricesID, _camProjMatrices);
             Shader.SetGlobalFloatArray(YargCurveFactorsID, _curveFactors);
             Shader.SetGlobalFloatArray(YargHighwayOriginsID, _highwayOrigins);
+            Shader.SetGlobalFloatArray(HighwayWidthsId, _highwayWidths);
             Shader.SetGlobalFloatArray(YargFadeParamsID, _fadeParams);
             Shader.SetGlobalTexture(YargHighwaysAlphaTextureID, _highwaysAlphaTexture);
             Shader.SetGlobalInteger(YargHighwaysNumberID, _cameras.Count);
@@ -871,7 +883,7 @@ namespace YARG.Gameplay.Visuals
                 float zPositionAtPercent = Mathf.LerpUnclamped(strikelineZ, zeroFadeZ, y);
 
                 // Calculate X position (position across the track width)
-                float trackWidth = TrackPlayer.TRACK_WIDTH;
+                float trackWidth = _highwayWidths[trackIndex];
                 float xOffset = Mathf.LerpUnclamped(-trackWidth / 2f, trackWidth / 2f, x);
 
                 // Calculate screen space from world position
@@ -935,7 +947,7 @@ namespace YARG.Gameplay.Visuals
 
             try
             {
-                float halfWidth = TrackPlayer.TRACK_WIDTH / 2f;
+                float halfWidth = _highwayWidths[cameraIndex] / 2f;
                 var trackBottom = FindTrackBottom(camera, trackPosition);
                 var trackTop = _zeroFadePositions[cameraIndex];
 

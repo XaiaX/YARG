@@ -8846,6 +8846,8 @@ MonoBehaviour:
   - {fileID: 6957979726326986359}
   - {fileID: 2652663082332422982}
   _save: {fileID: 4308881721280525723}
+  _sizingButtonPrefab: {fileID: 3252069457828798820, guid: 23b94837fb849574ebf1ad7d180706e3, type: 3}
+  _sizingSliderPrefab: {fileID: 8696487122370294474, guid: abd40d758b3e1a74486df5d631e4a775, type: 3}
   _back: {fileID: 6997906755867425559}
   _layoutLabel: {fileID: 0}
   _previewColorLabel: {fileID: 166469467999438776}

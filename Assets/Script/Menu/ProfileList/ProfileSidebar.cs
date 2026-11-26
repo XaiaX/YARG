@@ -476,8 +476,91 @@ namespace YARG.Menu.ProfileList
             _openHatPulseCadenceDropdown.interactable = available;
         }
 
+        private void RefreshFretDotSettings()
+        {
+            bool elite = _profile.GameMode == GameMode.EliteDrums;
+            if (!elite && _profile.GameMode is not (GameMode.FiveFretGuitar or GameMode.ProKeys)) return;
+            ToggleRow(nameof(YargProfile.AlwaysShowFretDots), _profile.AlwaysShowFretDots == true, on => _profile.AlwaysShowFretDots = on);
+            ToggleRow(nameof(YargProfile.ColoredFretDots), _profile.ColoredFretDots == true, on => _profile.ColoredFretDots = on);
+            if (elite)
+            {
+                ChoiceRow(nameof(YargProfile.MarkCollisionFrets), new[] { 0, 1 }, _profile.MarkCollisionFrets ? 0 : 1,
+                    n => Localize.Key(n == 0 ? "Menu.ProfileList.MarkCollisionLanes" : "Menu.ProfileList.GrowDots"),
+                    n => _profile.MarkCollisionFrets = n == 0);
+                ToggleRow(nameof(YargProfile.DynamicFretWidths), _profile.DynamicFretWidths, on => _profile.DynamicFretWidths = on);
+                ToggleRow(nameof(YargProfile.ExpandFretsForFlams), _profile.ExpandFretsForFlams, on => _profile.ExpandFretsForFlams = on);
+                ToggleRow(nameof(YargProfile.AutomaticFretColors), _profile.AutomaticFretColors, on => _profile.AutomaticFretColors = on);
+                ChoiceRow(nameof(YargProfile.FretGradient), new[] { 0, 1, 2 }, (int)_profile.FretGradient,
+                    n => Localize.Key("Menu.ProfileList.FretGradient" + (EliteFretGradient)n),
+                    n => _profile.FretGradient = (EliteFretGradient)n);
+                ToggleRow(nameof(YargProfile.ColoredHeldFretDots), _profile.ColoredHeldFretDots == true,
+                    on => _profile.ColoredHeldFretDots = on);
+            }
+            ChoiceRow(nameof(YargProfile.FretDotSubdivision), new[] { 8, 16, 32, 64, 128 }, _profile.FretDotSubdivision ?? 32,
+                n => $"1/{n}", n => _profile.FretDotSubdivision = n);
+            ChoiceRow(nameof(YargProfile.DiamondFretDots), new[] { 0, 1 }, _profile.DiamondFretDots ? 1 : 0,
+                n => Localize.Key(n == 0 ? "Menu.ProfileList.RoundDots" : "Menu.ProfileList.DiamondDots"),
+                n => _profile.DiamondFretDots = n == 1);
+            ChoiceRow(nameof(YargProfile.FretDotSizePercent), new[] { 25, 50, 75, 100, 125, 150, 175, 200 },
+                _profile.FretDotSizePercent, n => $"{n}%", n => _profile.FretDotSizePercent = n);
+
+            var large = _sidebarContent.transform.Find(nameof(YargProfile.FretDotSizePercent));
+            SetConfigurationLabel(large.Find("Option Name").GetComponent<TextMeshProUGUI>(),
+                elite ? "Menu.ProfileList.LargeFretDot" : "Menu.ProfileList.FretDotSizePercent");
+            if (elite)
+            {
+                // Quarter-percent units preserve sizes migrated from the old relative control.
+                int small = Mathf.RoundToInt(_profile.SmallFretDotPercent * 4);
+                var sizes = new[] { 0, 100, 200, 300, 400, 500, 600, 700, 800, small }.Distinct().OrderBy(n => n).ToArray();
+                ChoiceRow(nameof(YargProfile.SmallFretDotPercent), sizes, small,
+                    n => n == 0 ? Localize.Key("Menu.ProfileList.SmallDotNone") : $"{n / 4f:0.##}%", n => _profile.SmallFretDotPercent = n / 4f);
+                var smallRow = _sidebarContent.transform.Find(nameof(YargProfile.SmallFretDotPercent));
+                smallRow.SetAsLastSibling();
+                smallRow.SetSiblingIndex(large.GetSiblingIndex() + 1);
+            }
+
+            Transform CreateRow(string key, string template)
+            {
+                var row = Instantiate(_sidebarContent.transform.Find(template), _sidebarContent.transform);
+                row.name = key;
+                SetConfigurationLabel(row.Find("Option Name").GetComponent<TextMeshProUGUI>(), "Menu.ProfileList." + key);
+                return row;
+            }
+
+            void ToggleRow(string key, bool value, Action<bool> save)
+            {
+                var row = _sidebarContent.transform.Find(key);
+                Toggle toggle;
+                if (row == null)
+                {
+                    toggle = CreateRow(key, ProfileSettingStrings.USE_CYMBAL_MODELS).GetComponentInChildren<Toggle>(true);
+                    toggle.onValueChanged = new Toggle.ToggleEvent();
+                    toggle.onValueChanged.AddListener(on => save(on));
+                }
+                else toggle = row.GetComponentInChildren<Toggle>(true);
+                toggle.SetIsOnWithoutNotify(value);
+            }
+
+            void ChoiceRow(string key, int[] choices, int value, Func<int,string> label, Action<int> save)
+            {
+                var row = _sidebarContent.transform.Find(key);
+                TMP_Dropdown dropdown;
+                if (row == null)
+                {
+                    dropdown = CreateRow(key, ProfileSettingStrings.DRUM_FLAM_LAYOUT).GetComponentInChildren<TMP_Dropdown>(true);
+                }
+                else dropdown = row.GetComponentInChildren<TMP_Dropdown>(true);
+                dropdown.onValueChanged = new TMP_Dropdown.DropdownEvent();
+                dropdown.ClearOptions();
+                dropdown.AddOptions(choices.Select(label).ToList());
+                dropdown.SetValueWithoutNotify(Array.IndexOf(choices, value));
+                dropdown.onValueChanged.AddListener(i => save(choices[i]));
+            }
+        }
+
         private void EnableSettingsForGameMode()
         {
+            RefreshFretDotSettings();
             if (_profile.GameMode == GameMode.EliteDrums)
             {
                 RefreshVolumeCymbalsToggle();
@@ -650,7 +733,7 @@ namespace YARG.Menu.ProfileList
                     RefreshEliteLayoutDropdown();
                     return true;
                 }, SaveColorProfile, SaveLeftyFlip, profile.FlamLayout, profile.KeepOriginalCymbalColors,
-                profile.UseVolumeCymbals, profile.OpenHatGlow, profile.OpenHatPulseCadence);
+                profile.UseVolumeCymbals, profile.OpenHatGlow, profile.OpenHatPulseCadence, profile.AutomaticFretColors, profile.FretGradient);
         }
 
         private void RefreshEliteLayoutDropdown()

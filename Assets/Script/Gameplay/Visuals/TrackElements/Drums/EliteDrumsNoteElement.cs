@@ -68,6 +68,7 @@ namespace YARG.Gameplay.Visuals
         private readonly Dictionary<NoteGroup, EliteDrumsRuntimeGeometry.ModelGeometry> _geometry = new();
         private bool _lastCollisionPartnerStar;
         private bool _hasRollSlot;
+        private readonly EliteDrumsRuntimeGeometry.GemFitReference _fitReference = new();
 
         private readonly Dictionary<EliteDrumsGeometryCache.PairKey, EliteDrumsRuntimeGeometry.PairPlacement>
             _preparedPlacements = new();
@@ -117,6 +118,13 @@ namespace YARG.Gameplay.Visuals
                     bool hasRollSlot = GetFittingRegion(player, note, out float center, out float width,
                         out _, out _);
                     var profile = player.Player.Profile;
+                    if (TryGetProportionalLane(player, note, out int lane))
+                    {
+                        if (player.Layout.FitGemsToFret) GetFitReferenceWidth(player, lane);
+                        width = EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH;
+                        center = 0f;
+                        hasRollSlot = true;
+                    }
                     int fused = GetFusedFlamGroup(note, profile);
                     if (fused < 0 && IsSplitFlam(note, true))
                     {
@@ -168,11 +176,41 @@ namespace YARG.Gameplay.Visuals
                 // Fit the complete glyph around a local origin before placing it in
                 // its strip. Highway-edge corrections belong to standalone flams.
                 center = 0f;
-                width = player.Layout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
+                int column = player.GetVisualPosition(note);
+                int lane = player.Player.Profile.LeftyFlip ? player.LaneCount - 1 - column : column;
+                width = player.Layout.GetLaneWidth(lane, player.HighwayWidth);
                 return true;
             }
             EliteDrumsRuntimeGeometry.GetRegion(player, note, false, out center, out width);
             return false;
+        }
+
+        private static bool TryGetProportionalLane(EliteDrumsPlayer player, EliteDrumNote note, out int lane)
+        {
+            lane = 0;
+            return IsHandFlamPad(note.Pad) &&
+                player.Layout.SourceToLane.TryGetValue(EliteDrumsPlayer.GetLayoutSource(note.Pad), out lane) &&
+                EliteDrumsRuntimeGeometry.UseProportionalGems(player.Layout, player.AppliesHighwayGrowth);
+        }
+
+        private EliteDrumsRuntimeGeometry.ModelGeometry ModelForType(ThemeNoteType type, bool star)
+        {
+            int index = System.Array.IndexOf(BaseTypes, type);
+            if (index < 0)
+            {
+                int fusedIndex = System.Array.IndexOf(FusedFlamTypes, type);
+                if (fusedIndex < 0) return null;
+                index = FUSED_FLAM_START + fusedIndex;
+            }
+            return NoteGroups[index] == null ? null : Geometry(star ? 1 : 0, index);
+        }
+
+        private float GetFitReferenceWidth(EliteDrumsPlayer player, int lane)
+        {
+            var template = _geometryTemplate ?? this;
+            var profile = player.Player.Profile;
+            return template._fitReference.Width(player.Layout.Lanes[lane], player.Layout.Lanes.Count, profile.FlamLayout,
+                profile.UseVolumeCymbals, profile.UseCymbalModels, profile.LeftyFlip, template.ModelForType);
         }
 
         public override void SetThemeModels(Dictionary<ThemeNoteType, GameObject> models,
@@ -512,7 +550,7 @@ namespace YARG.Gameplay.Visuals
             // Only an oversized glyph (e.g. a fused or angled flam) needs more
             // compression than the column itself. The root scales both halves
             // together while preserving their depth, height and contact seam.
-            float scale = width / Mathf.Max(columnWidth, max - min);
+            float scale = Mathf.Min(1f, width / Mathf.Max(columnWidth, max - min));
             float midpoint = min <= max ? (min + max) * .5f : 0f;
             transform.localScale = transform.localScale.WithX(scale);
             transform.localPosition = transform.localPosition.WithX(center - scale * midpoint);
@@ -596,14 +634,21 @@ namespace YARG.Gameplay.Visuals
             int group = kick ? GetKickGroup(NoteRef, !Player.UsesKickBars) : splitFlam ? GetSplitGroup() :
                 SelectModelGroup(NoteRef, profile);
             NoteGroup = groups[group];
-            if (splitFlam)
+            bool proportional = TryGetProportionalLane(Player, NoteRef, out int lane);
+            if (proportional)
+            {
+                PlaceWeightedHandGem(group, splitFlam, lane, center, slotCenter, slotWidth);
+                // Both SP variants already share this placement and independent collision clearance.
+                _hasRollSlot = true;
+            }
+            else if (splitFlam)
                 InitializeSplitFlam(group, center, width);
             else if (kick || group is HAT_STOMP or HAT_SPLASH)
             {
                 if (group is HAT_STOMP or HAT_SPLASH)
                 {
                     int sections = EliteDrumsRuntimeGeometry.GetPedalRegion(Player.GetVisualPosition(NoteRef),
-                        Player.Layout.Lanes.Count, TrackPlayer.TRACK_WIDTH, out _, out _);
+                        Player.Layout.Lanes.Count, Player.HighwayWidth, out _, out _);
                     NoteGroups[group].ConfigurePedalSections(sections);
                     if (StarPowerNoteGroups[group] != NoteGroups[group])
                         StarPowerNoteGroups[group].ConfigurePedalSections(sections);
@@ -616,6 +661,17 @@ namespace YARG.Gameplay.Visuals
                     if (StarPowerNoteGroups[group] != NoteGroups[group])
                         StarPowerNoteGroups[group].ConfigureKickLanes(laneCount, boundaries);
                 }
+                bool dedicated = kick && !Player.UsesKickBars;
+                float depthScale = dedicated && EliteDrumsRuntimeGeometry.UseProportionalGems(Player.Layout, Player.AppliesHighwayGrowth)
+                    ? width / EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH : 1f;
+                if (dedicated && Player.Layout.FitGemsToFret)
+                {
+                    if (Player.TryGetArrivalColumn(NoteRef, out _, out float arrivalWidth))
+                        width = Mathf.Min(width, arrivalWidth);
+                    width *= EliteDrumsRuntimeGeometry.FIT_FRACTION;
+                    depthScale *= EliteDrumsRuntimeGeometry.FIT_FRACTION;
+                }
+                transform.localScale = Vector3.Scale(transform.localScale, new Vector3(1f, depthScale, depthScale));
                 FitFootWidth(group, width, center);
             }
             else if (!_hasRollSlot && EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef) is { } partner)
@@ -624,7 +680,7 @@ namespace YARG.Gameplay.Visuals
             }
             else
                 FitGemWidth(group, width, center);
-            if (_hasRollSlot)
+            if (_hasRollSlot && !proportional)
                 PlaceInRollSlot(group, splitFlam, width, slotCenter, slotWidth);
             if (!splitFlam)
             {
@@ -634,6 +690,79 @@ namespace YARG.Gameplay.Visuals
             }
             ApplyPedalVisualLead(NoteGroup);
             UpdateColor();
+        }
+
+        private void PlaceWeightedHandGem(int group, bool split, int lane, float center,
+            float slotCenter, float slotWidth)
+        {
+            var layout = Player.Layout;
+            var profile = Player.Player.Profile;
+            float width = layout.GetLaneWidth(lane, Player.HighwayWidth);
+            float available = width;
+            var partner = EliteDrumsRuntimeGeometry.GetCollisionPartner(Player, NoteRef);
+            if (_hasRollSlot)
+            {
+                center = slotCenter;
+                available = slotWidth;
+            }
+            else
+            {
+                if (Player.TryGetArrivalColumn(NoteRef, out float arrivalCenter, out float arrivalWidth))
+                {
+                    available = arrivalWidth;
+                    if (layout.FitGemsToFret) center = arrivalCenter;
+                }
+                if (partner != null)
+                {
+                    available *= .5f;
+                    center += (EliteDrumsPlayer.IsCymbal(NoteRef.Pad) != profile.LeftyFlip ? .5f : -.5f) * available;
+                }
+            }
+
+            // Measure at the single authored pitch before scaling the complete silhouette uniformly.
+            const float pitch = EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH;
+            transform.localPosition = Vector3.zero;
+            if (split) InitializeSplitFlam(group, 0f, pitch);
+            else FitGemWidth(group, pitch, 0f);
+            float min = float.PositiveInfinity, max = float.NegativeInfinity;
+            for (int v = 0; v < 2; v++)
+            {
+                if (split)
+                {
+                    Include(v + 2, group * 2);
+                    Include(v + 2, group * 2 + 1);
+                }
+                else Include(v, group);
+            }
+            float partnerWidth = 0f;
+            if (partner != null)
+            {
+                bool splitPartner = UsesSplitFlam(partner, profile);
+                int otherGroup = splitPartner ? GetSplitGroup(partner, profile.UseCymbalModels) : SelectModelGroup(partner, profile);
+                for (int v = 0; v < 2; v++)
+                {
+                    var geometry = Geometry(v, otherGroup);
+                    float left, right;
+                    if (splitPartner)
+                        EliteDrumsRuntimeGeometry.GetSplitBounds(geometry, layout.Lanes.Count, partner.IsFlatFlam,
+                            profile.FlamLayout, IsCymbalGroup(otherGroup), profile.LeftyFlip, out left, out right);
+                    else geometry.Extents(1f, 0f, out left, out right);
+                    partnerWidth = Mathf.Max(partnerWidth, right - left);
+                }
+            }
+            bool confined = partner != null || _hasRollSlot;
+            float reference = layout.FitGemsToFret ? GetFitReferenceWidth(Player, lane) : pitch;
+            if (!layout.FitGemsToFret && !confined && NoteRef.IsHandFlam)
+            {
+                float half = (max - min) * .5f * width / pitch;
+                float outside = (Player.HighwayWidth - width) * .5f;
+                if (outside > 0f) center *= (Player.HighwayWidth * .5f - half) / outside;
+            }
+            EliteDrumsRuntimeGeometry.PlaceProportional(transform, width, reference, available, center,
+                min, max, partnerWidth, layout.FitGemsToFret, confined);
+
+            void Include(int kind, int index) =>
+                Geometry(kind, index).EncapsulatePlacedX(GeometryGroups(kind)[index].transform, ref min, ref max);
         }
 
         private void FitCollision(int group, EliteDrumNote partner, float center, float width)

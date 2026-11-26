@@ -127,9 +127,9 @@ namespace YARG.Gameplay.Visuals
                 if (edges != null)
                 {
                     int reach = player.Player.Profile.OneFretHiHatSustains ? 0 : 1;
-                    float left = (edges[Mathf.Max(0, column - reach)] - .5f) * TrackPlayer.TRACK_WIDTH;
-                    float right = (edges[Mathf.Min(edges.Length - 1, column + reach + 1)] - .5f) * TrackPlayer.TRACK_WIDTH;
-                    float hat = ((edges[column] + edges[column + 1]) * .5f - .5f) * TrackPlayer.TRACK_WIDTH;
+                    float left = (edges[Mathf.Max(0, column - reach)] - .5f) * player.HighwayWidth;
+                    float right = (edges[Mathf.Min(edges.Length - 1, column + reach + 1)] - .5f) * player.HighwayWidth;
+                    float hat = ((edges[column] + edges[column + 1]) * .5f - .5f) * player.HighwayWidth;
                     tail = new Vector3(left - (baseCenter - _width / 2f), hat - (baseCenter + localAxis),
                         right - (baseCenter + _width / 2f));
                 }

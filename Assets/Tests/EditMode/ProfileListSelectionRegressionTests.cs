@@ -290,6 +290,43 @@ namespace YARG.Tests.EditMode
         }
 
         [Test]
+        public void TimingDotRowsFollowTheSelectedProfileAndInstrument()
+        {
+            var profile = _testProfiles[0];
+            var other = _testProfiles[1];
+            var content = ((GameObject)Field(_sidebar.GetType(), "_sidebarContent").GetValue(_sidebar)).transform;
+            void Show(YargProfile selected, GameMode mode)
+            {
+                selected.GameMode = mode;
+                Field(_sidebar.GetType(), "_profile").SetValue(_sidebar, selected);
+                Invoke(_sidebar, "EnableSettingsForGameMode");
+            }
+
+            Show(profile, GameMode.EliteDrums);
+            var small = content.Find(nameof(profile.SmallFretDotPercent));
+            var large = content.Find(nameof(profile.FretDotSizePercent));
+            Assert.That(small.GetSiblingIndex(), Is.EqualTo(large.GetSiblingIndex() + 1));
+            var sizing = content.Find(nameof(profile.MarkCollisionFrets)).GetComponentInChildren(Production("TMPro.TMP_Dropdown"));
+            sizing.GetType().GetProperty("value").SetValue(sizing, 1);
+            Assert.That(profile.MarkCollisionFrets, Is.False);
+            Assert.That(other.MarkCollisionFrets, Is.True);
+            var widths = content.Find(nameof(profile.DynamicFretWidths));
+            widths.GetComponentInChildren<Toggle>().isOn = false;
+            Assert.That(profile.DynamicFretWidths, Is.False);
+            Assert.That(other.DynamicFretWidths, Is.True);
+            Show(other, GameMode.FiveFretGuitar);
+            Assert.That(widths.gameObject.activeSelf, Is.False);
+            var always = content.Find(nameof(profile.AlwaysShowFretDots));
+            always.GetComponentInChildren<Toggle>().isOn = true;
+            Assert.That(other.AlwaysShowFretDots, Is.True);
+            Assert.That(profile.AlwaysShowFretDots, Is.False);
+            Show(other, GameMode.ProKeys);
+            Assert.That(always.gameObject.activeSelf, Is.True);
+            Show(other, GameMode.SixFretGuitar);
+            Assert.That(always.gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
         public void ExperimentalCymbalToggleBelongsToSelectedMidiDrumkitProfile()
         {
             var type = _sidebar.GetType();

@@ -228,6 +228,11 @@ namespace YARG.Gameplay.Player
             base.FinishInitialization();
 
             MakeHighwayOrdering();
+            if (this is not SixFretGuitarPlayer && Player.Profile.AlwaysShowFretDots == true)
+            {
+                _timingDots = EliteFretBoundaryDotVisual.CreateFixedGrid(transform, Player.Profile, SyncTrack,
+                    NoteTrack.Notes, HighwayOrdering, fret => Player.ColorProfile.FiveFretGuitar.GetFretColor(fret).ToUnityColor());
+            }
 
             InitializeIndicatorStripes();
             InitializeFretArray();
@@ -291,6 +296,8 @@ namespace YARG.Gameplay.Player
             base.SetReplayTime(time);
         }
 
+        private EliteFretBoundaryDotVisual _timingDots;
+
         protected override void UpdateVisuals(double visualTime)
         {
             // Update coda lane emissions if necessary
@@ -300,6 +307,7 @@ namespace YARG.Gameplay.Player
             }
 
             base.UpdateVisuals(visualTime);
+            _timingDots?.Render(visualTime, NoteSpeed, ZeroFadePosition + NOTE_SPAWN_OFFSET);
             UpdateRangeShift(visualTime);
             UpdateFretArray();
         }

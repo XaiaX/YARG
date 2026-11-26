@@ -20,6 +20,8 @@ namespace YARG.Themes
         [SerializeField]
         private MeshMaterialIndex[] _innerMaterials;
 
+        internal IEnumerable<MeshMaterialIndex> ColorSurfaces => _coloredMaterials.Concat(_innerMaterials);
+
         // Secondary half materials (for 6-fret dual-half frets)
         [Space]
         [SerializeField]

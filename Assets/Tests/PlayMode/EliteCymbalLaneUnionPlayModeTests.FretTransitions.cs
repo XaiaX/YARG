@@ -41,6 +41,132 @@ namespace YARG.Tests.PlayMode
             Assert.That(edge, Is.EqualTo(1f).Within(.0001f));
         }
 
+        [UnityTest]
+        public IEnumerator FlamExpansionKeepsSnareHeadsCenteredAtAuthoredSize()
+        {
+            var chart = PreparedElitePlayerFixture.CreateChart(Note(EliteDrumPad.Snare, 1),
+                Note(EliteDrumPad.Snare, 5, flam: true), Note(EliteDrumPad.Snare, 5.5),
+                Note(EliteDrumPad.Snare, 6, flat: true));
+            var profile = Profile();
+            profile.ExpandFretsForFlams = true;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(chart, profile, EliteDrumsLayoutPreset.Compact, noFail: true);
+            var player = Fixture.Player;
+            var fret = Receptor(player, EliteDrumPad.Snare).transform;
+            var update = player.GetType().GetMethod("UpdateRollFrets", INSTANCE);
+            var spawn = player.GetType().GetMethod("SpawnNote", INSTANCE);
+            var type = Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement");
+            float singleWidth = 0f;
+            foreach (var note in Playable.Notes)
+            {
+                update.Invoke(player, new object[] { note.Time });
+                spawn.Invoke(player, new object[] { note });
+                var element = player.GetComponentsInChildren(type).Single(e =>
+                    ReferenceEquals(e.GetType().GetProperty("NoteRef").GetValue(e), note));
+                var (min, max) = EliteLayoutRuntimePlayModeTests.ActiveMeshBounds(element, player.transform);
+                float width = max - min;
+                Assert.That((min + max) * .5f, Is.EqualTo(fret.localPosition.x).Within(.002f));
+                if (singleWidth == 0f) singleWidth = width;
+                else
+                {
+                    Assert.That(fret.localScale.x, Is.GreaterThan(1f));
+                    if (note.IsFlam || note.IsFlatFlam)
+                        Assert.That(width, Is.InRange(singleWidth * 1.35f, .4f * fret.localScale.x + .001f));
+                    else Assert.That(width, Is.EqualTo(singleWidth).Within(.001f));
+                }
+            }
+        }
+
+        private static readonly string[] KickExpansionCases = { "dedicated", "beam", "disabled", "fixed-width" };
+
+        [UnityTest]
+        public IEnumerator KickFlamOnlyExpandsAnEnabledDedicatedFret(
+            [ValueSource(nameof(KickExpansionCases))] string scenario)
+        {
+            var preset = EliteDrumsLayoutPreset.Compact;
+            if (scenario != "beam")
+                preset.Slots[5] = EliteDrumsLayoutSlot.Exclusive(EliteDrumsLayoutSlotKind.Kick);
+            var profile = Profile();
+            profile.ExpandFretsForFlams = scenario != "disabled";
+            profile.DynamicFretWidths = scenario != "fixed-width";
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(PreparedElitePlayerFixture.CreateChart(Note(EliteDrumPad.Kick, 4, flam: true)),
+                profile, preset, noFail: true);
+            var player = Fixture.Player;
+            var update = player.GetType().GetMethod("UpdateRollFrets", INSTANCE);
+            update.Invoke(player, new object[] { 0d });
+            var donor = Receptor(player, EliteDrumPad.Snare).transform;
+            float baseline = donor.localScale.x;
+            update.Invoke(player, new object[] { 4d });
+            if (scenario == "dedicated")
+            {
+                Assert.That(donor.localScale.x, Is.LessThan(baseline));
+                Assert.That(Receptor(player, EliteDrumPad.Kick).transform.localScale.x, Is.GreaterThan(baseline));
+            }
+            else Assert.That(donor.localScale.x, Is.EqualTo(baseline).Within(.0001f));
+        }
+
+        private static readonly string[] WeightedLayouts = { "fixed", "grow", "lefty", "multiplayer" };
+
+        [UnityTest]
+        public IEnumerator WeightedFretsKeepNotesAndKickRingsOnTheirSavedColumns(
+            [ValueSource(nameof(WeightedLayouts))] string scenario)
+        {
+            var preset = EliteDrumsLayoutPreset.Compact;
+            preset.FretWeights[0] = 2f;
+            preset.FretWeights[1] = 2f;
+            preset.FretWeights[9] = 2f; // Empty slots reserve no space.
+            preset.GrowHighway = scenario != "fixed";
+            preset.FitGemsToFret = true;
+            var profile = Profile();
+            profile.DynamicFretWidths = false;
+            profile.LeftyFlip = scenario == "lefty";
+            var hit = Note(EliteDrumPad.Tom1, 4);
+            hit.AddChildNote(Note(EliteDrumPad.LeftCrash, 4));
+            var chart = PreparedElitePlayerFixture.CreateChart(Note(EliteDrumPad.Snare, 2, flat: true),
+                Note(EliteDrumPad.Snare, 3), hit, Note(EliteDrumPad.Kick, 5));
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(chart, profile, preset, noFail: true,
+                secondProfile: scenario == "multiplayer" ? Profile() : null);
+            var player = Fixture.Player;
+            float width = (float)player.GetType().GetProperty("HighwayWidth").GetValue(player);
+            Assert.That(width, Is.EqualTo(scenario is "grow" or "lefty" ? 2.8f : 2f).Within(.0001f));
+            var kick = Playable.Notes.Last();
+            var seams = (float[])player.GetType().GetMethod("TryGetKickBoundaries", INSTANCE)
+                .Invoke(player, new object[] { kick });
+            Assert.That(seams.Length, Is.EqualTo(6));
+            var edges = profile.LeftyFlip ? new[] { 0, 1, 2, 3, 5, 7 } : new[] { 0, 2, 4, 5, 6, 7 };
+            for (int i = 0; i < edges.Length; i++)
+                Assert.That(seams[i], Is.EqualTo(edges[i] / 7f).Within(.0001f));
+
+            var spawn = player.GetType().GetMethod("SpawnNote", INSTANCE);
+            var elementType = Production("YARG.Gameplay.Visuals.EliteDrumsNoteElement");
+            foreach (var chord in Playable.Notes.Take(3))
+            {
+                foreach (var note in chord.AllNotes)
+                {
+                    spawn.Invoke(player, new object[] { note });
+                    var element = player.GetComponentsInChildren(elementType).Single(e =>
+                        ReferenceEquals(e.GetType().GetProperty("NoteRef").GetValue(e), note));
+                    var (min, max) = EliteLayoutRuntimePlayModeTests.ActiveMeshBounds(element, player.transform);
+                    int lane = note.Pad == (int)EliteDrumPad.Snare ? 0 : 2;
+                    if (profile.LeftyFlip) lane = 4 - lane;
+                    float left = (seams[lane] - .5f) * width;
+                    float right = (seams[lane + 1] - .5f) * width;
+                    Assert.That(min, Is.GreaterThan(left));
+                    Assert.That(max, Is.LessThan(right));
+                    float mid = (left + right) * .5f;
+                    if (lane == 2)
+                    {
+                        bool onRight = (note.Pad == (int)EliteDrumPad.LeftCrash) != profile.LeftyFlip;
+                        if (onRight) Assert.That(min, Is.GreaterThanOrEqualTo(mid - .001f));
+                        else Assert.That(max, Is.LessThanOrEqualTo(mid + .001f));
+                    }
+                    else Assert.That((min + max) * .5f, Is.EqualTo(mid).Within(.003f));
+                }
+            }
+        }
+
         private static readonly string[] OrdinaryCollisionLayouts = { "compact", "lefty", "lanes-off", "full" };
 
         [UnityTest]

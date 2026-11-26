@@ -5,6 +5,7 @@ using YARG.Core.Chart;
 using YARG.Core.Game;
 using YARG.Gameplay.Player;
 using YARG.Settings;
+using YARG.Themes;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -62,6 +63,11 @@ namespace YARG.Gameplay.Visuals
                 _scale = builder.localScale;
                 _rotation = builder.localRotation;
             }
+            internal void Encapsulate(ModelGeometry geometry, ref float min, ref float max)
+            {
+                geometry.EncapsulateX(Matrix4x4.TRS(_position, _rotation, _scale), ref min, ref max);
+            }
+
             internal void Apply(Transform model, float elementCenter)
             {
                 if (model == null) return;
@@ -245,8 +251,12 @@ namespace YARG.Gameplay.Visuals
 
             internal void EncapsulatePlacedX(Transform model, ref float min, ref float max)
             {
+                EncapsulateX(Matrix4x4.TRS(model.localPosition, model.localRotation, model.localScale), ref min, ref max);
+            }
+
+            internal void EncapsulateX(Matrix4x4 matrix, ref float min, ref float max)
+            {
                 if (_corners.Length == 0) return;
-                var matrix = Matrix4x4.TRS(model.localPosition, model.localRotation, model.localScale);
                 GetXExtents(matrix, out float left, out float right);
                 min = Mathf.Min(min, left);
                 max = Mathf.Max(max, right);
@@ -423,7 +433,7 @@ namespace YARG.Gameplay.Visuals
                 laneCenter, laneWidth, elementCenter, regularFlam, layout, cymbalModel, lefty,
                 TrackPlayer.TRACK_WIDTH / 5f);
 
-        internal static void FitPairWithAuthoredWidth(ModelGeometry left, Transform leftModel, ModelGeometry right,
+        internal static PairPlacement FitPairWithAuthoredWidth(ModelGeometry left, Transform leftModel, ModelGeometry right,
             Transform rightModel, int columns, float laneCenter, float laneWidth, float elementCenter,
             bool regularFlam, DrumFlamLayout layout, bool cymbalModel, bool lefty, float authoredLaneWidth)
         {
@@ -432,7 +442,7 @@ namespace YARG.Gameplay.Visuals
             {
                 if (leftModel != null) left.Reset(leftModel);
                 if (rightModel != null) right.Reset(rightModel);
-                return;
+                return null;
             }
             // Store highway-local poses, with the lane center in the key. The
             // note element offset is applied afterward; world positions are absent.
@@ -457,6 +467,7 @@ namespace YARG.Gameplay.Visuals
             }
             placement.Left.Apply(leftModel, elementCenter);
             placement.Right.Apply(rightModel, elementCenter);
+            return placement;
         }
 
         private static void FitPairUncached(ModelGeometry left, ModelPose leftModel, ModelGeometry right,
@@ -524,6 +535,93 @@ namespace YARG.Gameplay.Visuals
             }
         }
 
+        internal const float AUTHORED_FRET_WIDTH = TrackPlayer.TRACK_WIDTH / 5f;
+        internal const float FIT_FRACTION = .9f;
+
+        internal static bool UseProportionalGems(EliteDrumsResolvedLayout layout, bool absoluteFretWidths) =>
+            layout.FitGemsToFret || layout.HasUnequalFretWidths || absoluteFretWidths;
+
+        // Each reference is measured once per theme/layout. Include both SP models, all dynamics
+        // and every hat state supported by the configured sources, even if absent from this song.
+        internal sealed class GemFitReference
+        {
+            private readonly Dictionary<(bool, bool, bool, int, DrumFlamLayout, bool, bool, bool), float>
+                _widths = new();
+            private static readonly ThemeNoteType[] Drums = { ThemeNoteType.Normal, ThemeNoteType.Ghost, ThemeNoteType.Accent };
+            private static readonly ThemeNoteType[] Cymbals = { ThemeNoteType.Cymbal, ThemeNoteType.CymbalGhost, ThemeNoteType.CymbalAccent };
+            private static readonly ThemeNoteType[] Hats = { ThemeNoteType.OpenHiHat, ThemeNoteType.OpenHiHatGhost,
+                ThemeNoteType.OpenHiHatAccent, ThemeNoteType.ClosedHiHat, ThemeNoteType.ClosedHiHatGhost, ThemeNoteType.ClosedHiHatAccent };
+
+            internal float Width(EliteDrumsResolvedLane lane, int columns, DrumFlamLayout flamLayout,
+                bool volumeCymbals, bool cymbalModels, bool lefty, System.Func<ThemeNoteType, bool, ModelGeometry> model)
+            {
+                bool drums = false, cymbals = false, hats = false;
+                foreach (string source in lane.Sources)
+                {
+                    if (source == "hi-hat") hats = cymbals = true;
+                    else if (source is "left-crash" or "ride" or "right-crash") cymbals = true;
+                    else drums = true;
+                }
+                var key = (drums, cymbals, hats, columns, flamLayout, volumeCymbals, cymbalModels, lefty);
+                if (_widths.TryGetValue(key, out float width)) return width;
+                if (drums || !cymbalModels) Include(Drums, false);
+                if (cymbals && cymbalModels) Include(Cymbals, true);
+                if (hats && cymbalModels) Include(Hats, true);
+                _widths[key] = Mathf.Max(width, .0001f);
+                return _widths[key];
+
+                void Include(ThemeNoteType[] types, bool cymbal)
+                {
+                    foreach (var type in types)
+                    for (int variant = 0; variant < 2; variant++)
+                    {
+                        var single = model(type, variant != 0);
+                        if (single == null) continue;
+                        single.Extents(1f, 0f, out float min, out float max);
+                        width = Mathf.Max(width, max - min);
+                        for (int flat = 0; flat < 2; flat++)
+                        {
+                            var fused = ThemeNoteModelFallbacks.GetEliteFusedFlamType(type, flat != 0, flamLayout, volumeCymbals);
+                            var geometry = fused.HasValue ? model(fused.Value, variant != 0) : null;
+                            if (geometry != null)
+                                geometry.Extents(1f, 0f, out min, out max);
+                            else
+                                GetSplitBounds(single, columns, flat != 0, flamLayout, cymbal, lefty, out min, out max);
+                            width = Mathf.Max(width, max - min);
+                        }
+                    }
+                }
+            }
+        }
+
+        internal static void GetSplitBounds(ModelGeometry model, int columns, bool flat, DrumFlamLayout layout,
+            bool cymbal, bool lefty, out float min, out float max)
+        {
+            var placement = FitPairWithAuthoredWidth(model, null, model, null, columns, 0f, AUTHORED_FRET_WIDTH,
+                0f, !flat, layout, cymbal, lefty, AUTHORED_FRET_WIDTH);
+            min = float.PositiveInfinity;
+            max = float.NegativeInfinity;
+            placement.Left.Encapsulate(model, ref min, ref max);
+            placement.Right.Encapsulate(model, ref min, ref max);
+        }
+
+        // Gem geometry is authored at one five-fret pitch. Scale the *entire* glyph including
+        // any split companion, preserving cymbal slope, flam angle, height, and depth.
+        internal static void PlaceProportional(Transform element, float restWidth, float referenceWidth,
+            float availableWidth, float center, float min, float max, float partnerWidth, bool fit, bool confined)
+        {
+            float scale = fit ? FIT_FRACTION * restWidth / referenceWidth : restWidth / AUTHORED_FRET_WIDTH;
+            if (confined || fit)
+            {
+                float widest = Mathf.Max(max - min, partnerWidth);
+                if (widest > 0f)
+                    scale = Mathf.Min(scale, availableWidth * (fit ? FIT_FRACTION : 1f) / widest);
+            }
+            element.localScale *= scale;
+            element.localPosition = new Vector3(center - (min + max) * .5f * scale,
+                element.localPosition.y, element.localPosition.z);
+        }
+
         internal static EliteDrumNote GetCollisionPartner(EliteDrumsPlayer player, EliteDrumNote note)
         {
             if (!EliteDrumsNoteElement.IsHandFlamPad(note.Pad)) return null;
@@ -581,15 +679,15 @@ namespace YARG.Gameplay.Visuals
         {
             int column = player.GetVisualPosition((int)EliteDrumNote.EliteDrumPad.HiHat);
             int count = player.Layout.Lanes.Count;
-            int sections = GetPedalRegion(column, count, TrackPlayer.TRACK_WIDTH, out center, out width);
+            int sections = GetPedalRegion(column, count, player.HighwayWidth, out center, out width);
             var boundaries = player.TryGetKickBoundaries(note);
             if (boundaries != null)
             {
                 var (first, end) = GetPedalColumnRange(column, count);
                 float left = boundaries[first];
                 float right = boundaries[end];
-                center = ((left + right) * .5f - .5f) * TrackPlayer.TRACK_WIDTH;
-                width = (right - left) * TrackPlayer.TRACK_WIDTH;
+                center = ((left + right) * .5f - .5f) * player.HighwayWidth;
+                width = (right - left) * player.HighwayWidth;
             }
             return sections;
         }
@@ -598,20 +696,17 @@ namespace YARG.Gameplay.Visuals
             out float center, out float width)
         {
             var layout = player.Layout;
-            width = layout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
-            int position = player.GetVisualPosition(note);
-            center = (position + 0.5f) * width - TrackPlayer.TRACK_WIDTH / 2f;
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.Wildcard)
             {
                 center = 0;
-                width = TrackPlayer.TRACK_WIDTH;
+                width = player.HighwayWidth;
                 return;
             }
             if (note.Pad != (int) EliteDrumNote.EliteDrumPad.HatPedal &&
                 EliteDrumsPlayer.IsFootPad(note.Pad) && player.UsesKickBars)
             {
                 center = 0;
-                width = TrackPlayer.TRACK_WIDTH;
+                width = player.HighwayWidth;
                 return;
             }
             if (note.Pad == (int) EliteDrumNote.EliteDrumPad.HatPedal)
@@ -620,21 +715,22 @@ namespace YARG.Gameplay.Visuals
                 return;
             }
 
-            bool cymbal = EliteDrumsPlayer.IsCymbal(note.Pad);
-            string source = EliteDrumsPlayer.GetLayoutSource(note.Pad);
-            bool mapped = layout.SourceToLane.TryGetValue(source, out int laneIndex);
+            int position = player.GetVisualPosition(note);
             bool lefty = player.Player.Profile.LeftyFlip;
-            if (mapped) center = layout.GetLaneX(laneIndex, TrackPlayer.TRACK_WIDTH, lefty);
-            bool shared = mapped && layout.Lanes[laneIndex].Kind == EliteDrumsLayoutSlotKind.Ordinary
+            int laneIndex = lefty ? layout.Lanes.Count - 1 - position : position;
+            width = layout.GetLaneWidth(laneIndex, player.HighwayWidth);
+            center = layout.GetLaneX(laneIndex, player.HighwayWidth, lefty);
+            bool cymbal = EliteDrumsPlayer.IsCymbal(note.Pad);
+            bool shared = layout.Lanes[laneIndex].Kind == EliteDrumsLayoutSlotKind.Ordinary
                 && layout.Lanes[laneIndex].EffectiveIds.Count == 2;
             bool paired = shared && GetCollisionPartner(player, note) != null;
             if (player.TryGetArrivalColumn(note, out float arrivalCenter, out float arrivalWidth))
             {
                 // Only actual collisions use smaller heads. Across the transition
                 // a lone hand keeps its normal footprint against its own side.
-                float shift = shared && !paired ? Mathf.Max(0f, arrivalWidth - width) * .5f : 0f;
-                float roadLimit = (TrackPlayer.TRACK_WIDTH - width) * .5f;
-                center = Mathf.Clamp(arrivalCenter + (cymbal != lefty ? shift : -shift), -roadLimit, roadLimit);
+                float shift = shared && !paired && !layout.FitGemsToFret ? Mathf.Max(0f, arrivalWidth - width) * .5f : 0f;
+                float roadLimit = (player.HighwayWidth - width) * .5f;
+                center = layout.FitGemsToFret ? arrivalCenter : Mathf.Clamp(arrivalCenter + (cymbal != lefty ? shift : -shift), -roadLimit, roadLimit);
             }
             if (paired)
                 GetPairRegion(center, width, cymbal, lefty, offset, out center, out width);

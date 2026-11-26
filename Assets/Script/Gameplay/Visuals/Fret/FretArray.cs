@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using YARG.Core.Chart;
+using YARG.Core.Game;
+using YARG.Helpers.Extensions;
 using YARG.Helpers.Authoring;
 using YARG.Themes;
 using static YARG.Core.Game.ColorProfile;
@@ -30,6 +33,7 @@ namespace YARG.Gameplay.Visuals
 
         [SerializeField]
         private float _trackWidth = 2f;
+        internal float TrackWidth { set => _trackWidth = value; }
 
         [Space]
         [SerializeField]
@@ -43,6 +47,62 @@ namespace YARG.Gameplay.Visuals
         private Transform[] _columnFrets;
         private float[] _columnEdges;
         private bool _resized;
+        private Fret[] _automaticFrets;
+
+        internal static (Color Drum, Color Cymbal, bool Paired) GetLaneTints(
+            EliteDrumsResolvedLane lane, EliteDrumsColors colors, EliteDrumsLayoutPreset preset)
+        {
+            Color? drum = null, cymbal = null;
+            string primary = null;
+            foreach (var merge in preset?.Merges ?? Array.Empty<EliteDrumsLayoutMerge>())
+                if (EliteDrumsCymbalPairs.TryGetMerge(merge, out var pair) && lane.EffectiveIds.Contains(pair.EffectiveId))
+                    primary = pair.PrimarySource;
+            foreach (var source in lane.Sources)
+            {
+                var role = source switch
+                {
+                    "snare" => EliteDrumsColorRole.Snare,
+                    "tom1" => EliteDrumsColorRole.Tom1,
+                    "tom2" => EliteDrumsColorRole.Tom2,
+                    "tom3" => EliteDrumsColorRole.Tom3,
+                    "hi-hat" => EliteDrumsColorRole.HatIndifferent,
+                    "left-crash" => EliteDrumsColorRole.LeftCrash,
+                    "ride" => EliteDrumsColorRole.Ride,
+                    "right-crash" => EliteDrumsColorRole.RightCrash,
+                    "kick2" => EliteDrumsColorRole.DoubleKick,
+                    _ => EliteDrumsColorRole.Kick
+                };
+                var color = colors.GetNoteColor(role).ToUnityColor();
+                if (source is "hi-hat" or "left-crash" or "ride" or "right-crash")
+                {
+                    if (primary == null || primary == source) cymbal ??= color;
+                }
+                else drum ??= color;
+            }
+            return (drum ?? cymbal.Value, cymbal ?? drum.Value, drum.HasValue && cymbal.HasValue);
+        }
+
+        internal void ApplyAutomaticColors(EliteDrumsResolvedLayout layout, EliteDrumsColors colors, bool lefty, EliteDrumsLayoutPreset preset, EliteFretGradient gradient)
+        {
+            _automaticFrets = new Fret[layout.Lanes.Count];
+            foreach (var lane in layout.Lanes)
+            {
+                int column = lefty ? layout.Lanes.Count - 1 - lane.Index : lane.Index;
+                var fret = _columnFrets[column]?.GetComponent<Fret>();
+                if (fret == null) continue;
+                var tints = GetLaneTints(lane, colors, preset);
+                fret.SetKitColors(tints.Drum, tints.Cymbal, lefty, tints.Paired, gradient);
+                if (tints.Paired) _automaticFrets[column] = fret;
+            }
+        }
+
+        internal void UpdateColorSplit(EliteDrumsRollLayout layout, double time)
+        {
+            if (_automaticFrets == null || layout == null || !layout.HasExpansion) return;
+            double quarter = layout.QuarterAt(time);
+            for (int i = 0; i < _automaticFrets.Length; i++)
+                _automaticFrets[i]?.SetColorSplit(layout.ExpansionAtQuarter(i, quarter));
+        }
 
         private readonly List<int> _activeFrets  = new();
         private readonly List<int> _pulsingFrets = new();
@@ -116,6 +176,7 @@ namespace YARG.Gameplay.Visuals
             _activeFrets.Clear();
             _pulsingFrets.Clear();
             var fretsByPosition = new Dictionary<int, Fret>();
+            _automaticFrets = null;
             _columnFrets = new Transform[laneCount];
             _columnEdges = new float[laneCount + 1];
             _resized = false;
@@ -214,8 +275,8 @@ namespace YARG.Gameplay.Visuals
                 rightKick.SetActive(true);
 
                 // Position kick frets
-                leftKick.transform.localPosition = _leftKickFretPosition.localPosition;
-                rightKick.transform.localPosition = _rightKickFretPosition.localPosition;
+                leftKick.transform.localPosition = _leftKickFretPosition.localPosition + Vector3.left * ((_trackWidth - 2f) * .5f);
+                rightKick.transform.localPosition = _rightKickFretPosition.localPosition + Vector3.right * ((_trackWidth - 2f) * .5f);
                 rightKick.transform.localScale = rightKick.transform.localScale.InvertX();
 
                 // Add kick frets
@@ -277,6 +338,15 @@ namespace YARG.Gameplay.Visuals
 
         // One transform per physical fret. All pad aliases, hit flashes and held
         // animations inherit the same geometry without changing their input binding.
+        internal void MirrorPreviewColumns()
+        {
+            if (_columnFrets == null) return;
+            Array.Reverse(_columnFrets);
+            foreach (var fret in _columnFrets)
+                if (fret != null) fret.localPosition = fret.localPosition.WithX(-fret.localPosition.x);
+            _resized = false;
+        }
+
         internal void SetColumnEdges(float[] edges)
         {
             if (_columnFrets == null || (edges == null && !_resized)) return;

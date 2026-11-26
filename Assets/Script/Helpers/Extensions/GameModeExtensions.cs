@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using YARG.Assets.Script.Helpers;
 using YARG.Core;
+using YARG.Core.Game;
 
 namespace YARG.Helpers.Extensions
 {
@@ -119,6 +120,24 @@ namespace YARG.Helpers.Extensions
             }
 
             possibleOptions.AddRange(unconditionalOptionsPerGameMode);
+            if (gameMode is GameMode.FiveFretGuitar or GameMode.ProKeys or GameMode.EliteDrums)
+            {
+                possibleOptions.Add((nameof(YargProfile.AlwaysShowFretDots), null));
+                possibleOptions.Add((nameof(YargProfile.ColoredFretDots), null));
+                possibleOptions.Add((nameof(YargProfile.FretDotSubdivision), null));
+                possibleOptions.Add((nameof(YargProfile.FretDotSizePercent), null));
+                possibleOptions.Add((nameof(YargProfile.DiamondFretDots), null));
+            }
+            if (gameMode == GameMode.EliteDrums)
+            {
+                possibleOptions.Add((nameof(YargProfile.SmallFretDotPercent), null));
+                possibleOptions.Add((nameof(YargProfile.MarkCollisionFrets), null));
+                possibleOptions.Add((nameof(YargProfile.DynamicFretWidths), null));
+                possibleOptions.Add((nameof(YargProfile.ExpandFretsForFlams), null));
+                possibleOptions.Add((nameof(YargProfile.AutomaticFretColors), null));
+                possibleOptions.Add((nameof(YargProfile.FretGradient), null));
+                possibleOptions.Add((nameof(YargProfile.ColoredHeldFretDots), null));
+            }
 
             // Split into a private method for readability
             possibleOptions.AddRange(ConditionalGameModeSettings(gameMode, dependencyNamesAndValues));

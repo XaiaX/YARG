@@ -34,6 +34,16 @@ namespace YARG.Settings.Preview
         private readonly Dictionary<NoteGroup, Vector3> _authoredGroupPositions = new();
         private readonly Dictionary<NoteGroup, EliteDrumsRuntimeGeometry.ModelGeometry> _geometry = new();
         private readonly Dictionary<NoteGroup, NoteGroup> _flamCompanions = new();
+        private readonly EliteDrumsRuntimeGeometry.GemFitReference _fitReference = new();
+
+        private EliteDrumsRuntimeGeometry.ModelGeometry FitModel(ThemeNoteType type, bool star)
+        {
+            // A missing fused model is drawn as two singles in both preview and play.
+            if (Array.IndexOf(ThemeNoteModelFallbacks.EliteFusedFlamTypes, type) >= 0 &&
+                !_noteGroups.Exists(p => p.NoteType == type && !p.StarPower)) return null;
+            var group = FindNoteGroup(type, star);
+            return group == null ? null : Geometry(group);
+        }
 
         private EliteDrumsRuntimeGeometry.ModelGeometry Geometry(NoteGroup group)
         {
@@ -191,7 +201,7 @@ namespace YARG.Settings.Preview
         {
             int laneIndex = layout.SourceToLane[source];
             var lane = layout.Lanes[laneIndex];
-            width = layout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
+            width = layout.GetLaneWidth(laneIndex, TrackPlayer.TRACK_WIDTH);
             center = layout.GetLaneX(laneIndex, TrackPlayer.TRACK_WIDTH, lefty);
 
             // Only a saved lane containing both a drum and cymbal gets separate preview
@@ -399,19 +409,26 @@ namespace YARG.Settings.Preview
             float pedalCenter = 0f;
             float pedalWidth = 0f;
             int pedalSections = 0;
+            var eliteLayout = info.EliteLayout;
+            float highwayWidth = info.HighwayWidth;
+            var boundaries = eliteLayout?.GetRestingEdges(FakeTrackPlayer.LeftyFlip);
             if (layoutPedal)
             {
                 int column = info.EliteLayout.SourceToLane["hi-hat"];
                 if (FakeTrackPlayer.LeftyFlip) column = info.LaneCount - 1 - column;
-                pedalSections = EliteDrumsRuntimeGeometry.GetPedalRegion(column, info.LaneCount,
-                    TrackPlayer.TRACK_WIDTH, out pedalCenter, out pedalWidth);
+                var (first, end) = EliteDrumsRuntimeGeometry.GetPedalColumnRange(column, info.LaneCount);
+                pedalSections = end - first;
+                float left = boundaries == null ? (float)first / info.LaneCount : boundaries[first];
+                float right = boundaries == null ? (float)end / info.LaneCount : boundaries[end];
+                pedalCenter = ((left + right) * .5f - .5f) * highwayWidth;
+                pedalWidth = (right - left) * highwayWidth;
                 width = 1f;
             }
             transform.localScale = new Vector3(width, highwayPreset.NoteHeight, 1f);
             if (info.LaneCount > 0 && FakeTrackPlayer.SelectedGameMode == GameMode.EliteDrums &&
                 selectedType is ThemeNoteType.Kick or ThemeNoteType.KickAccent or ThemeNoteType.KickGhost or
                     ThemeNoteType.KickFlam or ThemeNoteType.KickFlamAccent or ThemeNoteType.KickFlamGhost)
-                _currentNoteGroup.ConfigureKickLanes(info.LaneCount);
+                _currentNoteGroup.ConfigureKickLanes(info.LaneCount, boundaries);
             if (NoteRef.ClassicHandFlam && !NoteRef.CenterNote && info.LaneCount > 0 &&
                 FakeTrackPlayer.SelectedGameMode is GameMode.FourLaneDrums or GameMode.FiveLaneDrums)
             {
@@ -457,14 +474,18 @@ namespace YARG.Settings.Preview
                 var authoredScale = _authoredGroupScales[_currentNoteGroup];
                 _currentNoteGroup.transform.localScale = authoredScale;
                 _currentNoteGroup.transform.localPosition = _authoredGroupPositions[_currentNoteGroup];
-                float? fittedWidth = null;
+                float? fittedWidth = !Mathf.Approximately(highwayWidth, TrackPlayer.TRACK_WIDTH) &&
+                    elite.IsBar && !layoutPedal && info.EliteLayout?.KickMode == EliteDrumsLayoutKickMode.Bars
+                    ? highwayWidth : (float?)null;
+                int handLane = -1;
+                bool proportional = false;
                 float x = elite.IsBar
                     ? layoutPedal
                         ? pedalCenter
                         : info.EliteLayout is { KickMode: EliteDrumsLayoutKickMode.Split } barLayout
                             ? (elite.Role == EliteDrumsColorRole.DoubleKick
-                                ? barLayout.GetSourceX("kick2", TrackPlayer.TRACK_WIDTH, FakeTrackPlayer.LeftyFlip)
-                                : barLayout.GetSourceX("kick1", TrackPlayer.TRACK_WIDTH, FakeTrackPlayer.LeftyFlip))
+                                ? barLayout.GetSourceX("kick2", highwayWidth, FakeTrackPlayer.LeftyFlip)
+                                : barLayout.GetSourceX("kick1", highwayWidth, FakeTrackPlayer.LeftyFlip))
                             : 0f
                     : TrackPlayer.TRACK_WIDTH / info.LaneCount * elite.Fret
                     - TrackPlayer.TRACK_WIDTH / 2f - 1f / info.LaneCount;
@@ -473,15 +494,23 @@ namespace YARG.Settings.Preview
                     string source = elite.DedicatedLaneSource ?? (kickLayout.KickMode == EliteDrumsLayoutKickMode.Combined
                         ? "kick" : elite.Role == EliteDrumsColorRole.DoubleKick ? "kick2" : "kick1");
                     int lane = kickLayout.SourceToLane[source];
-                    x = kickLayout.GetLaneX(lane, TrackPlayer.TRACK_WIDTH, FakeTrackPlayer.LeftyFlip);
-                    float laneWidth = kickLayout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
+                    x = kickLayout.GetLaneX(lane, highwayWidth, FakeTrackPlayer.LeftyFlip);
+                    float laneWidth = kickLayout.GetLaneWidth(lane, highwayWidth);
                     transform.localScale = transform.localScale.WithX(1f);
+                    float depthScale = EliteDrumsRuntimeGeometry.UseProportionalGems(kickLayout, kickLayout.GrowHighway)
+                        ? laneWidth / EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH : 1f;
+                    if (kickLayout.FitGemsToFret)
+                    {
+                        laneWidth *= EliteDrumsRuntimeGeometry.FIT_FRACTION;
+                        depthScale *= EliteDrumsRuntimeGeometry.FIT_FRACTION;
+                    }
+                    transform.localScale = Vector3.Scale(transform.localScale, new Vector3(1f, depthScale, depthScale));
                     fittedWidth = laneWidth;
                 }
                 else if (elite.Role == EliteDrumsColorRole.Wildcard)
                 {
                     x = 0f;
-                    fittedWidth = TrackPlayer.TRACK_WIDTH;
+                    fittedWidth = highwayWidth;
                 }
                 if (info.EliteLayout != null && !elite.IsBar && info.LaneCount > 0)
                 {
@@ -501,13 +530,11 @@ namespace YARG.Settings.Preview
                     {
                         // Mirror the lane first, like the gameplay highway ordering, then
                         // Obtain the resolved lane before the measured pair fit below.
-                        bool cymbal = elite.ModelType is ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent
-                            or ThemeNoteType.CymbalGhost or ThemeNoteType.OpenHiHat or ThemeNoteType.OpenHiHatAccent
-                            or ThemeNoteType.OpenHiHatGhost or ThemeNoteType.ClosedHiHat or ThemeNoteType.ClosedHiHatAccent
-                            or ThemeNoteType.ClosedHiHatGhost;
-                        GetEliteLayoutRegion(info.EliteLayout, source, cymbal, FakeTrackPlayer.LeftyFlip,
-                            false, false,
-                            out x, out float pairWidth);
+                        handLane = info.EliteLayout.SourceToLane[source];
+                        x = info.EliteLayout.GetLaneX(handLane, highwayWidth, FakeTrackPlayer.LeftyFlip);
+                        proportional = EliteDrumsRuntimeGeometry.UseProportionalGems(info.EliteLayout, info.EliteLayout.GrowHighway);
+                        float pairWidth = proportional ? EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH :
+                            info.EliteLayout.GetLaneWidth(handLane, highwayWidth);
                         // Match live gems: resize the authored model from its five-lane baseline,
                         // while the wrapper retains only the descriptor's model width.
                         transform.localScale = transform.localScale.WithX(elite.Width);
@@ -521,7 +548,7 @@ namespace YARG.Settings.Preview
                 {
                     x = -x;
                 }
-                float offset = dedicatedEliteKick ? 0f : elite.Offset;
+                float offset = dedicatedEliteKick || proportional ? 0f : elite.Offset;
                 if (elite.Width == 2f / 3f && info.EliteLayout != null)
                     offset *= info.EliteLayout.GetLaneWidth(TrackPlayer.TRACK_WIDTH) /
                         (TrackPlayer.TRACK_WIDTH / 5f);
@@ -557,8 +584,8 @@ namespace YARG.Settings.Preview
                 if (info.EliteLayout != null && (fusedEliteFlam || splitEliteFlam || NoteRef.ElitePairPartner != null))
                 {
                     transform.localScale = transform.localScale.WithX(1f);
-                    float center = transform.localPosition.x;
-                    float laneWidth = info.EliteLayout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
+                    float center = proportional ? 0f : transform.localPosition.x;
+                    float laneWidth = proportional ? EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH : info.EliteLayout.GetLaneWidth(TrackPlayer.TRACK_WIDTH);
                     var ownGeometry = Geometry(_currentNoteGroup);
                     if (splitEliteFlam)
                     {
@@ -583,7 +610,7 @@ namespace YARG.Settings.Preview
                         companion.ConfigureOpenHatGlow(FakeTrackPlayer.OpenHatGlow, FakeTrackPlayer.OpenHatPulsesPerQuarter, preview: true, leftyFlip: FakeTrackPlayer.LeftyFlip);
                         companion.SetMetalColor(metalColor);
                     }
-                    else if (NoteRef.ElitePairPartner?.EliteDescriptor is { } partner)
+                    else if (!proportional && NoteRef.ElitePairPartner?.EliteDescriptor is { } partner)
                     {
                         bool partnerStar = NoteRef.ElitePairPartner.ForceStarPower ?? FakeTrackPlayer.ForceStarPowerNotes;
                         var partnerType = ResolveEliteFlamType(NoteRef.ElitePairPartner, EliteModelType(partner.ModelType));
@@ -603,8 +630,57 @@ namespace YARG.Settings.Preview
                             info.LaneCount, center, laneWidth, center);
                     }
                 }
+                if (proportional)
+                {
+                    float available = info.EliteLayout.GetLaneWidth(handLane, highwayWidth);
+                    float restWidth = available;
+                    bool paired = NoteRef.ElitePairPartner?.EliteDescriptor != null;
+                    float partnerWidth = 0f;
+                    if (paired)
+                    {
+                        available *= .5f;
+                        bool right = IsCymbal(elite.ModelType) != FakeTrackPlayer.LeftyFlip;
+                        x += (right ? .5f : -.5f) * available;
+                        var data = NoteRef.ElitePairPartner;
+                        var single = EliteModelType(data.EliteDescriptor.Value.ModelType);
+                        var resolved = ResolveEliteFlamType(data, single);
+                        for (int v = 0; v < 2; v++)
+                        {
+                            var model = FitModel(resolved, v != 0);
+                            float left, rightEdge;
+                            if (data.EliteHandFlam && single == resolved)
+                                EliteDrumsRuntimeGeometry.GetSplitBounds(model, info.LaneCount, data.EliteFlatFlam,
+                                    FakeTrackPlayer.FlamLayout, IsCymbal(single), FakeTrackPlayer.LeftyFlip, out left, out rightEdge);
+                            else model.Extents(1f, 0f, out left, out rightEdge);
+                            partnerWidth = Mathf.Max(partnerWidth, rightEdge - left);
+                        }
+                    }
+                    float min = float.PositiveInfinity, max = float.NegativeInfinity;
+                    Geometry(_currentNoteGroup).EncapsulatePlacedX(_currentNoteGroup.transform, ref min, ref max);
+                    if (splitEliteFlam)
+                    {
+                        var companion = _flamCompanions[_currentNoteGroup];
+                        Geometry(companion).EncapsulatePlacedX(companion.transform, ref min, ref max);
+                    }
+                    float reference = info.EliteLayout.FitGemsToFret ? _fitReference.Width(info.EliteLayout.Lanes[handLane],
+                        info.LaneCount, FakeTrackPlayer.FlamLayout, FakeTrackPlayer.UseVolumeCymbals, FakeTrackPlayer.UseCymbalModels,
+                        FakeTrackPlayer.LeftyFlip, FitModel) : EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH;
+                    if (!info.EliteLayout.FitGemsToFret && !paired && NoteRef.EliteHandFlam)
+                    {
+                        float half = (max - min) * .5f * restWidth / EliteDrumsRuntimeGeometry.AUTHORED_FRET_WIDTH;
+                        float outside = (highwayWidth - restWidth) * .5f;
+                        if (outside > 0f) x *= (highwayWidth * .5f - half) / outside;
+                    }
+                    transform.localScale = new Vector3(1f, highwayPreset.NoteHeight, 1f);
+                    EliteDrumsRuntimeGeometry.PlaceProportional(transform, restWidth, reference, available,
+                        x, min, max, partnerWidth, info.EliteLayout.FitGemsToFret, paired);
+                }
             }
         }
+
+        private static bool IsCymbal(ThemeNoteType type) => type is ThemeNoteType.Cymbal or ThemeNoteType.CymbalAccent
+            or ThemeNoteType.CymbalGhost or ThemeNoteType.OpenHiHat or ThemeNoteType.OpenHiHatAccent or ThemeNoteType.OpenHiHatGhost
+            or ThemeNoteType.ClosedHiHat or ThemeNoteType.ClosedHiHatAccent or ThemeNoteType.ClosedHiHatGhost;
 
         private void FitCurrentModelWidth(float targetWorldWidth, float targetWorldCenter)
         {

@@ -137,6 +137,8 @@ namespace YARG.Player
             EliteDrumsLayout = recordedLayout != null &&
                 EliteDrumsLayoutValidator.Validate(recordedLayout).IsRuntimeSupported
                 ? recordedLayout.Copy() : EliteDrumsLayoutPreset.Compact;
+            if (Profile.GameMode == GameMode.EliteDrums)
+                ColorProfile = ColorProfile.ForEliteLayout(ColorProfile, EliteDrumsLayout);
         }
 
         public void SwapToProfile(YargProfile profile, ProfileBindings bindings, bool resolveDevices)
@@ -187,6 +189,8 @@ namespace YARG.Player
 
             var selectedLayout = CustomContentManager.EliteDrumsLayouts.GetUsablePresetById(Profile.EliteDrumsLayout);
             EliteDrumsLayout = selectedLayout?.Copy() ?? EliteDrumsLayoutPreset.Compact;
+            if (Profile.GameMode == GameMode.EliteDrums)
+                ColorProfile = ColorProfile.ForEliteLayout(ColorProfile, EliteDrumsLayout);
             // Preserve the reference for recovery, while recording the actual presentation used.
             Profile.ReplayEliteDrumsLayout = EliteDrumsLayout.Copy();
             if (selectedLayout == null && Profile.EliteDrumsLayout != EliteDrumsLayoutPreset.CompactId &&

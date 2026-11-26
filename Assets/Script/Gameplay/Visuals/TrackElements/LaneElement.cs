@@ -307,7 +307,7 @@ namespace YARG.Gameplay.Visuals
             {
                 SetXPosition(0);
 
-                _scale = FULL_WIDTH_LANE_SCALE;
+                _scale = FULL_WIDTH_LANE_SCALE * ((Player != null ? Player.HighwayWidth : TrackPlayer.TRACK_WIDTH) / TrackPlayer.TRACK_WIDTH);
 
                 if (Initialized)
                 {

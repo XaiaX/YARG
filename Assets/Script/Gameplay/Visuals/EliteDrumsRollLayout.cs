@@ -45,8 +45,12 @@ namespace YARG.Gameplay.Visuals
             internal readonly float X;
             internal readonly int ColorColumn;
 
-            internal BoundaryDot(float x, int colorColumn = -1) =>
-                (X, ColorColumn) = (x, colorColumn);
+            internal readonly EliteDrumNote CymbalCue;
+            internal readonly float SplitOffset;
+            internal readonly float Expansion;
+            internal readonly bool CollisionFret;
+            internal BoundaryDot(float x, int colorColumn = -1, float expansion = 0f, bool collisionFret = false, float splitOffset = 0f, EliteDrumNote cymbalCue = null) =>
+                (X, ColorColumn, Expansion, CollisionFret, SplitOffset, CymbalCue) = (x, colorColumn, expansion, collisionFret, splitOffset, cymbalCue);
         }
 
         internal readonly struct BoundaryDotRow
@@ -60,6 +64,7 @@ namespace YARG.Gameplay.Visuals
 
         private sealed class Window
         {
+            internal List<EliteDrumNote> Cymbals;
             internal double Begin, Full, Release, End; // quarter-note coordinates
         }
 
@@ -71,6 +76,8 @@ namespace YARG.Gameplay.Visuals
         private readonly SyncTrack _sync;
         private readonly float[] _edges;
         private readonly int _columns;
+        private readonly float[] _restingEdges;
+        private readonly float _highwayWidth = TrackPlayer.TRACK_WIDTH;
         private double _sampleTime = double.NaN;
         private bool _deformed;
         private (double Time, int Columns)[] _noteHeads;
@@ -85,9 +92,13 @@ namespace YARG.Gameplay.Visuals
         internal EliteDrumsRollLayout(IEnumerable<Strip> source, IReadOnlyList<EliteDrumNote> notes,
             int columns, bool lefty, Func<EliteDrumNote, int> receptorOf,
             Func<EliteDrumNote, EliteDrumNote> collisionPartner, Func<int, int> columnOf,
-            SyncTrack sync, Func<EliteDrumNote, int> centerDotFootprint)
+            SyncTrack sync, Func<EliteDrumNote, int> centerDotFootprint, bool dynamicWidths = true,
+            bool expandFretsForFlams = false, bool usesKickBars = true, float[] restingEdges = null,
+            float highwayWidth = TrackPlayer.TRACK_WIDTH, bool fitGems = false)
         {
             _columns = columns;
+            _restingEdges = restingEdges;
+            _highwayWidth = highwayWidth;
             _notes = notes;
             _centerDotFootprint = centerDotFootprint;
             _sync = sync;
@@ -114,11 +125,25 @@ namespace YARG.Gameplay.Visuals
                 Reserve(run);
             }
 
+            var flams = new List<(EliteDrumNote Note, int Column)>();
             var pairs = new List<(EliteDrumNote Drum, EliteDrumNote Cymbal, int Column)>();
-            if (columns > 2)
+            if (columns > 2 && (dynamicWidths || fitGems))
             {
                 foreach (var chord in notes)
                 {
+                    if (dynamicWidths && expandFretsForFlams)
+                    {
+                        foreach (var head in chord.AllNotes)
+                        {
+                            if (head.IsInvisibleTerminator || !(head.IsFlam || head.IsFlatFlam)) continue;
+                            bool kickFret = !usesKickBars && EliteDrumsPlayer.IsFootPad(head.Pad);
+                            if (!kickFret && !EliteDrumsNoteElement.IsHandFlamPad(head.Pad)) continue;
+                            int column = columnOf(receptorOf(head));
+                            // Dedicated kicks already fit at the arrival center.
+                            if (!kickFret) flams.Add((head, column));
+                            reservations.Add((column, chord, chord));
+                        }
+                    }
                     if (chord.ChildNotes.Count == 0) continue;
                     foreach (var drum in chord.AllNotes)
                     {
@@ -128,7 +153,7 @@ namespace YARG.Gameplay.Visuals
                         if (cymbal == null) continue;
                         int column = columnOf(receptorOf(drum));
                         pairs.Add((drum, cymbal, column));
-                        reservations.Add((column, chord, chord));
+                        if (dynamicWidths) reservations.Add((column, chord, chord));
                     }
                 }
             }
@@ -176,6 +201,13 @@ namespace YARG.Gameplay.Visuals
                 _gemSlots.TryAdd(cymbal, Slot(column, lefty ? 0 : 1, 2));
             }
 
+            // A concurrent roll or collision already owns its half of the fret.
+            foreach (var (head, column) in flams)
+            {
+                Sample(head.Time);
+                _gemSlots.TryAdd(head, Slot(column, 0, 1));
+            }
+
             void Reserve(List<Strip> run)
             {
                 if (run.Count < 2) return;
@@ -191,11 +223,18 @@ namespace YARG.Gameplay.Visuals
                         strip.SideCount = voices.Length;
                     }
 
-                if (columns <= 2) return; // Two half-width heads already fit at the usual width.
+                if (!dynamicWidths || columns <= 2) return; // Two half-width heads already fit at the usual width.
                 var first = run[0].Segment.Members[0];
                 var last = run.Select(s => s.Segment.Members[^1]).OrderBy(n => n.Time).Last();
                 reservations.Add((run[0].Column, first, last));
             }
+        }
+
+        internal EliteDrumsRollLayout(int columns, SyncTrack sync, (double Time, int Columns)[] heads)
+        {
+            _columns = columns;
+            _sync = sync;
+            _noteHeads = heads;
         }
 
         private Window PlanWindow(EliteDrumNote first, EliteDrumNote last)
@@ -231,6 +270,18 @@ namespace YARG.Gameplay.Visuals
                 Begin = full - QUARTERS_PER_HALF_NOTE, Full = full,
                 Release = release, End = release + QUARTERS_PER_HALF_NOTE
             };
+        }
+
+        // Only gather color cues for automatic colored dots. Keep the last collision's
+        // cymbal through contraction, and use the next one during the approach.
+        internal void PrepareDotCymbals(Func<EliteDrumNote, int> columnOf)
+        {
+            if (!HasExpansion) return;
+            foreach (var note in _gemSlots.Keys.Where(n => EliteDrumsPlayer.IsCymbal(n.Pad)).OrderBy(n => n.Time))
+            {
+                var window = FindWindow(_windows[columnOf(note)], QuarterAt(note.Time));
+                if (window != null) (window.Cymbals ??= new List<EliteDrumNote>()).Add(note);
+            }
         }
 
         internal double QuarterAt(double time)
@@ -279,6 +330,9 @@ namespace YARG.Gameplay.Visuals
 
             var rows = new List<BoundaryDotRow>(quarters.Count);
             var expanded = new bool[_columns];
+            var progress = new float[_columns];
+            var active = new bool[_columns];
+            var cueWindows = new Window[_columns];
             var dots = new List<BoundaryDot>(_columns + 1);
             double previousQuarter = double.NegativeInfinity;
             foreach (double quarter in quarters)
@@ -288,12 +342,20 @@ namespace YARG.Gameplay.Visuals
                 if (quarter - previousQuarter < QUARTER_TOLERANCE) continue;
                 previousQuarter = quarter;
                 bool moving = false;
+                float movingProgress = 0;
                 for (int column = 0; column < _columns; column++)
                 {
                     var window = FindWindow(_windows[column], quarter, QUARTER_TOLERANCE);
                     expanded[column] = window != null && quarter > window.Full + QUARTER_TOLERANCE &&
                         quarter < window.Release - QUARTER_TOLERANCE;
-                    moving |= window != null && !expanded[column];
+                    active[column] = window != null;
+                    cueWindows[column] = window;
+                    progress[column] = (float)LinearExpansion(window, quarter);
+                    if (window != null && !expanded[column])
+                    {
+                        moving = true;
+                        movingProgress = Math.Max(movingProgress, progress[column]);
+                    }
                 }
 
                 double time = TimeAtQuarter(quarter);
@@ -308,10 +370,18 @@ namespace YARG.Gameplay.Visuals
                     bool adjacentToExpansion = (seam > 0 && expanded[seam - 1]) ||
                         (seam < _columns && expanded[seam]);
                     if (!allCenters && ((interior && (moving || alwaysShow)) || (!moving && !heldCenters && adjacentToExpansion)))
-                        dots.Add(new BoundaryDot(GetBoundaryDotX(seam, edges)));
+                    {
+                        float fraction = Math.Max(seam > 0 ? progress[seam - 1] : 0, seam < _columns ? progress[seam] : 0);
+                        bool bordersWindow = (seam > 0 && active[seam - 1]) || (seam < _columns && active[seam]);
+                        dots.Add(new BoundaryDot(GetBoundaryDotX(seam, edges), expansion: bordersWindow ? fraction : movingProgress, collisionFret: bordersWindow));
+                    }
                     if (seam < _columns && (allCenters || (heldCenters && expanded[seam])) &&
                         (occupied & (1 << seam)) == 0)
-                        dots.Add(GetCenterDot(seam, edges));
+                    {
+                        var cues = cueWindows[seam]?.Cymbals;
+                        var cue = cues == null ? null : cues[Math.Min(FirstOnset(cues, time), cues.Count - 1)];
+                        dots.Add(GetCenterDot(seam, edges, active[seam] ? progress[seam] : movingProgress, active[seam], cue));
+                    }
                 }
                 // Even an entirely occupied row takes precedence over the normal grid.
                 if (dots.Count > 0 || alwaysShow) rows.Add(new BoundaryDotRow(time, dots.ToArray()));
@@ -355,11 +425,15 @@ namespace YARG.Gameplay.Visuals
             return heads.OrderBy(head => head.Key).Select(head => (head.Key, head.Value)).ToArray();
         }
 
-        private BoundaryDot GetCenterDot(int column, float[] edges) =>
-            new((GetBoundaryDotX(column, edges) + GetBoundaryDotX(column + 1, edges)) * .5f, column);
+        private BoundaryDot GetCenterDot(int column, float[] edges, float expansion = 0f, bool collisionFret = false, EliteDrumNote cue = null) =>
+            new((GetBoundaryDotX(column, edges) + GetBoundaryDotX(column + 1, edges)) * .5f, column, expansion, collisionFret,
+                collisionFret ? (GetBoundaryDotX(column + 1, edges) - GetBoundaryDotX(column, edges)) *
+                    .25f * expansion * expansion * (3f - 2f * expansion) : 0f, cue);
 
         private float GetBoundaryDotX(int seam, float[] edges) =>
-            ((edges?[seam] ?? (float)seam / _columns) - .5f) * TrackPlayer.TRACK_WIDTH;
+            ((edges?[seam] ?? RestingEdge(seam)) - .5f) * _highwayWidth;
+
+        private float RestingEdge(int seam) => _restingEdges?[seam] ?? (float)seam / _columns;
 
         // Only a roll crossing a changing layout needs extra cross-sections.
         // Sampling the easing curves at load time keeps long straight runs cheap.
@@ -422,13 +496,19 @@ namespace YARG.Gameplay.Visuals
             return low == windows.Count || quarter < windows[low].Begin - tolerance ? null : windows[low];
         }
 
+        internal float ExpansionAtQuarter(int column, double quarter) => (float)Weight(_windows[column], quarter);
+
         private static double Weight(List<Window> windows, double quarter)
         {
-            var w = FindWindow(windows, quarter);
-            if (w == null) return 0;
-            double t = quarter < w.Full ? (quarter - w.Begin) / (w.Full - w.Begin) :
-                quarter > w.Release ? (w.End - quarter) / (w.End - w.Release) : 1;
+            double t = LinearExpansion(FindWindow(windows, quarter), quarter);
             return t * t * (3 - 2 * t);
+        }
+
+        private static double LinearExpansion(Window w, double quarter)
+        {
+            if (w == null) return 0;
+            return Math.Clamp(quarter < w.Full ? (quarter - w.Begin) / (w.Full - w.Begin) :
+                quarter > w.Release ? (w.End - quarter) / (w.End - w.Release) : 1, 0, 1);
         }
 
         // Borrow equally from every unexpanded fret. Normalization also accommodates
@@ -436,7 +516,7 @@ namespace YARG.Gameplay.Visuals
         // The returned buffer is borrowed until the next sample.
         internal float[] Sample(double time)
         {
-            if (!HasExpansion) return null;
+            if (!HasExpansion) return _restingEdges;
             if (time != _sampleTime)
             {
                 _sampleTime = time;
@@ -449,13 +529,13 @@ namespace YARG.Gameplay.Visuals
                     _deformed |= amount > 0;
                     double width = 1 + extra * amount;
                     double demand = width * (_columns - 1) / (_columns - width);
-                    total += demand;
+                    total += demand * (RestingEdge(i + 1) - RestingEdge(i));
                     _edges[i + 1] = (float)total;
                 }
                 if (_deformed)
                     for (int i = 1; i <= _columns; i++) _edges[i] /= (float)total;
             }
-            return _deformed ? _edges : null;
+            return _deformed ? _edges : _restingEdges;
         }
 
         internal (float Center, float Width) StripAt(Strip strip, double time)
@@ -466,10 +546,10 @@ namespace YARG.Gameplay.Visuals
 
         private (float Center, float Width) Slot(int column, int index, int count)
         {
-            float left = _deformed ? _edges[column] : (float)column / _columns;
-            float right = _deformed ? _edges[column + 1] : (float)(column + 1) / _columns;
-            float width = (right - left) * TrackPlayer.TRACK_WIDTH / count;
-            return ((left - .5f) * TrackPlayer.TRACK_WIDTH + (index + .5f) * width, width);
+            float left = _deformed ? _edges[column] : RestingEdge(column);
+            float right = _deformed ? _edges[column + 1] : RestingEdge(column + 1);
+            float width = (right - left) * _highwayWidth / count;
+            return ((left - .5f) * _highwayWidth + (index + .5f) * width, width);
         }
 
         private static int FirstOnset(IReadOnlyList<EliteDrumNote> notes, double time)

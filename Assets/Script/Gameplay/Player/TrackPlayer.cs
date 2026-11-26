@@ -30,6 +30,8 @@ namespace YARG.Gameplay.Player
 
         public const float TRACK_WIDTH  = 2f;
 
+        public virtual float HighwayWidth => TRACK_WIDTH;
+
         public static int HighwayCount = 1;
 
         public double SpawnTimeOffset => (ZeroFadePosition + _spawnAheadDelay + -STRIKE_LINE_POS) / NoteSpeed;
@@ -421,6 +423,20 @@ namespace YARG.Gameplay.Player
 
         protected virtual void FinishInitialization()
         {
+            float widthScale = HighwayWidth / TRACK_WIDTH;
+            if (widthScale != 1f)
+            {
+                TrackMaterial.SetHighwayWidth(HighwayWidth);
+                HitWindowDisplay.transform.localScale = HitWindowDisplay.transform.localScale.WithX(HighwayWidth);
+                IndicatorStripes.SetHighwayWidth(HighwayWidth);
+                StarpowerBar.transform.localScale = StarpowerBar.transform.localScale.WithX(
+                    StarpowerBar.transform.localScale.x * widthScale);
+                StarPowerEffect.transform.localScale = StarPowerEffect.transform.localScale.WithX(
+                    StarPowerEffect.transform.localScale.x * widthScale);
+                var flash = GetComponentInChildren<KickFretFlash>(true);
+                if (flash != null)
+                    flash.transform.localScale = flash.transform.localScale.WithX(flash.transform.localScale.x * widthScale);
+            }
             TrackMaterial.Initialize(Player.HighwayPreset);
             CameraPositioner.Initialize(Player.CameraPreset);
             FinalizeTrackEffects();

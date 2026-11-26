@@ -42,6 +42,17 @@ namespace YARG.Menu.HighwayConfiguration
             _markerLegend = markerLegend;
         }
 
+        internal void CopyFrameTo(RectTransform destination, string title)
+        {
+            Instantiate(_body, destination, false);
+            Instantiate(_headerBacking, destination, false);
+            var header = Instantiate(_title.transform.parent, destination, false);
+            header.GetComponentInChildren<TMP_Text>(true).text = title;
+            foreach (Transform child in _panel)
+                if (child.name.StartsWith("Footer", System.StringComparison.Ordinal))
+                    Instantiate(child, destination, false);
+        }
+
         public void SetTitle(string title) => _title.text = title;
 
         public void SetHelp(string description, string markerLegend)

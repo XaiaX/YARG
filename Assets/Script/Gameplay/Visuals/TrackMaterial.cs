@@ -144,6 +144,22 @@ namespace YARG.Gameplay.Visuals
         [SerializeField]
         private MeshRenderer[] _trackTrims;
 
+        private float _highwayWidth = Player.TrackPlayer.TRACK_WIDTH;
+
+        public void SetHighwayWidth(float width)
+        {
+            if (Mathf.Approximately(width, _highwayWidth)) return;
+            var surface = _trackMesh.transform;
+            surface.localScale = surface.localScale.WithX(surface.localScale.x * width / _highwayWidth);
+            float displacement = (width - _highwayWidth) * .5f;
+            foreach (var trim in _trackTrims)
+            {
+                var rail = trim.transform;
+                rail.localPosition = rail.localPosition.AddX(Mathf.Sign(rail.localPosition.x) * displacement);
+            }
+            _highwayWidth = width;
+        }
+
         private Material _material;
         private readonly HashSet<Material> _ownedMaterials = new();
 

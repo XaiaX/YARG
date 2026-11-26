@@ -166,7 +166,7 @@ namespace YARG.Tests.PlayMode
                 Assert.That(kickMode, Is.EqualTo(iteration == 0 ? "Bars" : "Combined"),
                     "The lifecycle fixtures must retain both the unchanged bar mode and a combined dedicated lane.");
                 bool dedicatedKick = kickMode is "Split" or "Combined";
-                float resolvedLaneWidth = (float)eliteLayout.GetType().GetMethod("GetLaneWidth")
+                float resolvedLaneWidth = (float)eliteLayout.GetType().GetMethod("GetLaneWidth", new[] { typeof(float) })
                     .Invoke(eliteLayout, new object[] { highwayWidth });
                 float expectedDoubleKickWidth = dedicatedKick ? resolvedLaneWidth : highwayWidth;
                 Assert.That(RenderedWidth(note), Is.EqualTo(expectedDoubleKickWidth).Within(0.01f),

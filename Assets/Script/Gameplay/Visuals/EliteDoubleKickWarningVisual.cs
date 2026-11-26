@@ -16,12 +16,14 @@ namespace YARG.Gameplay.Visuals
         private readonly List<Vector4> _uv = new(16);
         private readonly List<Vector2> _sparkData = new(16);
         private readonly List<int> _triangles = new(24);
+        private TrackPlayer _player;
         private MaterialPropertyBlock _properties;
         private MeshRenderer _renderer;
         private Mesh _mesh;
 
         private void Awake()
         {
+            _player = GetComponentInParent<TrackPlayer>();
             _properties = new MaterialPropertyBlock();
             _mesh = new Mesh { name = "Elite double kick warning", indexFormat = IndexFormat.UInt32 };
             _mesh.MarkDynamic();
@@ -41,7 +43,7 @@ namespace YARG.Gameplay.Visuals
             _sparkData.Clear();
             _triangles.Clear();
             const float strike = TrackPlayer.STRIKE_LINE_POS;
-            const float edge = TrackPlayer.TRACK_WIDTH * .5f;
+            float edge = (_player != null ? _player.HighwayWidth : TrackPlayer.TRACK_WIDTH) * .5f;
             if (rails)
             {
                 foreach (var (start, end) in windows)

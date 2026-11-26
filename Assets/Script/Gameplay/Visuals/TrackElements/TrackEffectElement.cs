@@ -104,6 +104,7 @@ namespace YARG.Gameplay.Visuals
         public bool Active { get; private set; }
 
         private CancellationTokenSource _visibilityToken;
+        private float _authoredWidthScale;
         private readonly HashSet<Material> _ownedMaterials = new();
 
         public void Reinitialize()
@@ -365,6 +366,9 @@ namespace YARG.Gameplay.Visuals
             var zScale = (float) (EffectRef.TimeEnd - EffectRef.Time) * Player.NoteSpeed / zSize;
 
             var cachedTransform = _meshRenderer.transform;
+            if (_authoredWidthScale == 0f) _authoredWidthScale = cachedTransform.localScale.x;
+            cachedTransform.localScale = cachedTransform.localScale.WithX(
+                _authoredWidthScale * Player.HighwayWidth / TrackPlayer.TRACK_WIDTH);
 
             // This is necessary to avoid the rescaling of the
             // parent from messing up the scaling of the children
@@ -446,11 +450,16 @@ namespace YARG.Gameplay.Visuals
         private float GetXOffsetForLeadUp()
         {
             // Kick lead-ups and unknown indices should be centered
-            if (EffectRef.FillLanePosition < 0 || EffectRef.FillLanePosition > EffectRef.TotalLanes)
+            if (EffectRef.FillLanePosition < 0 || EffectRef.FillLanePosition >= EffectRef.TotalLanes)
             {
                 return 0f;
             }
 
+            if (Player is EliteDrumsPlayer elite)
+            {
+                int lane = LeftyFlip ? elite.LaneCount - 1 - (int) EffectRef.FillLanePosition : (int) EffectRef.FillLanePosition;
+                return elite.Layout.GetLaneX(lane, HIGHWAY_WIDTH, LeftyFlip);
+            }
             float increment = HIGHWAY_WIDTH / EffectRef.TotalLanes;
             float initialOffset = -1 * (HIGHWAY_WIDTH / 2) + increment / 2;
             return initialOffset + (EffectRef.FillLanePosition) * increment;
@@ -466,12 +475,17 @@ namespace YARG.Gameplay.Visuals
             }
 
             // Kick lead-ups and unknown indices should not be shrunken
-            if (EffectRef.FillLanePosition < 0 || EffectRef.FillLanePosition > EffectRef.TotalLanes)
+            if (EffectRef.FillLanePosition < 0 || EffectRef.FillLanePosition >= EffectRef.TotalLanes)
             {
                 return 1f;
             }
 
             // Scale lead-up width appropriately
+            if (Player is EliteDrumsPlayer elite)
+            {
+                int lane = LeftyFlip ? elite.LaneCount - 1 - (int) EffectRef.FillLanePosition : (int) EffectRef.FillLanePosition;
+                return elite.Layout.GetLaneWidth(lane, 1f);
+            }
             return 1f / EffectRef.TotalLanes;
         }
 

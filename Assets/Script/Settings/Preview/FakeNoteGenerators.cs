@@ -181,6 +181,30 @@ namespace YARG.Settings.Preview
             }
         }
 
+        private static readonly EliteRole[] ComparisonToms = { EliteRole.Tom1, EliteRole.Tom2, EliteRole.Tom3 };
+        private static readonly EliteRole[] ComparisonCymbals =
+            { EliteRole.HatIndifferent, EliteRole.LeftCrash, EliteRole.Ride, EliteRole.RightCrash };
+        internal static int ComparisonBeats(EliteRole role) => ComparisonFamily(role).Count switch
+        {
+            3 => 8,
+            4 => 9,
+            _ => 0
+        };
+
+        internal static EliteRole ComparisonRole(EliteRole member, int beat) =>
+            member == EliteRole.HatIndifferent ? HatRoles[beat % HatRoles.Length] : member;
+
+        internal static IReadOnlyList<EliteRole> ComparisonFamily(EliteRole role) => role switch
+        {
+            EliteRole.Tom1 or EliteRole.Tom2 or EliteRole.Tom3 => ComparisonToms,
+            EliteRole.HatClosed or EliteRole.HatIndifferent or EliteRole.HatOpen or EliteRole.LeftCrash or
+                EliteRole.Ride or EliteRole.RightCrash => ComparisonCymbals,
+            _ => Array.Empty<EliteRole>()
+        };
+
+        internal static int ColorPassLength(EliteRole role) =>
+            ComparisonBeats(role) + 2 * VariationCount(role);
+
         internal static int VariationCount(EliteRole role) => role switch
         {
             EliteRole.Stomp or EliteRole.Splash or EliteRole.Wildcard => 1,

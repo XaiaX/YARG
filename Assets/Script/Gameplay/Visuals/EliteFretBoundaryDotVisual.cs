@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using YARG.Core.Game;
+using YARG.Core.Chart;
 using YARG.Gameplay.Player;
 using static YARG.Gameplay.Visuals.EliteDrumsRollLayout;
 
@@ -12,8 +14,8 @@ namespace YARG.Gameplay.Visuals
     internal sealed class EliteFretBoundaryDotVisual : MonoBehaviour
     {
         private const float DOT_HEIGHT = .004f;
-        private const float DOT_HALF_WIDTH = .017f;
-        private const float DOT_HALF_DEPTH = .033f;
+        private const float DOT_HALF_WIDTH = .034f;
+        private const float DOT_HALF_DEPTH = .066f;
         private const double TIME_TOLERANCE = 1e-8;
         private const int MAX_NORMAL_ROWS_PER_FRAME = 512;
 
@@ -30,6 +32,45 @@ namespace YARG.Gameplay.Visuals
         private Mesh _mesh;
         private Material _material;
 
+        internal (Color32 Left, Color32 Right, bool Paired)[] SplitTints { get; set; }
+        internal bool CymbalOnLeft { get; set; }
+        internal Func<EliteDrumNote, Color32> CymbalCueTint { get; set; }
+        internal bool Diamond { get; set; }
+        internal float SmallScale { get; set; } = 1f;
+        internal bool MarkCollisionFrets { get; set; }
+        internal float SizeScale { get; set; } = 1f;
+
+        internal static EliteFretBoundaryDotVisual CreateFixedGrid(Transform parent,
+            YargProfile profile, SyncTrack sync,
+            IReadOnlyList<GuitarNote> notes, Dictionary<int, int> ordering,
+            Func<int, Color32> fretColor)
+        {
+            var root = new GameObject("Fret timing dots") { layer = parent.gameObject.layer };
+            root.transform.SetParent(parent, false);
+            var visual = root.AddComponent<EliteFretBoundaryDotVisual>();
+            visual.Diamond = profile.DiamondFretDots;
+            visual.SizeScale = Mathf.Clamp(profile.FretDotSizePercent, 25, 200) / 100f;
+            visual.SmallScale = visual.SizeScale;
+            var colors = new Color32[ordering.Count];
+            foreach (var pair in ordering) colors[pair.Value] = fretColor(pair.Key);
+            var heads = new List<(double, int)>();
+            if (profile.ColoredFretDots == true)
+            {
+                foreach (var chord in notes)
+                {
+                    if (chord.IsBigRockEnding) continue;
+                    int mask = 0;
+                    foreach (var note in chord.AllNotes)
+                        mask |= ordering.TryGetValue(note.Fret, out int column) ? 1 << column : (1 << ordering.Count) - 1;
+                    heads.Add((chord.Time, mask));
+                }
+            }
+            int spacing = profile.FretDotSubdivision ?? 32;
+            visual.SetRows(new EliteDrumsRollLayout(ordering.Count, sync, heads.ToArray()),
+                spacing is 8 or 16 or 32 or 64 or 128 ? spacing : 32, true, false, profile.ColoredFretDots == true, colors);
+            return visual;
+        }
+
         internal void SetRows(EliteDrumsRollLayout layout, int subdivision, bool alwaysShow, bool colorHeldCenters,
             bool colorAllCenters, Color32[] fretTints)
         {
@@ -45,6 +86,7 @@ namespace YARG.Gameplay.Visuals
             _mesh = new Mesh { name = "Elite fret boundary dots", indexFormat = IndexFormat.UInt32 };
             _mesh.MarkDynamic();
             _material = new Material(Resources.Load<Shader>("EliteFretBoundaryDots"));
+            _material.SetFloat("_Diamond", Diamond ? 1f : 0f);
             gameObject.AddComponent<MeshFilter>().sharedMesh = _mesh;
             var renderer = gameObject.AddComponent<MeshRenderer>();
             renderer.shadowCastingMode = ShadowCastingMode.Off;
@@ -114,7 +156,22 @@ namespace YARG.Gameplay.Visuals
                 foreach (var dot in dots)
                 {
                     if (dot.ColorColumn >= 0 && (occupied & (1 << dot.ColorColumn)) != 0) continue;
-                    AddDot(dot.X, z, dot.ColorColumn < 0 ? default : _fretTints[dot.ColorColumn]);
+                    if (SmallScale == 0f && !dot.CollisionFret) continue;
+                    float progress = MarkCollisionFrets ? (dot.CollisionFret ? 1f : 0f) : dot.Expansion;
+                    float scale = Mathf.Lerp(SmallScale, SizeScale, progress);
+                    if (scale <= 0f) continue;
+                    if (dot.SplitOffset > 0 && SplitTints != null && SplitTints[dot.ColorColumn].Paired)
+                    {
+                        var pair = SplitTints[dot.ColorColumn];
+                        if (dot.CymbalCue != null)
+                        {
+                            if (CymbalOnLeft) pair.Left = CymbalCueTint(dot.CymbalCue);
+                            else pair.Right = CymbalCueTint(dot.CymbalCue);
+                        }
+                        AddDot(dot.X - dot.SplitOffset, z, scale, pair.Left);
+                        AddDot(dot.X + dot.SplitOffset, z, scale, pair.Right);
+                    }
+                    else AddDot(dot.X, z, scale, dot.ColorColumn < 0 ? default : _fretTints[dot.ColorColumn]);
                 }
             }
         }
@@ -131,13 +188,13 @@ namespace YARG.Gameplay.Visuals
             return low;
         }
 
-        private void AddDot(float x, float z, Color32 tint)
+        private void AddDot(float x, float z, float scale, Color32 tint)
         {
             int first = _vertices.Count;
-            _vertices.Add(new Vector3(x - DOT_HALF_WIDTH, DOT_HEIGHT, z - DOT_HALF_DEPTH));
-            _vertices.Add(new Vector3(x - DOT_HALF_WIDTH, DOT_HEIGHT, z + DOT_HALF_DEPTH));
-            _vertices.Add(new Vector3(x + DOT_HALF_WIDTH, DOT_HEIGHT, z + DOT_HALF_DEPTH));
-            _vertices.Add(new Vector3(x + DOT_HALF_WIDTH, DOT_HEIGHT, z - DOT_HALF_DEPTH));
+            _vertices.Add(new Vector3(x - DOT_HALF_WIDTH * scale, DOT_HEIGHT, z - DOT_HALF_DEPTH * scale));
+            _vertices.Add(new Vector3(x - DOT_HALF_WIDTH * scale, DOT_HEIGHT, z + DOT_HALF_DEPTH * scale));
+            _vertices.Add(new Vector3(x + DOT_HALF_WIDTH * scale, DOT_HEIGHT, z + DOT_HALF_DEPTH * scale));
+            _vertices.Add(new Vector3(x + DOT_HALF_WIDTH * scale, DOT_HEIGHT, z - DOT_HALF_DEPTH * scale));
             _uvs.Add(new Vector2(-1, -1));
             _uvs.Add(new Vector2(-1, 1));
             _uvs.Add(new Vector2(1, 1));

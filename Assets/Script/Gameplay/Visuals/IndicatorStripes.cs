@@ -35,6 +35,13 @@ namespace YARG.Gameplay.Visuals
         private int _stripeCount;
         private bool _isCustomPreset;
 
+        internal void SetHighwayWidth(float width)
+        {
+            float offset = (width - Player.TrackPlayer.TRACK_WIDTH) * .5f;
+            _leftContainer.localPosition = _leftContainer.localPosition.AddX(-offset);
+            _rightContainer.localPosition = _rightContainer.localPosition.AddX(offset);
+        }
+
         public void Initialize(EnginePreset enginePreset)
         {
             _isCustomPreset = false;

@@ -32,76 +32,81 @@ namespace YARG.Tests.PlayMode
             var mesh = dots.GetComponent<MeshFilter>().sharedMesh;
             var noteSpeed = (float)player.GetType().GetProperty("NoteSpeed").GetValue(player);
 
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var spacingProperty = settings.GetType().GetProperty("EliteFretBoundaryDotSpacing");
-            Assert.That(spacingProperty, Is.Not.Null, "Gameplay needs a fret boundary dot spacing setting.");
-            var spacing = spacingProperty.GetValue(settings);
-            var valueProperty = spacing.GetType().GetProperty("Value");
-            var setSpacing = spacing.GetType().GetMethod("SetValueWithoutNotify");
-            var previous = valueProperty.GetValue(spacing);
-            var alwaysOption = settings.GetType().GetProperty("AlwaysShowEliteFretBoundaryDots").GetValue(settings);
-            var setAlways = alwaysOption.GetType().GetMethod("SetValueWithoutNotify");
-            var wasAlwaysOn = alwaysOption.GetType().GetProperty("Value").GetValue(alwaysOption);
-            try
+            profile.AlwaysShowFretDots = false;
+            foreach (int denominator in new[] { 32, 16, 64, 128, 8 })
             {
-                setAlways.Invoke(alwaysOption, new object[] { false });
-                foreach (int denominator in new[] { 32, 16, 64, 128, 8 })
-                {
-                    setSpacing.Invoke(spacing, new[] { Enum.ToObject(valueProperty.PropertyType, denominator) });
-                    update.Invoke(player, new object[] { 1d });
-                    var vertices = mesh.vertices;
-                    float[] centers = Enumerable.Range(0, vertices.Length / 4)
-                        .Select(i => (vertices[4 * i].z + vertices[4 * i + 2].z) * .5f)
-                        .Where(z => z <= -2f + .5f * noteSpeed + .0001f).Distinct().ToArray();
-                    var expected = Enumerable.Range(0, denominator / 4 + 1)
-                        .Select(i => -2f + (float)i * 2 / denominator * noteSpeed);
-                    Assert.That(centers, Is.EqualTo(expected).Within(.0001f), $"Rows at 1/{denominator}");
-                }
-
-                var frets = new[] { EliteDrumPad.Snare, EliteDrumPad.HiHat, EliteDrumPad.Tom1,
-                    EliteDrumPad.Tom2, EliteDrumPad.Tom3 };
-                if (lefty) Array.Reverse(frets);
-                var columns = Array.ConvertAll(frets, pad => Receptor(player, pad).transform);
-
-                // Check the sparsest setting across both overlapping and merged ramps.
-                // The tempo change halves the interval between the final rows.
-                foreach (double time in new[] { 1d, 1.25, 1.5, 1.75, 2d, 3d, 3.5, 4d, 5d, 5.25, 5.375, 5.5, 5.625 })
-                {
-                    AssertSeamsAt(time, new[] { 1, 2, 3, 4 });
-                }
-                // The two adjacent widened frets share their middle marker. The outer
-                // rail is part of this hold, including when Lefty moves it to the left.
-                foreach (double time in new[] { 2.25, 2.5, 2.75 })
-                    AssertSeamsAt(time, lefty ? new[] { 0, 1, 2 } : new[] { 3, 4, 5 });
-                foreach (double time in new[] { 4.25, 4.5, 4.75 })
-                    AssertSeamsAt(time, lefty ? new[] { 0, 1 } : new[] { 4, 5 });
-                foreach (double time in new[] { .75, 1.125, 2.125, 5.125, 5.75 })
-                    Assert.That(CentersAt(time, time), Is.Empty, $"No dot row at {time}s");
-                Assert.That(CentersAt(1, 1), Has.Count.EqualTo(4), "A backward seek restores previous rows.");
-
-                setAlways.Invoke(alwaysOption, new object[] { true });
-                AssertSeamsAt(2.5, lefty ? new[] { 0, 1, 2, 3, 4 } : new[] { 1, 2, 3, 4, 5 });
-                AssertSeamsAt(3.5, new[] { 1, 2, 3, 4 });
-
-                void AssertSeamsAt(double time, int[] seams)
-                {
-                    var approaching = CentersAt(time, time - .0625);
-                    var arriving = CentersAt(time, time);
-                    Assert.That(arriving, Has.Count.EqualTo(seams.Length), $"At {time}s");
-                    Assert.That(approaching, Is.EqualTo(arriving).Within(.0001f), $"In flight toward {time}s");
-                    for (int i = 0; i < seams.Length; i++)
-                    {
-                        int seam = seams[i];
-                        float expected = seam == 0 ? -1f :
-                            columns[seam - 1].localPosition.x + .2f * columns[seam - 1].localScale.x;
-                        Assert.That(arriving[i], Is.EqualTo(expected).Within(.0001f), $"Seam {seam} at {time}s");
-                    }
-                }
+                profile.FretDotSubdivision = denominator;
+                update.Invoke(player, new object[] { 1d });
+                var vertices = mesh.vertices;
+                float[] centers = Enumerable.Range(0, vertices.Length / 4)
+                    .Select(i => (vertices[4 * i].z + vertices[4 * i + 2].z) * .5f)
+                    .Where(z => z <= -2f + .5f * noteSpeed + .0001f).Distinct().ToArray();
+                var expected = Enumerable.Range(0, denominator / 4 + 1)
+                    .Select(i => -2f + (float)i * 2 / denominator * noteSpeed);
+                Assert.That(centers, Is.EqualTo(expected).Within(.0001f), $"Rows at 1/{denominator}");
             }
-            finally
+
+            // The first ramp starts at 1 s and is fully expanded at 2 s.
+            // Its quarter point distinguishes linear sizing from the fret geometry's easing.
+            profile.MarkCollisionFrets = false;
+            profile.SmallFretDotPercent = 25;
+            foreach (var (time, fraction) in new[] { (1d, .25f), (1.25, .4375f), (2d, 1f),
+                (4.5, 1f), (5.25, .8125f), (5.625, .25f) })
             {
-                setAlways.Invoke(alwaysOption, new[] { wasAlwaysOn });
-                setSpacing.Invoke(spacing, new[] { previous });
+                update.Invoke(player, new object[] { time });
+                var vertices = mesh.vertices;
+                float width = vertices[2].x - vertices[0].x;
+                Assert.That(width, Is.EqualTo(.068f * fraction).Within(.0001f), $"Dot width at {time}s");
+            }
+
+            profile.MarkCollisionFrets = true;
+            profile.ColoredFretDots = true;
+            update.Invoke(player, new object[] { 1d });
+            var firstRow = mesh.vertices;
+            var widths = Enumerable.Range(0, 5).Select(i => firstRow[4*i+2].x - firstRow[4*i].x).ToArray();
+            var expectedWidths = new[] { .017f, .017f, .017f, .068f, .068f };
+            if (lefty) Array.Reverse(expectedWidths);
+            Assert.That(widths, Is.EqualTo(expectedWidths).Within(.0001f), "Only the collision columns start large.");
+            profile.ColoredFretDots = false;
+
+            var frets = new[] { EliteDrumPad.Snare, EliteDrumPad.HiHat, EliteDrumPad.Tom1,
+                EliteDrumPad.Tom2, EliteDrumPad.Tom3 };
+            if (lefty) Array.Reverse(frets);
+            var columns = Array.ConvertAll(frets, pad => Receptor(player, pad).transform);
+
+            // Check the sparsest setting across both overlapping and merged ramps.
+            // The tempo change halves the interval between the final rows.
+            foreach (double time in new[] { 1d, 1.25, 1.5, 1.75, 2d, 3d, 3.5, 4d, 5d, 5.25, 5.375, 5.5, 5.625 })
+            {
+                AssertSeamsAt(time, new[] { 1, 2, 3, 4 });
+            }
+            // The two adjacent widened frets share their middle marker. The outer
+            // rail is part of this hold, including when Lefty moves it to the left.
+            foreach (double time in new[] { 2.25, 2.5, 2.75 })
+                AssertSeamsAt(time, lefty ? new[] { 0, 1, 2 } : new[] { 3, 4, 5 });
+            foreach (double time in new[] { 4.25, 4.5, 4.75 })
+                AssertSeamsAt(time, lefty ? new[] { 0, 1 } : new[] { 4, 5 });
+            foreach (double time in new[] { .75, 1.125, 2.125, 5.125, 5.75 })
+                Assert.That(CentersAt(time, time), Is.Empty, $"No dot row at {time}s");
+            Assert.That(CentersAt(1, 1), Has.Count.EqualTo(4), "A backward seek restores previous rows.");
+
+            profile.AlwaysShowFretDots = true;
+            AssertSeamsAt(2.5, lefty ? new[] { 0, 1, 2, 3, 4 } : new[] { 1, 2, 3, 4, 5 });
+            AssertSeamsAt(3.5, new[] { 1, 2, 3, 4 });
+
+            void AssertSeamsAt(double time, int[] seams)
+            {
+                var approaching = CentersAt(time, time - .0625);
+                var arriving = CentersAt(time, time);
+                Assert.That(arriving, Has.Count.EqualTo(seams.Length), $"At {time}s");
+                Assert.That(approaching, Is.EqualTo(arriving).Within(.0001f), $"In flight toward {time}s");
+                for (int i = 0; i < seams.Length; i++)
+                {
+                    int seam = seams[i];
+                    float expected = seam == 0 ? -1f :
+                        columns[seam - 1].localPosition.x + .2f * columns[seam - 1].localScale.x;
+                    Assert.That(arriving[i], Is.EqualTo(expected).Within(.0001f), $"Seam {seam} at {time}s");
+                }
             }
 
             List<float> CentersAt(double rowTime, double visualTime)
@@ -123,14 +128,6 @@ namespace YARG.Tests.PlayMode
         public IEnumerator HeldCenterDotsUseSavedFretColorsAndPreserveAlwaysOnGrid(
             [ValueSource(nameof(MirroredLayouts))] bool lefty)
         {
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var centerProperty = settings.GetType().GetProperty("ColorEliteHeldFretCenters");
-            Assert.That(centerProperty, Is.Not.Null, "A setting enables colored center dots.");
-            var center = centerProperty.GetValue(settings);
-            var always = settings.GetType().GetProperty("AlwaysShowEliteFretBoundaryDots").GetValue(settings);
-            var beforeCenter = center.GetType().GetProperty("Value").GetValue(center);
-            var beforeAlways = always.GetType().GetProperty("Value").GetValue(always);
-            var set = center.GetType().GetMethod("SetValueWithoutNotify");
             var profile = Profile();
             profile.LeftyFlip = lefty;
             var layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Sparse held color slots");
@@ -141,68 +138,51 @@ namespace YARG.Tests.PlayMode
             occupied.AddChildNote(new EliteDrumNote(EliteDrumPad.Tom2, DrumNoteType.Neutral,
                 EliteDrumsHatState.Indifferent, EliteDrumsHatPedalType.Stomp, false, DrumNoteFlags.None,
                 NoteFlags.None, EliteDrumsChannelFlag.None, 2.7504, occupied.Tick, false));
-            try
-            {
-                set.Invoke(center, new object[] { false });
-                set.Invoke(always, new object[] { false });
-                Fixture = new InitializedElitePlayerFixture();
-                yield return Fixture.Initialize(CreateBoundaryDotTransitionChart(occupied), profile, layout,
-                    noFail: true, enableLanes: false);
+            profile.ColoredHeldFretDots = false;
+            profile.AlwaysShowFretDots = false;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(CreateBoundaryDotTransitionChart(occupied), profile, layout,
+                noFail: true, enableLanes: false);
 
-                var colors = new ColorProfile("Distinct saved fret tints");
-                var orange = new Color32(212, 66, 26, 255);
-                var green = new Color32(25, 171, 190, 255);
-                colors.EliteDrums.Fret8 = System.Drawing.Color.FromArgb(orange.r, orange.g, orange.b);
-                colors.EliteDrums.Fret10 = System.Drawing.Color.FromArgb(green.r, green.g, green.b);
-                Fixture.Session.GetType().GetProperty("ColorProfile").SetValue(Fixture.Session, colors);
-                var player = Fixture.Player;
-                var tom2 = Receptor(player, EliteDrumPad.Tom2).transform;
-                var tom3 = Receptor(player, EliteDrumPad.Tom3).transform;
+            var colors = new ColorProfile("Distinct saved fret tints");
+            var orange = new Color32(212, 66, 26, 255);
+            var green = new Color32(25, 171, 190, 255);
+            colors.EliteDrums.Fret8 = System.Drawing.Color.FromArgb(orange.r, orange.g, orange.b);
+            colors.EliteDrums.Fret10 = System.Drawing.Color.FromArgb(green.r, green.g, green.b);
+            Fixture.Session.GetType().GetProperty("ColorProfile").SetValue(Fixture.Session, colors);
+            var player = Fixture.Player;
+            var tom2 = Receptor(player, EliteDrumPad.Tom2).transform;
+            var tom3 = Receptor(player, EliteDrumPad.Tom3).transform;
 
-                var defaultDots = AtStrikeLine(2.5);
-                Assert.That(defaultDots, Has.Length.EqualTo(3));
-                Assert.That(defaultDots.Select(dot => dot.Tint.a), Is.All.EqualTo((byte)0));
-                set.Invoke(center, new object[] { true });
+            var defaultDots = AtStrikeLine(2.5);
+            Assert.That(defaultDots, Has.Length.EqualTo(3));
+            Assert.That(defaultDots.Select(dot => dot.Tint.a), Is.All.EqualTo((byte)0));
+            profile.ColoredHeldFretDots = true;
 
-                var held = AtStrikeLine(2.5);
-                Assert.That(held.Select(dot => dot.Tint), Is.EqualTo(lefty ? new[] { green, orange } : new[] { orange, green }));
-                Assert.That(held.Single(dot => dot.Tint.Equals(orange)).X, Is.EqualTo(tom2.localPosition.x).Within(.0001f));
-                Assert.That(held.Single(dot => dot.Tint.Equals(green)).X, Is.EqualTo(tom3.localPosition.x).Within(.0001f));
-                Assert.That(AtStrikeLine(2.75).Select(dot => dot.Tint), Is.EqualTo(new[] { orange }));
-                var transitioning = AtStrikeLine(3.5);
-                Assert.That(transitioning, Has.Length.EqualTo(4));
-                Assert.That(transitioning.Select(dot => dot.Tint.a), Is.All.EqualTo((byte)0));
-                Assert.That(AtStrikeLine(4.5).Select(dot => dot.Tint), Is.EqualTo(new[] { green }));
+            var held = AtStrikeLine(2.5);
+            Assert.That(held.Select(dot => dot.Tint), Is.EqualTo(lefty ? new[] { green, orange } : new[] { orange, green }));
+            Assert.That(held.Single(dot => dot.Tint.Equals(orange)).X, Is.EqualTo(tom2.localPosition.x).Within(.0001f));
+            Assert.That(held.Single(dot => dot.Tint.Equals(green)).X, Is.EqualTo(tom3.localPosition.x).Within(.0001f));
+            Assert.That(AtStrikeLine(2.75).Select(dot => dot.Tint), Is.EqualTo(new[] { orange }));
+            var transitioning = AtStrikeLine(3.5);
+            Assert.That(transitioning, Has.Length.EqualTo(4));
+            Assert.That(transitioning.Select(dot => dot.Tint.a), Is.All.EqualTo((byte)0));
+            Assert.That(AtStrikeLine(4.5).Select(dot => dot.Tint), Is.EqualTo(new[] { green }));
 
-                set.Invoke(always, new object[] { true });
-                var combined = AtStrikeLine(2.5);
-                Assert.That(combined.Count(dot => dot.Tint.a == 0), Is.EqualTo(4));
-                Assert.That(combined.Where(dot => dot.Tint.a != 0), Is.EqualTo(held));
-                Assert.That(AtStrikeLine(2.75).Count(dot => dot.Tint.a == 0), Is.EqualTo(4));
-                Assert.That(AtStrikeLine(3.5), Is.EqualTo(transitioning));
+            profile.AlwaysShowFretDots = true;
+            var combined = AtStrikeLine(2.5);
+            Assert.That(combined.Count(dot => dot.Tint.a == 0), Is.EqualTo(4));
+            Assert.That(combined.Where(dot => dot.Tint.a != 0), Is.EqualTo(held));
+            Assert.That(AtStrikeLine(2.75).Count(dot => dot.Tint.a == 0), Is.EqualTo(4));
+            Assert.That(AtStrikeLine(3.5), Is.EqualTo(transitioning));
 
-                (float X, Color32 Tint)[] AtStrikeLine(double time) => GetBoundaryDotsAtStrikeLine(player, time);
-            }
-            finally
-            {
-                set.Invoke(center, new[] { beforeCenter });
-                set.Invoke(always, new[] { beforeAlways });
-            }
+            (float X, Color32 Tint)[] AtStrikeLine(double time) => GetBoundaryDotsAtStrikeLine(player, time);
         }
 
         [UnityTest]
         public IEnumerator AllFretCenterDotsRespectProjectedChordAndFootNoteFootprints(
             [ValueSource(nameof(MirroredLayouts))] bool lefty)
         {
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var allProperty = settings.GetType().GetProperty("ColorEliteAllFretCenters");
-            Assert.That(allProperty, Is.Not.Null, "A setting enables all-fret center dots.");
-            var all = allProperty.GetValue(settings);
-            var held = settings.GetType().GetProperty("ColorEliteHeldFretCenters").GetValue(settings);
-            var always = settings.GetType().GetProperty("AlwaysShowEliteFretBoundaryDots").GetValue(settings);
-            var value = all.GetType().GetProperty("Value");
-            var previous = new[] { value.GetValue(all), value.GetValue(held), value.GetValue(always) };
-            var set = all.GetType().GetMethod("SetValueWithoutNotify");
             var profile = Profile();
             profile.LeftyFlip = lefty;
             var layout = (EliteDrumsLayoutPreset)EliteDrumsLayoutPreset.Compact.CopyWithNewName("Projected center dots");
@@ -214,44 +194,67 @@ namespace YARG.Tests.PlayMode
             terminator.HatPedalType = EliteDrumsHatPedalType.InvisibleTerminator;
             var chart = CreateBoundaryDotTransitionChart(terminator, Note(EliteDrumPad.HatPedal, .75),
                 projectedChord, Note(EliteDrumPad.Kick, 1.5));
-            try
+            profile.ColoredFretDots = true;
+            profile.ColoredHeldFretDots = false;
+            profile.AlwaysShowFretDots = false;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(chart, profile, layout, noFail: true, enableLanes: false);
+
+            AssertColoredCenters(1.25, EliteDrumPad.Tom1, EliteDrumPad.Tom3);
+            Assert.That(Row(1.5), Is.Empty, "A full-width kick owns every center on its subdivision.");
+            Assert.That(Row(2.5).Select(dot => dot.Tint.a), Is.EqualTo(new byte[] { 0, 0, 0 }));
+            profile.ColoredHeldFretDots = true;
+            AssertColoredCenters(2.5, EliteDrumPad.Tom2, EliteDrumPad.Tom3);
+            profile.AlwaysShowFretDots = true;
+            AssertColoredCenters(.5, EliteDrumPad.Snare, EliteDrumPad.HiHat, EliteDrumPad.Tom1,
+                EliteDrumPad.Tom2, EliteDrumPad.Tom3);
+            AssertColoredCenters(.75, EliteDrumPad.Tom2, EliteDrumPad.Tom3);
+            AssertColoredCenters(2.5, EliteDrumPad.Snare, EliteDrumPad.HiHat, EliteDrumPad.Tom1,
+                EliteDrumPad.Tom2, EliteDrumPad.Tom3);
+            Assert.That(Row(1.5), Is.Empty, "Always Show must not replace a completely occupied row.");
+
+            (float X, Color32 Tint)[] Row(double time) => GetBoundaryDotsAtStrikeLine(Fixture.Player, time);
+
+            void AssertColoredCenters(double time, params EliteDrumPad[] pads)
             {
-                set.Invoke(all, new object[] { true });
-                set.Invoke(held, new object[] { false });
-                set.Invoke(always, new object[] { false });
-                Fixture = new InitializedElitePlayerFixture();
-                yield return Fixture.Initialize(chart, profile, layout, noFail: true, enableLanes: false);
-
-                AssertColoredCenters(1.25, EliteDrumPad.Tom1, EliteDrumPad.Tom3);
-                Assert.That(Row(1.5), Is.Empty, "A full-width kick owns every center on its subdivision.");
-                Assert.That(Row(2.5).Select(dot => dot.Tint.a), Is.EqualTo(new byte[] { 0, 0, 0 }));
-                set.Invoke(held, new object[] { true });
-                AssertColoredCenters(2.5, EliteDrumPad.Tom2, EliteDrumPad.Tom3);
-                set.Invoke(always, new object[] { true });
-                AssertColoredCenters(.5, EliteDrumPad.Snare, EliteDrumPad.HiHat, EliteDrumPad.Tom1,
-                    EliteDrumPad.Tom2, EliteDrumPad.Tom3);
-                AssertColoredCenters(.75, EliteDrumPad.Tom2, EliteDrumPad.Tom3);
-                AssertColoredCenters(2.5, EliteDrumPad.Snare, EliteDrumPad.HiHat, EliteDrumPad.Tom1,
-                    EliteDrumPad.Tom2, EliteDrumPad.Tom3);
-                Assert.That(Row(1.5), Is.Empty, "Always Show must not replace a completely occupied row.");
-
-                (float X, Color32 Tint)[] Row(double time) => GetBoundaryDotsAtStrikeLine(Fixture.Player, time);
-
-                void AssertColoredCenters(double time, params EliteDrumPad[] pads)
-                {
-                    var row = Row(time);
-                    var expected = pads.Select(pad => Receptor(Fixture.Player, pad).transform.localPosition.x)
-                        .OrderBy(x => x).ToArray();
-                    Assert.That(row.Select(dot => dot.X), Is.EqualTo(expected).Within(.0001f), $"Head footprints at {time}s");
-                    Assert.That(row.Select(dot => dot.Tint.a), Is.All.EqualTo((byte)255));
-                }
+                var row = Row(time);
+                var expected = pads.Select(pad => Receptor(Fixture.Player, pad).transform.localPosition.x)
+                    .OrderBy(x => x).ToArray();
+                Assert.That(row.Select(dot => dot.X), Is.EqualTo(expected).Within(.0001f), $"Head footprints at {time}s");
+                Assert.That(row.Select(dot => dot.Tint.a), Is.All.EqualTo((byte)255));
             }
-            finally
-            {
-                set.Invoke(all, new[] { previous[0] });
-                set.Invoke(held, new[] { previous[1] });
-                set.Invoke(always, new[] { previous[2] });
-            }
+        }
+
+        [UnityTest]
+        public IEnumerator AutomaticFretColorsFollowCollisionSlots([ValueSource(nameof(MirroredLayouts))] bool lefty)
+        {
+            var profile = Profile();
+            profile.AutomaticFretColors = true;
+            profile.LeftyFlip = lefty;
+            profile.ColoredHeldFretDots = true;
+            profile.AlwaysShowFretDots = false;
+            profile.ColoredFretDots = false;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(CreateBoundaryDotTransitionChart(), profile, EliteDrumsLayoutPreset.Compact,
+                noFail: true, enableLanes: false);
+
+            var dots = GetBoundaryDotsAtStrikeLine(Fixture.Player, 2.5);
+            Assert.That(dots.Length, Is.EqualTo(4));
+            var fret = Receptor(Fixture.Player, EliteDrumPad.Tom3).transform;
+            float center = fret.localPosition.x;
+            float offset = .1f * fret.localScale.x;
+            var pair = dots.Where(dot => Mathf.Abs(dot.X - center) < .2f * fret.localScale.x).ToArray();
+            Assert.That(pair.Select(dot => dot.X), Is.EqualTo(new[] { center - offset, center + offset }).Within(.0001f));
+            var palette = ((ColorProfile)Fixture.Session.GetType().GetProperty("ColorProfile").GetValue(Fixture.Session)).EliteDrums;
+            var expected = lefty ? new[] { palette.RightCrashNote, palette.Tom3Note }
+                : new[] { palette.Tom3Note, palette.RightCrashNote };
+            Assert.That(pair.Select(dot => dot.Tint), Is.EqualTo(expected.Select(c => new Color32(c.R, c.G, c.B, 255))));
+            var material = fret.GetComponentsInChildren<MeshRenderer>(true).SelectMany(r => r.sharedMaterials)
+                .First(m => m != null && m.HasProperty("_EliteFretCymbal") && m.GetVector("_EliteFretCymbal").w != 0);
+            Assert.That(material.GetVector("_EliteFretCymbal").w, Is.EqualTo(lefty ? -1f : 1f));
+            Assert.That(material.GetFloat("_EliteFretExpansion"), Is.EqualTo(1f));
+            GetBoundaryDotsAtStrikeLine(Fixture.Player, 5.625);
+            Assert.That(material.GetFloat("_EliteFretExpansion"), Is.Zero);
         }
 
         private static (float X, Color32 Tint)[] GetBoundaryDotsAtStrikeLine(Component player, double time)
@@ -288,42 +291,31 @@ namespace YARG.Tests.PlayMode
         [UnityTest]
         public IEnumerator AlwaysShowBoundaryDotsAddsTheVisibleGridToANonExpandingLayout()
         {
-            var settings = Production("YARG.Settings.SettingsManager").GetProperty("Settings").GetValue(null);
-            var optionProperty = settings.GetType().GetProperty("AlwaysShowEliteFretBoundaryDots");
-            Assert.That(optionProperty, Is.Not.Null);
-            var option = optionProperty.GetValue(settings);
-            var value = option.GetType().GetProperty("Value");
-            var set = option.GetType().GetMethod("SetValueWithoutNotify");
-            var previous = value.GetValue(option);
             var chart = PreparedElitePlayerFixture.CreateChart(Stream("snare", EliteDrumPad.Snare, 2, 6));
             var profile = Profile();
-            try
-            {
-                set.Invoke(option, new object[] { false });
-                Fixture = new InitializedElitePlayerFixture();
-                yield return Fixture.Initialize(chart, profile, EliteDrumsLayoutPreset.Full, noFail: true);
-                var player = Fixture.Player;
-                var update = player.GetType().GetMethod("UpdateRollFrets", INSTANCE);
-                update.Invoke(player, new object[] { 1d });
-                Assert.That(player.transform.Find("Elite fret boundary dots"), Is.Null);
+            profile.AlwaysShowFretDots = false;
+            Fixture = new InitializedElitePlayerFixture();
+            yield return Fixture.Initialize(chart, profile, EliteDrumsLayoutPreset.Full, noFail: true);
+            var player = Fixture.Player;
+            var update = player.GetType().GetMethod("UpdateRollFrets", INSTANCE);
+            update.Invoke(player, new object[] { 1d });
+            Assert.That(player.transform.Find("Elite fret boundary dots"), Is.Null);
 
-                set.Invoke(option, new object[] { true });
-                update.Invoke(player, new object[] { 3d });
-                var dots = player.transform.Find("Elite fret boundary dots");
-                Assert.That(dots, Is.Not.Null);
-                var mesh = dots.GetComponent<MeshFilter>().sharedMesh;
-                Assert.That(MarkersAtStrikeLine(mesh), Has.Length.EqualTo(7));
-                update.Invoke(player, new object[] { 1d });
-                Assert.That(MarkersAtStrikeLine(mesh), Is.EqualTo(new[] { -.75f, -.5f, -.25f, 0f, .25f, .5f, .75f })
-                    .Within(.0001f));
-                profile.NoteSpeed = .005f;
-                update.Invoke(player, new object[] { 1d });
-                Assert.That(mesh.vertexCount, Is.InRange(28, 512 * 7 * 4), "Dense normal rows stay bounded.");
-                set.Invoke(option, new object[] { false });
-                update.Invoke(player, new object[] { 1d });
-                Assert.That(mesh.vertexCount, Is.Zero);
-            }
-            finally { set.Invoke(option, new[] { previous }); }
+            profile.AlwaysShowFretDots = true;
+            update.Invoke(player, new object[] { 3d });
+            var dots = player.transform.Find("Elite fret boundary dots");
+            Assert.That(dots, Is.Not.Null);
+            var mesh = dots.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(MarkersAtStrikeLine(mesh), Has.Length.EqualTo(7));
+            update.Invoke(player, new object[] { 1d });
+            Assert.That(MarkersAtStrikeLine(mesh), Is.EqualTo(new[] { -.75f, -.5f, -.25f, 0f, .25f, .5f, .75f })
+                .Within(.0001f));
+            profile.NoteSpeed = .005f;
+            update.Invoke(player, new object[] { 1d });
+            Assert.That(mesh.vertexCount, Is.InRange(28, 512 * 7 * 4), "Dense normal rows stay bounded.");
+            profile.AlwaysShowFretDots = false;
+            update.Invoke(player, new object[] { 1d });
+            Assert.That(mesh.vertexCount, Is.Zero);
 
             static float[] MarkersAtStrikeLine(Mesh mesh)
             {
